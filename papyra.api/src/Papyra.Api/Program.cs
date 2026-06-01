@@ -1,9 +1,26 @@
+using Microsoft.Extensions.FileProviders;
 using Papyra.Api.Hubs;
 using Papyra.Api.Models;
 using Papyra.Api.Services;
 using Scalar.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
+
+// ── Centralized storage directories ──────────────────────────────────────────
+// Default: <repo-root>/data/{notes,images}
+// ContentRootPath in dev = papyra.api/src/Papyra.Api/ → go up 3 levels = repo root
+var repoRoot  = Path.GetFullPath(Path.Combine(builder.Environment.ContentRootPath, "..", "..", ".."));
+var dataRoot  = Path.Combine(repoRoot, "data");
+var notesDir  = builder.Configuration["Storage:NotesDirectory"]  is { Length: > 0 } n ? n : Path.Combine(dataRoot, "notes");
+var imagesDir = builder.Configuration["Storage:ImagesDirectory"] is { Length: > 0 } i ? i : Path.Combine(dataRoot, "images");
+
+// Back-fill resolved paths so services that read from IConfiguration pick them up
+builder.Configuration["Storage:NotesDirectory"]  = notesDir;
+builder.Configuration["Storage:ImagesDirectory"] = imagesDir;
+
+// Create directories on startup — safe to call when they already exist
+Directory.CreateDirectory(notesDir);
+Directory.CreateDirectory(imagesDir);
 
 builder.Services.AddOpenApi();
 builder.Services.AddSignalR();
@@ -20,6 +37,14 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<NoteWatcherService
 var app = builder.Build();
 
 app.UseCors("ViteDev");
+
+// Serve data/images/ at /media
+app.UseStaticFiles(new StaticFileOptions
+{
+    FileProvider = new PhysicalFileProvider(imagesDir),
+    RequestPath  = "/media",
+});
+
 app.MapOpenApi();
 
 app.MapScalarApiReference(options => 
@@ -98,6 +123,30 @@ app.MapDelete("/notes/{id}", (string id, NoteWatcherService watcher) =>
 })
     .WithName("DeleteNote")
     .WithSummary("Delete a note");
+
+// ── Image upload ──────────────────────────────────────────────────────────────
+
+app.MapPost("/api/upload/image", async (IFormFile file, IConfiguration configuration) =>
+{
+    var dir = configuration["Storage:ImagesDirectory"]!;
+    var allowedExtensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        { ".jpg", ".jpeg", ".png", ".gif", ".webp", ".avif", ".svg" };
+
+    var ext = Path.GetExtension(file.FileName);
+    if (!allowedExtensions.Contains(ext))
+        return Results.BadRequest(new { error = $"File type '{ext}' is not allowed." });
+
+    var fileName = $"{Guid.NewGuid()}{ext}";
+    var filePath = Path.Combine(dir, fileName);
+
+    await using var stream = File.Create(filePath);
+    await file.CopyToAsync(stream);
+
+    return Results.Ok(new { url = $"/media/{fileName}" });
+})
+    .WithName("UploadImage")
+    .WithSummary("Upload an image; returns its public /media URL")
+    .DisableAntiforgery();
 
 // ── Search ────────────────────────────────────────────────────────────────────
 

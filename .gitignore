@@ -481,3 +481,6 @@ $RECYCLE.BIN/
 # Vim temporary swap files
 *.swp
 /.claude
+
+# User data — notes and uploaded images; never commit
+/data/

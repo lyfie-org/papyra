@@ -26,7 +26,7 @@ public sealed class NoteWatcherService : IHostedService, IDisposable
     {
         _storage = storage;
         _logger = logger;
-        _notesDirectory = configuration["Notes:Directory"]
+        _notesDirectory = configuration["Storage:NotesDirectory"]
             ?? Path.Combine(AppContext.BaseDirectory, "notes");
         _indexManager = indexManager;
         _hubContext = hubContext;
