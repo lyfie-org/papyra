@@ -14,7 +14,10 @@
 
 .note-grid__status {
   text-align: center;
-  padding: 48px 16px;
-  color: #888;
+  padding: 64px 16px;
+  color: var(--text);
+  font-family: var(--sans);
   font-size: 0.95rem;
+  line-height: 1.6;
+  width: 100%;
 }

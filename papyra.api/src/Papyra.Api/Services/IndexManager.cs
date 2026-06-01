@@ -29,6 +29,8 @@ public sealed class IndexManager : IDisposable
         System.IO.Directory.CreateDirectory(indexDirectory);
         _directory = FSDirectory.Open(new DirectoryInfo(indexDirectory));
         _analyzer = new StandardAnalyzer(LuceneVer);
+        if (IndexWriter.IsLocked(_directory))
+            IndexWriter.Unlock(_directory);
         _writer = new IndexWriter(_directory, new IndexWriterConfig(LuceneVer, _analyzer));
         _writer.Commit(); // ensure index exists so readers can open it
     }

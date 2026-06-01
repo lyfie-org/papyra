@@ -19,7 +19,7 @@ export default function NoteCard({ note, onClick }: NoteCardProps) {
   return (
     <article
       className="note-card"
-      style={{ backgroundColor: note.color || '#ffffff' }}
+      style={note.color ? { backgroundColor: note.color } : undefined}
       onClick={onClick}
       role="button"
       tabIndex={0}
