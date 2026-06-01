@@ -14,10 +14,10 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Setup .NET 10
+      - name: Setup .NET 9
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: '10.0.x'
+          dotnet-version: '9.0.x'
 
       - name: Restore dependencies
         run: dotnet restore Papyra.slnx
@@ -26,4 +26,4 @@ jobs:
         run: dotnet build Papyra.slnx --configuration Release --no-restore
 
       - name: Run tests
-        run: dotnet test tests/Papyra.Tests/Papyra.Tests.csproj --configuration Release --no-build --verbosity normal
+        run: dotnet test papyra.api/tests/Papyra.Tests/Papyra.Tests.csproj --configuration Release --no-build --verbosity normal

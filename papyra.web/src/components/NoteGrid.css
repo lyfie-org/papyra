@@ -1,0 +1,20 @@
+.note-grid {
+  display: flex;
+  gap: 16px;
+  width: 100%;
+  padding: 16px;
+  box-sizing: border-box;
+}
+
+.note-grid__column {
+  background-clip: padding-box;
+  flex: 1;
+  min-width: 0;
+}
+
+.note-grid__status {
+  text-align: center;
+  padding: 48px 16px;
+  color: #888;
+  font-size: 0.95rem;
+}

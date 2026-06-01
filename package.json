@@ -1,0 +1,13 @@
+{
+  "name": "papyra",
+  "version": "0.0.0",
+  "private": true,
+  "scripts": {
+    "dev:api": "dotnet run --project papyra.api/src/Papyra.Api/Papyra.Api.csproj",
+    "dev:web": "pnpm --filter papyra-web run dev",
+    "dev": "concurrently -c \"cyan,magenta\" --names \"api,web\" \"pnpm run dev:api\" \"pnpm run dev:web\""
+  },
+  "devDependencies": {
+    "concurrently": "^10.0.1"
+  }
+}
