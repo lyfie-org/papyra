@@ -13,6 +13,8 @@ public sealed class NoteWatcherService : IHostedService, IDisposable
     private readonly IndexManager? _indexManager;
     private readonly IHubContext<NotesHub, INotesClient>? _hubContext;
     private FileSystemWatcher? _watcher;
+    private readonly ConcurrentDictionary<string, CancellationTokenSource> _debounce
+        = new(StringComparer.OrdinalIgnoreCase);
 
     public ConcurrentDictionary<string, Note> Notes { get; } = new(StringComparer.OrdinalIgnoreCase);
     public string NotesDirectory => _notesDirectory;
@@ -32,7 +34,6 @@ public sealed class NoteWatcherService : IHostedService, IDisposable
         _hubContext = hubContext;
     }
 
-    // Internal constructor keeps existing tests working; indexManager/hubContext optional.
     internal NoteWatcherService(
         IMarkdownStorageService storage,
         ILogger<NoteWatcherService> logger,
@@ -59,6 +60,8 @@ public sealed class NoteWatcherService : IHostedService, IDisposable
     {
         _watcher?.Dispose();
         _watcher = null;
+        foreach (var cts in _debounce.Values) cts.Cancel();
+        _debounce.Clear();
         return Task.CompletedTask;
     }
 
@@ -74,10 +77,9 @@ public sealed class NoteWatcherService : IHostedService, IDisposable
     {
         try
         {
-            var content = File.ReadAllText(path);
+            var content = ReadWithRetry(path);
             var note = _storage.DeserializeNote(content);
             var isNew = !Notes.ContainsKey(path);
-            // Index before dict so pollers that see note in dict can always search it.
             _indexManager?.UpdateIndex(note);
             Notes[path] = note;
             if (isNew)
@@ -91,6 +93,36 @@ public sealed class NoteWatcherService : IHostedService, IDisposable
         }
     }
 
+    // Retries on IOException in case an external editor (Obsidian, Syncthing)
+    // hasn't released its file handle yet when the watcher event fires.
+    private static string ReadWithRetry(string path, int maxAttempts = 5, int delayMs = 100)
+    {
+        for (var attempt = 1; ; attempt++)
+        {
+            try { return File.ReadAllText(path); }
+            catch (IOException) when (attempt < maxAttempts)
+            {
+                Thread.Sleep(delayMs);
+            }
+        }
+    }
+
+    private void ScheduleLoad(string path)
+    {
+        if (_debounce.TryRemove(path, out var existing))
+            existing.Cancel();
+
+        var cts = new CancellationTokenSource();
+        _debounce[path] = cts;
+
+        _ = Task.Delay(300, cts.Token).ContinueWith(t =>
+        {
+            if (t.IsCanceled) return;
+            _debounce.TryRemove(path, out _);
+            TryLoad(path);
+        }, TaskScheduler.Default);
+    }
+
     private void StartWatcher()
     {
         _watcher = new FileSystemWatcher(_notesDirectory, "*.md")
@@ -99,10 +131,11 @@ public sealed class NoteWatcherService : IHostedService, IDisposable
             EnableRaisingEvents = true,
         };
 
-        _watcher.Created += (s, e) => TryLoad(e.FullPath);
-        _watcher.Changed += (s, e) => TryLoad(e.FullPath);
+        _watcher.Created += (s, e) => ScheduleLoad(e.FullPath);
+        _watcher.Changed += (s, e) => ScheduleLoad(e.FullPath);
         _watcher.Deleted += (s, e) =>
         {
+            if (_debounce.TryRemove(e.FullPath, out var cts)) cts.Cancel();
             if (Notes.TryRemove(e.FullPath, out var note))
             {
                 _indexManager?.RemoveFromIndex(note.Id);
@@ -111,13 +144,14 @@ public sealed class NoteWatcherService : IHostedService, IDisposable
         };
         _watcher.Renamed += (s, e) =>
         {
+            if (_debounce.TryRemove(e.OldFullPath, out var cts)) cts.Cancel();
             if (Notes.TryRemove(e.OldFullPath, out var old))
             {
                 _indexManager?.RemoveFromIndex(old.Id);
                 _ = _hubContext?.Clients.All.NoteDeleted(old.Id);
             }
             if (e.FullPath.EndsWith(".md", StringComparison.OrdinalIgnoreCase))
-                TryLoad(e.FullPath);
+                ScheduleLoad(e.FullPath);
         };
     }
 }

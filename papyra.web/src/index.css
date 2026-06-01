@@ -1,27 +1,32 @@
 :root {
-  /* backgrounds */
   --bg: #f2ebe0;
   --surface: #fdf8f2;
   --border: #ddd5c8;
   --code-bg: #ede8df;
 
-  /* text */
   --text-h: #3d2c1e;
   --text: #7a5c4e;
 
-  /* accent — muted pastel green */
   --accent: #7aaa8a;
   --accent-hover: #5e9472;
-  --accent-fg: #ffffff;
+  --accent-fg: #0f2118;
   --accent-bg: rgba(122, 170, 138, 0.15);
   --accent-border: rgba(122, 170, 138, 0.5);
+  --accent-text: #205c38;
+
+  --shadow-nav: 0 1px 4px rgba(61, 44, 30, 0.06);
+  --shadow-card:
+    rgba(61, 44, 30, 0.07) 0 2px 8px -1px,
+    rgba(61, 44, 30, 0.04) 0 1px 2px 0px;
+  --shadow-card-hover:
+    rgba(61, 44, 30, 0.13) 0 6px 20px -4px,
+    rgba(61, 44, 30, 0.06) 0 2px 6px 0px;
 
   --social-bg: rgba(253, 248, 242, 0.5);
   --shadow:
     rgba(61, 44, 30, 0.08) 0 4px 12px -2px,
     rgba(61, 44, 30, 0.04) 0 1px 4px 0px;
 
-  /* fonts */
   --heading: 'Marcellus', Georgia, serif;
   --sans: 'Sora', system-ui, 'Segoe UI', sans-serif;
   --mono: 'Roboto Mono', ui-monospace, Consolas, monospace;
@@ -41,28 +46,29 @@
   }
 }
 
-/* ── Dark mode ───────────────────────────────────────────────────────────────
-   Applied via data-theme="dark" on <html> (set by useTheme + anti-flash script).
-   Warm charcoal palette — echoes the light mode's brown/beige DNA.
-   ──────────────────────────────────────────────────────────────────────────── */
-
 [data-theme='dark'] {
-  /* backgrounds */
-  --bg:       #1c1917;  /* warm near-black  */
-  --surface:  #28231e;  /* dark card surface */
-  --border:   #3d3530;  /* warm dark border  */
+  --bg:       #1c1917;
+  --surface:  #28231e;
+  --border:   #3d3530;
   --code-bg:  #23201c;
 
-  /* text */
-  --text-h: #f0e6d3;    /* light warm beige  */
-  --text:   #a89070;    /* muted tan         */
+  --text-h: #f0e6d3;
+  --text:   #a89070;
 
-  /* accent — same pastel green, slightly lighter on dark for contrast */
   --accent:        #7aaa8a;
   --accent-hover:  #8dbc9d;
-  --accent-fg:     #ffffff;
+  --accent-fg:     #0f2118;
   --accent-bg:     rgba(122, 170, 138, 0.18);
   --accent-border: rgba(122, 170, 138, 0.35);
+  --accent-text: #7aaa8a;
+
+  --shadow-nav: 0 1px 4px rgba(0, 0, 0, 0.25);
+  --shadow-card:
+    rgba(0, 0, 0, 0.35) 0 2px 8px -1px,
+    rgba(0, 0, 0, 0.20) 0 1px 2px 0px;
+  --shadow-card-hover:
+    rgba(0, 0, 0, 0.55) 0 6px 20px -4px,
+    rgba(0, 0, 0, 0.30) 0 2px 6px 0px;
 
   --social-bg: rgba(40, 35, 30, 0.6);
   --shadow:
@@ -72,11 +78,7 @@
   color-scheme: dark;
 }
 
-/* ── Smooth theme transition ─────────────────────────────────────────────────
-   Only fires during the ~250 ms window when useTheme adds this class,
-   so it never interferes with hover/focus transitions.
-   ──────────────────────────────────────────────────────────────────────────── */
-
+/* Only fires during the ~250ms window when useTheme adds this class */
 .theme-transitioning,
 .theme-transitioning *,
 .theme-transitioning *::before,
@@ -149,4 +151,10 @@ pre {
   line-height: 135%;
   padding: 4px 8px;
   background: var(--code-bg);
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
 }

@@ -24,12 +24,12 @@ export default function NoteCard({ note, onClick }: NoteCardProps) {
       role="button"
       tabIndex={0}
       onKeyDown={e => e.key === 'Enter' && onClick()}
-      aria-label={`Open note: ${note.title}`}
+      aria-label={`Open note: ${note.title}${note.pinned ? ', pinned' : ''}`}
     >
       <header className="note-card__header">
         <h2 className="note-card__title">{note.title}</h2>
         {note.pinned && (
-          <Pin className="note-card__pin" size={16} aria-label="Pinned" />
+          <Pin className="note-card__pin" size={16} aria-hidden="true" />
         )}
       </header>
 

@@ -1,3 +1,4 @@
+using Microsoft.AspNetCore.Server.Kestrel.Core;
 using Microsoft.Extensions.FileProviders;
 using Papyra.Api.Hubs;
 using Papyra.Api.Models;
@@ -6,48 +7,82 @@ using Scalar.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// ── Centralized storage directories ──────────────────────────────────────────
-// Default: <repo-root>/data/{notes,images}
-// ContentRootPath in dev = papyra.api/src/Papyra.Api/ → go up 3 levels = repo root
+// ContentRootPath in dev = papyra.api/src/Papyra.Api/ → 3 levels up = repo root
+// In Docker (WORKDIR /app) → /app/../../../ = / → dataRoot = /data ✓
 var repoRoot  = Path.GetFullPath(Path.Combine(builder.Environment.ContentRootPath, "..", "..", ".."));
 var dataRoot  = Path.Combine(repoRoot, "data");
 var notesDir  = builder.Configuration["Storage:NotesDirectory"]  is { Length: > 0 } n ? n : Path.Combine(dataRoot, "notes");
 var imagesDir = builder.Configuration["Storage:ImagesDirectory"] is { Length: > 0 } i ? i : Path.Combine(dataRoot, "images");
 
-// Back-fill resolved paths so services that read from IConfiguration pick them up
 builder.Configuration["Storage:NotesDirectory"]  = notesDir;
 builder.Configuration["Storage:ImagesDirectory"] = imagesDir;
 
-// Create directories on startup — safe to call when they already exist
 Directory.CreateDirectory(notesDir);
 Directory.CreateDirectory(imagesDir);
 
+builder.Services.Configure<KestrelServerOptions>(o =>
+    o.Limits.MaxRequestBodySize = 16 * 1024 * 1024);
+
+// Must match docker-compose stop_grace_period
+builder.Services.Configure<HostOptions>(o =>
+    o.ShutdownTimeout = TimeSpan.FromSeconds(30));
+
 builder.Services.AddOpenApi();
-builder.Services.AddSignalR();
-builder.Services.AddCors(options => options.AddPolicy("ViteDev", policy =>
-    policy.WithOrigins("http://localhost:5173")
+
+builder.Services.AddSignalR(o =>
+{
+    o.KeepAliveInterval     = TimeSpan.FromSeconds(15);
+    o.ClientTimeoutInterval = TimeSpan.FromSeconds(30);
+});
+
+var allowedOrigins = builder.Configuration
+    .GetSection("Cors:AllowedOrigins")
+    .Get<string[]>()
+    ?? ["http://localhost:5173"];
+
+builder.Services.AddCors(options => options.AddPolicy("AllowedOrigins", policy =>
+    policy.WithOrigins(allowedOrigins)
           .AllowAnyHeader()
           .AllowAnyMethod()
           .AllowCredentials()));
+
 builder.Services.AddSingleton<IMarkdownStorageService, MarkdownStorageService>();
+
+// IndexManager must start before NoteWatcherService — shutdown runs in reverse,
+// so the watcher cancels its debounce tasks before the index writer flushes.
 builder.Services.AddSingleton<IndexManager>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<IndexManager>());
+
 builder.Services.AddSingleton<NoteWatcherService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<NoteWatcherService>());
 
 var app = builder.Build();
 
-app.UseCors("ViteDev");
+app.UseCors("AllowedOrigins");
 
-// Serve data/images/ at /media
+// Serves the React SPA from wwwroot/ (populated by the Docker build stage).
+// No-ops in dev where wwwroot doesn't exist.
+app.UseDefaultFiles();
+app.UseStaticFiles();
+
 app.UseStaticFiles(new StaticFileOptions
 {
     FileProvider = new PhysicalFileProvider(imagesDir),
     RequestPath  = "/media",
+    OnPrepareResponse = ctx =>
+    {
+        var headers = ctx.Context.Response.Headers;
+        headers.Append("X-Content-Type-Options", "nosniff");
+        headers.Append("Cache-Control", "public, max-age=31536000, immutable");
+        // SVG can embed <script> — force download instead of inline rendering
+        if (ctx.File.Name.EndsWith(".svg", StringComparison.OrdinalIgnoreCase))
+            headers.Append("Content-Disposition", "attachment");
+    },
 });
 
 app.MapOpenApi();
 
-app.MapScalarApiReference(options => 
+app.MapScalarApiReference(options =>
     {
         options.WithTitle("Papyra API")
                .WithClassicLayout()
@@ -60,7 +95,8 @@ app.MapScalarApiReference(options =>
 
 app.MapHub<NotesHub>("/hubs/notes");
 
-// ── Notes CRUD ────────────────────────────────────────────────────────────────
+app.MapGet("/health", () => Results.Ok(new { status = "healthy" }))
+    .ExcludeFromDescription();
 
 app.MapGet("/notes", (NoteWatcherService watcher) =>
     Results.Ok(watcher.Notes.Values.Select(n => new
@@ -124,8 +160,6 @@ app.MapDelete("/notes/{id}", (string id, NoteWatcherService watcher) =>
     .WithName("DeleteNote")
     .WithSummary("Delete a note");
 
-// ── Image upload ──────────────────────────────────────────────────────────────
-
 app.MapPost("/api/upload/image", async (IFormFile file, IConfiguration configuration) =>
 {
     var dir = configuration["Storage:ImagesDirectory"]!;
@@ -148,8 +182,6 @@ app.MapPost("/api/upload/image", async (IFormFile file, IConfiguration configura
     .WithSummary("Upload an image; returns its public /media URL")
     .DisableAntiforgery();
 
-// ── Search ────────────────────────────────────────────────────────────────────
-
 app.MapGet("/search", (string q, IndexManager indexManager, NoteWatcherService watcher) =>
 {
     if (string.IsNullOrWhiteSpace(q))
@@ -171,6 +203,9 @@ app.MapGet("/search", (string q, IndexManager indexManager, NoteWatcherService w
 })
     .WithName("SearchNotes")
     .WithSummary("Full-text search across Title, Tags, and Content");
+
+// Catches anything not matched by an API route — lets React Router handle deep links
+app.MapFallbackToFile("index.html");
 
 app.Run();
 

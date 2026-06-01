@@ -4,7 +4,8 @@ import { useQueryClient } from '@tanstack/react-query';
 import { NOTES_KEY, noteKey } from './useNotes';
 import type { Note, NoteSummary } from '../types';
 
-const HUB_URL = 'http://localhost:5220/hubs/notes';
+// Empty prefix = same-origin (production Docker); full URL = dev cross-origin
+const HUB_URL = `${import.meta.env.VITE_API_URL ?? ''}/hubs/notes`;
 
 export function useSignalR() {
   const qc = useQueryClient();
@@ -19,9 +20,13 @@ export function useSignalR() {
     connection.on('NoteCreated', (note: Note) => {
       qc.setQueryData<NoteSummary[]>(NOTES_KEY, old => {
         if (!old) return [note];
-        // Avoid duplicate if optimistic entry is still present
-        const filtered = old.filter(n => n.id !== note.id && !n.id.startsWith('temp-'));
-        return [...filtered, note];
+        // If a refetch already landed the real note, update it in place rather
+        // than moving it to the end — prevents masonry grid reorder jitter.
+        if (old.some(n => n.id === note.id)) {
+          return old.map(n => n.id === note.id ? note : n);
+        }
+        // Strip any optimistic temp entry and append the confirmed note.
+        return [...old.filter(n => !n.id.startsWith('temp-')), note];
       });
       qc.setQueryData<Note>(noteKey(note.id), note);
     });

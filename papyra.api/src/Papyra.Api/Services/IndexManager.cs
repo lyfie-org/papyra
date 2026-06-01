@@ -11,7 +11,7 @@ namespace Papyra.Api.Services;
 
 public record SearchResult(string Id, string Snippet);
 
-public sealed class IndexManager : IDisposable
+public sealed class IndexManager : IHostedService, IDisposable
 {
     private const LuceneVersion LuceneVer = LuceneVersion.LUCENE_48;
     private static readonly string[] SearchFields = ["title", "tags", "content"];
@@ -19,6 +19,8 @@ public sealed class IndexManager : IDisposable
     private readonly FSDirectory _directory;
     private readonly StandardAnalyzer _analyzer;
     private readonly IndexWriter _writer;
+    private readonly SemaphoreSlim _gate = new(1, 1);
+    private bool _disposed;
 
     public IndexManager(IConfiguration configuration)
         : this(configuration["Index:Directory"]
@@ -29,31 +31,50 @@ public sealed class IndexManager : IDisposable
         System.IO.Directory.CreateDirectory(indexDirectory);
         _directory = FSDirectory.Open(new DirectoryInfo(indexDirectory));
         _analyzer = new StandardAnalyzer(LuceneVer);
-        if (IndexWriter.IsLocked(_directory))
-            IndexWriter.Unlock(_directory);
         _writer = new IndexWriter(_directory, new IndexWriterConfig(LuceneVer, _analyzer));
-        _writer.Commit(); // ensure index exists so readers can open it
+        _writer.Commit();
+    }
+
+    public Task StartAsync(CancellationToken cancellationToken) => Task.CompletedTask;
+
+    public Task StopAsync(CancellationToken cancellationToken)
+    {
+        Dispose();
+        return Task.CompletedTask;
     }
 
     public void UpdateIndex(Note note)
     {
-        var doc = new Document();
-        doc.Add(new StringField("id", note.Id, Field.Store.YES));
-        doc.Add(new TextField("title", note.Title, Field.Store.YES));
-        doc.Add(new TextField("tags", string.Join(" ", note.Tags), Field.Store.YES));
-        doc.Add(new TextField("content", note.Content, Field.Store.YES));
-        _writer.UpdateDocument(new Term("id", note.Id), doc);
-        _writer.Commit();
+        _gate.Wait();
+        try
+        {
+            if (_disposed) return;
+            var doc = new Document();
+            doc.Add(new StringField("id", note.Id, Field.Store.YES));
+            doc.Add(new TextField("title", note.Title, Field.Store.YES));
+            doc.Add(new TextField("tags", string.Join(" ", note.Tags), Field.Store.YES));
+            doc.Add(new TextField("content", note.Content, Field.Store.YES));
+            _writer.UpdateDocument(new Term("id", note.Id), doc);
+            _writer.Commit();
+        }
+        finally { _gate.Release(); }
     }
 
     public void RemoveFromIndex(string id)
     {
-        _writer.DeleteDocuments(new Term("id", id));
-        _writer.Commit();
+        _gate.Wait();
+        try
+        {
+            if (_disposed) return;
+            _writer.DeleteDocuments(new Term("id", id));
+            _writer.Commit();
+        }
+        finally { _gate.Release(); }
     }
 
     public IReadOnlyList<SearchResult> Search(string queryText)
     {
+        if (_disposed) return [];
         using var reader = DirectoryReader.Open(_directory);
         var searcher = new IndexSearcher(reader);
         var parser = new MultiFieldQueryParser(LuceneVer, SearchFields, _analyzer);
@@ -76,8 +97,15 @@ public sealed class IndexManager : IDisposable
 
     public void Dispose()
     {
-        _writer.Dispose();
-        _analyzer.Dispose();
-        _directory.Dispose();
+        _gate.Wait();
+        try
+        {
+            if (_disposed) return;
+            _disposed = true;
+            _writer.Dispose();
+            _analyzer.Dispose();
+            _directory.Dispose();
+        }
+        finally { _gate.Release(); }
     }
 }

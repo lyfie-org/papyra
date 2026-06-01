@@ -12,6 +12,15 @@ export interface NoteEditorModalProps {
   onClose: () => void;
 }
 
+const FOCUSABLE = [
+  'button:not(:disabled)',
+  'input:not(:disabled)',
+  'textarea:not(:disabled)',
+  'select:not(:disabled)',
+  'a[href]',
+  '[tabindex]:not([tabindex="-1"])',
+].join(', ');
+
 export default function NoteEditorModal({ noteId, onClose }: NoteEditorModalProps) {
   const isEditing = noteId !== null;
   const { data: existingNote, isLoading } = useNote(noteId ?? '');
@@ -22,21 +31,60 @@ export default function NoteEditorModal({ noteId, onClose }: NoteEditorModalProp
   const [title, setTitle] = useState('');
   const [color, setColor] = useState('#ffffff');
   const editorRef = useRef<ExtensiveEditorRef | null>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const externalContentRef = useRef<string | null>(null);
 
-  // Populate header fields once the note data arrives
+  const [editorKey, setEditorKey] = useState(() =>
+    noteId !== null ? `${noteId}-initial` : 'new',
+  );
+
   useEffect(() => {
-    if (existingNote) {
-      setTitle(existingNote.title);
-      setColor(existingNote.color || '#ffffff');
+    if (!existingNote) return;
+    setTitle(existingNote.title);
+    setColor(existingNote.color || '#ffffff');
+
+    if (externalContentRef.current === null) {
+      externalContentRef.current = existingNote.content;
+    } else if (externalContentRef.current !== existingNote.content) {
+      // Content changed externally (SignalR) — remount the editor with the new content
+      externalContentRef.current = existingNote.content;
+      setEditorKey(`${noteId ?? 'new'}-${Date.now()}`);
     }
-  }, [existingNote]);
+  }, [existingNote, noteId]);
+
+  // Focus trap: keeps Tab navigation inside the dialog and restores focus on close
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+
+    const previouslyFocused = document.activeElement as HTMLElement | null;
+    dialog.querySelector<HTMLElement>(FOCUSABLE)?.focus();
+
+    const trap = (e: KeyboardEvent) => {
+      if (e.key !== 'Tab') return;
+      // Re-query each time so elements mounted after open (e.g. the editor) are included
+      const focusable = Array.from(dialog.querySelectorAll<HTMLElement>(FOCUSABLE));
+      if (!focusable.length) return;
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+      if (e.shiftKey) {
+        if (document.activeElement === first) { e.preventDefault(); last.focus(); }
+      } else {
+        if (document.activeElement === last) { e.preventDefault(); first.focus(); }
+      }
+    };
+
+    dialog.addEventListener('keydown', trap);
+    return () => {
+      dialog.removeEventListener('keydown', trap);
+      previouslyFocused?.focus();
+    };
+  }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleReady = useCallback((methods: ExtensiveEditorRef) => {
     editorRef.current = methods;
   }, []);
 
-  // Don't mount the editor until we have the content for edits.
-  // For new notes content is '' so it's immediately ready.
   const editorContent = isEditing ? (existingNote?.content ?? null) : '';
   const editorMountable = editorContent !== null;
 
@@ -44,11 +92,9 @@ export default function NoteEditorModal({ noteId, onClose }: NoteEditorModalProp
     const content = editorRef.current?.getMarkdown() ?? '';
     try {
       if (isEditing && noteId) {
-        const req: UpdateNoteRequest = { title, content, color };
-        await updateNote.mutateAsync({ id: noteId, req });
+        await updateNote.mutateAsync({ id: noteId, req: { title, content, color } });
       } else {
-        // Create the note, then patch content in a second request
-        // (POST /notes doesn't accept content in the current API)
+        // POST /notes doesn't accept content — create first, then patch
         const req: CreateNoteRequest = { title, color };
         const { id } = await createNote.mutateAsync(req);
         if (content.trim()) {
@@ -57,13 +103,12 @@ export default function NoteEditorModal({ noteId, onClose }: NoteEditorModalProp
       }
       onClose();
     } catch {
-      // Mutation onError handles cache rollback; nothing extra needed here
+      // onError handles cache rollback
     }
   }, [isEditing, noteId, title, color, createNote, updateNote, onClose]);
 
   const isSaving = createNote.isPending || updateNote.isPending;
 
-  // Keyboard shortcuts: Escape → close, Ctrl/Cmd+S → save
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
       if (e.key === 'Escape') { onClose(); return; }
@@ -79,34 +124,38 @@ export default function NoteEditorModal({ noteId, onClose }: NoteEditorModalProp
   return (
     <div
       className="modal-overlay"
-      role="dialog"
-      aria-modal="true"
       onClick={e => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div
+        ref={dialogRef}
         className="modal-dialog"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="modal-note-title"
         style={{ '--note-color': color } as React.CSSProperties}
       >
-        {/* ── Header ── */}
         <header className="modal-header">
           <input
+            id="modal-note-title"
             className="modal-title-input"
             placeholder="Note title…"
+            aria-label="Note title"
             value={title}
             onChange={e => setTitle(e.target.value)}
-            autoFocus={!isEditing}
           />
           <div className="modal-header-actions">
-            <label className="color-swatch" title="Note colour">
+            <label className="color-swatch">
               <span
                 className="color-swatch__preview"
                 style={{ background: color }}
+                aria-hidden="true"
               />
               <input
                 type="color"
                 value={color}
                 onChange={e => setColor(e.target.value)}
                 className="color-swatch__input"
+                aria-label="Note colour"
               />
             </label>
             <button className="btn btn--icon" aria-label="Close" onClick={onClose}>
@@ -115,17 +164,12 @@ export default function NoteEditorModal({ noteId, onClose }: NoteEditorModalProp
           </div>
         </header>
 
-        {/* ── Body / Luthor MarkDownEditor ── */}
         <div className="modal-body">
           {isLoading && isEditing ? (
             <p className="modal-status">Loading…</p>
           ) : editorMountable ? (
-            /*
-             * key forces a full remount when switching between notes so
-             * defaultContent is re-applied from scratch each time.
-             */
             <MarkDownEditor
-              key={isEditing ? noteId : 'new'}
+              key={editorKey}
               defaultContent={editorContent as string}
               onReady={handleReady}
               initialMode="visual"
@@ -140,7 +184,6 @@ export default function NoteEditorModal({ noteId, onClose }: NoteEditorModalProp
           ) : null}
         </div>
 
-        {/* ── Footer ── */}
         <footer className="modal-footer">
           <button className="btn btn--ghost" onClick={onClose}>
             Cancel

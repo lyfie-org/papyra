@@ -20,7 +20,7 @@
   height: 56px;
   background: var(--surface);
   border-bottom: 1px solid var(--border);
-  box-shadow: 0 1px 4px rgba(61, 44, 30, 0.06);
+  box-shadow: var(--shadow-nav);
 }
 
 .main-nav__brand {
@@ -75,7 +75,8 @@
 
 .main-nav__link--active {
   background: var(--accent-bg);
-  color: var(--accent-hover);
+  /* --text-h gives high contrast on the tinted bg in both light and dark modes */
+  color: var(--text-h);
 }
 
 /* ── Theme toggle ───────────────────────────────────────────────────────────── */

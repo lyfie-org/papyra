@@ -12,7 +12,8 @@
 
 /* ── Dialog ── */
 .modal-dialog {
-  background: var(--note-color, #fff);
+  /* Fall back to themed surface colour, not bare #fff, so dark mode looks right */
+  background: var(--note-color, var(--surface));
   border-radius: 14px;
   width: min(92vw, 820px);
   max-height: 88vh;
@@ -28,7 +29,8 @@
   align-items: center;
   gap: 12px;
   padding: 16px 20px 14px;
-  border-bottom: 1px solid rgba(0, 0, 0, 0.08);
+  /* color-mix adapts to light and dark note colours */
+  border-bottom: 1px solid color-mix(in srgb, currentColor 12%, transparent);
   flex-shrink: 0;
 }
 
@@ -36,15 +38,23 @@
   flex: 1;
   border: none;
   background: transparent;
-  outline: none;
   font-size: 1.25rem;
   font-weight: 600;
   color: inherit;
   min-width: 0;
+  /* Focus ring provided by global :focus-visible rule in index.css */
+  outline: none;
+}
+
+.modal-title-input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
 }
 
 .modal-title-input::placeholder {
-  color: rgba(0, 0, 0, 0.3);
+  /* Adapts to any note colour — readable on both light and dark backgrounds */
+  color: color-mix(in srgb, currentColor 30%, transparent);
 }
 
 .modal-header-actions {
@@ -89,7 +99,7 @@
 .modal-status {
   padding: 40px;
   text-align: center;
-  color: rgba(0, 0, 0, 0.4);
+  color: color-mix(in srgb, currentColor 40%, transparent);
 }
 
 /* ── Luthor editor sizing ── */
@@ -106,7 +116,7 @@
   justify-content: flex-end;
   gap: 8px;
   padding: 12px 20px;
-  border-top: 1px solid rgba(0, 0, 0, 0.08);
+  border-top: 1px solid color-mix(in srgb, currentColor 12%, transparent);
   flex-shrink: 0;
 }
 
@@ -144,7 +154,7 @@
 }
 
 .btn--ghost:hover {
-  background: rgba(0, 0, 0, 0.07);
+  background: color-mix(in srgb, currentColor 8%, transparent);
 }
 
 .btn--icon {
@@ -157,6 +167,6 @@
 }
 
 .btn--icon:hover {
-  background: rgba(0, 0, 0, 0.07);
+  background: color-mix(in srgb, currentColor 8%, transparent);
   opacity: 1;
 }
