@@ -9,15 +9,16 @@ public sealed class NoteWatcherService : IHostedService, IDisposable
 {
     private readonly IMarkdownStorageService _storage;
     private readonly ILogger<NoteWatcherService> _logger;
-    private readonly string _notesDirectory;
+    private readonly string _storageRoot;
     private readonly IndexManager? _indexManager;
     private readonly IHubContext<NotesHub, INotesClient>? _hubContext;
     private FileSystemWatcher? _watcher;
     private readonly ConcurrentDictionary<string, CancellationTokenSource> _debounce
         = new(StringComparer.OrdinalIgnoreCase);
 
+    // Key = absolute path to note.md; Value = parsed Note.
     public ConcurrentDictionary<string, Note> Notes { get; } = new(StringComparer.OrdinalIgnoreCase);
-    public string NotesDirectory => _notesDirectory;
+    public string StorageRoot => _storageRoot;
 
     public NoteWatcherService(
         IMarkdownStorageService storage,
@@ -26,31 +27,31 @@ public sealed class NoteWatcherService : IHostedService, IDisposable
         IndexManager indexManager,
         IHubContext<NotesHub, INotesClient> hubContext)
     {
-        _storage = storage;
-        _logger = logger;
-        _notesDirectory = configuration["Storage:NotesDirectory"]
-            ?? Path.Combine(AppContext.BaseDirectory, "notes");
+        _storage      = storage;
+        _logger       = logger;
+        _storageRoot  = configuration["Storage:StorageRoot"]
+            ?? Path.Combine(AppContext.BaseDirectory, "data");
         _indexManager = indexManager;
-        _hubContext = hubContext;
+        _hubContext   = hubContext;
     }
 
     internal NoteWatcherService(
         IMarkdownStorageService storage,
         ILogger<NoteWatcherService> logger,
-        string notesDirectory,
+        string storageRoot,
         IndexManager? indexManager = null,
         IHubContext<NotesHub, INotesClient>? hubContext = null)
     {
-        _storage = storage;
-        _logger = logger;
-        _notesDirectory = notesDirectory;
+        _storage      = storage;
+        _logger       = logger;
+        _storageRoot  = storageRoot;
         _indexManager = indexManager;
-        _hubContext = hubContext;
+        _hubContext   = hubContext;
     }
 
     public Task StartAsync(CancellationToken cancellationToken)
     {
-        Directory.CreateDirectory(_notesDirectory);
+        Directory.CreateDirectory(_storageRoot);
         LoadAll();
         StartWatcher();
         return Task.CompletedTask;
@@ -69,7 +70,7 @@ public sealed class NoteWatcherService : IHostedService, IDisposable
 
     private void LoadAll()
     {
-        foreach (var path in Directory.EnumerateFiles(_notesDirectory, "*.md"))
+        foreach (var path in Directory.EnumerateFiles(_storageRoot, "note.md", SearchOption.AllDirectories))
             TryLoad(path);
     }
 
@@ -78,10 +79,14 @@ public sealed class NoteWatcherService : IHostedService, IDisposable
         try
         {
             var content = ReadWithRetry(path);
-            var note = _storage.DeserializeNote(content);
+            var note    = _storage.DeserializeNote(content);
+
+            // Use note.Id (from YAML frontmatter) as the Lucene key, not the path,
+            // so renaming the note directory never creates a duplicate index entry.
             var isNew = !Notes.ContainsKey(path);
             _indexManager?.UpdateIndex(note);
             Notes[path] = note;
+
             if (isNew)
                 _ = _hubContext?.Clients.All.NoteCreated(note);
             else
@@ -93,16 +98,23 @@ public sealed class NoteWatcherService : IHostedService, IDisposable
         }
     }
 
-    // Retries on IOException in case an external editor (Obsidian, Syncthing)
-    // hasn't released its file handle yet when the watcher event fires.
-    private static string ReadWithRetry(string path, int maxAttempts = 5, int delayMs = 100)
+    // Retries on IOException — handles file locks from Obsidian, Syncthing, or the OS
+    // write-cache flushing before the FileSystemWatcher event fires.
+    // Uses exponential-ish back-off: 50 ms × 2^attempt, capped at ~1 s.
+    private static string ReadWithRetry(string path, int maxAttempts = 10)
     {
         for (var attempt = 1; ; attempt++)
         {
-            try { return File.ReadAllText(path); }
+            try
+            {
+                using var fs = new FileStream(
+                    path, FileMode.Open, FileAccess.Read, FileShare.ReadWrite);
+                using var sr = new StreamReader(fs);
+                return sr.ReadToEnd();
+            }
             catch (IOException) when (attempt < maxAttempts)
             {
-                Thread.Sleep(delayMs);
+                Thread.Sleep(Math.Min(50 * (1 << attempt), 1000));
             }
         }
     }
@@ -125,32 +137,42 @@ public sealed class NoteWatcherService : IHostedService, IDisposable
 
     private void StartWatcher()
     {
-        _watcher = new FileSystemWatcher(_notesDirectory, "*.md")
+        // Filter = "note.md" + IncludeSubdirectories catches every note file across
+        // all [storageRoot]/[noteId]/note.md paths without matching media or other files.
+        _watcher = new FileSystemWatcher(_storageRoot, "note.md")
         {
-            NotifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite,
-            EnableRaisingEvents = true,
+            IncludeSubdirectories = true,
+            NotifyFilter          = NotifyFilters.FileName | NotifyFilters.LastWrite,
+            EnableRaisingEvents   = true,
         };
 
-        _watcher.Created += (s, e) => ScheduleLoad(e.FullPath);
-        _watcher.Changed += (s, e) => ScheduleLoad(e.FullPath);
-        _watcher.Deleted += (s, e) =>
+        _watcher.Created += (_, e) => ScheduleLoad(e.FullPath);
+        _watcher.Changed += (_, e) => ScheduleLoad(e.FullPath);
+
+        _watcher.Deleted += (sender, e) =>
         {
             if (_debounce.TryRemove(e.FullPath, out var cts)) cts.Cancel();
-            if (Notes.TryRemove(e.FullPath, out var note))
+            if (Notes.TryRemove(e.FullPath, out Note? note))
             {
-                _indexManager?.RemoveFromIndex(note.Id);
-                _ = _hubContext?.Clients.All.NoteDeleted(note.Id);
+                _indexManager?.RemoveFromIndex(note!.Id);
+                _ = _hubContext?.Clients.All.NoteDeleted(note!.Id);
             }
         };
-        _watcher.Renamed += (s, e) =>
+
+        _watcher.Renamed += (sender, e) =>
         {
-            if (_debounce.TryRemove(e.OldFullPath, out var cts)) cts.Cancel();
-            if (Notes.TryRemove(e.OldFullPath, out var old))
+            // A note.md renamed away (e.g. Obsidian swap-write) — remove old entry.
+            if (e.OldFullPath.EndsWith("note.md", StringComparison.OrdinalIgnoreCase))
             {
-                _indexManager?.RemoveFromIndex(old.Id);
-                _ = _hubContext?.Clients.All.NoteDeleted(old.Id);
+                if (_debounce.TryRemove(e.OldFullPath, out var cts)) cts.Cancel();
+                if (Notes.TryRemove(e.OldFullPath, out Note? old))
+                {
+                    _indexManager?.RemoveFromIndex(old!.Id);
+                    _ = _hubContext?.Clients.All.NoteDeleted(old!.Id);
+                }
             }
-            if (e.FullPath.EndsWith(".md", StringComparison.OrdinalIgnoreCase))
+            // A file renamed TO note.md — treat as a new/updated note.
+            if (e.FullPath.EndsWith("note.md", StringComparison.OrdinalIgnoreCase))
                 ScheduleLoad(e.FullPath);
         };
     }

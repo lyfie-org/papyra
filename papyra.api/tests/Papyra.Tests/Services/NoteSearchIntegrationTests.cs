@@ -4,11 +4,11 @@ using Papyra.Api.Services;
 namespace Papyra.Tests.Services;
 
 /// <summary>
-/// Integration tests: notes dir + Lucene index wired together through NoteWatcherService.
+/// Integration tests: storage root + Lucene index wired together through NoteWatcherService.
 /// </summary>
 public sealed class NoteSearchIntegrationTests : IAsyncLifetime
 {
-    private readonly string _notesDir =
+    private readonly string _storageRoot =
         Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
     private readonly string _indexDir =
         Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
@@ -18,17 +18,17 @@ public sealed class NoteSearchIntegrationTests : IAsyncLifetime
 
     public NoteSearchIntegrationTests()
     {
-        _index = new IndexManager(_indexDir);
+        _index   = new IndexManager(_indexDir);
         _watcher = new NoteWatcherService(
             new MarkdownStorageService(),
             NullLogger<NoteWatcherService>.Instance,
-            _notesDir,
+            _storageRoot,
             _index);
     }
 
     public async Task InitializeAsync()
     {
-        Directory.CreateDirectory(_notesDir);
+        Directory.CreateDirectory(_storageRoot);
         await _watcher.StartAsync(CancellationToken.None);
     }
 
@@ -37,8 +37,8 @@ public sealed class NoteSearchIntegrationTests : IAsyncLifetime
         await _watcher.StopAsync(CancellationToken.None);
         _watcher.Dispose();
         _index.Dispose();
-        if (Directory.Exists(_notesDir)) Directory.Delete(_notesDir, recursive: true);
-        if (Directory.Exists(_indexDir)) Directory.Delete(_indexDir, recursive: true);
+        if (Directory.Exists(_storageRoot)) Directory.Delete(_storageRoot, recursive: true);
+        if (Directory.Exists(_indexDir))    Directory.Delete(_indexDir,    recursive: true);
     }
 
     // ── Create ────────────────────────────────────────────────────────────────
@@ -46,7 +46,7 @@ public sealed class NoteSearchIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task FileCreated_SearchFindsNoteByContentKeyword()
     {
-        WriteNote("n1.md", "srch-1", "Searchable", "This note contains butterfly keyword");
+        WriteNote("srch-1", "Searchable", "This note contains butterfly keyword");
 
         await WaitForNote("srch-1");
 
@@ -56,7 +56,7 @@ public sealed class NoteSearchIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task FileCreated_SearchFindsNoteByTitle()
     {
-        WriteNote("n2.md", "srch-2", "Quasar Discovery", "some body");
+        WriteNote("srch-2", "Quasar Discovery", "some body");
 
         await WaitForNote("srch-2");
 
@@ -66,16 +66,16 @@ public sealed class NoteSearchIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task MultipleFilesCreated_SearchIsolatesCorrectNote()
     {
-        WriteNote("a.md", "srch-a", "Rocket Science", "orbital mechanics propulsion");
-        WriteNote("b.md", "srch-b", "Baking Bread", "flour yeast butter");
-        WriteNote("c.md", "srch-c", "Rocket Launch", "countdown ignition liftoff");
+        WriteNote("srch-a", "Rocket Science", "orbital mechanics propulsion");
+        WriteNote("srch-b", "Baking Bread",   "flour yeast butter");
+        WriteNote("srch-c", "Rocket Launch",  "countdown ignition liftoff");
 
         await WaitForNote("srch-a");
         await WaitForNote("srch-b");
         await WaitForNote("srch-c");
 
         var results = _index.Search("orbital");
-        Assert.Contains(results, r => r.Id == "srch-a");
+        Assert.Contains(results,     r => r.Id == "srch-a");
         Assert.DoesNotContain(results, r => r.Id == "srch-b");
         Assert.DoesNotContain(results, r => r.Id == "srch-c");
     }
@@ -85,7 +85,7 @@ public sealed class NoteSearchIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task FileDeleted_NoteRemovedFromSearchIndex()
     {
-        var path = WriteNote("del.md", "srch-del", "Ephemeral", "fleeting quasar content");
+        var path = WriteNote("srch-del", "Ephemeral", "fleeting quasar content");
 
         await WaitForNote("srch-del");
         Assert.Contains(_index.Search("quasar"), r => r.Id == "srch-del");
@@ -104,26 +104,28 @@ public sealed class NoteSearchIntegrationTests : IAsyncLifetime
     [Fact]
     public async Task FileChanged_IndexReflectsNewContent()
     {
-        var path = WriteNote("upd.md", "srch-upd", "Evolving", "old content nebula");
+        var path = WriteNote("srch-upd", "Evolving", "old content nebula");
 
         await WaitForNote("srch-upd");
         Assert.Contains(_index.Search("nebula"), r => r.Id == "srch-upd");
 
-        // Overwrite with new content
         File.WriteAllText(path, MakeRaw("srch-upd", "Evolving", "new content pulsar"));
 
         await PollAsync(() => _index.Search("pulsar").Any(r => r.Id == "srch-upd"));
 
-        Assert.Contains(_index.Search("pulsar"), r => r.Id == "srch-upd");
+        Assert.Contains(_index.Search("pulsar"),   r => r.Id == "srch-upd");
         Assert.DoesNotContain(_index.Search("nebula"), r => r.Id == "srch-upd");
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────
 
-    private string WriteNote(string filename, string id, string title, string content = "")
+    // Creates [storageRoot]/{noteId}/note.md and returns the full path to the file.
+    private string WriteNote(string noteId, string title, string content = "")
     {
-        var path = Path.Combine(_notesDir, filename);
-        File.WriteAllText(path, MakeRaw(id, title, content));
+        var noteDir = Path.Combine(_storageRoot, noteId);
+        Directory.CreateDirectory(noteDir);
+        var path = Path.Combine(noteDir, "note.md");
+        File.WriteAllText(path, MakeRaw(noteId, title, content));
         return path;
     }
 

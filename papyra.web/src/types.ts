@@ -5,6 +5,8 @@ export interface Note {
   pinned: boolean;
   color: string;
   content: string;
+  createdAt?: string;
+  updatedAt?: string;
 }
 
 /** Returned by GET /notes — content is omitted for bandwidth. */

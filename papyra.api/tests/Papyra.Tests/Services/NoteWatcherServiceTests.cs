@@ -33,11 +33,12 @@ public sealed class NoteWatcherServiceTests : IAsyncLifetime
     // ── Startup load ──────────────────────────────────────────────────────────
 
     [Fact]
-    public async Task StartAsync_LoadsExistingMdFiles()
+    public async Task StartAsync_LoadsExistingNoteMdFiles()
     {
         var dir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
-        Directory.CreateDirectory(dir);
-        File.WriteAllText(Path.Combine(dir, "pre.md"), MakeRaw("pre-id", "Pre Note"));
+        var noteDir = Path.Combine(dir, "pre-id");
+        Directory.CreateDirectory(noteDir);
+        File.WriteAllText(Path.Combine(noteDir, "note.md"), MakeRaw("pre-id", "Pre Note"));
 
         var svc = new NoteWatcherService(
             new MarkdownStorageService(),
@@ -59,11 +60,15 @@ public sealed class NoteWatcherServiceTests : IAsyncLifetime
     }
 
     [Fact]
-    public async Task StartAsync_IgnoresNonMdFiles()
+    public async Task StartAsync_IgnoresNonNoteMdFiles()
     {
         var dir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
         Directory.CreateDirectory(dir);
+        // Flat .txt and a .md with a different name — neither should be picked up.
         File.WriteAllText(Path.Combine(dir, "ignore.txt"), "plain text");
+        var someDir = Path.Combine(dir, "some-id");
+        Directory.CreateDirectory(someDir);
+        File.WriteAllText(Path.Combine(someDir, "other.md"), MakeRaw("x", "X"));
 
         var svc = new NoteWatcherService(
             new MarkdownStorageService(),
@@ -88,8 +93,9 @@ public sealed class NoteWatcherServiceTests : IAsyncLifetime
     [Fact]
     public async Task FileCreated_AddsNoteToDict()
     {
-        var path = Path.Combine(_dir, "new.md");
-        File.WriteAllText(path, MakeRaw("note-1", "Created Note"));
+        var noteDir = Path.Combine(_dir, "note-1");
+        Directory.CreateDirectory(noteDir);
+        File.WriteAllText(Path.Combine(noteDir, "note.md"), MakeRaw("note-1", "Created Note"));
 
         var note = await PollUntilAsync(() => _sut.Notes.Values.FirstOrDefault(n => n.Id == "note-1"));
 
@@ -100,8 +106,12 @@ public sealed class NoteWatcherServiceTests : IAsyncLifetime
     [Fact]
     public async Task MultipleFilesCreated_AllAddedToDict()
     {
-        File.WriteAllText(Path.Combine(_dir, "a.md"), MakeRaw("id-a", "Alpha"));
-        File.WriteAllText(Path.Combine(_dir, "b.md"), MakeRaw("id-b", "Beta"));
+        var dirA = Path.Combine(_dir, "id-a");
+        var dirB = Path.Combine(_dir, "id-b");
+        Directory.CreateDirectory(dirA);
+        Directory.CreateDirectory(dirB);
+        File.WriteAllText(Path.Combine(dirA, "note.md"), MakeRaw("id-a", "Alpha"));
+        File.WriteAllText(Path.Combine(dirB, "note.md"), MakeRaw("id-b", "Beta"));
 
         await PollUntilAsync(() =>
             _sut.Notes.Values.Any(n => n.Id == "id-a") &&
@@ -118,7 +128,9 @@ public sealed class NoteWatcherServiceTests : IAsyncLifetime
     [Fact]
     public async Task FileDeleted_RemovesNoteFromDict()
     {
-        var path = Path.Combine(_dir, "del.md");
+        var noteDir = Path.Combine(_dir, "del-id");
+        Directory.CreateDirectory(noteDir);
+        var path = Path.Combine(noteDir, "note.md");
         File.WriteAllText(path, MakeRaw("del-id", "To Delete"));
         await PollUntilAsync(() => _sut.Notes.Values.FirstOrDefault(n => n.Id == "del-id"));
 
@@ -135,7 +147,9 @@ public sealed class NoteWatcherServiceTests : IAsyncLifetime
     [Fact]
     public async Task FileChanged_UpdatesNoteInDict()
     {
-        var path = Path.Combine(_dir, "upd.md");
+        var noteDir = Path.Combine(_dir, "upd-id");
+        Directory.CreateDirectory(noteDir);
+        var path = Path.Combine(noteDir, "note.md");
         File.WriteAllText(path, MakeRaw("upd-id", "Original"));
         await PollUntilAsync(() => _sut.Notes.Values.FirstOrDefault(n => n.Id == "upd-id"));
 
@@ -154,20 +168,21 @@ public sealed class NoteWatcherServiceTests : IAsyncLifetime
     // ── Renamed ───────────────────────────────────────────────────────────────
 
     [Fact]
-    public async Task FileRenamed_OldPathRemovedNewPathAdded()
+    public async Task FileRenamedAwayFromNoteMd_RemovesNoteFromDict()
     {
-        var oldPath = Path.Combine(_dir, "old.md");
-        var newPath = Path.Combine(_dir, "renamed.md");
-        File.WriteAllText(oldPath, MakeRaw("ren-id", "Rename Me"));
+        var noteDir   = Path.Combine(_dir, "ren-id");
+        Directory.CreateDirectory(noteDir);
+        var notePath    = Path.Combine(noteDir, "note.md");
+        var renamedPath = Path.Combine(noteDir, "archived.md");
+        File.WriteAllText(notePath, MakeRaw("ren-id", "Rename Me"));
         await PollUntilAsync(() => _sut.Notes.Values.FirstOrDefault(n => n.Id == "ren-id"));
 
-        File.Move(oldPath, newPath);
+        File.Move(notePath, renamedPath);
 
         await PollUntilAsync(() =>
-            _sut.Notes.ContainsKey(newPath) ? true : (bool?)null);
+            _sut.Notes.Values.All(n => n.Id != "ren-id") ? true : (bool?)null);
 
-        Assert.False(_sut.Notes.ContainsKey(oldPath));
-        Assert.True(_sut.Notes.ContainsKey(newPath));
+        Assert.DoesNotContain(_sut.Notes.Values, n => n.Id == "ren-id");
     }
 
     // ── Helpers ───────────────────────────────────────────────────────────────

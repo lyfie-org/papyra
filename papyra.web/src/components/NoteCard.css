@@ -1,13 +1,20 @@
 .note-card {
-  background: var(--surface);
+  display: inline-block; /* required for break-inside: avoid inside CSS columns */
+  width: 100%;
+  box-sizing: border-box;
+  background: var(--note-bg, var(--surface));
   border-radius: 12px;
   padding: 16px;
   margin-bottom: 16px;
   box-shadow: var(--shadow-card);
-  border: 1px solid var(--border);
+  border: 1px solid color-mix(in srgb, var(--border) 60%, var(--note-bg, var(--surface)) 40%);
   break-inside: avoid;
+  max-height: 400px;
+  overflow: hidden;
   cursor: pointer;
   transition: box-shadow 0.15s ease, transform 0.15s ease;
+  position: relative;
+  z-index: 0;
 }
 
 .note-card:hover {
@@ -20,6 +27,38 @@
   outline-offset: 2px;
 }
 
+.note-card--selected {
+  outline: 2px solid var(--text);
+  outline-offset: -2px;
+}
+
+/* -- Art Backgrounds --------------------------------------------------------- */
+.note-card::before {
+  content: "";
+  position: absolute;
+  top: 0; left: 0; right: 0; bottom: 0;
+  z-index: -1;
+  border-radius: inherit;
+  opacity: 0.2;
+  pointer-events: none;
+  background-size: cover;
+  background-position: center;
+}
+
+.note-card[data-note-art="none"]::before { background-image: none; opacity: 0; }
+.note-card[data-note-art="groceries"]::before { background-image: radial-gradient(circle, #ff9a9e 0%, #fecfef 99%, #fecfef 100%); }
+.note-card[data-note-art="food"]::before { background-image: linear-gradient(120deg, #f6d365 0%, #fda085 100%); }
+.note-card[data-note-art="music"]::before { background-image: linear-gradient(to right, #4facfe 0%, #00f2fe 100%); }
+.note-card[data-note-art="recipes"]::before { background-image: linear-gradient(to top, #4fb576 0%, #44c489 30%, #28a9ae 46%, #28a2b7 59%, #4c7788 71%, #6c4f63 86%, #432c39 100%); }
+.note-card[data-note-art="notes"]::before { background-image: linear-gradient(to top, #cfd9df 0%, #e2ebf0 100%); }
+.note-card[data-note-art="places"]::before { background-image: linear-gradient(120deg, #84fab0 0%, #8fd3f4 100%); }
+.note-card[data-note-art="travel"]::before { background-image: linear-gradient(to right, #fa709a 0%, #fee140 100%); }
+.note-card[data-note-art="video"]::before { background-image: linear-gradient(to top, #a18cd1 0%, #fbc2eb 100%); }
+.note-card[data-note-art="celebration"]::before { background-image: linear-gradient(120deg, #e0c3fc 0%, #8ec5fc 100%); }
+
+
+/* -- Header -- */
+
 .note-card__header {
   display: flex;
   align-items: flex-start;
@@ -29,21 +68,16 @@
 }
 
 .note-card__title {
-  font-family: var(--heading);
+  font-family: var(--sans);
   font-size: 1.05rem;
-  font-weight: 400;
+  font-weight: 600;
   color: var(--text-h);
   margin: 0;
   line-height: 1.3;
   word-break: break-word;
 }
 
-.note-card__pin {
-  flex-shrink: 0;
-  color: var(--accent);
-  opacity: 0.85;
-  margin-top: 3px;
-}
+/* -- Content preview -- */
 
 .note-card__content {
   font-family: var(--sans);
@@ -54,6 +88,8 @@
   white-space: pre-wrap;
   word-break: break-word;
 }
+
+/* -- Tags -- */
 
 .note-card__tags {
   list-style: none;
@@ -71,7 +107,193 @@
   padding: 2px 9px;
   border-radius: 99px;
   background: var(--accent-bg);
-  /* --accent-text: #205c38 light (5.97:1) / #7aaa8a dark (4.80:1) — WCAG AA */
   color: var(--accent-text);
   border: 1px solid var(--accent-border);
+}
+
+/* -- Date metadata -- */
+
+.note-card__meta {
+  font-family: var(--sans);
+  font-size: 0.7rem;
+  color: var(--text);
+  opacity: 0.5;
+  margin: 8px 0 0;
+  line-height: 1;
+}
+
+/* -- Top Controls -- */
+
+.note-card__select-btn,
+.note-card__pin-btn {
+  position: absolute;
+  top: 4px;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  opacity: 0;
+  transition: opacity 0.15s ease, background 0.15s ease;
+  z-index: 10;
+  color: var(--text);
+  padding: 0;
+}
+
+.note-card__select-btn {
+  left: 4px;
+}
+
+.note-card__pin-btn {
+  right: 4px;
+}
+
+.note-card:hover .note-card__select-btn,
+.note-card__select-btn--visible,
+.note-card:hover .note-card__pin-btn,
+.note-card__pin-btn--visible {
+  opacity: 1;
+}
+
+.note-card__select-btn:hover,
+.note-card__pin-btn:hover {
+  background: var(--accent-bg);
+  color: var(--accent-text);
+}
+
+.note-card__select-icon {
+  opacity: 0.8;
+}
+
+.note-card__select-icon--checked {
+  color: var(--text);
+}
+
+.note-card__pin-icon--pinned {
+  color: var(--text);
+  fill: var(--text);
+}
+
+/* -- Card toolbar (palette button + popover) -- */
+
+/* Gradient fade behind toolbar so icons read on any card colour */
+.note-card::after {
+  content: '';
+  position: absolute;
+  bottom: 0; left: 0; right: 0;
+  height: 52px;
+  background: linear-gradient(to bottom, transparent, color-mix(in srgb, var(--note-bg, var(--surface)) 90%, transparent));
+  border-radius: 0 0 12px 12px;
+  pointer-events: none;
+  z-index: 5;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+
+.note-card:hover::after,
+.note-card:has(.note-card__toolbar-btn--active)::after,
+.note-card:has(.note-card__more-menu)::after,
+.note-card:has(.note-card__theme-popover)::after {
+  opacity: 1;
+}
+
+.note-card__toolbar {
+  position: absolute;
+  bottom: 8px;
+  left: 8px;
+  right: 8px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 4px;
+  opacity: 0;
+  transition: opacity 0.12s ease;
+  pointer-events: none;
+  z-index: 6;
+}
+
+.note-card:hover .note-card__toolbar,
+.note-card__toolbar:has(.note-card__toolbar-btn--active),
+.note-card__toolbar:has(.note-card__more-menu),
+.note-card__toolbar:has(.note-card__theme-popover) {
+  opacity: 1;
+  pointer-events: auto;
+}
+
+.note-card__toolbar-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+  padding: 0;
+}
+
+.note-card__toolbar-btn:hover,
+.note-card__toolbar-btn--active {
+  background: color-mix(in srgb, var(--text) 12%, transparent);
+}
+
+.note-card__theme-popover {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  left: 0;
+  z-index: 20;
+}
+
+/* -- More options dropdown --------------------------------------------------- */
+
+.note-card__more-menu {
+  position: absolute;
+  bottom: calc(100% + 6px);
+  right: 0;
+  z-index: 20;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: var(--shadow-card-hover);
+  padding: 4px;
+  min-width: 160px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+}
+
+.note-card__more-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 10px;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 0.8rem;
+  font-weight: 500;
+  cursor: pointer;
+  border-radius: 7px;
+  text-align: left;
+  transition: background 0.1s ease, color 0.1s ease;
+}
+
+.note-card__more-item:hover {
+  background: var(--accent-bg);
+  color: var(--text-h);
+}
+
+/* Delete item gets a muted red tint on hover */
+.note-card__more-item:first-child:hover {
+  background: rgba(239, 68, 68, 0.1);
+  color: #dc2626;
 }

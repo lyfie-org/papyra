@@ -1,0 +1,190 @@
+/* ── Card shell ──────────────────────────────────────────────────────────── */
+
+.note-composer {
+  max-width: 600px;
+  margin: 0 auto 28px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow-card);
+  overflow: hidden;
+  transition: box-shadow 0.18s ease;
+}
+
+.note-composer:focus-within {
+  box-shadow: var(--shadow);
+  border-color: var(--accent-border);
+}
+
+/* ── Closed trigger row ──────────────────────────────────────────────────── */
+
+.note-composer__trigger {
+  display: flex;
+  align-items: center;
+  padding: 14px 16px;
+  cursor: text;
+  gap: 8px;
+  min-height: 52px;
+  box-sizing: border-box;
+}
+
+.note-composer__placeholder {
+  flex: 1;
+  font-family: var(--sans);
+  font-size: 0.9rem;
+  color: var(--text);
+  opacity: 0.55;
+  user-select: none;
+}
+
+.note-composer__quick-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+}
+
+.note-composer__quick-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 50%;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  opacity: 0.5;
+  transition: opacity 0.12s ease, background 0.12s ease, color 0.12s ease;
+}
+
+.note-composer__quick-btn:hover {
+  opacity: 1;
+  background: var(--accent-bg);
+  color: var(--accent-text);
+}
+
+/* ── Expanded canvas ─────────────────────────────────────────────────────── */
+
+.note-composer__canvas {
+  display: flex;
+  flex-direction: column;
+  animation: composer-expand 0.16s ease;
+}
+
+@keyframes composer-expand {
+  from { opacity: 0; transform: scaleY(0.97); transform-origin: top; }
+  to   { opacity: 1; transform: scaleY(1);    transform-origin: top; }
+}
+
+/* ── Title input ─────────────────────────────────────────────────────────── */
+
+.note-composer__title {
+  width: 100%;
+  border: none;
+  border-bottom: 1px solid color-mix(in srgb, var(--border) 60%, transparent);
+  background: transparent;
+  font-family: var(--sans);
+  font-size: 1rem;
+  font-weight: 600;
+  color: var(--text-h);
+  padding: 13px 16px 11px;
+  box-sizing: border-box;
+  outline: none;
+}
+
+.note-composer__title::placeholder {
+  color: var(--text);
+  opacity: 0.4;
+  font-weight: 400;
+}
+
+/* ── Luthor editor theming ───────────────────────────────────────────────── */
+
+.note-composer .luthor-preset-extensive.luthor-editor-wrapper {
+  --luthor-bg: var(--surface);
+  --luthor-muted: var(--code-bg);
+  --luthor-toolbar-bg: var(--code-bg);
+}
+
+[data-theme='dark'] .note-composer .luthor-preset-extensive .luthor-content-editable,
+[data-theme='dark'] .note-composer .luthor-preset-extensive .luthor-editor-content {
+  color: var(--text-h);
+  caret-color: var(--text-h);
+}
+
+[data-theme='dark'] .note-composer .luthor-preset-extensive ::selection {
+  background: var(--accent-bg);
+  color: var(--text-h);
+}
+
+.note-composer__editor {
+  min-height: 140px;
+}
+
+/* ── Footer ──────────────────────────────────────────────────────────────── */
+
+.note-composer__footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 14px 12px;
+  border-top: 1px solid color-mix(in srgb, var(--border) 50%, transparent);
+  gap: 10px;
+}
+
+.note-composer__close-btn {
+  display: inline-flex;
+  align-items: center;
+  border: none;
+  border-radius: 8px;
+  font-family: var(--sans);
+  font-size: 0.85rem;
+  font-weight: 500;
+  padding: 6px 14px;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.note-composer__close-btn:hover {
+  background: var(--accent-bg);
+  color: var(--text-h);
+}
+
+/* ── Footer metadata (date + saved badge) ────────────────────────────────── */
+
+.note-composer__meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.note-composer__saved-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--sans);
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: var(--accent-text);
+  opacity: 0;
+  /* fade in instantly, fade out gently */
+  transition: opacity 0.35s ease;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.note-composer__saved-badge--visible {
+  opacity: 1;
+  transition: opacity 0.1s ease;
+}
+
+.note-composer__date {
+  font-family: var(--sans);
+  font-size: 0.72rem;
+  color: var(--text);
+  opacity: 0.55;
+  white-space: nowrap;
+}

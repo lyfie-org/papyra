@@ -78,6 +78,31 @@
   color-scheme: dark;
 }
 
+/* ── Note theme palette ─────────────────────────────────────────────────────
+   Each [data-note-theme] block defines two tokens:
+     --note-bg       main card / editor background
+     --note-bg-muted slightly deeper tint for editor toolbar areas
+   The defaults equal the surface tokens so un-themed notes are invisible.
+   Luthor's --luthor-bg / --luthor-muted are overridden in NoteEditorModal.css
+   using these same vars — no hard-coded hex inside the editor.
+   ─────────────────────────────────────────────────────────────────────────── */
+
+/* Light palette — pastel-tinted beiges */
+[data-note-theme="default"]  { --note-bg: var(--surface); --note-bg-muted: var(--code-bg); }
+[data-note-theme="mint"]     { --note-bg: #e5f2ea; --note-bg-muted: #d8ece0; }
+[data-note-theme="sand"]     { --note-bg: #f5eeda; --note-bg-muted: #ede4cc; }
+[data-note-theme="rose"]     { --note-bg: #f5e5e8; --note-bg-muted: #edd8dc; }
+[data-note-theme="sky"]      { --note-bg: #e5eef7; --note-bg-muted: #d8e5f0; }
+[data-note-theme="lavender"] { --note-bg: #ece8f5; --note-bg-muted: #e0daf0; }
+
+/* Dark palette — subtle tinted charcoals */
+[data-theme="dark"] [data-note-theme="default"]  { --note-bg: var(--surface); --note-bg-muted: var(--code-bg); }
+[data-theme="dark"] [data-note-theme="mint"]     { --note-bg: #1e2b22; --note-bg-muted: #1a2520; }
+[data-theme="dark"] [data-note-theme="sand"]     { --note-bg: #2a2420; --note-bg-muted: #252019; }
+[data-theme="dark"] [data-note-theme="rose"]     { --note-bg: #2a1e22; --note-bg-muted: #25191e; }
+[data-theme="dark"] [data-note-theme="sky"]      { --note-bg: #1e2430; --note-bg-muted: #191f2a; }
+[data-theme="dark"] [data-note-theme="lavender"] { --note-bg: #231e2a; --note-bg-muted: #1e1925; }
+
 /* Only fires during the ~250ms window when useTheme adds this class */
 .theme-transitioning,
 .theme-transitioning *,
@@ -90,20 +115,16 @@
     box-shadow       0.22s ease !important;
 }
 
-#root {
-  width: 1126px;
-  max-width: 100%;
-  margin: 0 auto;
-  text-align: center;
-  border-inline: 1px solid var(--border);
-  min-height: 100svh;
-  display: flex;
-  flex-direction: column;
-  box-sizing: border-box;
-}
-
+html,
 body {
   margin: 0;
+  height: 100%;
+  overflow: hidden; /* app-main owns the scroll axis */
+}
+
+#root {
+  width: 100%;
+  height: 100%;
 }
 
 h1,

@@ -1,0 +1,109 @@
+.theme-chooser {
+  display: flex;
+  flex-direction: column;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  box-shadow: var(--shadow-card-hover);
+  padding: 8px;
+  gap: 8px;
+}
+
+.theme-chooser__row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.theme-chooser__divider {
+  height: 1px;
+  background: var(--border);
+  margin: 0 -8px;
+}
+
+/* -- Swatch button ----------------------------------------------------------- */
+
+.theme-chooser__swatch {
+  position: relative;
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  border: 2px solid transparent;
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 0;
+  transition: transform 0.12s ease, border-color 0.12s ease;
+  flex-shrink: 0;
+}
+
+.theme-chooser__swatch:hover {
+  transform: scale(1.15);
+}
+
+.theme-chooser__swatch[aria-selected="true"] {
+  border-color: var(--accent);
+}
+
+.theme-chooser__check {
+  color: var(--accent-text, #fff);
+  pointer-events: none;
+  z-index: 1;
+}
+
+.theme-chooser__icon-slash {
+  color: var(--text);
+  opacity: 0.5;
+  pointer-events: none;
+}
+
+/* -- Swatch colours (light) -------------------------------------------------- */
+
+[data-swatch="default"]  { background: var(--surface); border-color: var(--border); }
+[data-swatch="mint"]     { background: #e5f2ea; }
+[data-swatch="sand"]     { background: #f5eeda; }
+[data-swatch="rose"]     { background: #f5e5e8; }
+[data-swatch="sky"]      { background: #e5eef7; }
+[data-swatch="lavender"] { background: #ece8f5; }
+[data-swatch="sage"]     { background: #e5ece6; }
+[data-swatch="fog"]      { background: #e3e6e8; }
+[data-swatch="storm"]    { background: #dcdde3; }
+[data-swatch="dusk"]     { background: #e8e2e6; }
+[data-swatch="blossom"]  { background: #fae6e9; }
+[data-swatch="clay"]     { background: #eeded7; }
+
+/* -- Swatch colours (dark) --------------------------------------------------- */
+
+[data-theme="dark"] [data-swatch="default"]  { background: var(--surface); }
+[data-theme="dark"] [data-swatch="mint"]     { background: #1e2b22; }
+[data-theme="dark"] [data-swatch="sand"]     { background: #2a2420; }
+[data-theme="dark"] [data-swatch="rose"]     { background: #2a1e22; }
+[data-theme="dark"] [data-swatch="sky"]      { background: #1e2430; }
+[data-theme="dark"] [data-swatch="lavender"] { background: #231e2a; }
+[data-theme="dark"] [data-swatch="sage"]     { background: #1e2520; }
+[data-theme="dark"] [data-swatch="fog"]      { background: #222527; }
+[data-theme="dark"] [data-swatch="storm"]    { background: #1f2025; }
+[data-theme="dark"] [data-swatch="dusk"]     { background: #262124; }
+[data-theme="dark"] [data-swatch="blossom"]  { background: #2d1c1f; }
+[data-theme="dark"] [data-swatch="clay"]     { background: #2a211e; }
+
+/* -- Art swatches ------------------------------------------------------------ */
+
+.theme-chooser__swatch--art {
+  border-radius: 50%;
+  background-size: cover;
+  background-position: center;
+  border: 1px solid var(--border);
+}
+
+[data-art="none"] { background: var(--surface); }
+[data-art="groceries"] { background-image: radial-gradient(circle, #ff9a9e 0%, #fecfef 99%, #fecfef 100%); }
+[data-art="food"] { background-image: linear-gradient(120deg, #f6d365 0%, #fda085 100%); }
+[data-art="music"] { background-image: linear-gradient(to right, #4facfe 0%, #00f2fe 100%); }
+[data-art="recipes"] { background-image: linear-gradient(to top, #4fb576 0%, #44c489 30%, #28a9ae 46%, #28a2b7 59%, #4c7788 71%, #6c4f63 86%, #432c39 100%); }
+[data-art="notes"] { background-image: linear-gradient(to top, #cfd9df 0%, #e2ebf0 100%); }
+[data-art="places"] { background-image: linear-gradient(120deg, #84fab0 0%, #8fd3f4 100%); }
+[data-art="travel"] { background-image: linear-gradient(to right, #fa709a 0%, #fee140 100%); }
+[data-art="video"] { background-image: linear-gradient(to top, #a18cd1 0%, #fbc2eb 100%); }
+[data-art="celebration"] { background-image: linear-gradient(120deg, #e0c3fc 0%, #8ec5fc 100%); }

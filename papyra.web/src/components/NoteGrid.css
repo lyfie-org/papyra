@@ -1,16 +1,48 @@
-.note-grid {
-  display: flex;
-  gap: 16px;
+/* ── Canvas wrapper ─────────────────────────────────────────────────────── */
+
+.note-grid-canvas {
   width: 100%;
   padding: 16px;
   box-sizing: border-box;
+  display: flex;
+  flex-direction: column;
+  gap: 32px;
 }
 
-.note-grid__column {
-  background-clip: padding-box;
-  flex: 1;
-  min-width: 0;
+/* ── Section label (PINNED / future labels) ─────────────────────────────── */
+
+.note-section__label {
+  font-family: var(--sans);
+  font-size: 0.68rem;
+  font-weight: 600;
+  letter-spacing: 0.2em;
+  text-transform: uppercase;
+  color: var(--text);
+  opacity: 0.4;
+  margin: 0 0 12px 0;
 }
+
+/* ── Grid view — CSS multicolumn true masonry, 250px columns ────────────── */
+
+.note-grid {
+  columns: 250px;
+  column-gap: 16px;
+  width: 100%;
+}
+
+/* ── List view — 600px centred, single column ───────────────────────────── */
+
+.note-grid--list {
+  columns: initial;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  width: 600px;
+  max-width: 100%;
+  margin: 0 auto;
+}
+
+/* ── Empty / loading states ─────────────────────────────────────────────── */
 
 .note-grid__status {
   text-align: center;

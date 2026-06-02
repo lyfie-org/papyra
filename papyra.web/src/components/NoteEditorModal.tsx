@@ -2,8 +2,13 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import { MarkDownEditor } from '@lyfie/luthor';
 import type { ExtensiveEditorRef } from '@lyfie/luthor';
 import '@lyfie/luthor/styles.css';
+import { Check, X } from '@phosphor-icons/react';
 import { useNote, useCreateNote, useUpdateNote } from '../hooks/useNotes';
-import type { CreateNoteRequest, UpdateNoteRequest } from '../types';
+import { resolveTheme } from '../lib/noteThemes';
+import { useRelativeTime } from '../hooks/useRelativeTime';
+import { useTheme } from '../hooks/useTheme';
+import type { CreateNoteRequest } from '../types';
+import ThemeChooser from './ThemeChooser';
 import './NoteEditorModal.css';
 
 export interface NoteEditorModalProps {
@@ -21,38 +26,61 @@ const FOCUSABLE = [
   '[tabindex]:not([tabindex="-1"])',
 ].join(', ');
 
+const DEBOUNCE_MS = 1000;
+const SAVED_LINGER_MS = 2000;
+
 export default function NoteEditorModal({ noteId, onClose }: NoteEditorModalProps) {
   const isEditing = noteId !== null;
   const { data: existingNote, isLoading } = useNote(noteId ?? '');
+  const { theme: appTheme } = useTheme();
 
   const createNote = useCreateNote();
   const updateNote = useUpdateNote();
 
   const [title, setTitle] = useState('');
-  const [color, setColor] = useState('#ffffff');
-  const editorRef = useRef<ExtensiveEditorRef | null>(null);
-  const dialogRef = useRef<HTMLDivElement>(null);
-  const externalContentRef = useRef<string | null>(null);
-
+  const [theme, setTheme] = useState<string>('default');
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'saving' | 'saved'>('idle');
   const [editorKey, setEditorKey] = useState(() =>
     noteId !== null ? `${noteId}-initial` : 'new',
   );
 
+  const editorRef  = useRef<ExtensiveEditorRef | null>(null);
+  const dialogRef  = useRef<HTMLDivElement>(null);
+
+  const localNoteIdRef = useRef<string | null>(noteId);
+  const lastAutoSavedContentRef = useRef<string>('');
+  const externalContentRef = useRef<string | null>(null);
+  const titleRef = useRef(title);
+  const themeRef = useRef(theme);
+  const debounceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const savedTimerRef    = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const initializedRef = useRef(!isEditing);
+
+  useEffect(() => { titleRef.current = title; }, [title]);
+  useEffect(() => { themeRef.current = theme; }, [theme]);
+
   useEffect(() => {
     if (!existingNote) return;
-    setTitle(existingNote.title);
-    setColor(existingNote.color || '#ffffff');
 
-    if (externalContentRef.current === null) {
+    if (!initializedRef.current) {
+      initializedRef.current = true;
+      setTitle(existingNote.title);
+      setTheme(existingNote.color || 'default');
       externalContentRef.current = existingNote.content;
-    } else if (externalContentRef.current !== existingNote.content) {
-      // Content changed externally (SignalR) — remount the editor with the new content
+      lastAutoSavedContentRef.current = existingNote.content;
+      return;
+    }
+
+    if (existingNote.content === externalContentRef.current) return;
+
+    if (existingNote.content === lastAutoSavedContentRef.current) {
       externalContentRef.current = existingNote.content;
-      setEditorKey(`${noteId ?? 'new'}-${Date.now()}`);
+    } else {
+      externalContentRef.current = existingNote.content;
+      setEditorKey(`${noteId}-${Date.now()}`);
     }
   }, [existingNote, noteId]);
 
-  // Focus trap: keeps Tab navigation inside the dialog and restores focus on close
   useEffect(() => {
     const dialog = dialogRef.current;
     if (!dialog) return;
@@ -62,15 +90,14 @@ export default function NoteEditorModal({ noteId, onClose }: NoteEditorModalProp
 
     const trap = (e: KeyboardEvent) => {
       if (e.key !== 'Tab') return;
-      // Re-query each time so elements mounted after open (e.g. the editor) are included
       const focusable = Array.from(dialog.querySelectorAll<HTMLElement>(FOCUSABLE));
       if (!focusable.length) return;
       const first = focusable[0];
-      const last = focusable[focusable.length - 1];
+      const last  = focusable[focusable.length - 1];
       if (e.shiftKey) {
         if (document.activeElement === first) { e.preventDefault(); last.focus(); }
       } else {
-        if (document.activeElement === last) { e.preventDefault(); first.focus(); }
+        if (document.activeElement === last)  { e.preventDefault(); first.focus(); }
       }
     };
 
@@ -79,87 +106,148 @@ export default function NoteEditorModal({ noteId, onClose }: NoteEditorModalProp
       dialog.removeEventListener('keydown', trap);
       previouslyFocused?.focus();
     };
-  }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  }, []);
 
   const handleReady = useCallback((methods: ExtensiveEditorRef) => {
     editorRef.current = methods;
   }, []);
 
-  const editorContent = isEditing ? (existingNote?.content ?? null) : '';
-  const editorMountable = editorContent !== null;
+  const markSaved = useCallback(() => {
+    setSaveStatus('saved');
+    if (savedTimerRef.current) clearTimeout(savedTimerRef.current);
+    savedTimerRef.current = setTimeout(() => setSaveStatus('idle'), SAVED_LINGER_MS);
+  }, []);
 
-  const handleSave = useCallback(async () => {
-    const content = editorRef.current?.getMarkdown() ?? '';
-    try {
-      if (isEditing && noteId) {
-        await updateNote.mutateAsync({ id: noteId, req: { title, content, color } });
-      } else {
-        // POST /notes doesn't accept content — create first, then patch
-        const req: CreateNoteRequest = { title, color };
-        const { id } = await createNote.mutateAsync(req);
-        if (content.trim()) {
-          await updateNote.mutateAsync({ id, req: { content } });
-        }
-      }
-      onClose();
-    } catch {
-      // onError handles cache rollback
+  const autoSave = useCallback(() => {
+    const content  = editorRef.current?.getMarkdown() ?? '';
+    const id       = localNoteIdRef.current;
+    const curTitle = titleRef.current;
+    const curTheme = themeRef.current;
+
+    setSaveStatus('saving');
+
+    if (id) {
+      lastAutoSavedContentRef.current = content;
+      updateNote.mutate(
+        { id, req: { title: curTitle, content, color: curTheme } },
+        { onSuccess: markSaved, onError: () => setSaveStatus('idle') },
+      );
+    } else if (curTitle.trim()) {
+      const req: CreateNoteRequest = { title: curTitle, color: curTheme };
+      createNote.mutate(req, {
+        onSuccess: ({ id: newId }) => {
+          localNoteIdRef.current = newId;
+          lastAutoSavedContentRef.current = content;
+          if (content.trim()) {
+            updateNote.mutate(
+              { id: newId, req: { content } },
+              { onSuccess: markSaved, onError: () => setSaveStatus('idle') },
+            );
+          } else {
+            markSaved();
+          }
+        },
+        onError: () => setSaveStatus('idle'),
+      });
+    } else {
+      setSaveStatus('idle');
     }
-  }, [isEditing, noteId, title, color, createNote, updateNote, onClose]);
+  }, [createNote, updateNote, markSaved]);
 
-  const isSaving = createNote.isPending || updateNote.isPending;
+  const scheduleAutoSave = useCallback(() => {
+    if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+    debounceTimerRef.current = setTimeout(autoSave, DEBOUNCE_MS);
+  }, [autoSave]);
+
+  const flushAndClose = useCallback(() => {
+    if (debounceTimerRef.current) {
+      clearTimeout(debounceTimerRef.current);
+      debounceTimerRef.current = null;
+      if (localNoteIdRef.current || titleRef.current.trim()) autoSave();
+    }
+    onClose();
+  }, [autoSave, onClose]);
+
+  const handleThemeSelect = useCallback((newTheme: string) => {
+    setTheme(newTheme);
+    themeRef.current = newTheme;
+    scheduleAutoSave();
+  }, [scheduleAutoSave]);
+
+  useEffect(() => {
+    const dialog = dialogRef.current;
+    if (!dialog) return;
+    dialog.addEventListener('input', scheduleAutoSave);
+    return () => {
+      dialog.removeEventListener('input', scheduleAutoSave);
+      if (debounceTimerRef.current) clearTimeout(debounceTimerRef.current);
+      if (savedTimerRef.current)    clearTimeout(savedTimerRef.current);
+    };
+  }, [scheduleAutoSave]);
 
   useEffect(() => {
     const handler = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') { onClose(); return; }
+      if (e.key === 'Escape') { flushAndClose(); return; }
       if ((e.metaKey || e.ctrlKey) && e.key === 's') {
         e.preventDefault();
-        handleSave();
+        if (debounceTimerRef.current) {
+          clearTimeout(debounceTimerRef.current);
+          debounceTimerRef.current = null;
+        }
+        autoSave();
       }
     };
     document.addEventListener('keydown', handler);
     return () => document.removeEventListener('keydown', handler);
-  }, [onClose, handleSave]);
+  }, [flushAndClose, autoSave]);
+
+  const editorContent   = isEditing ? (existingNote?.content ?? null) : '';
+  const editorMountable = editorContent !== null;
+  const editedLabel = useRelativeTime(existingNote?.updatedAt ?? existingNote?.createdAt);
+  const { colorTheme, artTheme } = resolveTheme(theme);
 
   return (
     <div
       className="modal-overlay"
-      onClick={e => { if (e.target === e.currentTarget) onClose(); }}
+      onClick={e => { if (e.target === e.currentTarget) flushAndClose(); }}
     >
       <div
         ref={dialogRef}
         className="modal-dialog"
+        data-note-theme={colorTheme}
+        data-note-art={artTheme}
         role="dialog"
         aria-modal="true"
         aria-labelledby="modal-note-title"
-        style={{ '--note-color': color } as React.CSSProperties}
       >
         <header className="modal-header">
           <input
             id="modal-note-title"
             className="modal-title-input"
-            placeholder="Note title…"
+            placeholder="Note title"
             aria-label="Note title"
             value={title}
             onChange={e => setTitle(e.target.value)}
           />
           <div className="modal-header-actions">
-            <label className="color-swatch">
-              <span
-                className="color-swatch__preview"
-                style={{ background: color }}
-                aria-hidden="true"
-              />
-              <input
-                type="color"
-                value={color}
-                onChange={e => setColor(e.target.value)}
-                className="color-swatch__input"
-                aria-label="Note colour"
-              />
-            </label>
-            <button className="btn btn--icon" aria-label="Close" onClick={onClose}>
-              ✕
+            <span
+              className={[
+                'modal-save-status',
+                saveStatus !== 'idle' ? `modal-save-status--${saveStatus}` : '',
+              ].filter(Boolean).join(' ')}
+              aria-live="polite"
+              aria-atomic="true"
+            >
+              {saveStatus === 'saving' && 'Saving…'}
+              {saveStatus === 'saved'  && 'Saved'}
+            </span>
+            <ThemeChooser currentTheme={theme} onSelect={handleThemeSelect} />
+            <button
+              className="btn btn--icon"
+              aria-label="Close note editor"
+              onClick={flushAndClose}
+            >
+              <X size={16} aria-hidden="true" />
             </button>
           </div>
         </header>
@@ -173,10 +261,11 @@ export default function NoteEditorModal({ noteId, onClose }: NoteEditorModalProp
               defaultContent={editorContent as string}
               onReady={handleReady}
               initialMode="visual"
+              initialTheme={appTheme}
               markdownSourceOfTruth={true}
               placeholder={{
                 visual: 'Start writing… (type / for commands)',
-                markdown: '# Start writing…',
+                markdown: '# Start writing',
               }}
               isEditorViewTabsVisible={true}
               className="luthor-editor"
@@ -185,16 +274,25 @@ export default function NoteEditorModal({ noteId, onClose }: NoteEditorModalProp
         </div>
 
         <footer className="modal-footer">
-          <button className="btn btn--ghost" onClick={onClose}>
-            Cancel
+          <button className="btn btn--ghost" onClick={flushAndClose}>
+            Close
           </button>
-          <button
-            className="btn btn--primary"
-            onClick={handleSave}
-            disabled={isSaving || !title.trim()}
-          >
-            {isSaving ? 'Saving…' : 'Save'}
-          </button>
+          <div className="modal-footer-meta">
+            <span
+              className={[
+                'modal-footer-saved',
+                saveStatus === 'saved' ? 'modal-footer-saved--visible' : '',
+              ].filter(Boolean).join(' ')}
+              aria-live="polite"
+              aria-atomic="true"
+            >
+              <Check size={11} aria-hidden="true" />
+              Saved
+            </span>
+            {editedLabel && (
+              <span className="modal-footer-date">Edited {editedLabel}</span>
+            )}
+          </div>
         </footer>
       </div>
     </div>

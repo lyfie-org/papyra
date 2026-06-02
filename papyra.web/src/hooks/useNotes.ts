@@ -1,4 +1,4 @@
-import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
+import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { notesApi } from '../api/notes';
 import type { CreateNoteRequest, Note, NoteSummary, UpdateNoteRequest } from '../types';
 
@@ -11,6 +11,16 @@ export function useNotes() {
   return useQuery({
     queryKey: NOTES_KEY,
     queryFn: notesApi.list,
+  });
+}
+
+export function useSearchNotes(query: string) {
+  return useQuery({
+    queryKey: ['notes', 'search', query],
+    queryFn: () => notesApi.search(query),
+    enabled: query.trim().length > 0,
+    staleTime: 30_000,
+    placeholderData: keepPreviousData,
   });
 }
 

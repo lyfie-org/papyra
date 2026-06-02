@@ -1,33 +1,34 @@
-import { useState } from 'react';
-import { Plus } from 'lucide-react';
+import { useState, useEffect } from 'react';
+import { useSearchParams } from 'react-router-dom';
+import NoteComposer from '../components/NoteComposer';
 import NoteGrid from '../components/NoteGrid';
 import NoteEditorModal from '../components/NoteEditorModal';
 import { useSignalR } from '../hooks/useSignalR';
 import './HomePage.css';
 
 export default function HomePage() {
-  // null  = create new note
-  // string = edit existing note by id
-  // undefined = modal closed
   const [editingId, setEditingId] = useState<string | null | undefined>(undefined);
   const isModalOpen = editingId !== undefined;
+
+  const [searchParams, setSearchParams] = useSearchParams();
+
+  // Open a note when the search palette navigates here with ?open=<id>
+  useEffect(() => {
+    const openId = searchParams.get('open');
+    if (openId) {
+      setEditingId(openId);
+      setSearchParams({}, { replace: true });
+    }
+  }, [searchParams, setSearchParams]);
 
   useSignalR();
 
   return (
     <>
-      <div className="home-toolbar">
-        <button
-          className="btn-new-note"
-          onClick={() => setEditingId(null)}
-          aria-label="New note"
-        >
-          <Plus size={18} />
-          New note
-        </button>
+      <div className="home-page">
+        <NoteComposer />
+        <NoteGrid onNoteClick={id => setEditingId(id)} />
       </div>
-
-      <NoteGrid onNoteClick={id => setEditingId(id)} />
 
       {isModalOpen && (
         <NoteEditorModal

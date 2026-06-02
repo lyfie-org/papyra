@@ -7,18 +7,19 @@ using Scalar.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
-// ContentRootPath in dev = papyra.api/src/Papyra.Api/ → 3 levels up = repo root
-// In Docker (WORKDIR /app) → /app/../../../ = / → dataRoot = /data ✓
-var repoRoot  = Path.GetFullPath(Path.Combine(builder.Environment.ContentRootPath, "..", "..", ".."));
-var dataRoot  = Path.Combine(repoRoot, "data");
-var notesDir  = builder.Configuration["Storage:NotesDirectory"]  is { Length: > 0 } n ? n : Path.Combine(dataRoot, "notes");
-var imagesDir = builder.Configuration["Storage:ImagesDirectory"] is { Length: > 0 } i ? i : Path.Combine(dataRoot, "images");
+// In dev, ContentRootPath = papyra.api/src/Papyra.Api/ — 3 levels up = repo root.
+// In Docker (WORKDIR /app) → /app/../../../ = / → fallback = /data ✓
+var repoRoot    = Path.GetFullPath(Path.Combine(builder.Environment.ContentRootPath, "..", "..", ".."));
+var storageRoot = builder.Configuration["Storage:StorageRoot"] is { Length: > 0 } s
+    ? s
+    : Path.Combine(repoRoot, "data");
 
-builder.Configuration["Storage:NotesDirectory"]  = notesDir;
-builder.Configuration["Storage:ImagesDirectory"] = imagesDir;
+builder.Configuration["Storage:StorageRoot"] = storageRoot;
 
-Directory.CreateDirectory(notesDir);
-Directory.CreateDirectory(imagesDir);
+// _uploads holds images from the legacy global upload endpoint.
+var uploadsDir = Path.Combine(storageRoot, "_uploads");
+Directory.CreateDirectory(storageRoot);
+Directory.CreateDirectory(uploadsDir);
 
 builder.Services.Configure<KestrelServerOptions>(o =>
     o.Limits.MaxRequestBodySize = 16 * 1024 * 1024);
@@ -28,6 +29,11 @@ builder.Services.Configure<HostOptions>(o =>
     o.ShutdownTimeout = TimeSpan.FromSeconds(30));
 
 builder.Services.AddOpenApi();
+
+var scalarLogoPath = Path.Combine(repoRoot, "assets", "favicon", "android-chrome-192x192.png");
+var scalarLogoDataUrl = File.Exists(scalarLogoPath)
+    ? $"data:image/png;base64,{Convert.ToBase64String(File.ReadAllBytes(scalarLogoPath))}"
+    : string.Empty;
 
 builder.Services.AddSignalR(o =>
 {
@@ -60,24 +66,37 @@ var app = builder.Build();
 
 app.UseCors("AllowedOrigins");
 
-// Serves the React SPA from wwwroot/ (populated by the Docker build stage).
+// Serves the Papyra SPA from wwwroot/ (populated by the Docker build stage).
 // No-ops in dev where wwwroot doesn't exist.
 app.UseDefaultFiles();
 app.UseStaticFiles();
 
+static void SetMediaHeaders(Microsoft.AspNetCore.StaticFiles.StaticFileResponseContext ctx)
+{
+    var headers = ctx.Context.Response.Headers;
+    headers.Append("X-Content-Type-Options", "nosniff");
+    headers.Append("Cache-Control", "public, max-age=31536000, immutable");
+    // SVG can embed <script> — force download instead of inline rendering
+    if (ctx.File.Name.EndsWith(".svg", StringComparison.OrdinalIgnoreCase))
+        headers.Append("Content-Disposition", "attachment");
+}
+
+// Legacy global uploads — keeps /media/{filename} URLs valid for existing notes.
 app.UseStaticFiles(new StaticFileOptions
 {
-    FileProvider = new PhysicalFileProvider(imagesDir),
-    RequestPath  = "/media",
-    OnPrepareResponse = ctx =>
-    {
-        var headers = ctx.Context.Response.Headers;
-        headers.Append("X-Content-Type-Options", "nosniff");
-        headers.Append("Cache-Control", "public, max-age=31536000, immutable");
-        // SVG can embed <script> — force download instead of inline rendering
-        if (ctx.File.Name.EndsWith(".svg", StringComparison.OrdinalIgnoreCase))
-            headers.Append("Content-Disposition", "attachment");
-    },
+    FileProvider       = new PhysicalFileProvider(uploadsDir),
+    RequestPath        = "/media",
+    OnPrepareResponse  = SetMediaHeaders,
+});
+
+// Per-note storage — serves [storageRoot]/{noteId}/media/{file} at /storage/…
+// .md files are NOT served: FileExtensionContentTypeProvider has no MIME for .md
+// so StaticFiles returns 404 for them without ServeUnknownFileTypes.
+app.UseStaticFiles(new StaticFileOptions
+{
+    FileProvider       = new PhysicalFileProvider(storageRoot),
+    RequestPath        = "/storage",
+    OnPrepareResponse  = SetMediaHeaders,
 });
 
 app.MapOpenApi();
@@ -91,11 +110,14 @@ app.MapScalarApiReference(options =>
                .WithDocumentDownloadType(DocumentDownloadType.None)
                .DisableAgent()
                .WithCustomCss(".scalar-app .references-header { display: none !important; }");
+
+        if (!string.IsNullOrEmpty(scalarLogoDataUrl))
+            options.WithFavicon(scalarLogoDataUrl);
     });
 
 app.MapHub<NotesHub>("/hubs/notes");
 
-app.MapGet("/health", () => Results.Ok(new { status = "healthy" }))
+app.MapGet("/health", () => Results.Ok(new { status = "Healthy", app = "Papyra API" }))
     .ExcludeFromDescription();
 
 app.MapGet("/notes", (NoteWatcherService watcher) =>
@@ -114,19 +136,19 @@ app.MapGet("/notes/{id}", (string id, NoteWatcherService watcher) =>
     .WithName("GetNote")
     .WithSummary("Get a single note by ID including Content");
 
-app.MapPost("/notes", (CreateNoteRequest req, NoteWatcherService watcher, IMarkdownStorageService storage) =>
+app.MapPost("/notes", (CreateNoteRequest req, IMarkdownStorageService storage) =>
 {
     var id = Guid.NewGuid().ToString();
     var note = new Note
     {
-        Id = id,
-        Title = req.Title,
-        Tags = req.Tags ?? [],
-        Color = req.Color ?? string.Empty,
+        Id      = id,
+        Title   = req.Title,
+        Tags    = req.Tags ?? [],
+        Color   = req.Color ?? string.Empty,
     };
-    File.WriteAllText(
-        Path.Combine(watcher.NotesDirectory, $"{id}.md"),
-        storage.SerializeNote(note));
+    var noteDir = Path.Combine(storageRoot, id);
+    Directory.CreateDirectory(noteDir);
+    File.WriteAllText(Path.Combine(noteDir, "note.md"), storage.SerializeNote(note));
     return Results.Created($"/notes/{id}", new { id });
 })
     .WithName("CreateNote")
@@ -154,15 +176,48 @@ app.MapDelete("/notes/{id}", (string id, NoteWatcherService watcher) =>
 {
     var entry = watcher.Notes.FirstOrDefault(kv => kv.Value.Id == id);
     if (entry.Value is null) return Results.NotFound();
-    File.Delete(entry.Key);
+
+    // Delete the entire note directory (note.md + media/)
+    var noteDir = Path.GetDirectoryName(entry.Key);
+    if (noteDir is not null && Directory.Exists(noteDir))
+        Directory.Delete(noteDir, recursive: true);
+    else
+        File.Delete(entry.Key);
+
     return Results.NoContent();
 })
     .WithName("DeleteNote")
-    .WithSummary("Delete a note");
+    .WithSummary("Delete a note and all its media");
 
-app.MapPost("/api/upload/image", async (IFormFile file, IConfiguration configuration) =>
+// Per-note media upload — saves to [storageRoot]/{id}/media/ and returns /storage URL.
+app.MapPost("/api/notes/{id}/media", async (string id, IFormFile file, NoteWatcherService watcher) =>
 {
-    var dir = configuration["Storage:ImagesDirectory"]!;
+    if (!watcher.Notes.Values.Any(n => n.Id == id))
+        return Results.NotFound();
+
+    var allowedExtensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        { ".jpg", ".jpeg", ".png", ".gif", ".webp", ".avif", ".svg" };
+
+    var ext = Path.GetExtension(file.FileName);
+    if (!allowedExtensions.Contains(ext))
+        return Results.BadRequest(new { error = $"File type '{ext}' is not allowed." });
+
+    var mediaDir = Path.Combine(storageRoot, id, "media");
+    Directory.CreateDirectory(mediaDir);
+
+    var fileName = $"{Guid.NewGuid()}{ext}";
+    await using var stream = File.Create(Path.Combine(mediaDir, fileName));
+    await file.CopyToAsync(stream);
+
+    return Results.Ok(new { url = $"/storage/{id}/media/{fileName}" });
+})
+    .WithName("UploadNoteMedia")
+    .WithSummary("Upload an image for a specific note; returns its public /storage URL")
+    .DisableAntiforgery();
+
+// Legacy global image upload — routes to [storageRoot]/_uploads/ for backwards compat.
+app.MapPost("/api/upload/image", async (IFormFile file) =>
+{
     var allowedExtensions = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         { ".jpg", ".jpeg", ".png", ".gif", ".webp", ".avif", ".svg" };
 
@@ -171,15 +226,13 @@ app.MapPost("/api/upload/image", async (IFormFile file, IConfiguration configura
         return Results.BadRequest(new { error = $"File type '{ext}' is not allowed." });
 
     var fileName = $"{Guid.NewGuid()}{ext}";
-    var filePath = Path.Combine(dir, fileName);
-
-    await using var stream = File.Create(filePath);
+    await using var stream = File.Create(Path.Combine(uploadsDir, fileName));
     await file.CopyToAsync(stream);
 
     return Results.Ok(new { url = $"/media/{fileName}" });
 })
     .WithName("UploadImage")
-    .WithSummary("Upload an image; returns its public /media URL")
+    .WithSummary("Upload an image (legacy); returns its public /media URL")
     .DisableAntiforgery();
 
 app.MapGet("/search", (string q, IndexManager indexManager, NoteWatcherService watcher) =>
@@ -204,7 +257,7 @@ app.MapGet("/search", (string q, IndexManager indexManager, NoteWatcherService w
     .WithName("SearchNotes")
     .WithSummary("Full-text search across Title, Tags, and Content");
 
-// Catches anything not matched by an API route — lets React Router handle deep links
+// Catches anything not matched by an API route — lets the SPA router handle deep links
 app.MapFallbackToFile("index.html");
 
 app.Run();

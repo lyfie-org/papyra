@@ -1,11 +1,11 @@
 import { NavLink, Outlet } from 'react-router-dom';
-import { BookOpen, Home, Moon, Settings, ShieldCheck, Sun } from 'lucide-react';
+import { BookOpen, House, Moon, GearSix, ShieldCheck, Sun } from '@phosphor-icons/react';
 import { useTheme } from '../hooks/useTheme';
 import './MainLayout.css';
 
 const navLinks = [
-  { to: '/',         label: 'Home',     icon: Home,        end: true  },
-  { to: '/settings', label: 'Settings', icon: Settings,    end: false },
+  { to: '/',         label: 'Home',     icon: House,       end: true  },
+  { to: '/settings', label: 'Settings', icon: GearSix,     end: false },
   { to: '/admin',    label: 'Admin',    icon: ShieldCheck, end: false },
 ];
 
@@ -17,7 +17,7 @@ export default function MainLayout() {
       <nav className="main-nav">
         {/* Brand — icon + wordmark */}
         <span className="main-nav__brand" aria-label="Papyra home">
-          <BookOpen className="main-nav__brand-icon" size={22} aria-hidden="true" />
+          <BookOpen className="main-nav__brand-icon" size={22} aria-hidden="true" weight="regular" />
           Papyra
         </span>
 
