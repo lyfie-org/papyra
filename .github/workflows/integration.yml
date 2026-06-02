@@ -26,4 +26,4 @@ jobs:
         run: dotnet build Papyra.slnx --configuration Release --no-restore
 
       - name: Run tests
-        run: dotnet test tests/Papyra.Tests/Papyra.Tests.csproj --configuration Release --no-build --verbosity normal
+        run: dotnet test papyra.api/tests/Papyra.Tests/Papyra.Tests.csproj --configuration Release --no-build --verbosity normal

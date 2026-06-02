@@ -1,8 +1,8 @@
 <Solution>
   <Folder Name="/src/">
-    <Project Path="src/Papyra.Api/Papyra.Api.csproj" />
+    <Project Path="papyra.api/src/Papyra.Api/Papyra.Api.csproj" />
   </Folder>
   <Folder Name="/tests/">
-    <Project Path="tests/Papyra.Tests/Papyra.Tests.csproj" />
+    <Project Path="papyra.api/tests/Papyra.Tests/Papyra.Tests.csproj" />
   </Folder>
 </Solution>

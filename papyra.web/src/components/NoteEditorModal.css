@@ -1,0 +1,255 @@
+/* ── Overlay ── */
+.modal-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+  padding: 16px;
+}
+
+/* ── Dialog ── */
+.modal-dialog {
+  /* --note-bg is set by [data-note-theme] in index.css; falls back to surface */
+  background: var(--note-bg, var(--surface));
+  border-radius: 14px;
+  width: min(92vw, 820px);
+  max-height: 88vh;
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 24px 64px rgba(0, 0, 0, 0.28);
+  overflow: hidden;
+}
+
+/* ── Luthor editor background inheritance ──────────────────────────────────
+   Cascade-override Luthor's own CSS custom properties at the dialog scope
+   so the editor surface blends with the active note colour theme.
+   initialTheme prop tells Luthor which palette to load; these overrides then
+   adjust only the background tokens without re-theming text or UI chrome.
+   ─────────────────────────────────────────────────────────────────────────── */
+.modal-dialog .luthor-preset-extensive.luthor-editor-wrapper {
+  --luthor-bg: var(--note-bg, var(--luthor-bg));
+  --luthor-muted: var(--note-bg-muted, var(--luthor-muted));
+  --luthor-toolbar-bg: var(--note-bg-muted, var(--luthor-toolbar-bg));
+}
+
+/* ── Dark mode: ensure readable text inside Luthor content area ────────────
+   Luthor's dark theme sets its own foreground tokens; these rules guarantee
+   the beige-warm text palette is applied to key semantic regions when the
+   app is in dark mode, preventing dark-on-dark rendering.
+   ─────────────────────────────────────────────────────────────────────────── */
+[data-theme='dark'] .modal-dialog .luthor-preset-extensive.luthor-editor-wrapper {
+  color: var(--text-h);
+}
+
+[data-theme='dark'] .modal-dialog .luthor-preset-extensive .luthor-content-editable,
+[data-theme='dark'] .modal-dialog .luthor-preset-extensive .luthor-editor-content {
+  color: var(--text-h);
+  caret-color: var(--text-h);
+}
+
+[data-theme='dark'] .modal-dialog .luthor-preset-extensive blockquote {
+  border-left-color: var(--accent-border);
+  color: var(--text);
+}
+
+[data-theme='dark'] .modal-dialog .luthor-preset-extensive a {
+  color: var(--accent-text);
+}
+
+[data-theme='dark'] .modal-dialog .luthor-preset-extensive code,
+[data-theme='dark'] .modal-dialog .luthor-preset-extensive pre {
+  background: var(--code-bg);
+  color: var(--text-h);
+}
+
+/* Selection highlight in dark mode */
+[data-theme='dark'] .modal-dialog .luthor-preset-extensive ::selection {
+  background: var(--accent-bg);
+  color: var(--text-h);
+}
+
+/* ── Header ── */
+.modal-header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 16px 20px 14px;
+  /* color-mix adapts to light and dark note colours */
+  border-bottom: 1px solid color-mix(in srgb, currentColor 12%, transparent);
+  flex-shrink: 0;
+}
+
+.modal-title-input {
+  flex: 1;
+  border: none;
+  background: transparent;
+  font-size: 1.25rem;
+  font-weight: 600;
+  color: inherit;
+  min-width: 0;
+  /* Focus ring provided by global :focus-visible rule in index.css */
+  outline: none;
+}
+
+.modal-title-input:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+.modal-title-input::placeholder {
+  /* Adapts to any note colour — readable on both light and dark backgrounds */
+  color: color-mix(in srgb, currentColor 30%, transparent);
+}
+
+.modal-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-shrink: 0;
+}
+
+/* ── Auto-save status indicator ── */
+
+.modal-save-status {
+  font-family: var(--sans);
+  font-size: 0.72rem;
+  letter-spacing: 0.02em;
+  min-width: 48px; /* prevents layout shift when text appears/disappears */
+  text-align: right;
+  transition: opacity 0.2s ease;
+}
+
+.modal-save-status:empty {
+  opacity: 0;
+}
+
+.modal-save-status--saving {
+  color: var(--text);
+  opacity: 0.5;
+}
+
+.modal-save-status--saved {
+  color: var(--accent-text);
+  opacity: 0.8;
+}
+
+/* ── Body ── */
+.modal-body {
+  flex: 1;
+  overflow-y: auto;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.modal-status {
+  padding: 40px;
+  text-align: center;
+  color: color-mix(in srgb, currentColor 40%, transparent);
+}
+
+/* ── Luthor editor sizing ── */
+.luthor-editor {
+  flex: 1;
+  min-height: 320px;
+  /* Let Luthor's own scrolling handle overflow inside the editor */
+  overflow: visible;
+}
+
+/* ── Footer ── */
+.modal-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 12px 20px;
+  border-top: 1px solid color-mix(in srgb, currentColor 12%, transparent);
+  flex-shrink: 0;
+}
+
+.modal-footer-meta {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.modal-footer-saved {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  font-family: var(--sans);
+  font-size: 0.72rem;
+  font-weight: 500;
+  color: var(--accent-text);
+  opacity: 0;
+  transition: opacity 0.35s ease;
+  pointer-events: none;
+  white-space: nowrap;
+}
+
+.modal-footer-saved--visible {
+  opacity: 1;
+  transition: opacity 0.1s ease;
+}
+
+.modal-footer-date {
+  font-family: var(--sans);
+  font-size: 0.72rem;
+  color: color-mix(in srgb, currentColor 40%, transparent);
+  white-space: nowrap;
+}
+
+/* ── Shared buttons ── */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  border: none;
+  border-radius: 8px;
+  font-size: 0.875rem;
+  font-weight: 500;
+  cursor: pointer;
+  padding: 7px 16px;
+  transition: background 0.12s, opacity 0.12s;
+}
+
+.btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.btn--primary {
+  background: #1a1a1a;
+  color: #fff;
+}
+
+.btn--primary:hover:not(:disabled) {
+  background: #333;
+}
+
+.btn--ghost {
+  background: transparent;
+  color: inherit;
+}
+
+.btn--ghost:hover {
+  background: color-mix(in srgb, currentColor 8%, transparent);
+}
+
+.btn--icon {
+  background: transparent;
+  padding: 4px 8px;
+  font-size: 1rem;
+  border-radius: 6px;
+  color: inherit;
+  opacity: 0.5;
+}
+
+.btn--icon:hover {
+  background: color-mix(in srgb, currentColor 8%, transparent);
+  opacity: 1;
+}
