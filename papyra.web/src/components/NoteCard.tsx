@@ -2,7 +2,7 @@ import { useRef, useState, useEffect, useCallback } from 'react';
 import { createPortal } from 'react-dom';
 import { Palette, PushPin, Bell, UserPlus, Image as ImageIcon, Archive, DotsThreeVertical, CheckCircle, Circle, Trash, Copy, Tag, CheckSquare } from '@phosphor-icons/react';
 import type { NoteSummary } from '../types';
-import { useUpdateNote, useDeleteNote, useArchiveNote, useTrashNote } from '../hooks/useNotes';
+import { useUpdateNote, useArchiveNote, useTrashNote } from '../hooks/useNotes';
 import { resolveTheme } from '../lib/noteThemes';
 import { useRelativeTime } from '../hooks/useRelativeTime';
 import { useSelection } from '../context/SelectionContext';
@@ -25,7 +25,6 @@ export default function NoteCard({ note, onClick }: NoteCardProps) {
   const [morePos, setMorePos] = useState<PopoverPos | null>(null);
 
   const updateNote  = useUpdateNote();
-  const deleteNote  = useDeleteNote();
   const archiveNote = useArchiveNote();
   const trashNote   = useTrashNote();
   const paletteRef  = useRef<HTMLButtonElement>(null);

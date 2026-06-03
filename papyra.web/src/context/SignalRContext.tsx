@@ -60,7 +60,7 @@ export function SignalRProvider({ children }: { children: ReactNode }) {
       qc.setQueryData<NoteSummary[]>(NOTES_KEY,
         old => (old ?? []).filter(n => n.id !== id),
       );
-      qc.removeQueries({ queryKey: noteKey(id) });
+      qc.removeQueries({ queryKey: ['notes', id] });
     });
 
     conn.start().catch(err =>
