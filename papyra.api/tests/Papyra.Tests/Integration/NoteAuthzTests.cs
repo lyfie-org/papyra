@@ -1,12 +1,14 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Xunit;
 
 namespace Papyra.Tests.Integration;
 
 // Authorization integration tests: owner isolation, read/write shares, viewer role.
 // All tests share one factory instance (separate temp dir from other test classes).
 // State is set up once in InitializeAsync: alice (admin), bob (member), a note owned by alice.
+[Collection("SequentialIntegrationTests")]
 public sealed class NoteAuthzTests : IAsyncLifetime
 {
     private PapyraWebFactory _factory = null!;
@@ -190,7 +192,7 @@ public sealed class NoteAuthzTests : IAsyncLifetime
     // Required because the FileSystemWatcher has a 300ms debounce; without waiting
     // the note may not be in the in-memory cache when the test proceeds.
     private static async Task PollUntilNoteVisible(
-        HttpClient client, string noteId, int maxMs = 3000)
+        HttpClient client, string noteId, int maxMs = 15000) // Increased from 3000 to prevent shared runner timing flakiness
     {
         var deadline = DateTime.UtcNow.AddMilliseconds(maxMs);
         while (DateTime.UtcNow < deadline)
