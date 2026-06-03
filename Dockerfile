@@ -10,7 +10,7 @@ RUN corepack enable && corepack prepare pnpm@11.5.1 --activate
 WORKDIR /build
 
 # Copy manifests first for layer-cache efficiency
-COPY pnpm-workspace.yaml package.json ./
+COPY pnpm-workspace.yaml package.json pnpm-lock.yaml ./
 COPY papyra.web/package.json papyra.web/
 
 RUN pnpm install --frozen-lockfile
