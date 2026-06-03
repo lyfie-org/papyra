@@ -1,14 +1,14 @@
 import { NavLink } from 'react-router-dom';
-import { FileText, Tag, Archive, Trash } from '@phosphor-icons/react';
+import { FileText, Archive, Trash } from '@phosphor-icons/react';
 import { useServerStatus } from '../hooks/useServerStatus';
 import { useLayout } from '../context/LayoutContext';
+import { useOfflineQueue } from '../context/OfflineQueueContext';
 import './LeftSidebar.css';
 
 const links = [
-  { to: '/',           label: 'Notes',      icon: FileText, end: true  },
-  { to: '/categories', label: 'Categories', icon: Tag,      end: false },
-  { to: '/archive',    label: 'Archive',    icon: Archive,  end: false },
-  { to: '/trash',      label: 'Trash',      icon: Trash,    end: false },
+  { to: '/',        label: 'Notes',   icon: FileText, end: true  },
+  { to: '/archive', label: 'Archive', icon: Archive,  end: false },
+  { to: '/trash',   label: 'Trash',   icon: Trash,    end: false },
 ] as const;
 
 const APP_VERSION = 'internal-dev';
@@ -16,6 +16,7 @@ const APP_VERSION = 'internal-dev';
 export default function LeftSidebar() {
   const serverStatus = useServerStatus();
   const { isMobileNavOpen, closeMobileNav } = useLayout();
+  const { pendingCount, isSyncing } = useOfflineQueue();
   const isOnline   = serverStatus === 'online';
   const isChecking = serverStatus === 'checking';
 
@@ -66,7 +67,17 @@ export default function LeftSidebar() {
               {isChecking ? 'Connecting…' : isOnline ? 'Server Online' : 'Server Offline'}
             </span>
           </div>
-          <span className="left-sidebar__status-version">{APP_VERSION}</span>
+          <div className="left-sidebar__status-right">
+            {(pendingCount > 0 || isSyncing) && (
+              <span
+                className={`left-sidebar__sync-badge${isSyncing ? ' left-sidebar__sync-badge--syncing' : ''}`}
+                title={isSyncing ? 'Syncing changes…' : `${pendingCount} change${pendingCount !== 1 ? 's' : ''} pending`}
+              >
+                {isSyncing ? '↑' : pendingCount}
+              </span>
+            )}
+            <span className="left-sidebar__status-version">{APP_VERSION}</span>
+          </div>
         </div>
       </aside>
     </>

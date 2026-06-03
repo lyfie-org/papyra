@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState, useCallback } from 'react';
 import { useNavigate } from 'react-router-dom';
 import {
-  MagnifyingGlass, FileText, Tag, Archive, Trash,
+  MagnifyingGlass, FileText, Archive, Trash,
   Gear, ShieldCheck, Moon, Sun,
 } from '@phosphor-icons/react';
 import { useLayout } from '../context/LayoutContext';
@@ -20,7 +20,7 @@ type NavAction = {
 };
 
 export default function SearchPalette() {
-  const { isSearchOpen, openSearch, closeSearch } = useLayout();
+  const { isSearchOpen, searchSeed, openSearch, closeSearch } = useLayout();
   const { theme, toggleTheme } = useTheme();
   const navigate = useNavigate();
 
@@ -38,11 +38,6 @@ export default function SearchPalette() {
       id: 'nav-notes', label: 'Go to Notes', icon: FileText,
       keywords: ['notes', 'home'],
       action: () => { navigate('/'); closeSearch(); },
-    },
-    {
-      id: 'nav-categories', label: 'Go to Categories', icon: Tag,
-      keywords: ['categories', 'tags'],
-      action: () => { navigate('/categories'); closeSearch(); },
     },
     {
       id: 'nav-archive', label: 'Go to Archive', icon: Archive,
@@ -94,14 +89,20 @@ export default function SearchPalette() {
     return () => window.removeEventListener('keydown', handler);
   }, [isSearchOpen, openSearch, closeSearch]);
 
-  // ── Reset state when opened ─────────────────────────────────────────
+  // ── Reset state when opened (seed from global keydown if present) ────
   useEffect(() => {
     if (isSearchOpen) {
-      setQuery('');
+      setQuery(searchSeed);
       setActiveIndex(0);
-      // Defer focus so the element is in the DOM
-      requestAnimationFrame(() => inputRef.current?.focus());
+      requestAnimationFrame(() => {
+        const input = inputRef.current;
+        if (!input) return;
+        input.focus();
+        const len = input.value.length;
+        input.setSelectionRange(len, len);
+      });
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isSearchOpen]);
 
   // ── Reset active index when results change ──────────────────────────
@@ -226,7 +227,7 @@ export default function SearchPalette() {
                     onClick={() => activateItem(absIndex)}
                     onMouseEnter={() => setActiveIndex(absIndex)}
                   >
-                    <Icon size={15} className="search-palette__item-icon" aria-hidden={true} />
+                    <span className="search-palette__item-icon" aria-hidden="true"><Icon size={15} /></span>
                     <span className="search-palette__item-title">{action.label}</span>
                   </button>
                 );

@@ -1,4 +1,4 @@
-import { createContext, useContext, useState, type ReactNode } from 'react';
+import { createContext, useContext, useState, useCallback, type ReactNode } from 'react';
 
 interface LayoutContextValue {
   viewMode: 'grid' | 'list';
@@ -7,7 +7,8 @@ interface LayoutContextValue {
   toggleMobileNav: () => void;
   closeMobileNav: () => void;
   isSearchOpen: boolean;
-  openSearch: () => void;
+  searchSeed: string;
+  openSearch: (seed?: string) => void;
   closeSearch: () => void;
 }
 
@@ -17,6 +18,17 @@ export function LayoutProvider({ children }: { children: ReactNode }) {
   const [viewMode, setViewMode] = useState<'grid' | 'list'>('grid');
   const [isMobileNavOpen, setIsMobileNavOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
+  const [searchSeed, setSearchSeed] = useState('');
+
+  const openSearch = useCallback((seed = '') => {
+    setSearchSeed(seed);
+    setIsSearchOpen(true);
+  }, []);
+
+  const closeSearch = useCallback(() => {
+    setIsSearchOpen(false);
+    setSearchSeed('');
+  }, []);
 
   return (
     <LayoutContext.Provider value={{
@@ -26,8 +38,9 @@ export function LayoutProvider({ children }: { children: ReactNode }) {
       toggleMobileNav: () => setIsMobileNavOpen(v => !v),
       closeMobileNav: () => setIsMobileNavOpen(false),
       isSearchOpen,
-      openSearch:  () => setIsSearchOpen(true),
-      closeSearch: () => setIsSearchOpen(false),
+      searchSeed,
+      openSearch,
+      closeSearch,
     }}>
       {children}
     </LayoutContext.Provider>

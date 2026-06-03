@@ -3,7 +3,7 @@
 #   docker buildx build --platform linux/amd64,linux/arm64 -t lyfie/papyra:latest --push .
 
 # ─── Stage 1: Node — build frontend ──────────────────────────────────────────
-FROM --platform=$BUILDPLATFORM node:20-alpine AS frontend
+FROM --platform=$BUILDPLATFORM node:22-alpine AS frontend
 
 RUN corepack enable && corepack prepare pnpm@latest --activate
 

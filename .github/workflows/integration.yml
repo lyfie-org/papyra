@@ -7,7 +7,8 @@ on:
     branches: [main]
 
 jobs:
-  build-and-test:
+  backend:
+    name: Backend — build & test
     runs-on: ubuntu-latest
 
     steps:
@@ -27,3 +28,34 @@ jobs:
 
       - name: Run tests
         run: dotnet test papyra.api/tests/Papyra.Tests/Papyra.Tests.csproj --configuration Release --no-build --verbosity normal
+
+  frontend:
+    name: Frontend — type-check, test & build
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'npm'
+          cache-dependency-path: papyra.web/package-lock.json
+
+      - name: Install dependencies
+        working-directory: papyra.web
+        run: npm ci
+
+      - name: Type-check
+        working-directory: papyra.web
+        run: npx tsc --noEmit
+
+      - name: Unit tests
+        working-directory: papyra.web
+        run: npm test
+
+      - name: Production build
+        working-directory: papyra.web
+        run: npm run build

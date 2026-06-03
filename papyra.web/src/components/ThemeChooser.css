@@ -60,35 +60,31 @@
 
 /* -- Swatch colours (light) -------------------------------------------------- */
 
-[data-swatch="default"]  { background: var(--surface); border-color: var(--border); }
-[data-swatch="mint"]     { background: #e5f2ea; }
-[data-swatch="sand"]     { background: #f5eeda; }
-[data-swatch="rose"]     { background: #f5e5e8; }
-[data-swatch="sky"]      { background: #e5eef7; }
-[data-swatch="lavender"] { background: #ece8f5; }
-[data-swatch="sage"]     { background: #e5ece6; }
-[data-swatch="fog"]      { background: #e3e6e8; }
-[data-swatch="storm"]    { background: #dcdde3; }
-[data-swatch="dusk"]     { background: #e8e2e6; }
-[data-swatch="blossom"]  { background: #fae6e9; }
-[data-swatch="clay"]     { background: #eeded7; }
+[data-swatch="default"]       { background: var(--surface); border-color: var(--border); }
+[data-swatch="yellow"]        { background: #fef9c3; }
+[data-swatch="pastel-green"]  { background: #dcfce7; }
+[data-swatch="pastel-purple"] { background: #f3e8ff; }
+[data-swatch="pastel-pink"]   { background: #fce7f3; }
+[data-swatch="pastel-black"]  { background: #e2e8f0; }
+[data-swatch="pastel-orange"] { background: #ffedd5; }
+[data-swatch="pastel-blue"]   { background: #e0f2fe; }
+[data-swatch="dark-blue"]     { background: #bfdbfe; }
+[data-swatch="papyra-brown"]  { background: #e8d8c8; }
 
 /* -- Swatch colours (dark) --------------------------------------------------- */
 
-[data-theme="dark"] [data-swatch="default"]  { background: var(--surface); }
-[data-theme="dark"] [data-swatch="mint"]     { background: #1e2b22; }
-[data-theme="dark"] [data-swatch="sand"]     { background: #2a2420; }
-[data-theme="dark"] [data-swatch="rose"]     { background: #2a1e22; }
-[data-theme="dark"] [data-swatch="sky"]      { background: #1e2430; }
-[data-theme="dark"] [data-swatch="lavender"] { background: #231e2a; }
-[data-theme="dark"] [data-swatch="sage"]     { background: #1e2520; }
-[data-theme="dark"] [data-swatch="fog"]      { background: #222527; }
-[data-theme="dark"] [data-swatch="storm"]    { background: #1f2025; }
-[data-theme="dark"] [data-swatch="dusk"]     { background: #262124; }
-[data-theme="dark"] [data-swatch="blossom"]  { background: #2d1c1f; }
-[data-theme="dark"] [data-swatch="clay"]     { background: #2a211e; }
+[data-theme="dark"] [data-swatch="default"]       { background: var(--surface); }
+[data-theme="dark"] [data-swatch="yellow"]        { background: #282608; }
+[data-theme="dark"] [data-swatch="pastel-green"]  { background: #1a2e21; }
+[data-theme="dark"] [data-swatch="pastel-purple"] { background: #241b33; }
+[data-theme="dark"] [data-swatch="pastel-pink"]   { background: #2e1a26; }
+[data-theme="dark"] [data-swatch="pastel-black"]  { background: #17191d; }
+[data-theme="dark"] [data-swatch="pastel-orange"] { background: #2c1c0e; }
+[data-theme="dark"] [data-swatch="pastel-blue"]   { background: #172136; }
+[data-theme="dark"] [data-swatch="dark-blue"]     { background: #0f1a2e; }
+[data-theme="dark"] [data-swatch="papyra-brown"]  { background: #2a2118; }
 
-/* -- Art swatches ------------------------------------------------------------ */
+/* -- Art swatches (9 total) -------------------------------------------------- */
 
 .theme-chooser__swatch--art {
   border-radius: 50%;
@@ -97,13 +93,12 @@
   border: 1px solid var(--border);
 }
 
-[data-art="none"] { background: var(--surface); }
+[data-art="none"]      { background: var(--surface); }
 [data-art="groceries"] { background-image: radial-gradient(circle, #ff9a9e 0%, #fecfef 99%, #fecfef 100%); }
-[data-art="food"] { background-image: linear-gradient(120deg, #f6d365 0%, #fda085 100%); }
-[data-art="music"] { background-image: linear-gradient(to right, #4facfe 0%, #00f2fe 100%); }
-[data-art="recipes"] { background-image: linear-gradient(to top, #4fb576 0%, #44c489 30%, #28a9ae 46%, #28a2b7 59%, #4c7788 71%, #6c4f63 86%, #432c39 100%); }
-[data-art="notes"] { background-image: linear-gradient(to top, #cfd9df 0%, #e2ebf0 100%); }
-[data-art="places"] { background-image: linear-gradient(120deg, #84fab0 0%, #8fd3f4 100%); }
-[data-art="travel"] { background-image: linear-gradient(to right, #fa709a 0%, #fee140 100%); }
-[data-art="video"] { background-image: linear-gradient(to top, #a18cd1 0%, #fbc2eb 100%); }
-[data-art="celebration"] { background-image: linear-gradient(120deg, #e0c3fc 0%, #8ec5fc 100%); }
+[data-art="food"]      { background-image: linear-gradient(120deg, #f6d365 0%, #fda085 100%); }
+[data-art="music"]     { background-image: linear-gradient(to right, #4facfe 0%, #00f2fe 100%); }
+[data-art="recipes"]   { background-image: linear-gradient(to top, #4fb576 0%, #44c489 30%, #28a9ae 46%, #28a2b7 59%, #4c7788 71%, #6c4f63 86%, #432c39 100%); }
+[data-art="notes"]     { background-image: linear-gradient(to top, #cfd9df 0%, #e2ebf0 100%); }
+[data-art="places"]    { background-image: linear-gradient(120deg, #84fab0 0%, #8fd3f4 100%); }
+[data-art="travel"]    { background-image: linear-gradient(to right, #fa709a 0%, #fee140 100%); }
+[data-art="video"]     { background-image: linear-gradient(to top, #a18cd1 0%, #fbc2eb 100%); }

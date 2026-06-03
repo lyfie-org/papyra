@@ -10,9 +10,8 @@ services:
       # Use ./data:/data instead for Syncthing/Obsidian bind-mount access
       - papyra_data:/data
     environment:
-      Storage__NotesDirectory: /data/notes
-      Storage__ImagesDirectory: /data/images
-      # Lucene index is rebuilt from /data/notes on startup — keep it outside the volume
+      Storage__StorageRoot: /data
+      # Lucene index is rebuilt from /data on startup — keep it outside the volume
       Index__Directory: /app/index
       Cors__AllowedOrigins__0: "http://localhost:8080"
     stop_grace_period: 30s

@@ -14,6 +14,12 @@
   --accent-border: rgba(122, 170, 138, 0.5);
   --accent-text: #205c38;
 
+  --danger:        #b91c1c;
+  --danger-hover:  #991b1b;
+  --danger-fg:     #fff;
+  --danger-bg:     rgba(185, 28, 28, 0.10);
+  --danger-border: rgba(185, 28, 28, 0.35);
+
   --shadow-nav: 0 1px 4px rgba(61, 44, 30, 0.06);
   --shadow-card:
     rgba(61, 44, 30, 0.07) 0 2px 8px -1px,
@@ -62,6 +68,12 @@
   --accent-border: rgba(122, 170, 138, 0.35);
   --accent-text: #7aaa8a;
 
+  --danger:        #f87171;
+  --danger-hover:  #fca5a5;
+  --danger-fg:     #3b0000;
+  --danger-bg:     rgba(248, 113, 113, 0.12);
+  --danger-border: rgba(248, 113, 113, 0.28);
+
   --shadow-nav: 0 1px 4px rgba(0, 0, 0, 0.25);
   --shadow-card:
     rgba(0, 0, 0, 0.35) 0 2px 8px -1px,
@@ -87,21 +99,29 @@
    using these same vars — no hard-coded hex inside the editor.
    ─────────────────────────────────────────────────────────────────────────── */
 
-/* Light palette — pastel-tinted beiges */
-[data-note-theme="default"]  { --note-bg: var(--surface); --note-bg-muted: var(--code-bg); }
-[data-note-theme="mint"]     { --note-bg: #e5f2ea; --note-bg-muted: #d8ece0; }
-[data-note-theme="sand"]     { --note-bg: #f5eeda; --note-bg-muted: #ede4cc; }
-[data-note-theme="rose"]     { --note-bg: #f5e5e8; --note-bg-muted: #edd8dc; }
-[data-note-theme="sky"]      { --note-bg: #e5eef7; --note-bg-muted: #d8e5f0; }
-[data-note-theme="lavender"] { --note-bg: #ece8f5; --note-bg-muted: #e0daf0; }
+/* Light palette */
+[data-note-theme="default"]       { --note-bg: var(--surface); --note-bg-muted: var(--code-bg); }
+[data-note-theme="yellow"]        { --note-bg: #fef9c3; --note-bg-muted: #fef08a; }
+[data-note-theme="pastel-green"]  { --note-bg: #dcfce7; --note-bg-muted: #bbf7d0; }
+[data-note-theme="pastel-purple"] { --note-bg: #f3e8ff; --note-bg-muted: #e9d5ff; }
+[data-note-theme="pastel-pink"]   { --note-bg: #fce7f3; --note-bg-muted: #fbcfe8; }
+[data-note-theme="pastel-black"]  { --note-bg: #f1f5f9; --note-bg-muted: #e2e8f0; }
+[data-note-theme="pastel-orange"] { --note-bg: #ffedd5; --note-bg-muted: #fed7aa; }
+[data-note-theme="pastel-blue"]   { --note-bg: #e0f2fe; --note-bg-muted: #bae6fd; }
+[data-note-theme="dark-blue"]     { --note-bg: #bfdbfe; --note-bg-muted: #93c5fd; }
+[data-note-theme="papyra-brown"]  { --note-bg: #e8d8c8; --note-bg-muted: #deccba; }
 
-/* Dark palette — subtle tinted charcoals */
-[data-theme="dark"] [data-note-theme="default"]  { --note-bg: var(--surface); --note-bg-muted: var(--code-bg); }
-[data-theme="dark"] [data-note-theme="mint"]     { --note-bg: #1e2b22; --note-bg-muted: #1a2520; }
-[data-theme="dark"] [data-note-theme="sand"]     { --note-bg: #2a2420; --note-bg-muted: #252019; }
-[data-theme="dark"] [data-note-theme="rose"]     { --note-bg: #2a1e22; --note-bg-muted: #25191e; }
-[data-theme="dark"] [data-note-theme="sky"]      { --note-bg: #1e2430; --note-bg-muted: #191f2a; }
-[data-theme="dark"] [data-note-theme="lavender"] { --note-bg: #231e2a; --note-bg-muted: #1e1925; }
+/* Dark palette — tinted charcoals */
+[data-theme="dark"] [data-note-theme="default"]       { --note-bg: var(--surface); --note-bg-muted: var(--code-bg); }
+[data-theme="dark"] [data-note-theme="yellow"]        { --note-bg: #282608; --note-bg-muted: #221f06; }
+[data-theme="dark"] [data-note-theme="pastel-green"]  { --note-bg: #1a2e21; --note-bg-muted: #162618; }
+[data-theme="dark"] [data-note-theme="pastel-purple"] { --note-bg: #241b33; --note-bg-muted: #1f162c; }
+[data-theme="dark"] [data-note-theme="pastel-pink"]   { --note-bg: #2e1a26; --note-bg-muted: #281420; }
+[data-theme="dark"] [data-note-theme="pastel-black"]  { --note-bg: #17191d; --note-bg-muted: #121417; }
+[data-theme="dark"] [data-note-theme="pastel-orange"] { --note-bg: #2c1c0e; --note-bg-muted: #25160a; }
+[data-theme="dark"] [data-note-theme="pastel-blue"]   { --note-bg: #172136; --note-bg-muted: #121929; }
+[data-theme="dark"] [data-note-theme="dark-blue"]     { --note-bg: #0f1a2e; --note-bg-muted: #0a1220; }
+[data-theme="dark"] [data-note-theme="papyra-brown"]  { --note-bg: #2a2118; --note-bg-muted: #231b12; }
 
 /* Only fires during the ~250ms window when useTheme adds this class */
 .theme-transitioning,
@@ -113,6 +133,31 @@
     color            0.22s ease,
     border-color     0.22s ease,
     box-shadow       0.22s ease !important;
+}
+
+/* ── AuthGuard loading state ─────────────────────────────────────────────────
+   Full-viewport centred spinner shown while /api/auth/me resolves on first load */
+
+.auth-guard__loading {
+  min-height: 100vh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: var(--bg);
+}
+
+.auth-guard__spinner {
+  display: block;
+  width: 36px;
+  height: 36px;
+  border: 3px solid var(--border);
+  border-top-color: var(--accent);
+  border-radius: 50%;
+  animation: auth-spin 0.7s linear infinite;
+}
+
+@keyframes auth-spin {
+  to { transform: rotate(360deg); }
 }
 
 html,

@@ -2,8 +2,8 @@ import { useState, useEffect } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import NoteComposer from '../components/NoteComposer';
 import NoteGrid from '../components/NoteGrid';
+import SharedNotesSection from '../components/SharedNotesSection';
 import NoteEditorModal from '../components/NoteEditorModal';
-import { useSignalR } from '../hooks/useSignalR';
 import './HomePage.css';
 
 export default function HomePage() {
@@ -12,7 +12,6 @@ export default function HomePage() {
 
   const [searchParams, setSearchParams] = useSearchParams();
 
-  // Open a note when the search palette navigates here with ?open=<id>
   useEffect(() => {
     const openId = searchParams.get('open');
     if (openId) {
@@ -21,13 +20,14 @@ export default function HomePage() {
     }
   }, [searchParams, setSearchParams]);
 
-  useSignalR();
+  // SignalR is now managed by SignalRProvider inside AppLayout — no local hook needed.
 
   return (
     <>
       <div className="home-page">
         <NoteComposer />
         <NoteGrid onNoteClick={id => setEditingId(id)} />
+        <SharedNotesSection onNoteClick={id => setEditingId(id)} />
       </div>
 
       {isModalOpen && (

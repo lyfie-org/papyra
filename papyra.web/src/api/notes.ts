@@ -11,12 +11,17 @@ export const notesApi = {
   create: (req: CreateNoteRequest): Promise<{ id: string }> =>
     client.post<{ id: string }>('/notes', req).then(r => r.data),
 
-  update: (id: string, req: UpdateNoteRequest): Promise<void> =>
-    client.put(`/notes/${id}`, req).then(() => undefined),
+  update: (id: string, req: UpdateNoteRequest, idempotencyKey?: string): Promise<void> =>
+    client.put(`/notes/${id}`, req, {
+      headers: idempotencyKey ? { 'X-Idempotency-Key': idempotencyKey } : undefined,
+    }).then(() => undefined),
 
   delete: (id: string): Promise<void> =>
     client.delete(`/notes/${id}`).then(() => undefined),
 
   search: (q: string): Promise<SearchHit[]> =>
     client.get<SearchHit[]>('/search', { params: { q } }).then(r => r.data),
+
+  fuzzySearch: (q: string, limit = 10): Promise<NoteSummary[]> =>
+    client.get<NoteSummary[]>('/api/search/fuzzy', { params: { q, limit } }).then(r => r.data),
 };

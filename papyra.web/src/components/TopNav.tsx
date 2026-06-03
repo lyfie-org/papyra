@@ -38,7 +38,7 @@ export default function TopNav() {
       <div className="top-nav__actions">
         <button
           className="top-nav__search-btn"
-          onClick={openSearch}
+          onClick={() => openSearch()}
           aria-label="Search notes (Cmd+K)"
           title="Search (Cmd+K)"
         >
