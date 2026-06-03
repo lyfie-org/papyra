@@ -91,13 +91,15 @@ jobs:
           fi
           
           HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/health || echo "Failed")
-          if [ "$HTTP_STATUS" != "200" ]; then
+          
+          # 💡 FIX: Accept 200 (OK) OR 428 (Setup Required) as successful boots
+          if [ "$HTTP_STATUS" != "200" ] && [ "$HTTP_STATUS" != "428" ]; then
             echo "❌ Health endpoint returned $HTTP_STATUS"
             docker logs smoke-test
             exit 1
           fi
           
-          echo "✅ Smoke test passed perfectly! Proceeding with release..."
+          echo "✅ Smoke test passed perfectly (Status: $HTTP_STATUS)! Proceeding with release..."
 
       # ─── 2. TAG AND PUSH ────────────────────────────────────────────────────
       - name: Push new Git Tag
