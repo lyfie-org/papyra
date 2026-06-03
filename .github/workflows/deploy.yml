@@ -92,7 +92,6 @@ jobs:
           
           HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/health || echo "Failed")
           
-          # 💡 FIX: Accept 200 (OK) OR 428 (Setup Required) as successful boots
           if [ "$HTTP_STATUS" != "200" ] && [ "$HTTP_STATUS" != "428" ]; then
             echo "❌ Health endpoint returned $HTTP_STATUS"
             docker logs smoke-test
@@ -101,10 +100,9 @@ jobs:
           
           echo "✅ Smoke test passed perfectly (Status: $HTTP_STATUS)! Proceeding with release..."
 
-      # ─── 2. TAG AND PUSH ────────────────────────────────────────────────────
+      # ─── 2. TAG AND PUSH DOCKER IMAGE ───────────────────────────────────────
       - name: Push new Git Tag
         run: |
-          # We only push the tag AFTER the smoke test confirms the build is healthy
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
           git tag ${{ env.NEW_TAG }}
@@ -125,3 +123,19 @@ jobs:
           tags: |
             ${{ secrets.DOCKERHUB_USERNAME }}/papyra:${{ env.NEW_TAG }}
             ${{ secrets.DOCKERHUB_USERNAME }}/papyra:latest
+
+      # ─── 3. SYNC DEV BRANCH ─────────────────────────────────────────────────
+      - name: Sync main back to dev
+        if: github.ref == 'refs/heads/main'
+        run: |
+          echo "Syncing main branch back to dev branch..."
+          
+          git fetch origin main dev
+          
+          git checkout dev
+          
+          git merge origin/main --no-edit
+          
+          git push origin dev
+          
+          echo "✅ Dev branch successfully synced with main!"
