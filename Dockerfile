@@ -5,7 +5,7 @@
 # ─── Stage 1: Node — build frontend ──────────────────────────────────────────
 FROM --platform=$BUILDPLATFORM node:22-alpine AS frontend
 
-RUN corepack enable && corepack prepare pnpm@latest --activate
+RUN corepack enable && corepack prepare pnpm@11.5.1 --activate
 
 WORKDIR /build
 
@@ -17,7 +17,7 @@ RUN pnpm install --frozen-lockfile
 
 COPY papyra.web/ papyra.web/
 
-RUN pnpm --filter papyra-web build
+RUN pnpm --filter ./papyra.web build
 
 # ─── Stage 2: .NET — restore ──────────────────────────────────────────────────
 FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:10.0 AS dotnet-restore
