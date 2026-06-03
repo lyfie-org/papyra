@@ -50,6 +50,41 @@ jobs:
           git tag "${{ steps.version.outputs.next }}"
           git push origin "${{ steps.version.outputs.next }}"
 
+
+      - name: Build local image for Smoke Test
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64 # Only need to test one architecture for the smoke test
+          load: true # Load it into the local Docker daemon instead of pushing
+          tags: papyra-smoketest:latest
+
+      - name: Run Smoke Test
+        run: |
+          # 1. Boot the container in the background
+          docker run -d -p 8080:8080 --name smoke-test papyra-smoketest:latest
+          
+          # 2. Wait up to 10 seconds for the app to boot
+          echo "Waiting for container to initialize..."
+          sleep 10
+          
+          # 3. Check if the container crashed (like the ICU error)
+          if [ "$(docker inspect -f '{{.State.Status}}' smoke-test)" != "running" ]; then
+            echo "Container crashed on boot! Logs:"
+            docker logs smoke-test
+            exit 1 # Fail the pipeline
+          fi
+          
+          # 4. Check if the app is actually responding
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/health || echo "Failed")
+          if [ "$HTTP_STATUS" != "200" ]; then
+            echo "Health endpoint returned $HTTP_STATUS"
+            docker logs smoke-test
+            exit 1 # Fail the pipeline
+          fi
+          
+          echo "Smoke test passed perfectly!"
+
       - name: Build and push multi-arch image
         uses: docker/build-push-action@v6
         with:

@@ -18,8 +18,11 @@ public sealed class NoteAuthzFixture : IAsyncLifetime
     {
         _factory = new PapyraWebFactory();
         await ((IAsyncLifetime)_factory).InitializeAsync();
+
+        // Force background hosted services to boot
         _ = _factory.Server;
 
+        // Alice is the admin — sets up the instance
         Alice = _factory.CreateClient();
         var setupResp = await Alice.PostAsJsonAsync("/api/auth/setup",
             new { username = "alice", password = "AlicePass1!", email = "alice@papyra.test" });
@@ -31,6 +34,12 @@ public sealed class NoteAuthzFixture : IAsyncLifetime
         var bobResp = await Bob.PostAsJsonAsync("/api/auth/register",
             new { username = "bob", password = "BobPass1!", email = "bob@papyra.test" });
         bobResp.EnsureSuccessStatusCode();
+
+        var primeResp = await Alice.PostAsJsonAsync("/notes", new { title = "Watcher Prime" });
+        primeResp.EnsureSuccessStatusCode();
+        var primeId = (await primeResp.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetString()!;
+        
+        await PollUntilNoteVisible(Alice, primeId, 15000); 
 
         var noteResp = await Alice.PostAsJsonAsync("/notes",
             new { title = "Alice's Private Note", tags = new[] { "private" } });
