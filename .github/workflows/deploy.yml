@@ -124,18 +124,18 @@ jobs:
             ${{ secrets.DOCKERHUB_USERNAME }}/papyra:${{ env.NEW_TAG }}
             ${{ secrets.DOCKERHUB_USERNAME }}/papyra:latest
 
-      # ─── 3. SYNC DEV BRANCH ─────────────────────────────────────────────────
-      - name: Sync main back to dev
+      # ─── 3. SYNC development BRANCH ─────────────────────────────────────────────────
+      - name: Sync main back to development
         if: github.ref == 'refs/heads/main'
         run: |
-          echo "Syncing main branch back to dev branch..."
+          echo "Syncing main branch back to development branch..."
           
-          git fetch origin main dev
+          git fetch origin main development
           
-          git checkout dev
+          git checkout development
           
           git merge origin/main --no-edit
           
-          git push origin dev
+          git push origin development
           
-          echo "✅ Dev branch successfully synced with main!"
+          echo "✅ development branch successfully synced with main!"
