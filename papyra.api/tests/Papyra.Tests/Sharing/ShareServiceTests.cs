@@ -154,9 +154,14 @@ public sealed class ShareServiceTests : IDisposable
         };
         await _sut.CreateAsync(r);
 
-        // Flip the last char of the signature segment
-        var dot     = token.IndexOf('.');
-        var tampered = token[..dot] + "." + token[(dot + 1)..^1] + (token[^1] == 'A' ? 'B' : 'A');
+        // Target the very first character of the signature right after the dot
+        var dot = token.IndexOf('.');
+        var signatureStart = dot + 1;
+        
+        var tampered = token[..signatureStart] + 
+                       (token[signatureStart] == 'A' ? 'B' : 'A') + 
+                       token[(signatureStart + 1)..];
+
         Assert.Null(_sut.ValidatePublicToken(tampered));
     }
 
