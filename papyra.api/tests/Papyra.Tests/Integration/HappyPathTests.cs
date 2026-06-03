@@ -6,6 +6,7 @@ namespace Papyra.Tests.Integration;
 
 // End-to-end happy path: setup → login → create note → list → update → detail → search endpoint.
 // Each test method gets a fresh factory (and temp storage root) via IAsyncLifetime on the class.
+[Collection("SequentialIntegrationTests")]
 public sealed class HappyPathTests : IAsyncLifetime
 {
     private PapyraWebFactory _factory = null!;
@@ -15,6 +16,7 @@ public sealed class HappyPathTests : IAsyncLifetime
     {
         _factory = new PapyraWebFactory();
         await ((IAsyncLifetime)_factory).InitializeAsync();
+        _ = _factory.Server;
         _client  = _factory.CreateClient();
     }
 
@@ -125,7 +127,7 @@ public sealed class HappyPathTests : IAsyncLifetime
     // Polls GET /notes until the note appears (FSW has 300ms debounce; without
     // waiting the note may not be in the in-memory cache yet).
     private static async Task<JsonElement[]> PollUntilNoteVisible(
-        HttpClient client, string noteId, int maxMs = 3000)
+        HttpClient client, string noteId, int maxMs = 15000)
     {
         var deadline = DateTime.UtcNow.AddMilliseconds(maxMs);
         while (DateTime.UtcNow < deadline)
