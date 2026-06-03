@@ -23,6 +23,10 @@ public sealed class NoteAuthzTests : IAsyncLifetime
         _factory = new PapyraWebFactory();
         await ((IAsyncLifetime)_factory).InitializeAsync();
 
+        // 💡 FORCE the TestServer host to boot and start all background hosted 
+        // services (like NoteWatcherService) right now, before we hit endpoints.
+        _ = _factory.Server; 
+
         // Alice is the admin — sets up the instance
         _alice = _factory.CreateClient();
         var setupResp = await _alice.PostAsJsonAsync("/api/auth/setup",
