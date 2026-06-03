@@ -1,27 +1,112 @@
-name: Deploy
+name: Deploy to Docker Hub
 
 on:
   workflow_dispatch:
-    branches:
-      - main
+    inputs:
+      bump:
+        description: 'Version Bump Type'
+        required: true
+        default: 'patch'
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
 
 permissions:
   contents: write
 
 jobs:
-  build-and-push:
-    name: Build, tag, and push Docker image
+  build-and-deploy:
+    name: Build, Test, Tag, and Push
     runs-on: ubuntu-latest
-
+    
     steps:
-      - name: Checkout (full history for tagging)
+      - name: Checkout Code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
-          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Calculate Next Version
+        id: versioning
+        run: |
+          # Find the latest tag, default to v0.0.0 if none exists
+          LATEST_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "v0.0.0")
+          echo "Current latest tag: $LATEST_TAG"
+          
+          # Remove the 'v' prefix
+          VERSION=${LATEST_TAG#v}
+          
+          # Split into Major, Minor, Patch array
+          IFS='.' read -r -a PARTS <<< "$VERSION"
+          MAJOR=${PARTS[0]}
+          MINOR=${PARTS[1]}
+          PATCH=${PARTS[2]}
+          
+          # Calculate new version based on UI input
+          BUMP_TYPE="${{ github.event.inputs.bump }}"
+          if [ "$BUMP_TYPE" == "major" ]; then
+            MAJOR=$((MAJOR + 1))
+            MINOR=0
+            PATCH=0
+          elif [ "$BUMP_TYPE" == "minor" ]; then
+            MINOR=$((MINOR + 1))
+            PATCH=0
+          else
+            PATCH=$((PATCH + 1))
+          fi
+          
+          NEW_TAG="v$MAJOR.$MINOR.$PATCH"
+          echo "Calculated new tag: $NEW_TAG"
+          
+          # Save to environment variables for later steps
+          echo "NEW_TAG=$NEW_TAG" >> $GITHUB_ENV
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
+
+      # ─── 1. BUILD & RUN SMOKE TEST ──────────────────────────────────────────
+      - name: Build local image for Smoke Test
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          load: true
+          tags: papyra-smoketest:latest
+
+      - name: Run Smoke Test
+        run: |
+          docker run -d -p 8080:8080 --name smoke-test papyra-smoketest:latest
+          
+          echo "Waiting 10 seconds for container to initialize..."
+          sleep 10
+          
+          if [ "$(docker inspect -f '{{.State.Status}}' smoke-test)" != "running" ]; then
+            echo "❌ Container crashed on boot! Logs:"
+            docker logs smoke-test
+            exit 1
+          fi
+          
+          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/health || echo "Failed")
+          if [ "$HTTP_STATUS" != "200" ]; then
+            echo "❌ Health endpoint returned $HTTP_STATUS"
+            docker logs smoke-test
+            exit 1
+          fi
+          
+          echo "✅ Smoke test passed perfectly! Proceeding with release..."
+
+      # ─── 2. TAG AND PUSH ────────────────────────────────────────────────────
+      - name: Push new Git Tag
+        run: |
+          # We only push the tag AFTER the smoke test confirms the build is healthy
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag ${{ env.NEW_TAG }}
+          git push origin ${{ env.NEW_TAG }}
 
       - name: Log in to Docker Hub
         uses: docker/login-action@v3
@@ -29,77 +114,12 @@ jobs:
           username: ${{ secrets.DOCKERHUB_USERNAME }}
           password: ${{ secrets.DOCKERHUB_TOKEN }}
 
-      - name: Determine next version
-        id: version
-        run: |
-          git fetch --tags
-          LATEST=$(git tag -l 'v*.*.*' | sort -V | tail -1)
-          if [ -z "$LATEST" ]; then
-            NEXT="v1.0.0"
-          else
-            # Strip leading 'v', split on '.', increment patch
-            IFS='.' read -r MAJOR MINOR PATCH <<< "${LATEST#v}"
-            NEXT="v${MAJOR}.${MINOR}.$((PATCH + 1))"
-          fi
-          echo "next=$NEXT" >> "$GITHUB_OUTPUT"
-
-      - name: Tag commit and push
-        run: |
-          git config user.name  "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag "${{ steps.version.outputs.next }}"
-          git push origin "${{ steps.version.outputs.next }}"
-
-
-      - name: Build local image for Smoke Test
-        uses: docker/build-push-action@v6
-        with:
-          context: .
-          platforms: linux/amd64 # Only need to test one architecture for the smoke test
-          load: true # Load it into the local Docker daemon instead of pushing
-          tags: papyra-smoketest:latest
-
-      - name: Run Smoke Test
-        run: |
-          # 1. Boot the container in the background
-          docker run -d -p 8080:8080 --name smoke-test papyra-smoketest:latest
-          
-          # 2. Wait up to 10 seconds for the app to boot
-          echo "Waiting for container to initialize..."
-          sleep 10
-          
-          # 3. Check if the container crashed (like the ICU error)
-          if [ "$(docker inspect -f '{{.State.Status}}' smoke-test)" != "running" ]; then
-            echo "Container crashed on boot! Logs:"
-            docker logs smoke-test
-            exit 1 # Fail the pipeline
-          fi
-          
-          # 4. Check if the app is actually responding
-          HTTP_STATUS=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/health || echo "Failed")
-          if [ "$HTTP_STATUS" != "200" ]; then
-            echo "Health endpoint returned $HTTP_STATUS"
-            docker logs smoke-test
-            exit 1 # Fail the pipeline
-          fi
-          
-          echo "Smoke test passed perfectly!"
-
-      - name: Build and push multi-arch image
+      - name: Build and push multi-arch image to Docker Hub
         uses: docker/build-push-action@v6
         with:
           context: .
           platforms: linux/amd64,linux/arm64
           push: true
           tags: |
-            lyfie/papyra:${{ steps.version.outputs.next }}
-            lyfie/papyra:latest
-          cache-from: type=gha
-          cache-to:   type=gha,mode=max
-
-      - name: Sync main → development
-        run: |
-          git fetch origin development
-          git checkout development
-          git merge --ff-only origin/main
-          git push origin development
+            ${{ secrets.DOCKERHUB_USERNAME }}/papyra:${{ env.NEW_TAG }}
+            ${{ secrets.DOCKERHUB_USERNAME }}/papyra:latest
