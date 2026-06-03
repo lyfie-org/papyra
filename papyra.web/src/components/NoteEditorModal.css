@@ -21,6 +21,7 @@
   flex-direction: column;
   box-shadow: 0 24px 64px rgba(0, 0, 0, 0.28);
   overflow: hidden;
+  position: relative;
 }
 
 /* ── Luthor editor background inheritance ──────────────────────────────────
@@ -74,23 +75,29 @@
 /* ── Header ── */
 .modal-header {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   gap: 12px;
-  padding: 16px 20px 14px;
-  /* color-mix adapts to light and dark note colours */
+  padding: 16px 20px 12px;
   border-bottom: 1px solid color-mix(in srgb, currentColor 12%, transparent);
   flex-shrink: 0;
 }
 
-.modal-title-input {
+.modal-header-title-area {
   flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.modal-title-input {
   border: none;
   background: transparent;
   font-size: 1.25rem;
   font-weight: 600;
   color: inherit;
   min-width: 0;
-  /* Focus ring provided by global :focus-visible rule in index.css */
+  width: 100%;
   outline: none;
 }
 
@@ -101,7 +108,6 @@
 }
 
 .modal-title-input::placeholder {
-  /* Adapts to any note colour — readable on both light and dark backgrounds */
   color: color-mix(in srgb, currentColor 30%, transparent);
 }
 
@@ -112,29 +118,54 @@
   flex-shrink: 0;
 }
 
-/* ── Auto-save status indicator ── */
+/* ── Persistent save status (top-left, always visible) ── */
 
-.modal-save-status {
+.modal-persistent-status {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
   font-family: var(--sans);
-  font-size: 0.72rem;
-  letter-spacing: 0.02em;
-  min-width: 48px; /* prevents layout shift when text appears/disappears */
-  text-align: right;
-  transition: opacity 0.2s ease;
+  font-size: 0.7rem;
+  letter-spacing: 0.01em;
+  transition: color 0.2s ease, opacity 0.2s ease;
 }
 
-.modal-save-status:empty {
-  opacity: 0;
+.modal-persistent-status--idle,
+.modal-persistent-status--saved {
+  color: var(--accent-text);
+  opacity: 0.75;
 }
 
-.modal-save-status--saving {
+.modal-persistent-status--saving {
   color: var(--text);
   opacity: 0.5;
 }
 
-.modal-save-status--saved {
-  color: var(--accent-text);
-  opacity: 0.8;
+.modal-persistent-status--error {
+  color: #dc2626;
+  opacity: 1;
+  font-weight: 500;
+}
+
+.btn--save-now {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  margin-left: 6px;
+  padding: 3px 9px;
+  border-radius: 6px;
+  border: 1px solid #dc2626;
+  background: rgba(220, 38, 38, 0.08);
+  color: #dc2626;
+  font-family: var(--sans);
+  font-size: 0.7rem;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background 0.12s ease;
+}
+
+.btn--save-now:hover {
+  background: rgba(220, 38, 38, 0.15);
 }
 
 /* ── Body ── */
@@ -171,36 +202,29 @@
   flex-shrink: 0;
 }
 
-.modal-footer-meta {
+.modal-footer-dates {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 16px;
 }
 
-.modal-footer-saved {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
+.modal-footer-date-item {
+  display: flex;
+  align-items: baseline;
+  gap: 5px;
+  font-family: var(--mono);
+  font-size: 0.68rem;
+  color: color-mix(in srgb, currentColor 38%, transparent);
+  white-space: nowrap;
+}
+
+.modal-footer-date-label {
   font-family: var(--sans);
-  font-size: 0.72rem;
+  font-size: 0.65rem;
   font-weight: 500;
-  color: var(--accent-text);
-  opacity: 0;
-  transition: opacity 0.35s ease;
-  pointer-events: none;
-  white-space: nowrap;
-}
-
-.modal-footer-saved--visible {
-  opacity: 1;
-  transition: opacity 0.1s ease;
-}
-
-.modal-footer-date {
-  font-family: var(--sans);
-  font-size: 0.72rem;
-  color: color-mix(in srgb, currentColor 40%, transparent);
-  white-space: nowrap;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  opacity: 0.7;
 }
 
 /* ── Shared buttons ── */
@@ -251,5 +275,11 @@
 
 .btn--icon:hover {
   background: color-mix(in srgb, currentColor 8%, transparent);
+  opacity: 1;
+}
+
+.btn--icon-active {
+  background: var(--accent-bg);
+  color: var(--accent-text);
   opacity: 1;
 }

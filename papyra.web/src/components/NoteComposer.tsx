@@ -110,8 +110,8 @@ export default function NoteComposer() {
     if (debounceRef.current) {
       clearTimeout(debounceRef.current);
       debounceRef.current = null;
-      if (localNoteIdRef.current || titleRef.current.trim()) autoSave();
     }
+    if (localNoteIdRef.current || titleRef.current.trim()) autoSave();
     resetComposer();
   }, [autoSave, resetComposer]);
 

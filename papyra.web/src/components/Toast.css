@@ -1,0 +1,94 @@
+/* ── Toast container ─────────────────────────────────────────────────────── */
+
+.toast-container {
+  position: fixed;
+  top: 1rem;
+  right: 1rem;
+  z-index: 9000;
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  pointer-events: none;
+  width: 320px;
+}
+
+/* ── Individual toast ────────────────────────────────────────────────────── */
+
+.toast {
+  pointer-events: all;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.65rem 0.75rem 0.65rem 0.85rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: var(--shadow);
+  font: 500 0.84rem/1.4 var(--sans);
+  color: var(--text-h);
+  animation: toast-slide-in 0.18s ease;
+}
+
+.toast--success {
+  background: var(--accent-bg);
+  border-color: var(--accent-border);
+}
+.toast--success .toast__icon { color: var(--accent-text); }
+
+.toast--error {
+  background: var(--danger-bg);
+  border-color: var(--danger-border);
+}
+.toast--error .toast__icon { color: var(--danger); }
+
+.toast--info .toast__icon { color: var(--text); }
+
+/* ── Parts ───────────────────────────────────────────────────────────────── */
+
+.toast__icon {
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+}
+
+.toast__message {
+  flex: 1;
+  min-width: 0;
+  overflow-wrap: anywhere;
+}
+
+.toast__dismiss {
+  flex-shrink: 0;
+  background: none;
+  border: none;
+  padding: 0.25rem;
+  margin-left: 0.1rem;
+  cursor: pointer;
+  color: var(--text);
+  display: flex;
+  align-items: center;
+  border-radius: 4px;
+  opacity: 0.6;
+  transition: opacity 0.12s;
+}
+
+.toast__dismiss:hover { opacity: 1; }
+.toast__dismiss:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
+@keyframes toast-slide-in {
+  from { opacity: 0; transform: translateX(16px); }
+  to   { opacity: 1; transform: translateX(0);    }
+}
+
+@media (max-width: 480px) {
+  .toast-container {
+    top: auto;
+    bottom: 1rem;
+    right: 0.75rem;
+    left: 0.75rem;
+    width: auto;
+  }
+}

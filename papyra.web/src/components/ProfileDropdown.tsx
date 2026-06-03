@@ -1,13 +1,8 @@
 import { useRef, useEffect, type RefObject } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { GearSix, Wrench, SignOut, Pencil, Lifebuoy } from '@phosphor-icons/react';
+import { useAuth, useLogout } from '../hooks/useAuth';
 import './ProfileDropdown.css';
-
-const USER = {
-  name: 'Rahul NS Anand',
-  email: 'rahul.anand@papyra.app',
-  initials: 'RA',
-};
 
 interface ProfileDropdownProps {
   triggerRef: RefObject<HTMLButtonElement | null>;
@@ -17,6 +12,16 @@ interface ProfileDropdownProps {
 export default function ProfileDropdown({ triggerRef, onClose }: ProfileDropdownProps) {
   const navigate = useNavigate();
   const panelRef = useRef<HTMLDivElement>(null);
+  const { mutate: logout } = useLogout();
+  const { data: auth } = useAuth();
+
+  const displayName = auth?.name ?? auth?.username ?? '';
+  const displayEmail = auth?.email ?? '';
+  const initials = displayName
+    .split(' ')
+    .slice(0, 2)
+    .map(s => s[0]?.toUpperCase() ?? '')
+    .join('');
 
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -51,13 +56,13 @@ export default function ProfileDropdown({ triggerRef, onClose }: ProfileDropdown
       {/* ── Identity ─────────────────────────────────────────────────── */}
       <div className="pd-identity">
         <div className="pd-avatar">
-          <span className="pd-avatar__initials">{USER.initials}</span>
+          <span className="pd-avatar__initials">{initials}</span>
           <button className="pd-avatar__edit-pill" aria-label="Edit avatar">
             <Pencil size={9} aria-hidden="true" weight="regular" />
           </button>
         </div>
-        <p className="pd-name">{USER.name}</p>
-        <p className="pd-email">{USER.email}</p>
+        <p className="pd-name">{displayName}</p>
+        <p className="pd-email">{displayEmail}</p>
       </div>
 
       {/* ── Action pills ──────────────────────────────────────────────── */}
@@ -75,7 +80,7 @@ export default function ProfileDropdown({ triggerRef, onClose }: ProfileDropdown
       <hr className="pd-divider" />
 
       {/* ── Sign out ──────────────────────────────────────────────────── */}
-      <button className="pd-signout" onClick={onClose}>
+      <button className="pd-signout" onClick={() => { onClose(); logout(undefined, { onSuccess: () => navigate('/login') }); }}>
         <SignOut size={15} aria-hidden="true" />
         Sign Out
       </button>

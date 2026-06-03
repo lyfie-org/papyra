@@ -1,0 +1,94 @@
+/* ── TrashPage ────────────────────────────────────────────────────────────────── */
+
+.trash-page {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: 2rem 1.5rem 4rem;
+}
+
+.trash-page__header {
+  display: flex;
+  align-items: baseline;
+  gap: 0.75rem;
+  margin-bottom: 1.5rem;
+}
+
+.trash-page__title {
+  font: 600 1.75rem/1.1 var(--heading);
+  color: var(--text-h);
+  margin: 0;
+}
+
+.trash-page__count {
+  font: 400 0.875rem/1 var(--sans);
+  color: var(--text);
+  margin: 0;
+}
+
+.trash-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+
+.trash-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  padding: 0.85rem 1rem;
+  opacity: 0.85;
+}
+
+.trash-item__title {
+  font: 500 0.9rem/1.3 var(--sans);
+  color: var(--text);
+  flex: 1;
+  overflow: hidden;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  text-decoration: line-through;
+  text-decoration-color: color-mix(in srgb, var(--text) 40%, transparent);
+}
+
+.trash-item__actions {
+  display: flex;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+
+.trash-btn {
+  font: 500 0.8rem/1 var(--sans);
+  color: var(--accent-text);
+  background: var(--accent-bg);
+  border: 1px solid var(--accent-border);
+  border-radius: 6px;
+  padding: 0.35rem 0.75rem;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+.trash-btn:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+
+.trash-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.trash-btn--danger {
+  color: #c0392b;
+  background: color-mix(in srgb, #c0392b 8%, transparent);
+  border-color: color-mix(in srgb, #c0392b 25%, transparent);
+}
+
+.trash-btn--danger:hover:not(:disabled) {
+  background: color-mix(in srgb, #c0392b 15%, transparent);
+}

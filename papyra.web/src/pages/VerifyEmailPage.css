@@ -1,0 +1,75 @@
+/* ── VerifyEmailPage ──────────────────────────────────────── */
+
+.verify-email-page {
+  min-height: 100dvh;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 2rem;
+  background: var(--bg);
+}
+
+.verify-email-page__card {
+  background: var(--surface);
+  border: 1px solid color-mix(in srgb, var(--text) 12%, transparent);
+  border-radius: 12px;
+  padding: 2.5rem;
+  width: min(92vw, 420px);
+  box-shadow: var(--shadow-md);
+  text-align: center;
+}
+
+.verify-email-page__header {
+  margin-bottom: 2rem;
+}
+
+.verify-email-page__title {
+  font-family: var(--heading);
+  font-size: 1.75rem;
+  color: var(--text);
+  margin: 0;
+}
+
+.verify-email-page__body {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  color: var(--text);
+  font-size: 0.95rem;
+}
+
+.verify-email-page__lead {
+  font-size: 1.1rem;
+  font-weight: 600;
+  margin: 0;
+}
+
+.verify-email-page__lead--success { color: var(--accent); }
+
+.verify-email-page__lead--error {
+  color: color-mix(in srgb, var(--danger, #c0392b) 90%, transparent);
+}
+
+.verify-email-page__btn {
+  display: inline-block;
+  margin-top: 0.5rem;
+  padding: 0.6rem 1.5rem;
+  background: var(--accent);
+  color: var(--accent-fg);
+  border-radius: 6px;
+  font-weight: 600;
+  text-decoration: none;
+  font-size: 0.95rem;
+}
+
+.verify-email-page__btn--outline {
+  background: transparent;
+  color: var(--text);
+  border: 1px solid color-mix(in srgb, var(--text) 25%, transparent);
+}
+
+.verify-email-page__link {
+  color: var(--accent-text, var(--accent));
+  text-decoration: underline;
+}

@@ -1,20 +1,19 @@
 .note-card {
-  display: inline-block; /* required for break-inside: avoid inside CSS columns */
+  display: inline-flex; /* flex column so body + actions bar stack cleanly */
+  flex-direction: column;
   width: 100%;
   box-sizing: border-box;
   background: var(--note-bg, var(--surface));
   border-radius: 12px;
-  padding: 16px;
   margin-bottom: 16px;
   box-shadow: var(--shadow-card);
   border: 1px solid color-mix(in srgb, var(--border) 60%, var(--note-bg, var(--surface)) 40%);
   break-inside: avoid;
-  max-height: 400px;
-  overflow: hidden;
   cursor: pointer;
   transition: box-shadow 0.15s ease, transform 0.15s ease;
   position: relative;
   z-index: 0;
+  /* No overflow:hidden here — portals render in document.body, card clips via __body */
 }
 
 .note-card:hover {
@@ -45,17 +44,25 @@
   background-position: center;
 }
 
-.note-card[data-note-art="none"]::before { background-image: none; opacity: 0; }
+.note-card[data-note-art="none"]::before      { background-image: none; opacity: 0; }
 .note-card[data-note-art="groceries"]::before { background-image: radial-gradient(circle, #ff9a9e 0%, #fecfef 99%, #fecfef 100%); }
-.note-card[data-note-art="food"]::before { background-image: linear-gradient(120deg, #f6d365 0%, #fda085 100%); }
-.note-card[data-note-art="music"]::before { background-image: linear-gradient(to right, #4facfe 0%, #00f2fe 100%); }
-.note-card[data-note-art="recipes"]::before { background-image: linear-gradient(to top, #4fb576 0%, #44c489 30%, #28a9ae 46%, #28a2b7 59%, #4c7788 71%, #6c4f63 86%, #432c39 100%); }
-.note-card[data-note-art="notes"]::before { background-image: linear-gradient(to top, #cfd9df 0%, #e2ebf0 100%); }
-.note-card[data-note-art="places"]::before { background-image: linear-gradient(120deg, #84fab0 0%, #8fd3f4 100%); }
-.note-card[data-note-art="travel"]::before { background-image: linear-gradient(to right, #fa709a 0%, #fee140 100%); }
-.note-card[data-note-art="video"]::before { background-image: linear-gradient(to top, #a18cd1 0%, #fbc2eb 100%); }
-.note-card[data-note-art="celebration"]::before { background-image: linear-gradient(120deg, #e0c3fc 0%, #8ec5fc 100%); }
+.note-card[data-note-art="food"]::before      { background-image: linear-gradient(120deg, #f6d365 0%, #fda085 100%); }
+.note-card[data-note-art="music"]::before     { background-image: linear-gradient(to right, #4facfe 0%, #00f2fe 100%); }
+.note-card[data-note-art="recipes"]::before   { background-image: linear-gradient(to top, #4fb576 0%, #44c489 30%, #28a9ae 46%, #28a2b7 59%, #4c7788 71%, #6c4f63 86%, #432c39 100%); }
+.note-card[data-note-art="notes"]::before     { background-image: linear-gradient(to top, #cfd9df 0%, #e2ebf0 100%); }
+.note-card[data-note-art="places"]::before    { background-image: linear-gradient(120deg, #84fab0 0%, #8fd3f4 100%); }
+.note-card[data-note-art="travel"]::before    { background-image: linear-gradient(to right, #fa709a 0%, #fee140 100%); }
+.note-card[data-note-art="video"]::before     { background-image: linear-gradient(to top, #a18cd1 0%, #fbc2eb 100%); }
 
+
+/* -- Content body — clips note text, never clips the actions bar ------------- */
+
+.note-card__body {
+  padding: 16px 16px 12px;
+  overflow: hidden;
+  max-height: 360px;
+  flex: 1;
+}
 
 /* -- Header -- */
 
@@ -178,50 +185,23 @@
   fill: var(--text);
 }
 
-/* -- Card toolbar (palette button + popover) -- */
+/* -- Structural actions bar — in-flow, never overlaps note text -------------- */
 
-/* Gradient fade behind toolbar so icons read on any card colour */
-.note-card::after {
-  content: '';
-  position: absolute;
-  bottom: 0; left: 0; right: 0;
-  height: 52px;
-  background: linear-gradient(to bottom, transparent, color-mix(in srgb, var(--note-bg, var(--surface)) 90%, transparent));
-  border-radius: 0 0 12px 12px;
-  pointer-events: none;
-  z-index: 5;
-  opacity: 0;
-  transition: opacity 0.12s ease;
-}
-
-.note-card:hover::after,
-.note-card:has(.note-card__toolbar-btn--active)::after,
-.note-card:has(.note-card__more-menu)::after,
-.note-card:has(.note-card__theme-popover)::after {
-  opacity: 1;
-}
-
-.note-card__toolbar {
-  position: absolute;
-  bottom: 8px;
-  left: 8px;
-  right: 8px;
+.note-card__actions {
   display: flex;
   align-items: center;
-  justify-content: flex-start;
   gap: 4px;
+  padding: 4px 10px 8px;
+  flex-shrink: 0;
   opacity: 0;
   transition: opacity 0.12s ease;
-  pointer-events: none;
-  z-index: 6;
+  border-top: 1px solid color-mix(in srgb, var(--border) 35%, transparent);
+  margin-top: 2px;
 }
 
-.note-card:hover .note-card__toolbar,
-.note-card__toolbar:has(.note-card__toolbar-btn--active),
-.note-card__toolbar:has(.note-card__more-menu),
-.note-card__toolbar:has(.note-card__theme-popover) {
+.note-card:hover .note-card__actions,
+.note-card:has(.note-card__toolbar-btn--active) .note-card__actions {
   opacity: 1;
-  pointer-events: auto;
 }
 
 .note-card__toolbar-btn {
@@ -244,20 +224,17 @@
   background: color-mix(in srgb, var(--text) 12%, transparent);
 }
 
-.note-card__theme-popover {
-  position: absolute;
-  bottom: calc(100% + 6px);
-  left: 0;
-  z-index: 20;
+/* -- Portal popups — rendered in document.body, positioned via inline style -- */
+
+.note-card__theme-popover--portal,
+.note-card__more-menu--portal {
+  position: fixed;
+  z-index: 600;
 }
 
 /* -- More options dropdown --------------------------------------------------- */
 
-.note-card__more-menu {
-  position: absolute;
-  bottom: calc(100% + 6px);
-  right: 0;
-  z-index: 20;
+.note-card__more-menu--portal {
   background: var(--surface);
   border: 1px solid var(--border);
   border-radius: 10px;

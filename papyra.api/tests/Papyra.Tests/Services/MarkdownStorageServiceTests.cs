@@ -153,6 +153,39 @@ public sealed class MarkdownStorageServiceTests
         Assert.Equal("Content", note.Content);
     }
 
+    // ── Timestamps ───────────────────────────────────────────────────────────
+
+    [Fact]
+    public void SerializeNote_ContainsTimestampFields()
+    {
+        var ts = new DateTime(2026, 6, 2, 12, 0, 0, DateTimeKind.Utc);
+        var note = MakeNote(createdAt: ts, updatedAt: ts);
+        var result = _sut.SerializeNote(note);
+        Assert.Contains("created_at:", result);
+        Assert.Contains("updated_at:", result);
+    }
+
+    [Fact]
+    public void DeserializeNote_ParsesTimestamps()
+    {
+        var ts = new DateTime(2026, 6, 2, 12, 0, 0, DateTimeKind.Utc);
+        var note = MakeNote(createdAt: ts, updatedAt: ts.AddHours(1));
+        var serialized = _sut.SerializeNote(note);
+        var result = _sut.DeserializeNote(serialized);
+        Assert.Equal(ts, result.CreatedAt);
+        Assert.Equal(ts.AddHours(1), result.UpdatedAt);
+    }
+
+    [Fact]
+    public void DeserializeNote_MissingTimestamps_DefaultsToUtcNow()
+    {
+        const string raw = "---\nid: x\ntitle: \"T\"\ntags: []\npinned: false\ncolor: \"\"\n---\n";
+        var before = DateTime.UtcNow.AddSeconds(-1);
+        var note = _sut.DeserializeNote(raw);
+        Assert.True(note.CreatedAt >= before);
+        Assert.True(note.UpdatedAt >= before);
+    }
+
     // ── Round-trip ────────────────────────────────────────────────────────────
 
     [Theory]
@@ -168,22 +201,27 @@ public sealed class MarkdownStorageServiceTests
         Assert.Equal(original.Pinned, deserialized.Pinned);
         Assert.Equal(original.Color, deserialized.Color);
         Assert.Equal(original.Content, deserialized.Content);
+        Assert.Equal(original.CreatedAt, deserialized.CreatedAt);
+        Assert.Equal(original.UpdatedAt, deserialized.UpdatedAt);
     }
+
+    private static readonly DateTime _t1 = new(2026, 3, 15, 10, 0, 0, DateTimeKind.Utc);
+    private static readonly DateTime _t2 = new(2026, 5, 20, 18, 30, 0, DateTimeKind.Utc);
 
     public static TheoryData<Note> RoundTripCases => new()
     {
         MakeNote(id: "a1b2", title: "Basic Note", tags: ["work"], pinned: false,
-            color: "#ffffff", content: "Hello world"),
+            color: "#ffffff", content: "Hello world", createdAt: _t1, updatedAt: _t2),
         MakeNote(id: "z9y8", title: "Pinned Note", tags: ["important"], pinned: true,
-            color: "#ff0000", content: "Stay on top"),
+            color: "#ff0000", content: "Stay on top", createdAt: _t1, updatedAt: _t1),
         MakeNote(id: "empty", title: "No Tags No Content", tags: [], pinned: false,
-            color: "#000000", content: ""),
+            color: "#000000", content: "", createdAt: _t2, updatedAt: _t2),
         MakeNote(id: "multi", title: "Many Tags", tags: ["a", "b", "c"], pinned: false,
-            color: "#abc123", content: "# Heading\n\nParagraph."),
+            color: "#abc123", content: "# Heading\n\nParagraph.", createdAt: _t1, updatedAt: _t2),
         MakeNote(id: "hex", title: "Orange Note", tags: [], pinned: true,
-            color: "#ffa500", content: "Warm colour"),
+            color: "#ffa500", content: "Warm colour", createdAt: _t2, updatedAt: _t2),
         MakeNote(id: "multiline", title: "Long Content", tags: ["docs"], pinned: false,
-            color: "#cccccc", content: "Line 1\nLine 2\nLine 3"),
+            color: "#cccccc", content: "Line 1\nLine 2\nLine 3", createdAt: _t1, updatedAt: _t1),
     };
 
     // ── Error cases ───────────────────────────────────────────────────────────
@@ -208,16 +246,97 @@ public sealed class MarkdownStorageServiceTests
         List<string>? tags = null,
         bool pinned = false,
         string color = "#ffffff",
-        string content = "") =>
-        new()
+        string content = "",
+        DateTime? createdAt = null,
+        DateTime? updatedAt = null)
+    {
+        var now = new DateTime(2026, 1, 1, 0, 0, 0, DateTimeKind.Utc);
+        return new()
         {
-            Id = id,
-            Title = title,
-            Tags = tags ?? [],
-            Pinned = pinned,
-            Color = color,
-            Content = content,
+            Id        = id,
+            Title     = title,
+            Tags      = tags ?? [],
+            Pinned    = pinned,
+            Color     = color,
+            Content   = content,
+            CreatedAt = createdAt ?? now,
+            UpdatedAt = updatedAt ?? now,
         };
+    }
+
+    // ── ParseFrontmatterOnly ────────────────────────────────────────────────────
+
+    [Fact]
+    public void ParseFrontmatterOnly_ReadsAllMetadataFields()
+    {
+        var ts  = new DateTime(2026, 6, 1, 0, 0, 0, DateTimeKind.Utc);
+        var raw = $"---\nid: meta-1\ntitle: \"Metadata Note\"\ntags: [\"a\",\"b\"]\npinned: true\ncolor: \"#abc\"\nowner: alice\narchived: false\ndeleted: false\ncreated_at: {ts:O}\nupdated_at: {ts:O}\n---\nBody text that must NOT be read.\n";
+        using var ms = new System.IO.MemoryStream(System.Text.Encoding.UTF8.GetBytes(raw));
+        var meta = _sut.ParseFrontmatterOnly(ms);
+
+        Assert.Equal("meta-1", meta.Id);
+        Assert.Equal("Metadata Note", meta.Title);
+        Assert.Equal(["a", "b"], meta.Tags);
+        Assert.True(meta.Pinned);
+        Assert.Equal("#abc", meta.Color);
+        Assert.Equal("alice", meta.Owner);
+        Assert.False(meta.Archived);
+        Assert.False(meta.Deleted);
+        Assert.Equal(ts, meta.CreatedAt);
+        Assert.Equal(ts, meta.UpdatedAt);
+    }
+
+    [Fact]
+    public void ParseFrontmatterOnly_MissingOptionalFields_UsesDefaults()
+    {
+        var raw = "---\nid: min-id\ntitle: \"Min\"\ntags: []\npinned: false\ncolor: \"\"\n---\nBody";
+        using var ms = new System.IO.MemoryStream(System.Text.Encoding.UTF8.GetBytes(raw));
+        var before = DateTime.UtcNow.AddSeconds(-1);
+        var meta = _sut.ParseFrontmatterOnly(ms);
+
+        Assert.Equal("min-id", meta.Id);
+        Assert.Equal(string.Empty, meta.Owner);
+        Assert.False(meta.Archived);
+        Assert.False(meta.Deleted);
+        Assert.True(meta.CreatedAt >= before);
+    }
+
+    [Fact]
+    public void ParseFrontmatterOnly_DoesNotReadBody()
+    {
+        // Body contains only non-ASCII content to detect if it's read accidentally.
+        var raw = "---\nid: nb\ntitle: \"No Body\"\ntags: []\npinned: false\ncolor: \"\"\n---\n\x01\x02\x03";
+        using var ms = new System.IO.MemoryStream(System.Text.Encoding.UTF8.GetBytes(raw));
+        var meta = _sut.ParseFrontmatterOnly(ms);
+        Assert.Equal("nb", meta.Id);  // parsed fine without touching body
+    }
+
+    [Fact]
+    public void ParseFrontmatterOnly_MissingOpeningDelimiter_Throws()
+    {
+        var raw = "id: x\ntitle: \"T\"\n---\n";
+        using var ms = new System.IO.MemoryStream(System.Text.Encoding.UTF8.GetBytes(raw));
+        Assert.Throws<FormatException>(() => _sut.ParseFrontmatterOnly(ms));
+    }
+
+    [Fact]
+    public void ParseFrontmatterOnly_RoundTripWithSerializeNote()
+    {
+        var ts   = new DateTime(2026, 5, 15, 8, 0, 0, DateTimeKind.Utc);
+        var note = MakeNote(id: "rt1", title: "Round-trip", tags: ["x"], pinned: true,
+                            color: "#123abc", content: "body content", createdAt: ts, updatedAt: ts);
+        var serialized = _sut.SerializeNote(note);
+        using var ms = new System.IO.MemoryStream(System.Text.Encoding.UTF8.GetBytes(serialized));
+        var meta = _sut.ParseFrontmatterOnly(ms);
+
+        Assert.Equal(note.Id, meta.Id);
+        Assert.Equal(note.Title, meta.Title);
+        Assert.Equal(note.Tags, meta.Tags);
+        Assert.Equal(note.Pinned, meta.Pinned);
+        Assert.Equal(note.Color, meta.Color);
+        Assert.Equal(note.CreatedAt, meta.CreatedAt);
+        Assert.Equal(note.UpdatedAt, meta.UpdatedAt);
+    }
 
     // Builds a complete raw file with frontmatter and empty content.
     private static string MinimalRaw(

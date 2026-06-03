@@ -1,5 +1,7 @@
 import { useQuery, useMutation, useQueryClient, keepPreviousData } from '@tanstack/react-query';
 import { notesApi } from '../api/notes';
+import client from '../api/client';
+import { useOfflineQueue } from '../context/OfflineQueueContext';
 import type { CreateNoteRequest, Note, NoteSummary, UpdateNoteRequest } from '../types';
 
 export const NOTES_KEY = ['notes'] as const;
@@ -61,6 +63,8 @@ export function useCreateNote() {
 
 export function useUpdateNote() {
   const qc = useQueryClient();
+  const { queueUpdate } = useOfflineQueue();
+
   return useMutation({
     mutationFn: ({ id, req }: { id: string; req: UpdateNoteRequest }) =>
       notesApi.update(id, req),
@@ -83,13 +87,65 @@ export function useUpdateNote() {
 
       return { prevList, prevNote };
     },
-    onError: (_err, { id }, ctx) => {
+    onError: async (_err, { id, req }, ctx) => {
+      if (!navigator.onLine) {
+        // Offline: preserve optimistic update and queue for replay on reconnect
+        await queueUpdate(id, req);
+        return;
+      }
+      // Online error: roll back optimistic update
       if (ctx?.prevList) qc.setQueryData(NOTES_KEY, ctx.prevList);
       if (ctx?.prevNote) qc.setQueryData(noteKey(id), ctx.prevNote);
     },
-    onSettled: (_data, _err, { id }) => {
+    onSettled: (_data, err, { id }) => {
+      // Skip invalidation if we queued offline (navigator.onLine check not reliable here,
+      // but the queueUpdate path returns early before onSettled can double-invalidate)
+      if (!err || navigator.onLine) {
+        qc.invalidateQueries({ queryKey: NOTES_KEY });
+        qc.invalidateQueries({ queryKey: noteKey(id) });
+      }
+    },
+  });
+}
+
+export function useArchiveNote() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => client.patch(`/api/notes/${id}/archive`),
+
+    onMutate: async (id) => {
+      await qc.cancelQueries({ queryKey: NOTES_KEY });
+      const prev = qc.getQueryData<NoteSummary[]>(NOTES_KEY);
+      qc.setQueryData<NoteSummary[]>(NOTES_KEY, old => (old ?? []).filter(n => n.id !== id));
+      return { prev };
+    },
+    onError: (_err, _id, ctx) => {
+      if (ctx?.prev) qc.setQueryData(NOTES_KEY, ctx.prev);
+    },
+    onSettled: () => {
       qc.invalidateQueries({ queryKey: NOTES_KEY });
-      qc.invalidateQueries({ queryKey: noteKey(id) });
+      qc.invalidateQueries({ queryKey: ['notes', 'archived'] });
+    },
+  });
+}
+
+export function useTrashNote() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => client.patch(`/api/notes/${id}/trash`),
+
+    onMutate: async (id) => {
+      await qc.cancelQueries({ queryKey: NOTES_KEY });
+      const prev = qc.getQueryData<NoteSummary[]>(NOTES_KEY);
+      qc.setQueryData<NoteSummary[]>(NOTES_KEY, old => (old ?? []).filter(n => n.id !== id));
+      return { prev };
+    },
+    onError: (_err, _id, ctx) => {
+      if (ctx?.prev) qc.setQueryData(NOTES_KEY, ctx.prev);
+    },
+    onSettled: () => {
+      qc.invalidateQueries({ queryKey: NOTES_KEY });
+      qc.invalidateQueries({ queryKey: ['notes', 'trash'] });
     },
   });
 }

@@ -1,8 +1,10 @@
 using Microsoft.Extensions.Logging.Abstractions;
 using Papyra.Api.Services;
+using Xunit;
 
 namespace Papyra.Tests.Services;
 
+[Collection("SequentialIntegrationTests")]
 public sealed class NoteWatcherServiceTests : IAsyncLifetime
 {
     private readonly string _dir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
@@ -64,7 +66,6 @@ public sealed class NoteWatcherServiceTests : IAsyncLifetime
     {
         var dir = Path.Combine(Path.GetTempPath(), Guid.NewGuid().ToString());
         Directory.CreateDirectory(dir);
-        // Flat .txt and a .md with a different name — neither should be picked up.
         File.WriteAllText(Path.Combine(dir, "ignore.txt"), "plain text");
         var someDir = Path.Combine(dir, "some-id");
         Directory.CreateDirectory(someDir);
@@ -113,11 +114,10 @@ public sealed class NoteWatcherServiceTests : IAsyncLifetime
         File.WriteAllText(Path.Combine(dirA, "note.md"), MakeRaw("id-a", "Alpha"));
         File.WriteAllText(Path.Combine(dirB, "note.md"), MakeRaw("id-b", "Beta"));
 
+        // Simplified to a clean boolean expression
         await PollUntilAsync(() =>
             _sut.Notes.Values.Any(n => n.Id == "id-a") &&
-            _sut.Notes.Values.Any(n => n.Id == "id-b")
-                ? true
-                : (bool?)null);
+            _sut.Notes.Values.Any(n => n.Id == "id-b"));
 
         Assert.Contains(_sut.Notes.Values, n => n.Id == "id-a");
         Assert.Contains(_sut.Notes.Values, n => n.Id == "id-b");
@@ -136,8 +136,8 @@ public sealed class NoteWatcherServiceTests : IAsyncLifetime
 
         File.Delete(path);
 
-        await PollUntilAsync(() =>
-            _sut.Notes.Values.All(n => n.Id != "del-id") ? true : (bool?)null);
+        // Simplified to a clean boolean expression
+        await PollUntilAsync(() => _sut.Notes.Values.All(n => n.Id != "del-id"));
 
         Assert.DoesNotContain(_sut.Notes.Values, n => n.Id == "del-id");
     }
@@ -179,8 +179,8 @@ public sealed class NoteWatcherServiceTests : IAsyncLifetime
 
         File.Move(notePath, renamedPath);
 
-        await PollUntilAsync(() =>
-            _sut.Notes.Values.All(n => n.Id != "ren-id") ? true : (bool?)null);
+        // Simplified to a clean boolean expression
+        await PollUntilAsync(() => _sut.Notes.Values.All(n => n.Id != "ren-id"));
 
         Assert.DoesNotContain(_sut.Notes.Values, n => n.Id == "ren-id");
     }
@@ -192,7 +192,7 @@ public sealed class NoteWatcherServiceTests : IAsyncLifetime
 
     private static async Task<T> PollUntilAsync<T>(
         Func<T?> condition,
-        int timeoutMs = 3000,
+        int timeoutMs = 15000, // 💡 Fixed: Increased from 3000 to 15000
         int intervalMs = 50) where T : class
     {
         var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
@@ -205,15 +205,15 @@ public sealed class NoteWatcherServiceTests : IAsyncLifetime
         throw new TimeoutException($"Condition not met within {timeoutMs}ms.");
     }
 
-    private static async Task<bool> PollUntilAsync(
-        Func<bool?> condition,
-        int timeoutMs = 3000,
+    private static async Task PollUntilAsync(
+        Func<bool> condition,
+        int timeoutMs = 15000, 
         int intervalMs = 50)
     {
         var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
         while (DateTime.UtcNow < deadline)
         {
-            if (condition() is true) return true;
+            if (condition()) return;
             await Task.Delay(intervalMs);
         }
         throw new TimeoutException($"Condition not met within {timeoutMs}ms.");

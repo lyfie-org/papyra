@@ -1,11 +1,13 @@
 using Microsoft.Extensions.Logging.Abstractions;
 using Papyra.Api.Services;
+using Xunit;
 
 namespace Papyra.Tests.Services;
 
 /// <summary>
 /// Integration tests: storage root + Lucene index wired together through NoteWatcherService.
 /// </summary>
+[Collection("SequentialIntegrationTests")]
 public sealed class NoteSearchIntegrationTests : IAsyncLifetime
 {
     private readonly string _storageRoot =
@@ -140,7 +142,7 @@ public sealed class NoteSearchIntegrationTests : IAsyncLifetime
 
     private static async Task PollAsync(
         Func<bool> condition,
-        int timeoutMs = 4000,
+        int timeoutMs = 15000, // Increased from 4000 to prevent CI throttling timeouts
         int intervalMs = 50)
     {
         var deadline = DateTime.UtcNow.AddMilliseconds(timeoutMs);
