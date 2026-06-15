@@ -49,11 +49,6 @@ WORKDIR /app
 
 COPY --from=dotnet-publish /app/publish ./
 
-# /data is the filesystem store — notes in /data/<id>/note.md, images in /data/<id>/media/
-# Override via Storage__StorageRoot env var if mounting to a different path.
-ENV Storage__StorageRoot=/data
-VOLUME ["/data"]
-
 ENV ASPNETCORE_URLS="http://+:8080" \
     ASPNETCORE_ENVIRONMENT="Production" \
     DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=false
