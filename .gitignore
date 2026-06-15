@@ -485,3 +485,4 @@ $RECYCLE.BIN/
 # User data — notes and uploaded images; never commit
 /data/
 CLAUDE.md
+CODEBASE_MAP.md
