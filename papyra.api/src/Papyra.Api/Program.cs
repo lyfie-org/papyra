@@ -1,8 +1,17 @@
+using Microsoft.EntityFrameworkCore;
+using Papyra.Api.Data;
+using Papyra.Api.Storage;
 using Scalar.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
 builder.Services.AddOpenApi();
+
+// ── Relational cache (SQLite — disposable; filesystem is the authority) ──────
+var dbPath = PapyraPaths.DbPath(builder.Configuration, builder.Environment.ContentRootPath);
+Directory.CreateDirectory(Path.GetDirectoryName(dbPath)!);
+builder.Services.AddDbContext<AppDbContext>(options =>
+    options.UseSqlite($"Data Source={dbPath}"));
 
 var allowedOrigins = builder.Configuration
     .GetSection("Cors:AllowedOrigins")
@@ -16,6 +25,12 @@ builder.Services.AddCors(options => options.AddPolicy("AllowedOrigins", policy =
           .AllowCredentials()));
 
 var app = builder.Build();
+
+// Run migrations on boot so papyra.db materializes before ports open.
+using (var scope = app.Services.CreateScope())
+{
+    scope.ServiceProvider.GetRequiredService<AppDbContext>().Database.Migrate();
+}
 
 app.UseCors("AllowedOrigins");
 

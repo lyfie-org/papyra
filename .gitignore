@@ -484,5 +484,7 @@ $RECYCLE.BIN/
 
 # User data — notes and uploaded images; never commit
 /data/
+# Runtime data dir created next to the API during local dev (SQLite cache, etc.)
+data/
 CLAUDE.md
 CODEBASE_MAP.md
