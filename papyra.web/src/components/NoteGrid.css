@@ -1,0 +1,33 @@
+.note-grid-wrap {
+  width: 100%;
+}
+
+.note-grid__heading {
+  margin: 8px 0 16px;
+  font-family: var(--mono);
+  font-size: 12px;
+  font-weight: 500;
+  letter-spacing: 2px;
+  color: var(--text);
+  opacity: 0.7;
+}
+
+/* react-masonry-css: flex row of columns. */
+.note-grid {
+  display: flex;
+  width: auto;
+  margin-left: -16px; /* offset column padding-left */
+  margin-bottom: 24px;
+}
+.note-grid__col {
+  padding-left: 16px;
+  background-clip: padding-box;
+}
+.note-grid__col > .note-card {
+  margin-bottom: 16px;
+}
+
+.note-grid__empty {
+  font-family: var(--sans);
+  color: var(--text);
+}
