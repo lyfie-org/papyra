@@ -39,6 +39,23 @@
   opacity: 0.75;
 }
 
+/* Pastel YAML colors are always light → keep dark ink for contrast in both
+   themes (mirrors the NoteCard convention). The luthor body is forced to its
+   light theme when coloured, so its own text stays dark too. */
+.note-editor--colored {
+  color: #5c4636;
+}
+.note-editor--colored .note-editor__title {
+  color: #3d2c1e;
+}
+.note-editor--colored .note-editor__status,
+.note-editor--colored .note-toolbar__btn {
+  color: #5c4636;
+}
+.note-editor--colored .note-toolbar__btn:hover {
+  color: #3d2c1e;
+}
+
 .note-editor__canvas {
   font-family: 'Sora', sans-serif;
 }

@@ -80,6 +80,79 @@ export default function NoteEditor({ note }: { note: Note }) {
   // Keep my local edits and let the next save overwrite the remote revision.
   const keepLocal = useCallback(() => { setPending(null); bump(); }, [bump]);
 
+  // Count of in-flight media uploads — drives the inline "Uploading…" indicator.
+  const [uploading, setUploading] = useState(0);
+
+  // Splice fresh markdown into the canvas. Luthor is uncontrolled, so adopting new
+  // body = remount with a fresh key (never patch the live DOM). bump() marks the
+  // draft dirty so the new ![[…]] reference is picked up by the 1.5s auto-save.
+  const applyBody = useCallback((next: string) => {
+    setBody(next);
+    setEditorKey((k) => k + 1);
+    shown.current = { id: note.id, title: titleRef.current, body: next };
+    bump();
+  }, [bump, note.id]);
+
+  // Dropped/pasted blobs → POST to the media endpoint, then swap each placeholder
+  // for its ![[filename]] reference. Placeholders go in immediately (one remount),
+  // and a single final remount lands the resolved references — minimising churn
+  // and the brief caret loss each remount costs.
+  const uploadFiles = useCallback(async (files: File[]) => {
+    if (files.length === 0) return;
+    const jobs = files.map((f) => ({
+      file: f,
+      token: `![[uploading ${crypto.randomUUID().slice(0, 8)}…]]`,
+      name: null as string | null,
+    }));
+
+    let md = editorRef.current?.getMarkdown() ?? body;
+    md = `${md}\n\n${jobs.map((j) => j.token).join('\n')}\n`;
+    applyBody(md);
+    setUploading((n) => n + jobs.length);
+
+    await Promise.all(jobs.map(async (job) => {
+      try {
+        const form = new FormData();
+        form.append('file', job.file);
+        const res = await fetch(`/api/media/upload?noteId=${encodeURIComponent(note.id)}`, {
+          method: 'POST',
+          body: form,
+        });
+        if (!res.ok) throw new Error(`upload failed: ${res.status}`);
+        job.name = (await res.json() as { filename: string }).filename;
+      } catch {
+        job.name = null; // failed upload → drop the placeholder on the final pass
+      } finally {
+        setUploading((n) => n - 1);
+      }
+    }));
+
+    let final = md;
+    for (const job of jobs) {
+      final = final.replace(job.token, job.name ? `![[${job.name}]]` : '');
+    }
+    applyBody(final);
+  }, [applyBody, body, note.id]);
+
+  const onDrop = useCallback((e: React.DragEvent) => {
+    const files = Array.from(e.dataTransfer?.files ?? []);
+    if (files.length === 0) return;
+    e.preventDefault();
+    void uploadFiles(files);
+  }, [uploadFiles]);
+
+  const onPaste = useCallback((e: React.ClipboardEvent) => {
+    const files = Array.from(e.clipboardData?.files ?? []);
+    if (files.length === 0) return; // text paste → let Luthor handle it
+    e.preventDefault();
+    void uploadFiles(files);
+  }, [uploadFiles]);
+
+  // Tell the browser a file drop is welcome (otherwise it navigates to the file).
+  const onDragOver = useCallback((e: React.DragEvent) => {
+    if (e.dataTransfer?.types?.includes('Files')) e.preventDefault();
+  }, []);
+
   // Toolbar frontmatter mutation: PUT the live draft plus the changed YAML field,
   // so a pin/color/archive flip never clobbers unsaved body/title. Re-baselines
   // the save state so the write doesn't immediately echo back as a dirty change.
@@ -99,6 +172,9 @@ export default function NoteEditor({ note }: { note: Note }) {
     });
     if (!res.ok) throw new Error(`PUT /api/notes/${note.id} failed: ${res.status}`);
     reset(draft);
+    // A color flip remounts the editor (theme swap, see key/style below); seed the
+    // fresh mount with the live text so unsaved edits survive the remount.
+    setBody(draft.body);
     shown.current = { id: note.id, title: draft.title, body: draft.body };
     queryClient.invalidateQueries({ queryKey: ['notes'] });
   }, [getDraft, note, reset, queryClient]);
@@ -111,11 +187,17 @@ export default function NoteEditor({ note }: { note: Note }) {
     navigate('/');
   }, [note.id, queryClient, navigate]);
 
-  // YAML `color` tints the canvas; fonts come from the design tokens.
+  // YAML `color` tints the canvas; fonts come from the design tokens. The palette
+  // tints are always light, so a coloured note forces a light editor (dark ink)
+  // in both app themes — matching the card convention. Uncoloured notes follow
+  // the live app theme. The luthor theme only applies on mount, so both the tint
+  // and the resolved theme are folded into the editor key to re-theme on change.
+  const colored = !!note.color;
+  const editorTheme = colored ? 'light' : theme;
   const style = note.color ? { background: note.color } : undefined;
 
   return (
-    <section className="note-editor" style={style}>
+    <section className={`note-editor${colored ? ' note-editor--colored' : ''}`} style={style}>
       <header className="note-editor__bar">
         <input
           className="note-editor__title"
@@ -125,7 +207,9 @@ export default function NoteEditor({ note }: { note: Note }) {
           onChange={(e) => { titleRef.current = e.target.value; setTitle(e.target.value); bump(); }}
         />
         <span className="note-editor__status" role="status">
-          {STATUS_LABEL[status]}
+          {uploading > 0
+            ? `Uploading ${uploading} file${uploading > 1 ? 's' : ''}…`
+            : STATUS_LABEL[status]}
         </span>
         <NoteToolbar
           pinned={note.pinned}
@@ -150,12 +234,23 @@ export default function NoteEditor({ note }: { note: Note }) {
       )}
 
       {/* contenteditable input events bubble here → mark the draft dirty. */}
-      <div className="note-editor__canvas" onInput={bump}>
+      <div
+        className="note-editor__canvas"
+        onInput={bump}
+        onDropCapture={onDrop}
+        onPasteCapture={onPaste}
+        onDragOver={onDragOver}
+      >
         <MarkDownEditor
-          key={`${note.id}-${editorKey}`}
-          initialTheme={theme}
+          key={`${note.id}-${editorKey}-${editorTheme}-${note.color ?? 'none'}`}
+          initialTheme={editorTheme}
           defaultContent={body}
           placeholder="Start writing…"
+          // No persistent chrome while writing: hide the mode tabs and the pinned
+          // toolbar, surface a minimal markdown formatting bar only on selection.
+          isEditorViewTabsVisible={false}
+          isToolbarEnabled={false}
+          featureFlags={{ floatingToolbar: true }}
           onReady={(methods) => { editorRef.current = methods; }}
         />
       </div>

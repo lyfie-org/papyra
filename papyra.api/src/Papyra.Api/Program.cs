@@ -193,6 +193,43 @@ app.MapPost("/api/system/rebuild-index", async (
     return Results.Ok(new { rebuilt = scanned.Count });
 });
 
+// ── Media uploads ───────────────────────────────────────────────────────────
+// Attachments land flat in the media dir and are referenced from note bodies via
+// ![[filename]]. Written atomically (tmp → flush → move) like notes; the nightly
+// orphan-prune sweep reclaims anything no live note ends up referencing.
+app.MapPost("/api/media/upload", async (
+    string? noteId,
+    IFormFile file,
+    IConfiguration config,
+    IHostEnvironment env,
+    CancellationToken ct) =>
+{
+    if (file is null || file.Length == 0) return Results.BadRequest(new { error = "No file." });
+
+    var mediaDir = PapyraPaths.MediaDir(config, env.ContentRootPath);
+    Directory.CreateDirectory(mediaDir);
+
+    // Slugify the stem, keep the extension, append a short uuid so two pasted
+    // "image.png"s never clobber each other.
+    var ext = Path.GetExtension(file.FileName);
+    var stem = Path.GetFileNameWithoutExtension(file.FileName);
+    var safeStem = new string(stem.Select(c => char.IsLetterOrDigit(c) || c is '-' or '_' ? c : '-').ToArray()).Trim('-');
+    if (string.IsNullOrEmpty(safeStem)) safeStem = "file";
+    var filename = $"{safeStem}-{Guid.NewGuid():N}{ext}";
+
+    var dest = Path.Combine(mediaDir, filename);
+    var tmp = Path.Combine(mediaDir, $"{Guid.NewGuid():N}.tmp");
+    await using (var fs = new FileStream(tmp, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+    {
+        await file.CopyToAsync(fs, ct);
+        await fs.FlushAsync(ct);
+    }
+    File.Move(tmp, dest);
+
+    return Results.Ok(new { filename });
+})
+.DisableAntiforgery(); // no antiforgery middleware in this skeleton; same-origin SPA
+
 app.MapHub<NotesHub>("/hubs/notes");
 
 app.MapFallbackToFile("index.html");
