@@ -18,9 +18,22 @@ public static class PapyraPaths
     public static string DotPapyra(IConfiguration config, string contentRoot)
         => Path.Combine(DataDir(config, contentRoot), ".papyra");
 
+    // Per-tenant root. Each user's vault is chrooted under users/{userId}/ so a
+    // path-jail breach in one tenant can never reach another's notes.
+    public static string UsersDir(IConfiguration config, string contentRoot)
+        => Path.Combine(DataDir(config, contentRoot), "users");
+
     // The user-facing notes vault: the .md files are the source of truth.
-    public static string NotesDir(IConfiguration config, string contentRoot)
-        => Path.Combine(DataDir(config, contentRoot), "notes");
+    public static string UserNotesDir(IConfiguration config, string contentRoot, string userId)
+        => Path.Combine(UsersDir(config, contentRoot), userId, "notes");
+
+    // Uploaded attachments referenced by a user's notes via ![[filename]].
+    public static string UserMediaDir(IConfiguration config, string contentRoot, string userId)
+        => Path.Combine(UsersDir(config, contentRoot), userId, "media");
+
+    // Soft-delete bin: a user's orphaned media is moved here, never hard-deleted.
+    public static string UserTrashDir(IConfiguration config, string contentRoot, string userId)
+        => Path.Combine(UsersDir(config, contentRoot), userId, ".trash");
 
     public static string DbPath(IConfiguration config, string contentRoot)
         => Path.Combine(DotPapyra(config, contentRoot), "papyra.db");
@@ -28,12 +41,4 @@ public static class PapyraPaths
     // Disposable Lucene full-text index — rebuilt from the .md files at will.
     public static string LuceneIndexDir(IConfiguration config, string contentRoot)
         => Path.Combine(DotPapyra(config, contentRoot), "lucene-index");
-
-    // Uploaded attachments referenced by notes via ![[filename]].
-    public static string MediaDir(IConfiguration config, string contentRoot)
-        => Path.Combine(DataDir(config, contentRoot), "media");
-
-    // Soft-delete bin: orphaned media is moved here, never hard-deleted.
-    public static string TrashDir(IConfiguration config, string contentRoot)
-        => Path.Combine(DataDir(config, contentRoot), ".trash");
 }

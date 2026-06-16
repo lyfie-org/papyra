@@ -11,16 +11,17 @@ public sealed class OrphanPruneServiceTests
     [Fact]
     public void Prune_MovesUnreferencedMedia_KeepsReferenced()
     {
+        const string uid = "1";
         var dataDir = NewTempDir();
-        var mediaDir = Path.Combine(dataDir, "media");
-        var trashDir = Path.Combine(dataDir, ".trash");
+        var mediaDir = Path.Combine(dataDir, "users", uid, "media");
+        var trashDir = Path.Combine(dataDir, "users", uid, ".trash");
         Directory.CreateDirectory(mediaDir);
 
         File.WriteAllText(Path.Combine(mediaDir, "used.png"), "x");
         File.WriteAllText(Path.Combine(mediaDir, "orphan.png"), "y");
 
         var state = new VaultState();
-        state.Upsert(Path.Combine(dataDir, "n.md"),
+        state.Upsert(uid, Path.Combine(mediaDir, "..", "notes", "n.md"),
             new Note { Id = "n1", Body = "see ![[used.png]] here" });
 
         try

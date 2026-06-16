@@ -10,11 +10,14 @@ namespace Papyra.Tests;
 
 public sealed class ColdBootDiffServiceTests
 {
+    private const string Uid = "1";
+
     [Fact]
     public async Task ColdBoot_IndexesOfflineFiles_AndHydratesVault()
     {
-        var notesDir = NewTempDir();
+        var usersDir = NewTempDir();
         var indexDir = NewTempDir();
+        var notesDir = UserNotesDir(usersDir);
         var state = new VaultState();
         var search = new SearchIndexService(indexDir);
         var db = NewDb();
@@ -23,56 +26,65 @@ public sealed class ColdBootDiffServiceTests
             await File.WriteAllTextAsync(Path.Combine(notesDir, "a.md"), "---\nid: a1\ntitle: Alpha\n---\n\nfindme zzyzx");
             await File.WriteAllTextAsync(Path.Combine(notesDir, "b.md"), "---\nid: b1\ntitle: Beta\n---\n\nplain");
 
-            await NewService(notesDir, state, search).RunDiffAsync(db, default);
+            await NewService(usersDir, state, search).RunDiffAsync(db, default);
 
-            Assert.Equal(2, state.Count);                       // vault hydrated from disk
-            Assert.Equal("a1", search.Search("zzyzx").Single().Id); // offline file indexed
-            Assert.Equal(2, await db.NoteCache.CountAsync());   // cache populated
+            Assert.Equal(2, state.Count(Uid));                       // vault hydrated from disk
+            Assert.Equal("a1", search.Search(Uid, "zzyzx").Single().Id); // offline file indexed
+            Assert.Equal(2, await db.NoteCache.CountAsync());        // cache populated
         }
         finally
         {
             db.Dispose();
             search.Dispose(); // release write.lock before deleting the index dir
-            CleanUp(notesDir, indexDir);
+            CleanUp(usersDir, indexDir);
         }
     }
 
     [Fact]
     public async Task ColdBoot_PrunesNotesDeletedWhileOffline()
     {
-        var notesDir = NewTempDir();
+        var usersDir = NewTempDir();
         var indexDir = NewTempDir();
+        var notesDir = UserNotesDir(usersDir);
         var state = new VaultState();
         var search = new SearchIndexService(indexDir);
         var db = NewDb();
         try
         {
             // "gone" was indexed/cached last run but its .md no longer exists on disk.
-            search.IndexNote(new Note { Id = "gone", Title = "Ghost", Body = "vanishedtoken" });
+            search.IndexNote(Uid, new Note { Id = "gone", Title = "Ghost", Body = "vanishedtoken" });
             db.NoteCache.Add(new NoteCache { Id = "gone", Title = "Ghost", LastModified = DateTime.UtcNow });
             await db.SaveChangesAsync();
 
             await File.WriteAllTextAsync(Path.Combine(notesDir, "live.md"), "---\nid: live1\ntitle: Live\n---\n\nstays");
 
-            await NewService(notesDir, state, search).RunDiffAsync(db, default);
+            await NewService(usersDir, state, search).RunDiffAsync(db, default);
 
-            Assert.Empty(search.Search("vanishedtoken"));            // dropped from index
+            Assert.Empty(search.Search(Uid, "vanishedtoken"));       // dropped from index
             Assert.Null(await db.NoteCache.FindAsync("gone"));       // dropped from cache
-            Assert.Equal(1, state.Count);                            // only the live note
+            Assert.Equal(1, state.Count(Uid));                       // only the live note
         }
         finally
         {
             db.Dispose();
             search.Dispose(); // release write.lock before deleting the index dir
-            CleanUp(notesDir, indexDir);
+            CleanUp(usersDir, indexDir);
         }
     }
 
-    private static ColdBootDiffService NewService(string notesDir, VaultState state, SearchIndexService search)
+    // Build (and create) tenant "1"'s notes dir under a users-root.
+    private static string UserNotesDir(string usersDir)
+    {
+        var dir = Path.Combine(usersDir, Uid, "notes");
+        Directory.CreateDirectory(dir);
+        return dir;
+    }
+
+    private static ColdBootDiffService NewService(string usersDir, VaultState state, SearchIndexService search)
     {
         var sp = new ServiceCollection().BuildServiceProvider();
         return new ColdBootDiffService(
-            new VaultObserverOptions { NotesDir = notesDir },
+            new VaultObserverOptions { UsersDir = usersDir },
             new MarkdownStorageService(),
             state,
             search,

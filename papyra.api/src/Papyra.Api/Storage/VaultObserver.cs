@@ -6,21 +6,26 @@ namespace Papyra.Api.Storage;
 
 public sealed class VaultObserverOptions
 {
-    // Absolute path to the notes vault watched for .md changes.
-    public required string NotesDir { get; init; }
+    // Per-tenant root: each user's vault lives at {UsersDir}/{userId}/notes/.
+    public required string UsersDir { get; init; }
 
     // Per-path debounce window. One logical change can fire many OS events; we
     // collapse a quiet-for-DebounceMs burst into a single update.
     public int DebounceMs { get; init; } = 200;
+
+    // Absolute notes vault for one tenant.
+    public string UserNotesDir(string userId) => Path.Combine(UsersDir, userId, "notes");
 }
 
-// Reactive file observer: watches the notes dir and keeps VaultState in sync with
-// the .md files on disk. Three guards stop it melting down under sync tools and
-// its own writes:
+// Reactive file observer: watches each tenant's notes dir with its own
+// FileSystemWatcher (never a single global /data watcher, or tenants would bleed)
+// and keeps VaultState in sync with the .md files on disk. Three guards stop it
+// melting down under sync tools and its own writes:
 //   • Write-Ring — skip the echo of Papyra's own atomic writes (loop prevention).
 //   • Debouncer  — collapse a storm of micro-events per path into one update.
 //   • Backoff    — MarkdownStorageService.ReadAsync retries lock-held reads.
-// Registered as a hosted service.
+// Registered as a singleton + hosted service so endpoints can call WatchUser when
+// a new tenant is provisioned.
 public sealed class VaultObserver : BackgroundService
 {
     private readonly VaultObserverOptions _options;
@@ -31,11 +36,13 @@ public sealed class VaultObserver : BackgroundService
     private readonly IHubContext<NotesHub>? _hub;
     private readonly ILogger<VaultObserver> _logger;
 
+    // One watcher per tenant, keyed by userId.
+    private readonly ConcurrentDictionary<string, FileSystemWatcher> _watchers =
+        new(StringComparer.Ordinal);
+
     // One live debounce timer per path; a new event cancels and restarts it.
     private readonly ConcurrentDictionary<string, CancellationTokenSource> _debounce =
         new(StringComparer.OrdinalIgnoreCase);
-
-    private FileSystemWatcher? _watcher;
 
     // Test hook: number of debounced flushes actually applied (self-writes and
     // cancelled bursts do not count).
@@ -61,35 +68,46 @@ public sealed class VaultObserver : BackgroundService
 
     protected override Task ExecuteAsync(CancellationToken stoppingToken)
     {
-        Directory.CreateDirectory(_options.NotesDir);
-
-        _watcher = new FileSystemWatcher(_options.NotesDir, "*.md")
-        {
-            IncludeSubdirectories = true,
-            NotifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite | NotifyFilters.Size,
-        };
-        _watcher.Created += OnChanged;
-        _watcher.Changed += OnChanged;
-        _watcher.Deleted += OnDeleted;
-        _watcher.Renamed += OnRenamed;
-        _watcher.EnableRaisingEvents = true;
-
-        _logger.LogInformation("Watching notes vault at {Dir}", _options.NotesDir);
+        Directory.CreateDirectory(_options.UsersDir);
+        // Pick up tenants that already have a vault on disk (re-mounted volume).
+        foreach (var userDir in Directory.EnumerateDirectories(_options.UsersDir))
+            WatchUser(Path.GetFileName(userDir));
         return Task.CompletedTask;
     }
 
-    private void OnChanged(object sender, FileSystemEventArgs e) => Schedule(e.FullPath, deleted: false);
-    private void OnDeleted(object sender, FileSystemEventArgs e) => Schedule(e.FullPath, deleted: true);
-
-    private void OnRenamed(object sender, RenamedEventArgs e)
+    // Start watching a tenant's notes vault. Idempotent — provisioning a user that
+    // is already watched is a no-op. Called on boot for existing tenants and from
+    // the setup/provision flow for new ones.
+    public void WatchUser(string userId)
     {
-        Schedule(e.OldFullPath, deleted: true);
-        Schedule(e.FullPath, deleted: false);
+        _watchers.GetOrAdd(userId, uid =>
+        {
+            var notesDir = _options.UserNotesDir(uid);
+            Directory.CreateDirectory(notesDir);
+
+            var watcher = new FileSystemWatcher(notesDir, "*.md")
+            {
+                IncludeSubdirectories = true,
+                NotifyFilter = NotifyFilters.FileName | NotifyFilters.LastWrite | NotifyFilters.Size,
+            };
+            watcher.Created += (_, e) => Schedule(uid, e.FullPath, deleted: false);
+            watcher.Changed += (_, e) => Schedule(uid, e.FullPath, deleted: false);
+            watcher.Deleted += (_, e) => Schedule(uid, e.FullPath, deleted: true);
+            watcher.Renamed += (_, e) =>
+            {
+                Schedule(uid, e.OldFullPath, deleted: true);
+                Schedule(uid, e.FullPath, deleted: false);
+            };
+            watcher.EnableRaisingEvents = true;
+
+            _logger.LogInformation("Watching notes vault for user {User} at {Dir}", uid, notesDir);
+            return watcher;
+        });
     }
 
     // Per-path debounce: each new event for a path cancels the pending flush and
     // restarts the window, so N rapid events collapse into one logical update.
-    private void Schedule(string path, bool deleted)
+    private void Schedule(string userId, string path, bool deleted)
     {
         var cts = new CancellationTokenSource();
         _debounce.AddOrUpdate(path, cts, (_, old) =>
@@ -99,10 +117,10 @@ public sealed class VaultObserver : BackgroundService
             return cts;
         });
 
-        _ = FlushAfterDelay(path, deleted, cts.Token);
+        _ = FlushAfterDelay(userId, path, deleted, cts.Token);
     }
 
-    private async Task FlushAfterDelay(string path, bool deleted, CancellationToken token)
+    private async Task FlushAfterDelay(string userId, string path, bool deleted, CancellationToken token)
     {
         try
         {
@@ -127,9 +145,9 @@ public sealed class VaultObserver : BackgroundService
         {
             if (deleted || !File.Exists(path))
             {
-                if (_state.TryGet(path, out var gone) && gone is not null)
+                if (_state.TryGet(userId, path, out var gone) && gone is not null)
                 {
-                    _state.Remove(path);
+                    _state.Remove(userId, path);
                     _search?.RemoveNote(gone.Id);
                     await Broadcast("NoteDeleted", gone, token);
                 }
@@ -139,9 +157,9 @@ public sealed class VaultObserver : BackgroundService
                 var note = await _storage.ReadAsync(path, token);
                 if (note is not null)
                 {
-                    var existed = _state.TryGet(path, out _);
-                    _state.Upsert(path, note);
-                    _search?.IndexNote(note);
+                    var existed = _state.TryGet(userId, path, out _);
+                    _state.Upsert(userId, path, note);
+                    _search?.IndexNote(userId, note);
                     await Broadcast(existed ? "NoteUpdated" : "NoteCreated", note, token);
                 }
             }
@@ -164,7 +182,7 @@ public sealed class VaultObserver : BackgroundService
 
     public override void Dispose()
     {
-        _watcher?.Dispose();
+        foreach (var watcher in _watchers.Values) watcher.Dispose();
         foreach (var cts in _debounce.Values) cts.Dispose();
         base.Dispose();
     }

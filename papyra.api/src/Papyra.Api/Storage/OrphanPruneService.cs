@@ -1,16 +1,17 @@
 namespace Papyra.Api.Storage;
 
-// Nightly housekeeping: any file in the media dir that no live note references
-// (via ![[filename]] or a bare mention in its body) is moved to .trash — never
-// hard-deleted, so a mistaken prune is always recoverable. Drives off VaultState,
-// the in-memory mirror of the vault. Registered as a hosted service.
+// Nightly housekeeping: per tenant, any file in that user's media dir that no live
+// note of theirs references (via ![[filename]] or a bare mention in its body) is
+// moved to their .trash — never hard-deleted, so a mistaken prune is always
+// recoverable. Drives off VaultState, the in-memory mirror of the vault. Registered
+// as a hosted service.
 public sealed class OrphanPruneService : BackgroundService
 {
     private static readonly TimeSpan Interval = TimeSpan.FromHours(24);
 
     private readonly VaultState _state;
-    private readonly string _mediaDir;
-    private readonly string _trashDir;
+    private readonly IConfiguration _config;
+    private readonly string _contentRoot;
     private readonly ILogger<OrphanPruneService> _logger;
 
     public OrphanPruneService(
@@ -20,8 +21,8 @@ public sealed class OrphanPruneService : BackgroundService
         ILogger<OrphanPruneService> logger)
     {
         _state = state;
-        _mediaDir = PapyraPaths.MediaDir(config, env.ContentRootPath);
-        _trashDir = PapyraPaths.TrashDir(config, env.ContentRootPath);
+        _config = config;
+        _contentRoot = env.ContentRootPath;
         _logger = logger;
     }
 
@@ -35,29 +36,41 @@ public sealed class OrphanPruneService : BackgroundService
         }
     }
 
-    // Move every unreferenced media file to .trash. Returns the count moved.
+    // Sweep every tracked tenant's media dir. Returns the total count moved.
     internal int PruneOnce()
     {
-        if (!Directory.Exists(_mediaDir)) return 0;
+        var moved = 0;
+        foreach (var userId in _state.Users)
+            moved += PruneUser(userId);
 
-        var bodies = _state.Snapshot().Select(n => n.Body ?? string.Empty).ToArray();
+        if (moved > 0) _logger.LogInformation("Orphan prune: moved {Count} unreferenced media file(s) to .trash", moved);
+        return moved;
+    }
+
+    // Move one tenant's unreferenced media files to their .trash.
+    private int PruneUser(string userId)
+    {
+        var mediaDir = PapyraPaths.UserMediaDir(_config, _contentRoot, userId);
+        if (!Directory.Exists(mediaDir)) return 0;
+
+        var trashDir = PapyraPaths.UserTrashDir(_config, _contentRoot, userId);
+        var bodies = _state.Snapshot(userId).Select(n => n.Body ?? string.Empty).ToArray();
         var moved = 0;
 
-        foreach (var path in Directory.EnumerateFiles(_mediaDir))
+        foreach (var path in Directory.EnumerateFiles(mediaDir))
         {
             var name = Path.GetFileName(path);
             if (bodies.Any(b => b.Contains(name, StringComparison.Ordinal))) continue;
 
-            Directory.CreateDirectory(_trashDir);
-            var dest = Path.Combine(_trashDir, name);
+            Directory.CreateDirectory(trashDir);
+            var dest = Path.Combine(trashDir, name);
             if (File.Exists(dest)) // collision-safe: never clobber an earlier trash entry
-                dest = Path.Combine(_trashDir, $"{Path.GetFileNameWithoutExtension(name)}.{Guid.NewGuid():N}{Path.GetExtension(name)}");
+                dest = Path.Combine(trashDir, $"{Path.GetFileNameWithoutExtension(name)}.{Guid.NewGuid():N}{Path.GetExtension(name)}");
 
             File.Move(path, dest);
             moved++;
         }
 
-        if (moved > 0) _logger.LogInformation("Orphan prune: moved {Count} unreferenced media file(s) to .trash", moved);
         return moved;
     }
 }

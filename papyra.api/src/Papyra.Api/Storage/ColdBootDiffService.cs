@@ -44,31 +44,38 @@ public sealed class ColdBootDiffService : IHostedService
 
     public Task StopAsync(CancellationToken cancellationToken) => Task.CompletedTask;
 
-    // Walk the vault, hydrate VaultState, and reconcile the index/cache against
-    // disk: index files that are new or changed since the cache last saw them,
-    // and drop cache+index entries whose .md file vanished while we were down.
+    // Walk every tenant's vault, hydrate VaultState, and reconcile the index/cache
+    // against disk: index files that are new or changed since the cache last saw
+    // them, and drop cache+index entries whose .md file vanished while we were down.
     internal async Task RunDiffAsync(AppDbContext db, CancellationToken ct)
     {
-        Directory.CreateDirectory(_options.NotesDir);
+        Directory.CreateDirectory(_options.UsersDir);
 
         var cached = await db.NoteCache.ToDictionaryAsync(n => n.Id, ct);
         var seen = new HashSet<string>(StringComparer.Ordinal);
         int indexed = 0, removed = 0;
 
-        foreach (var path in Directory.EnumerateFiles(_options.NotesDir, "*.md", SearchOption.AllDirectories))
+        foreach (var userDir in Directory.EnumerateDirectories(_options.UsersDir))
         {
-            var note = await _storage.ReadAsync(path, ct);
-            if (note is null || string.IsNullOrEmpty(note.Id)) continue;
+            var userId = Path.GetFileName(userDir);
+            var notesDir = _options.UserNotesDir(userId);
+            if (!Directory.Exists(notesDir)) continue;
 
-            seen.Add(note.Id);
-            _state.Upsert(path, note); // hydrate the in-memory vault on boot
-
-            var mtime = File.GetLastWriteTimeUtc(path);
-            if (!cached.TryGetValue(note.Id, out var row) || row.LastModified != mtime)
+            foreach (var path in Directory.EnumerateFiles(notesDir, "*.md", SearchOption.AllDirectories))
             {
-                _search.IndexNote(note);
-                UpsertCache(db, row, note, mtime);
-                indexed++;
+                var note = await _storage.ReadAsync(path, ct);
+                if (note is null || string.IsNullOrEmpty(note.Id)) continue;
+
+                seen.Add(note.Id);
+                _state.Upsert(userId, path, note); // hydrate the in-memory vault on boot
+
+                var mtime = File.GetLastWriteTimeUtc(path);
+                if (!cached.TryGetValue(note.Id, out var row) || row.LastModified != mtime)
+                {
+                    _search.IndexNote(userId, note);
+                    UpsertCache(db, row, note, mtime);
+                    indexed++;
+                }
             }
         }
 

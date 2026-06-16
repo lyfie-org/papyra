@@ -41,37 +41,39 @@ public sealed class SearchIndexService : IDisposable
         _writer.Commit(); // materialize segments so the first Search can open a reader
     }
 
-    // Upsert a note: delete-by-id then add (UpdateDocument) so re-indexing never
-    // leaves a duplicate. Title is boosted; body is indexed but not stored (the
-    // .md file holds the body — the index only needs it searchable).
-    public void IndexNote(Note note)
+    // Upsert a note for a tenant: delete-by-id then add (UpdateDocument) so
+    // re-indexing never leaves a duplicate. The owning userId is stored on the doc
+    // so Search can fence results to a single tenant. Title is boosted; body is
+    // indexed but not stored (the .md file holds the body — the index only needs
+    // it searchable).
+    public void IndexNote(string userId, Note note)
     {
         if (string.IsNullOrEmpty(note.Id)) return;
 
-        _writer.UpdateDocument(new Term("id", note.Id), ToDocument(note));
+        _writer.UpdateDocument(new Term("id", note.Id), ToDocument(userId, note));
         _writer.Commit();
     }
 
-    // Nuclear rebuild: drop every doc, then re-add from the live vault. Uses
-    // DeleteAll on the single process-wide writer instead of closing it and
-    // deleting the index dir — same end state (an empty index repopulated from
-    // disk) but safe against searches racing a reopened writer.
-    public void RebuildFrom(IEnumerable<Note> notes)
+    // Per-tenant nuclear rebuild: drop just this user's docs, then re-add them.
+    // Deletes by the userId term (not DeleteAll) so one tenant's rebuild never
+    // wipes another's index.
+    public void RebuildUser(string userId, IEnumerable<Note> notes)
     {
-        _writer.DeleteAll();
+        _writer.DeleteDocuments(new Term("userId", userId));
         foreach (var note in notes)
         {
             if (string.IsNullOrEmpty(note.Id)) continue;
-            _writer.AddDocument(ToDocument(note));
+            _writer.AddDocument(ToDocument(userId, note));
         }
         _writer.Commit();
     }
 
     // Title is boosted; body is indexed but not stored (the .md file holds the
-    // body — the index only needs it searchable).
-    private static Document ToDocument(Note note) => new()
+    // body — the index only needs it searchable). userId fences tenant results.
+    private static Document ToDocument(string userId, Note note) => new()
     {
         new StringField("id", note.Id, Field.Store.YES),
+        new StringField("userId", userId, Field.Store.YES),
         new TextField("title", note.Title ?? string.Empty, Field.Store.YES) { Boost = 2f },
         new StringField("tags", string.Join(' ', note.Tags), Field.Store.YES),
         new TextField("body", note.Body ?? string.Empty, Field.Store.NO),
@@ -84,16 +86,23 @@ public sealed class SearchIndexService : IDisposable
         _writer.Commit();
     }
 
-    // Relevance-ranked search over title/body/tags. Returns id + title + score;
-    // the snippet is built by the caller from the live body (body isn't stored).
-    public IReadOnlyList<SearchHit> Search(string queryText, int max = 50)
+    // Relevance-ranked search over title/body/tags, fenced to one tenant. Returns
+    // id + title + score; the snippet is built by the caller from the live body
+    // (body isn't stored).
+    public IReadOnlyList<SearchHit> Search(string userId, string queryText, int max = 50)
     {
         if (string.IsNullOrWhiteSpace(queryText)) return [];
 
         // Near-real-time reader straight off the writer — sees just-committed docs.
         using var reader = DirectoryReader.Open(_writer, applyAllDeletes: true);
         var searcher = new IndexSearcher(reader);
-        var query = ParseQuery(queryText);
+
+        // Fence to the caller's docs: userId MUST match, then the text query.
+        var query = new BooleanQuery
+        {
+            { new TermQuery(new Term("userId", userId)), Occur.MUST },
+            { ParseQuery(queryText), Occur.MUST },
+        };
 
         var hits = searcher.Search(query, max).ScoreDocs;
         var results = new List<SearchHit>(hits.Length);

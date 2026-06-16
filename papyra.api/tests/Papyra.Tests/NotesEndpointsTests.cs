@@ -27,12 +27,15 @@ public sealed class NotesEndpointsTests
     }
 
     // Clear the init gate: the first /api/auth/setup creates the admin so the
-    // notes endpoints stop returning 428.
-    private static async Task SeedAdminAsync(HttpClient client)
+    // notes endpoints stop returning 428. Returns the admin's id, which keys their
+    // on-disk vault at users/{id}/.
+    private static async Task<string> SeedAdminAsync(HttpClient client)
     {
         var res = await client.PostAsJsonAsync("/api/auth/setup", new SetupRequest(
             Username: "admin", Name: "Admin", Email: "a@b.c", Password: "hunter2"));
         Assert.Equal(HttpStatusCode.OK, res.StatusCode);
+        var doc = await res.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
+        return doc.GetProperty("id").GetInt32().ToString();
     }
 
     [Fact]
@@ -85,13 +88,13 @@ public sealed class NotesEndpointsTests
         try
         {
             var client = factory.CreateClient();
-            await SeedAdminAsync(client);
+            var uid = await SeedAdminAsync(client);
 
             var put = await client.PutAsJsonAsync("/api/notes/n1", new NoteWrite(
                 Title: "Hello", Tags: ["a", "b"], Color: "#7aaa8a", Pinned: true, Archived: false, Body: "world"));
             Assert.Equal(HttpStatusCode.OK, put.StatusCode);
 
-            var mdPath = Path.Combine(dir, "notes", "n1.md");
+            var mdPath = Path.Combine(dir, "users", uid, "notes", "n1.md");
             Assert.True(File.Exists(mdPath));
             var raw = await File.ReadAllTextAsync(mdPath);
             Assert.Contains("title: Hello", raw);
@@ -120,14 +123,14 @@ public sealed class NotesEndpointsTests
         try
         {
             var client = factory.CreateClient();
-            await SeedAdminAsync(client);
+            var uid = await SeedAdminAsync(client);
             await client.PutAsJsonAsync("/api/notes/d1", new NoteWrite(
                 Title: "Doomed", Tags: null, Color: null, Pinned: false, Archived: false, Body: "bye"));
 
             var del = await client.DeleteAsync("/api/notes/d1");
             Assert.Equal(HttpStatusCode.NoContent, del.StatusCode);
 
-            Assert.False(File.Exists(Path.Combine(dir, "notes", "d1.md")));
+            Assert.False(File.Exists(Path.Combine(dir, "users", uid, "notes", "d1.md")));
 
             var notes = await client.GetFromJsonAsync<List<Note>>("/api/notes");
             Assert.Empty(notes!);

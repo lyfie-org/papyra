@@ -1,3 +1,4 @@
+using System.Security;
 using System.Security.Claims;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
@@ -36,7 +37,7 @@ builder.Services.AddSingleton<VaultState>();
 builder.Services.AddSingleton<WriteRing>();
 builder.Services.AddSingleton(sp => new VaultObserverOptions
 {
-    NotesDir = PapyraPaths.NotesDir(
+    UsersDir = PapyraPaths.UsersDir(
         sp.GetRequiredService<IConfiguration>(),
         sp.GetRequiredService<IHostEnvironment>().ContentRootPath),
 });
@@ -46,8 +47,11 @@ builder.Services.AddSingleton<SearchIndexService>();
 
 // Reconcile disk vs the caches on boot (before ports open), then watch live, then
 // sweep orphaned media nightly. Order matters: the cold-boot diff runs first.
+// The observer is a singleton too so the setup/provision flow can call WatchUser
+// when a new tenant's vault is created.
+builder.Services.AddSingleton<VaultObserver>();
 builder.Services.AddHostedService<ColdBootDiffService>();
-builder.Services.AddHostedService<VaultObserver>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<VaultObserver>());
 builder.Services.AddHostedService<OrphanPruneService>();
 
 // Real-time push: the observer broadcasts metadata-only note events to clients.
@@ -135,6 +139,24 @@ app.UseStaticFiles();
 app.UseAuthentication();
 app.UseAuthorization();
 
+// ── Path-jail backstop ────────────────────────────────────────────────────────
+// Any filename that escapes a tenant's vault throws SecurityException from
+// PathGuard; translate it to a flat 403 (the breach is already logged at source).
+app.Use(async (context, next) =>
+{
+    try
+    {
+        await next();
+    }
+    catch (SecurityException)
+    {
+        context.Response.StatusCode = StatusCodes.Status403Forbidden;
+        await context.Response.WriteAsJsonAsync(
+            new { error = "Forbidden.", code = "path_jail" },
+            context.RequestAborted);
+    }
+});
+
 app.MapOpenApi();
 
 app.MapScalarApiReference(options =>
@@ -155,7 +177,7 @@ app.MapGet("/health", () => Results.Ok(new { status = "Healthy", app = "Papyra A
 // account is always the admin. Login/logout + cookie sessions land in Sprint 6.2.
 var auth = app.MapGroup("/api/auth");
 
-auth.MapPost("/setup", async (SetupRequest body, HttpContext http, AppDbContext db, CancellationToken ct) =>
+auth.MapPost("/setup", async (SetupRequest body, HttpContext http, AppDbContext db, VaultObserver observer, CancellationToken ct) =>
 {
     if (await db.Users.AnyAsync(ct))
         return Results.Conflict(new { error = "Already initialized." });
@@ -175,6 +197,7 @@ auth.MapPost("/setup", async (SetupRequest body, HttpContext http, AppDbContext 
     db.Users.Add(user);
     await db.SaveChangesAsync(ct);
 
+    observer.WatchUser(user.Id.ToString()); // create + watch the new tenant's vault
     await SignInAsync(http, user); // the first admin starts signed in
     return Results.Ok(new { user.Id, user.Username, user.Name, user.Email, user.Role });
 });
@@ -206,19 +229,26 @@ auth.MapPost("/logout", async (HttpContext http) =>
 // echo. Filesystem stays the source of truth — VaultState is just a mirror.
 var notes = app.MapGroup("/api/notes").RequireAuthorization();
 
-notes.MapGet("/", (VaultState state) => Results.Ok(state.Snapshot()));
+notes.MapGet("/", (ClaimsPrincipal user, VaultState state) =>
+    Results.Ok(state.Snapshot(Uid(user))));
 
 notes.MapPut("/{id}", async (
     string id,
     NoteWrite body,
+    ClaimsPrincipal user,
     VaultState state,
     MarkdownStorageService storage,
     WriteRing writeRing,
     SearchIndexService search,
     VaultObserverOptions vault,
+    ILoggerFactory loggerFactory,
     CancellationToken ct) =>
 {
-    var path = state.PathFor(id) ?? Path.Combine(vault.NotesDir, $"{id}.md");
+    var uid = Uid(user);
+    // Resolve under the caller's vault and verify it can't escape (→ 403).
+    var path = state.PathFor(uid, id)
+        ?? PathGuard.ResolveAndVerify(vault.UserNotesDir(uid), $"{id}.md", loggerFactory.CreateLogger("PathGuard"));
+
     var note = new Note
     {
         Id = id,
@@ -232,24 +262,26 @@ notes.MapPut("/{id}", async (
 
     writeRing.Mark(path); // log self-write before touching disk (loop prevention)
     await storage.WriteAsync(path, note, ct);
-    state.Upsert(path, note);
-    search.IndexNote(note); // watcher skips our own write echo, so index here
+    state.Upsert(uid, path, note);
+    search.IndexNote(uid, note); // watcher skips our own write echo, so index here
 
     return Results.Ok(note);
 });
 
 notes.MapDelete("/{id}", (
     string id,
+    ClaimsPrincipal user,
     VaultState state,
     WriteRing writeRing,
     SearchIndexService search) =>
 {
-    var path = state.PathFor(id);
+    var uid = Uid(user);
+    var path = state.PathFor(uid, id);
     if (path is null) return Results.NotFound();
 
     writeRing.Mark(path); // watcher ignores the delete echo
     if (File.Exists(path)) File.Delete(path);
-    state.Remove(path);
+    state.Remove(uid, path);
     search.RemoveNote(id); // watcher skips the echo, so drop from the index here
 
     return Results.NoContent();
@@ -258,13 +290,14 @@ notes.MapDelete("/{id}", (
 // ── Search ────────────────────────────────────────────────────────────────────
 // Relevance-ranked full-text search over the Lucene index. The index stores only
 // metadata; snippets are highlighted against the live body in VaultState.
-app.MapGet("/api/search", (string? q, SearchIndexService search, VaultState state) =>
+app.MapGet("/api/search", (string? q, ClaimsPrincipal user, SearchIndexService search, VaultState state) =>
 {
     if (string.IsNullOrWhiteSpace(q)) return Results.Ok(Array.Empty<object>());
 
-    var results = search.Search(q).Select(hit =>
+    var uid = Uid(user);
+    var results = search.Search(uid, q).Select(hit =>
     {
-        var note = state.PathFor(hit.Id) is { } p && state.TryGet(p, out var n) ? n : null;
+        var note = state.PathFor(uid, hit.Id) is { } p && state.TryGet(uid, p, out var n) ? n : null;
         var snippet = note is not null ? search.BuildSnippet(q, note.Body) : string.Empty;
         return new { id = hit.Id, title = hit.Title, snippet, score = hit.Score };
     }).ToArray();
@@ -276,6 +309,7 @@ app.MapGet("/api/search", (string? q, SearchIndexService search, VaultState stat
 // Wipe the disposable caches and rebuild them from the .md files (the authority).
 // Broadcasts SystemRebuilding so clients can show a spinner while it runs.
 app.MapPost("/api/system/rebuild-index", async (
+    ClaimsPrincipal user,
     SearchIndexService search,
     MarkdownStorageService storage,
     VaultState state,
@@ -286,19 +320,23 @@ app.MapPost("/api/system/rebuild-index", async (
 {
     await hub.Clients.All.SendAsync("SystemRebuilding", ct);
 
-    Directory.CreateDirectory(vault.NotesDir);
+    var uid = Uid(user);
+    var notesDir = vault.UserNotesDir(uid);
+    Directory.CreateDirectory(notesDir);
     var scanned = new List<(Note Note, DateTime Mtime)>();
-    foreach (var path in Directory.EnumerateFiles(vault.NotesDir, "*.md", SearchOption.AllDirectories))
+    foreach (var path in Directory.EnumerateFiles(notesDir, "*.md", SearchOption.AllDirectories))
     {
         var note = await storage.ReadAsync(path, ct);
         if (note is null || string.IsNullOrEmpty(note.Id)) continue;
-        state.Upsert(path, note);
+        state.Upsert(uid, path, note);
         scanned.Add((note, File.GetLastWriteTimeUtc(path)));
     }
 
-    search.RebuildFrom(scanned.Select(s => s.Note));
+    search.RebuildUser(uid, scanned.Select(s => s.Note)); // drop only this tenant's docs
 
-    db.NoteCache.RemoveRange(db.NoteCache);
+    // Refresh the caller's cache rows (disposable mirror; keyed by note id).
+    var ids = scanned.Select(s => s.Note.Id).ToHashSet(StringComparer.Ordinal);
+    db.NoteCache.RemoveRange(db.NoteCache.Where(r => ids.Contains(r.Id)));
     db.NoteCache.AddRange(scanned.Select(s => new NoteCache
     {
         Id = s.Note.Id,
@@ -318,13 +356,15 @@ app.MapPost("/api/system/rebuild-index", async (
 app.MapPost("/api/media/upload", async (
     string? noteId,
     IFormFile file,
+    ClaimsPrincipal user,
     IConfiguration config,
     IHostEnvironment env,
+    ILoggerFactory loggerFactory,
     CancellationToken ct) =>
 {
     if (file is null || file.Length == 0) return Results.BadRequest(new { error = "No file." });
 
-    var mediaDir = PapyraPaths.MediaDir(config, env.ContentRootPath);
+    var mediaDir = PapyraPaths.UserMediaDir(config, env.ContentRootPath, Uid(user));
     Directory.CreateDirectory(mediaDir);
 
     // Slugify the stem, keep the extension, append a short uuid so two pasted
@@ -335,7 +375,8 @@ app.MapPost("/api/media/upload", async (
     if (string.IsNullOrEmpty(safeStem)) safeStem = "file";
     var filename = $"{safeStem}-{Guid.NewGuid():N}{ext}";
 
-    var dest = Path.Combine(mediaDir, filename);
+    // Defensive: the slugified name can't escape, but verify before writing.
+    var dest = PathGuard.ResolveAndVerify(mediaDir, filename, loggerFactory.CreateLogger("PathGuard"));
     var tmp = Path.Combine(mediaDir, $"{Guid.NewGuid():N}.tmp");
     await using (var fs = new FileStream(tmp, FileMode.CreateNew, FileAccess.Write, FileShare.None))
     {
@@ -355,8 +396,14 @@ app.MapFallbackToFile("index.html");
 
 app.Run();
 
+// The authenticated tenant id, lifted from the NameIdentifier claim minted at
+// sign-in. Every per-user storage path keys off this.
+static string Uid(ClaimsPrincipal user) =>
+    user.FindFirstValue(ClaimTypes.NameIdentifier)
+    ?? throw new SecurityException("Authenticated principal carries no user id.");
+
 // Mint the session cookie for a user. UserId rides as NameIdentifier so the
-// services can scope per-user storage once Sprint 6.3 re-roots the path jail.
+// services scope per-user storage (the Sprint 6.3 path jail keys off it).
 static async Task SignInAsync(HttpContext http, User user)
 {
     var claims = new List<Claim>
