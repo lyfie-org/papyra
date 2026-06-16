@@ -1,3 +1,4 @@
+import { Link } from 'react-router-dom';
 import type { Note } from '../types/note';
 import './NoteCard.css';
 
@@ -16,18 +17,20 @@ export default function NoteCard({ note }: { note: Note }) {
   const className = `note-card${note.color ? ' note-card--colored' : ''}`;
 
   return (
-    <article className={className} style={style}>
-      <h3 className="note-card__title">{title}</h3>
-      {note.body.trim() && (
-        <p className="note-card__snippet">{snippet(note.body)}</p>
-      )}
-      {note.tags.length > 0 && (
-        <ul className="note-card__tags">
-          {note.tags.map(tag => (
-            <li key={tag} className="note-card__tag">{tag}</li>
-          ))}
-        </ul>
-      )}
-    </article>
+    <Link to={`/note/${encodeURIComponent(note.id)}`} className="note-card__link">
+      <article className={className} style={style}>
+        <h3 className="note-card__title">{title}</h3>
+        {note.body.trim() && (
+          <p className="note-card__snippet">{snippet(note.body)}</p>
+        )}
+        {note.tags.length > 0 && (
+          <ul className="note-card__tags">
+            {note.tags.map(tag => (
+              <li key={tag} className="note-card__tag">{tag}</li>
+            ))}
+          </ul>
+        )}
+      </article>
+    </Link>
   );
 }
