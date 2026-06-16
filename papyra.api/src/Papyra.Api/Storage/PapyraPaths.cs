@@ -28,4 +28,12 @@ public static class PapyraPaths
     // Disposable Lucene full-text index — rebuilt from the .md files at will.
     public static string LuceneIndexDir(IConfiguration config, string contentRoot)
         => Path.Combine(DotPapyra(config, contentRoot), "lucene-index");
+
+    // Uploaded attachments referenced by notes via ![[filename]].
+    public static string MediaDir(IConfiguration config, string contentRoot)
+        => Path.Combine(DataDir(config, contentRoot), "media");
+
+    // Soft-delete bin: orphaned media is moved here, never hard-deleted.
+    public static string TrashDir(IConfiguration config, string contentRoot)
+        => Path.Combine(DataDir(config, contentRoot), ".trash");
 }

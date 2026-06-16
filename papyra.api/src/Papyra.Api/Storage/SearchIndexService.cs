@@ -48,17 +48,34 @@ public sealed class SearchIndexService : IDisposable
     {
         if (string.IsNullOrEmpty(note.Id)) return;
 
-        var doc = new Document
-        {
-            new StringField("id", note.Id, Field.Store.YES),
-            new TextField("title", note.Title ?? string.Empty, Field.Store.YES) { Boost = 2f },
-            new StringField("tags", string.Join(' ', note.Tags), Field.Store.YES),
-            new TextField("body", note.Body ?? string.Empty, Field.Store.NO),
-        };
-
-        _writer.UpdateDocument(new Term("id", note.Id), doc);
+        _writer.UpdateDocument(new Term("id", note.Id), ToDocument(note));
         _writer.Commit();
     }
+
+    // Nuclear rebuild: drop every doc, then re-add from the live vault. Uses
+    // DeleteAll on the single process-wide writer instead of closing it and
+    // deleting the index dir — same end state (an empty index repopulated from
+    // disk) but safe against searches racing a reopened writer.
+    public void RebuildFrom(IEnumerable<Note> notes)
+    {
+        _writer.DeleteAll();
+        foreach (var note in notes)
+        {
+            if (string.IsNullOrEmpty(note.Id)) continue;
+            _writer.AddDocument(ToDocument(note));
+        }
+        _writer.Commit();
+    }
+
+    // Title is boosted; body is indexed but not stored (the .md file holds the
+    // body — the index only needs it searchable).
+    private static Document ToDocument(Note note) => new()
+    {
+        new StringField("id", note.Id, Field.Store.YES),
+        new TextField("title", note.Title ?? string.Empty, Field.Store.YES) { Boost = 2f },
+        new StringField("tags", string.Join(' ', note.Tags), Field.Store.YES),
+        new TextField("body", note.Body ?? string.Empty, Field.Store.NO),
+    };
 
     public void RemoveNote(string id)
     {
