@@ -61,6 +61,12 @@ builder.Services.AddHostedService<ColdBootDiffService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<VaultObserver>());
 builder.Services.AddHostedService<OrphanPruneService>();
 
+// Background import queue: drains uploaded Obsidian/Keep archives into the vault
+// off the request thread, pushing progress over SignalR. Singleton so the endpoint
+// can Enqueue onto the same instance the hosted worker drains.
+builder.Services.AddSingleton<ImportService>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<ImportService>());
+
 // Real-time push: the observer broadcasts metadata-only note events to clients.
 builder.Services.AddSignalR();
 
@@ -666,6 +672,55 @@ app.MapPost("/api/media/upload", async (
 })
 .RequireAuthorization()
 .DisableAntiforgery(); // no antiforgery middleware in this skeleton; same-origin SPA
+
+// ── Import / Export ───────────────────────────────────────────────────────────
+// Import parks the uploaded archive on disk and hands it to the background queue,
+// answering 202 with a job id; the SPA tracks progress via SignalR "ImportProgress".
+// Export streams a zip of the caller's notes dir (deleted on close).
+app.MapPost("/api/import/{provider}", async (
+    string provider,
+    IFormFile file,
+    ClaimsPrincipal user,
+    ImportService import,
+    CancellationToken ct) =>
+{
+    if (file is null || file.Length == 0) return Results.BadRequest(new { error = "No file." });
+
+    provider = provider.Trim().ToLowerInvariant();
+    if (provider is not ("obsidian" or "keep"))
+        return Results.BadRequest(new { error = "Unknown provider. Use 'obsidian' or 'keep'." });
+
+    // Park the upload so the worker (not this request) owns the long parse.
+    var tmp = Path.Combine(Path.GetTempPath(), $"papyra-import-{Guid.NewGuid():N}.zip");
+    await using (var fs = new FileStream(tmp, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+    {
+        await file.CopyToAsync(fs, ct);
+        await fs.FlushAsync(ct);
+    }
+
+    var jobId = import.Enqueue(Uid(user), provider, tmp);
+    return Results.Accepted(value: new { jobId });
+})
+.RequireAuthorization()
+.DisableAntiforgery();
+
+app.MapGet("/api/export", (
+    ClaimsPrincipal user,
+    IConfiguration config,
+    IHostEnvironment env) =>
+{
+    var notesDir = PapyraPaths.UserNotesDir(config, env.ContentRootPath, Uid(user));
+    Directory.CreateDirectory(notesDir);
+
+    var tmp = Path.Combine(Path.GetTempPath(), $"papyra-export-{Guid.NewGuid():N}.zip");
+    System.IO.Compression.ZipFile.CreateFromDirectory(notesDir, tmp);
+
+    // DeleteOnClose reclaims the temp zip once the response stream finishes.
+    var stream = new FileStream(
+        tmp, FileMode.Open, FileAccess.Read, FileShare.None, 4096, FileOptions.DeleteOnClose);
+    return Results.File(stream, "application/zip", "papyra-export.zip");
+})
+.RequireAuthorization();
 
 app.MapHub<NotesHub>("/hubs/notes");
 
