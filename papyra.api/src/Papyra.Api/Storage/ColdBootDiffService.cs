@@ -16,6 +16,7 @@ public sealed class ColdBootDiffService : IHostedService
     private readonly MarkdownStorageService _storage;
     private readonly VaultState _state;
     private readonly SearchIndexService _search;
+    private readonly ConflictState? _conflicts;
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<ColdBootDiffService> _logger;
 
@@ -25,12 +26,14 @@ public sealed class ColdBootDiffService : IHostedService
         VaultState state,
         SearchIndexService search,
         IServiceScopeFactory scopeFactory,
-        ILogger<ColdBootDiffService> logger)
+        ILogger<ColdBootDiffService> logger,
+        ConflictState? conflicts = null)
     {
         _options = options;
         _storage = storage;
         _state = state;
         _search = search;
+        _conflicts = conflicts;
         _scopeFactory = scopeFactory;
         _logger = logger;
     }
@@ -63,6 +66,14 @@ public sealed class ColdBootDiffService : IHostedService
 
             foreach (var path in Directory.EnumerateFiles(notesDir, "*.md", SearchOption.AllDirectories))
             {
+                // Conflict copies are not notes — register them for resolution and
+                // keep them out of the vault/index (they'd collide on the parent id).
+                if (ConflictDetector.IsConflict(Path.GetFileName(path)))
+                {
+                    await RegisterConflict(userId, notesDir, path, ct);
+                    continue;
+                }
+
                 var note = await _storage.ReadAsync(path, ct);
                 if (note is null || string.IsNullOrEmpty(note.Id)) continue;
 
@@ -91,6 +102,21 @@ public sealed class ColdBootDiffService : IHostedService
         _logger.LogInformation(
             "Cold-boot diff: {Loaded} note(s) on disk, {Indexed} (re)indexed, {Removed} pruned",
             seen.Count, indexed, removed);
+    }
+
+    // Rehydrate one conflict copy into the (disposable) conflict registry on boot.
+    private async Task RegisterConflict(string userId, string notesDir, string path, CancellationToken ct)
+    {
+        if (_conflicts is null) return;
+        var note = await _storage.ReadAsync(path, ct);
+        var rel = Path.GetRelativePath(notesDir, path);
+        _conflicts.Upsert(userId, new ConflictInfo(
+            ConflictDetector.EncodeId(rel),
+            rel,
+            ConflictDetector.ParentRelativePath(rel),
+            note?.Id ?? string.Empty,
+            note?.Title ?? string.Empty,
+            File.GetLastWriteTimeUtc(path)));
     }
 
     private static void UpsertCache(AppDbContext db, NoteCache? existing, Note note, DateTime mtime)

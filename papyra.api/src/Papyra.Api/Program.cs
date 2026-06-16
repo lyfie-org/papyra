@@ -48,6 +48,10 @@ builder.Services.AddSingleton<SearchIndexService>();
 // Timestamped version history per note (throttled + age-pruned), for recovery.
 builder.Services.AddSingleton<SnapshotService>();
 
+// In-memory registry of sync-tool conflict copies awaiting resolution (disposable;
+// rebuilt from disk by the cold-boot diff + watcher).
+builder.Services.AddSingleton<ConflictState>();
+
 // Reconcile disk vs the caches on boot (before ports open), then watch live, then
 // sweep orphaned media nightly. Order matters: the cold-boot diff runs first.
 // The observer is a singleton too so the setup/provision flow can call WatchUser
@@ -441,6 +445,124 @@ notes.MapPost("/{id}/restore/{snapshotId}", async (
     return Results.Ok(note);
 });
 
+// ── Conflicts (sync-copy resolution) ────────────────────────────────────────────
+// Sync tools (Syncthing/Dropbox/Nextcloud) drop a conflict copy next to a note
+// when two devices edit it offline. The observer registers these instead of
+// parsing them as notes. List is metadata-only; the detail GET returns both bodies
+// for the split-pane resolver; resolve keeps left (parent), right (the copy), or
+// both (the copy becomes a new note) and always deletes the rejected .md.
+var conflicts = app.MapGroup("/api/conflicts").RequireAuthorization();
+
+conflicts.MapGet("/", (ClaimsPrincipal user, ConflictState conflictState, VaultState state) =>
+{
+    var uid = Uid(user);
+    return Results.Ok(conflictState.Snapshot(uid).Select(c =>
+    {
+        var parent = state.PathFor(uid, c.ParentId) is { } p && state.TryGet(uid, p, out var pn) ? pn : null;
+        return new
+        {
+            id = c.Id,
+            parentId = c.ParentId,
+            parentTitle = parent?.Title ?? string.Empty,
+            conflictTitle = c.ConflictTitle,
+            detected = c.DetectedUtc,
+        };
+    }));
+});
+
+conflicts.MapGet("/{id}", async (
+    string id,
+    ClaimsPrincipal user,
+    ConflictState conflictState,
+    VaultState state,
+    MarkdownStorageService storage,
+    VaultObserverOptions vault,
+    ILoggerFactory loggerFactory,
+    CancellationToken ct) =>
+{
+    var uid = Uid(user);
+    if (!conflictState.TryGet(uid, id, out var c) || c is null) return Results.NotFound();
+
+    var notesDir = vault.UserNotesDir(uid);
+    var logger = loggerFactory.CreateLogger("PathGuard");
+    var conflictPath = PathGuard.ResolveAndVerify(notesDir, c.RelativePath, logger);
+    var conflictNote = await storage.ReadAsync(conflictPath, ct);
+    if (conflictNote is null) return Results.NotFound();
+
+    var parentNote = state.PathFor(uid, c.ParentId) is { } p && state.TryGet(uid, p, out var pn)
+        ? pn
+        : await storage.ReadAsync(PathGuard.ResolveAndVerify(notesDir, c.ParentRelativePath, logger), ct);
+
+    return Results.Ok(new
+    {
+        id = c.Id,
+        parentId = c.ParentId,
+        parentTitle = parentNote?.Title ?? string.Empty,
+        parentBody = parentNote?.Body ?? string.Empty,
+        conflictTitle = conflictNote.Title,
+        conflictBody = conflictNote.Body,
+    });
+});
+
+conflicts.MapPost("/{id}/resolve", async (
+    string id,
+    ResolveConflictRequest body,
+    ClaimsPrincipal user,
+    ConflictState conflictState,
+    VaultState state,
+    MarkdownStorageService storage,
+    WriteRing writeRing,
+    SearchIndexService search,
+    VaultObserverOptions vault,
+    IHubContext<NotesHub> hub,
+    ILoggerFactory loggerFactory,
+    CancellationToken ct) =>
+{
+    var uid = Uid(user);
+    if (!conflictState.TryGet(uid, id, out var c) || c is null) return Results.NotFound();
+
+    var keep = body.Keep?.Trim().ToLowerInvariant();
+    if (keep is not ("left" or "right" or "both"))
+        return Results.BadRequest(new { error = "keep must be left, right, or both." });
+
+    var notesDir = vault.UserNotesDir(uid);
+    var logger = loggerFactory.CreateLogger("PathGuard");
+    var conflictPath = PathGuard.ResolveAndVerify(notesDir, c.RelativePath, logger);
+    if (!File.Exists(conflictPath))
+    {
+        conflictState.Remove(uid, id, out _); // already gone — clear the stale entry
+        return Results.NotFound();
+    }
+
+    // "right" overwrites the parent with the copy's content (parent id preserved);
+    // "both" promotes the copy to a brand-new note. "left" keeps the parent as-is.
+    if (keep is "right" or "both")
+    {
+        var copy = await storage.ReadAsync(conflictPath, ct);
+        if (copy is not null)
+        {
+            var targetPath = keep == "right"
+                ? state.PathFor(uid, c.ParentId) ?? PathGuard.ResolveAndVerify(notesDir, c.ParentRelativePath, logger)
+                : PathGuard.ResolveAndVerify(notesDir, $"{Guid.NewGuid()}.md", logger);
+            copy.Id = keep == "right" ? c.ParentId : Path.GetFileNameWithoutExtension(targetPath);
+
+            writeRing.Mark(targetPath); // our write — watcher ignores the echo
+            await storage.WriteAsync(targetPath, copy, ct);
+            state.Upsert(uid, targetPath, copy);
+            search.IndexNote(uid, copy);
+            await hub.Clients.All.SendAsync(keep == "right" ? "NoteUpdated" : "NoteCreated", NoteMetadata.From(copy), ct);
+        }
+    }
+
+    // Every resolution deletes the rejected copy.
+    writeRing.Mark(conflictPath);
+    if (File.Exists(conflictPath)) File.Delete(conflictPath);
+    conflictState.Remove(uid, id, out _);
+
+    await hub.Clients.All.SendAsync("ConflictResolved", new { id, parentId = c.ParentId }, ct);
+    return Results.NoContent();
+});
+
 // ── Search ────────────────────────────────────────────────────────────────────
 // Relevance-ranked full-text search over the Lucene index. The index stores only
 // metadata; snippets are highlighted against the live body in VaultState.
@@ -480,6 +602,7 @@ app.MapPost("/api/system/rebuild-index", async (
     var scanned = new List<(Note Note, DateTime Mtime)>();
     foreach (var path in Directory.EnumerateFiles(notesDir, "*.md", SearchOption.AllDirectories))
     {
+        if (ConflictDetector.IsConflict(Path.GetFileName(path))) continue; // not a note
         var note = await storage.ReadAsync(path, ct);
         if (note is null || string.IsNullOrEmpty(note.Id)) continue;
         state.Upsert(uid, path, note);
@@ -603,6 +726,11 @@ public sealed record ProvisionRequest(
 // Admin password reset payload for an existing user.
 public sealed record ResetRequest(
     string? Password);
+
+// Conflict resolution choice: "left" (keep parent), "right" (keep the copy),
+// or "both" (promote the copy to a new note). The rejected .md is deleted either way.
+public sealed record ResolveConflictRequest(
+    string? Keep);
 
 // Makes the implicit top-level Program class visible to WebApplicationFactory in integration tests.
 public partial class Program { }

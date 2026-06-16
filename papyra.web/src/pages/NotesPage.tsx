@@ -1,14 +1,30 @@
+import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { Plus } from 'lucide-react';
 import NoteGrid from '../components/NoteGrid';
+import ConflictResolver from '../components/ConflictResolver';
 import { useNotes } from '../hooks/useNotes';
+import { useConflicts, type Conflict } from '../hooks/useConflicts';
 import './NotesPage.css';
 
 export default function NotesPage() {
   const { data: notes, isLoading, isError } = useNotes();
+  const { data: conflicts } = useConflicts();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const [resolving, setResolving] = useState<string | null>(null);
+
+  // Group conflicts under the note they shadow so each card can flag its own.
+  const conflictsByParent = useMemo(() => {
+    const map = new Map<string, Conflict[]>();
+    for (const c of conflicts ?? []) {
+      const list = map.get(c.parentId);
+      if (list) list.push(c);
+      else map.set(c.parentId, [c]);
+    }
+    return map;
+  }, [conflicts]);
 
   // Create = PUT a fresh, empty note (the API upserts) then open it. The id is
   // minted client-side; the .md becomes the source of truth on first write.
@@ -35,7 +51,17 @@ export default function NotesPage() {
 
       {isLoading && <p className="notes-page__status">Loading notes…</p>}
       {isError && <p className="notes-page__status">Couldn’t reach the server.</p>}
-      {!isLoading && !isError && <NoteGrid notes={notes ?? []} />}
+      {!isLoading && !isError && (
+        <NoteGrid
+          notes={notes ?? []}
+          conflictsByParent={conflictsByParent}
+          onResolveConflict={setResolving}
+        />
+      )}
+
+      {resolving && (
+        <ConflictResolver conflictId={resolving} onClose={() => setResolving(null)} />
+      )}
     </section>
   );
 }

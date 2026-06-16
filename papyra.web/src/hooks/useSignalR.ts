@@ -18,10 +18,14 @@ export function useSignalR(): ServerStatus {
       .build();
 
     const invalidate = () => queryClient.invalidateQueries({ queryKey: ['notes'] });
+    const invalidateConflicts = () => queryClient.invalidateQueries({ queryKey: ['conflicts'] });
 
     connection.on('NoteCreated', invalidate);
     connection.on('NoteUpdated', invalidate);
     connection.on('NoteDeleted', invalidate);
+    // Sync conflict copies appear/resolve out of band; refresh the grid banners.
+    connection.on('NoteConflict', invalidateConflicts);
+    connection.on('ConflictResolved', invalidateConflicts);
 
     connection.onreconnecting(() => setStatus('offline'));
     connection.onreconnected(() => setStatus('online'));

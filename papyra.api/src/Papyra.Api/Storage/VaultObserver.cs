@@ -33,6 +33,7 @@ public sealed class VaultObserver : BackgroundService
     private readonly VaultState _state;
     private readonly WriteRing _writeRing;
     private readonly SearchIndexService? _search;
+    private readonly ConflictState? _conflicts;
     private readonly IHubContext<NotesHub>? _hub;
     private readonly ILogger<VaultObserver> _logger;
 
@@ -55,7 +56,8 @@ public sealed class VaultObserver : BackgroundService
         WriteRing writeRing,
         ILogger<VaultObserver> logger,
         IHubContext<NotesHub>? hub = null,
-        SearchIndexService? search = null)
+        SearchIndexService? search = null,
+        ConflictState? conflicts = null)
     {
         _options = options;
         _storage = storage;
@@ -64,6 +66,7 @@ public sealed class VaultObserver : BackgroundService
         _logger = logger;
         _hub = hub;
         _search = search;
+        _conflicts = conflicts;
     }
 
     protected override Task ExecuteAsync(CancellationToken stoppingToken)
@@ -141,6 +144,15 @@ public sealed class VaultObserver : BackgroundService
             return;
         }
 
+        // A sync tool's conflict copy is not a note — register it for resolution
+        // instead of parsing it (it carries the parent's id and would collide).
+        if (ConflictDetector.IsConflict(Path.GetFileName(path)))
+        {
+            await HandleConflict(userId, path, deleted, token);
+            Interlocked.Increment(ref ProcessedEvents);
+            return;
+        }
+
         try
         {
             if (deleted || !File.Exists(path))
@@ -178,6 +190,43 @@ public sealed class VaultObserver : BackgroundService
     {
         if (_hub is null) return Task.CompletedTask;
         return _hub.Clients.All.SendAsync(evt, NoteMetadata.From(note), token);
+    }
+
+    // Track a conflict copy appearing/vanishing in the vault. On appear it's read
+    // once for its title + parent id and registered; on delete (resolved by us or
+    // the user) it's dropped. Clients only refetch on these, so the payload is thin.
+    private async Task HandleConflict(string userId, string path, bool deleted, CancellationToken token)
+    {
+        if (_conflicts is null) return;
+        var notesDir = _options.UserNotesDir(userId);
+        var rel = Path.GetRelativePath(notesDir, path);
+        var id = ConflictDetector.EncodeId(rel);
+
+        if (deleted || !File.Exists(path))
+        {
+            if (_conflicts.Remove(userId, id, out var gone) && gone is not null)
+                await BroadcastConflict("ConflictResolved", gone, token);
+            return;
+        }
+
+        var note = await _storage.ReadAsync(path, token);
+        if (note is null) return;
+
+        var parentRel = ConflictDetector.ParentRelativePath(rel);
+        var parentId = note.Id;
+        if (string.IsNullOrEmpty(parentId) &&
+            _state.TryGet(userId, Path.Combine(notesDir, parentRel), out var parent) && parent is not null)
+            parentId = parent.Id;
+
+        var info = new ConflictInfo(id, rel, parentRel, parentId ?? string.Empty, note.Title, DateTime.UtcNow);
+        _conflicts.Upsert(userId, info);
+        await BroadcastConflict("NoteConflict", info, token);
+    }
+
+    private Task BroadcastConflict(string evt, ConflictInfo info, CancellationToken token)
+    {
+        if (_hub is null) return Task.CompletedTask;
+        return _hub.Clients.All.SendAsync(evt, new { info.Id, info.ParentId }, token);
     }
 
     public override void Dispose()
