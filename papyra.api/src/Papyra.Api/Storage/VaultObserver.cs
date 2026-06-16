@@ -1,4 +1,6 @@
 using System.Collections.Concurrent;
+using Microsoft.AspNetCore.SignalR;
+using Papyra.Api.Hubs;
 
 namespace Papyra.Api.Storage;
 
@@ -25,6 +27,7 @@ public sealed class VaultObserver : BackgroundService
     private readonly MarkdownStorageService _storage;
     private readonly VaultState _state;
     private readonly WriteRing _writeRing;
+    private readonly IHubContext<NotesHub>? _hub;
     private readonly ILogger<VaultObserver> _logger;
 
     // One live debounce timer per path; a new event cancels and restarts it.
@@ -42,13 +45,15 @@ public sealed class VaultObserver : BackgroundService
         MarkdownStorageService storage,
         VaultState state,
         WriteRing writeRing,
-        ILogger<VaultObserver> logger)
+        ILogger<VaultObserver> logger,
+        IHubContext<NotesHub>? hub = null)
     {
         _options = options;
         _storage = storage;
         _state = state;
         _writeRing = writeRing;
         _logger = logger;
+        _hub = hub;
     }
 
     protected override Task ExecuteAsync(CancellationToken stoppingToken)
@@ -119,12 +124,21 @@ public sealed class VaultObserver : BackgroundService
         {
             if (deleted || !File.Exists(path))
             {
-                _state.Remove(path);
+                if (_state.TryGet(path, out var gone) && gone is not null)
+                {
+                    _state.Remove(path);
+                    await Broadcast("NoteDeleted", gone, token);
+                }
             }
             else
             {
                 var note = await _storage.ReadAsync(path, token);
-                if (note is not null) _state.Upsert(path, note);
+                if (note is not null)
+                {
+                    var existed = _state.TryGet(path, out _);
+                    _state.Upsert(path, note);
+                    await Broadcast(existed ? "NoteUpdated" : "NoteCreated", note, token);
+                }
             }
 
             Interlocked.Increment(ref ProcessedEvents);
@@ -133,6 +147,14 @@ public sealed class VaultObserver : BackgroundService
         {
             _logger.LogWarning(ex, "Failed to sync vault for {Path}", path);
         }
+    }
+
+    // Push a metadata-only event to all clients. Body never crosses the wire —
+    // clients fetch it via REST only for the open note.
+    private Task Broadcast(string evt, Models.Note note, CancellationToken token)
+    {
+        if (_hub is null) return Task.CompletedTask;
+        return _hub.Clients.All.SendAsync(evt, NoteMetadata.From(note), token);
     }
 
     public override void Dispose()

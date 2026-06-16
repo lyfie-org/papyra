@@ -18,6 +18,10 @@ public sealed class VaultState
 
     public bool TryGet(string path, out Note? note) => _notes.TryGetValue(path, out note);
 
+    // Resolve the absolute .md path of a note by its frontmatter id, if tracked.
+    public string? PathFor(string id) =>
+        _notes.FirstOrDefault(kv => string.Equals(kv.Value.Id, id, StringComparison.Ordinal)).Key;
+
     public IReadOnlyCollection<Note> Snapshot() => _notes.Values.ToArray();
 
     public int Count => _notes.Count;
