@@ -11,10 +11,16 @@ var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddOpenApi();
 
 // ── Relational cache (SQLite — disposable; filesystem is the authority) ──────
-var dbPath = PapyraPaths.DbPath(builder.Configuration, builder.Environment.ContentRootPath);
-Directory.CreateDirectory(Path.GetDirectoryName(dbPath)!);
-builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseSqlite($"Data Source={dbPath}"));
+// Resolve the DB path at DI time (not builder time) so test/host config overrides
+// of "Papyra:DataDir" are honored — same deferral the vault paths use below.
+builder.Services.AddDbContext<AppDbContext>((sp, options) =>
+{
+    var dbPath = PapyraPaths.DbPath(
+        sp.GetRequiredService<IConfiguration>(),
+        sp.GetRequiredService<IHostEnvironment>().ContentRootPath);
+    Directory.CreateDirectory(Path.GetDirectoryName(dbPath)!);
+    options.UseSqlite($"Data Source={dbPath}");
+});
 
 // Zero-trust markdown engine (filesystem is the authority; this is the only
 // thing that serializes notes to/from .md).
@@ -64,6 +70,30 @@ using (var scope = app.Services.CreateScope())
 
 app.UseCors("AllowedOrigins");
 
+// ── Init gate ────────────────────────────────────────────────────────────────
+// Until the first admin exists, every /api call (except the auth endpoints that
+// create that admin) short-circuits to 428 Precondition Required so the SPA can
+// route the user to the setup screen. Static files + Scalar stay reachable so the
+// setup UI can load.
+app.Use(async (context, next) =>
+{
+    var path = context.Request.Path;
+    if (path.StartsWithSegments("/api") && !path.StartsWithSegments("/api/auth"))
+    {
+        var db = context.RequestServices.GetRequiredService<AppDbContext>();
+        if (!await db.Users.AnyAsync(context.RequestAborted))
+        {
+            context.Response.StatusCode = StatusCodes.Status428PreconditionRequired;
+            await context.Response.WriteAsJsonAsync(
+                new { error = "Setup required.", code = "setup_required" },
+                context.RequestAborted);
+            return;
+        }
+    }
+
+    await next();
+});
+
 app.UseDefaultFiles();
 app.UseStaticFiles();
 
@@ -81,6 +111,34 @@ app.MapScalarApiReference(options =>
 // ── Health ─────────────────────────────────────────────────────────────────
 app.MapGet("/health", () => Results.Ok(new { status = "Healthy", app = "Papyra API" }))
     .ExcludeFromDescription();
+
+// ── Auth: first-admin setup ──────────────────────────────────────────────────
+// One-shot bootstrap. Only succeeds while the user table is empty; the created
+// account is always the admin. Login/logout + cookie sessions land in Sprint 6.2.
+var auth = app.MapGroup("/api/auth");
+
+auth.MapPost("/setup", async (SetupRequest body, AppDbContext db, CancellationToken ct) =>
+{
+    if (await db.Users.AnyAsync(ct))
+        return Results.Conflict(new { error = "Already initialized." });
+
+    if (string.IsNullOrWhiteSpace(body.Username) || string.IsNullOrWhiteSpace(body.Password))
+        return Results.BadRequest(new { error = "Username and password are required." });
+
+    var user = new User
+    {
+        Username = body.Username.Trim(),
+        Name = string.IsNullOrWhiteSpace(body.Name) ? body.Username.Trim() : body.Name.Trim(),
+        Email = body.Email?.Trim() ?? string.Empty,
+        PasswordHash = BCrypt.Net.BCrypt.HashPassword(body.Password),
+        Role = "Admin",
+    };
+
+    db.Users.Add(user);
+    await db.SaveChangesAsync(ct);
+
+    return Results.Ok(new { user.Id, user.Username, user.Name, user.Email, user.Role });
+});
 
 // ── Notes CRUD ───────────────────────────────────────────────────────────────
 // Reads serve the in-memory vault (no disk hit); writes go through the atomic
@@ -245,6 +303,13 @@ public sealed record NoteWrite(
     bool Pinned,
     bool Archived,
     string? Body);
+
+// First-admin bootstrap payload. Email/Name optional; username + password required.
+public sealed record SetupRequest(
+    string? Username,
+    string? Name,
+    string? Email,
+    string? Password);
 
 // Makes the implicit top-level Program class visible to WebApplicationFactory in integration tests.
 public partial class Program { }

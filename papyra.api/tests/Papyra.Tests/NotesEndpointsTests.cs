@@ -1,8 +1,8 @@
 using System.Net;
 using System.Net.Http.Json;
 using Microsoft.AspNetCore.Mvc.Testing;
-using Microsoft.Extensions.Configuration;
 using Microsoft.AspNetCore.Hosting;
+using Microsoft.Data.Sqlite;
 using Papyra.Api.Models;
 
 namespace Papyra.Tests;
@@ -18,11 +18,64 @@ public sealed class NotesEndpointsTests
         var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(b =>
         {
             b.UseEnvironment("Development");
-            b.ConfigureAppConfiguration((_, cfg) => cfg.AddInMemoryCollection(
-                new Dictionary<string, string?> { ["Papyra:DataDir"] = dir }));
+            // UseSetting lands in IConfiguration reliably under minimal hosting,
+            // unlike ConfigureAppConfiguration which doesn't merge here.
+            b.UseSetting("Papyra:DataDir", dir);
         });
 
         return (factory, dir);
+    }
+
+    // Clear the init gate: the first /api/auth/setup creates the admin so the
+    // notes endpoints stop returning 428.
+    private static async Task SeedAdminAsync(HttpClient client)
+    {
+        var res = await client.PostAsJsonAsync("/api/auth/setup", new SetupRequest(
+            Username: "admin", Name: "Admin", Email: "a@b.c", Password: "hunter2"));
+        Assert.Equal(HttpStatusCode.OK, res.StatusCode);
+    }
+
+    [Fact]
+    public async Task Setup_FirstCallCreatesAdmin_SecondConflicts()
+    {
+        var (factory, dir) = NewApp();
+        try
+        {
+            var client = factory.CreateClient();
+            await SeedAdminAsync(client);
+
+            var again = await client.PostAsJsonAsync("/api/auth/setup", new SetupRequest(
+                Username: "other", Name: null, Email: null, Password: "pw"));
+            Assert.Equal(HttpStatusCode.Conflict, again.StatusCode);
+        }
+        finally
+        {
+            factory.Dispose();
+            // SQLite pools connections by string; release the file handle before
+            // deleting the temp vault so cleanup doesn't hit a locked papyra.db.
+            SqliteConnection.ClearAllPools();
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task Notes_BeforeSetup_Returns428()
+    {
+        var (factory, dir) = NewApp();
+        try
+        {
+            var client = factory.CreateClient();
+            var res = await client.GetAsync("/api/notes");
+            Assert.Equal(HttpStatusCode.PreconditionRequired, res.StatusCode);
+        }
+        finally
+        {
+            factory.Dispose();
+            // SQLite pools connections by string; release the file handle before
+            // deleting the temp vault so cleanup doesn't hit a locked papyra.db.
+            SqliteConnection.ClearAllPools();
+            Directory.Delete(dir, recursive: true);
+        }
     }
 
     [Fact]
@@ -32,6 +85,7 @@ public sealed class NotesEndpointsTests
         try
         {
             var client = factory.CreateClient();
+            await SeedAdminAsync(client);
 
             var put = await client.PutAsJsonAsync("/api/notes/n1", new NoteWrite(
                 Title: "Hello", Tags: ["a", "b"], Color: "#7aaa8a", Pinned: true, Archived: false, Body: "world"));
@@ -52,6 +106,9 @@ public sealed class NotesEndpointsTests
         finally
         {
             factory.Dispose();
+            // SQLite pools connections by string; release the file handle before
+            // deleting the temp vault so cleanup doesn't hit a locked papyra.db.
+            SqliteConnection.ClearAllPools();
             Directory.Delete(dir, recursive: true);
         }
     }
@@ -63,6 +120,7 @@ public sealed class NotesEndpointsTests
         try
         {
             var client = factory.CreateClient();
+            await SeedAdminAsync(client);
             await client.PutAsJsonAsync("/api/notes/d1", new NoteWrite(
                 Title: "Doomed", Tags: null, Color: null, Pinned: false, Archived: false, Body: "bye"));
 
@@ -77,6 +135,9 @@ public sealed class NotesEndpointsTests
         finally
         {
             factory.Dispose();
+            // SQLite pools connections by string; release the file handle before
+            // deleting the temp vault so cleanup doesn't hit a locked papyra.db.
+            SqliteConnection.ClearAllPools();
             Directory.Delete(dir, recursive: true);
         }
     }
@@ -88,12 +149,16 @@ public sealed class NotesEndpointsTests
         try
         {
             var client = factory.CreateClient();
+            await SeedAdminAsync(client);
             var del = await client.DeleteAsync("/api/notes/nope");
             Assert.Equal(HttpStatusCode.NotFound, del.StatusCode);
         }
         finally
         {
             factory.Dispose();
+            // SQLite pools connections by string; release the file handle before
+            // deleting the temp vault so cleanup doesn't hit a locked papyra.db.
+            SqliteConnection.ClearAllPools();
             Directory.Delete(dir, recursive: true);
         }
     }
