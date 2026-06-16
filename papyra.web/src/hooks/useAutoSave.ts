@@ -18,16 +18,21 @@ const DEBOUNCE_MS = 1500;
 // atomic markdown engine and re-validates the notes cache.
 export function useAutoSave(note: Note, getDraft: () => Draft) {
   const [status, setStatus] = useState<SaveStatus>('idle');
+  // isDirty drives caret protection: a remote update may only overwrite the
+  // editor while the local draft is clean (see Sprint 5.2 conflict handling).
+  const [isDirty, setIsDirty] = useState(false);
   const queryClient = useQueryClient();
 
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null);
   // Last values flushed to disk — guards against redundant PUTs (e.g. the editor
-  // normalising markdown on open shouldn't masquerade as a user edit).
+  // normalising markdown on open shouldn't masquerade as a user edit). Also the
+  // baseline used to recognise our own write echoing back through the cache.
   const saved = useRef<Draft>({ title: note.title, body: note.body });
 
   const flush = useCallback(async () => {
     const draft = getDraft();
     if (draft.title === saved.current.title && draft.body === saved.current.body) {
+      setIsDirty(false);
       return; // nothing actually changed
     }
 
@@ -46,6 +51,7 @@ export function useAutoSave(note: Note, getDraft: () => Draft) {
     if (!res.ok) throw new Error(`PUT /api/notes/${note.id} failed: ${res.status}`);
 
     saved.current = draft;
+    setIsDirty(false);
     setStatus('saved');
     // Our own write is logged in the Write-Ring server-side (no broadcast echo),
     // so refresh the grid's snapshot ourselves.
@@ -54,15 +60,25 @@ export function useAutoSave(note: Note, getDraft: () => Draft) {
 
   // Mark dirty: reset the debounce window on every keystroke (reset-on-new).
   const bump = useCallback(() => {
+    setIsDirty(true);
     if (timer.current) clearTimeout(timer.current);
     timer.current = setTimeout(() => {
       void flush();
     }, DEBOUNCE_MS);
   }, [flush]);
 
+  // Re-baseline to a known-on-disk draft without writing (used when the editor
+  // adopts a remote update). Cancels any pending save and clears the dirty flag.
+  const reset = useCallback((draft: Draft) => {
+    if (timer.current) clearTimeout(timer.current);
+    saved.current = draft;
+    setIsDirty(false);
+    setStatus('idle');
+  }, []);
+
   useEffect(() => () => {
     if (timer.current) clearTimeout(timer.current);
   }, []);
 
-  return { status, bump };
+  return { status, isDirty, bump, reset, savedRef: saved };
 }
