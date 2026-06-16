@@ -96,6 +96,8 @@
 .workspace__sidebar {
   flex: 0 0 220px;
   width: 220px;
+  display: flex;
+  flex-direction: column;
   background: var(--surface);
   border-right: 1px solid var(--border);
   padding: 16px 12px;
@@ -136,6 +138,44 @@
   background: var(--accent-bg);
   color: var(--accent-text);
   font-weight: 600;
+}
+
+/* ---- Sidebar footer: server telemetry ---- */
+.workspace__sidebar-footer {
+  margin-top: auto;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px 14px 4px;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text);
+  white-space: nowrap;
+}
+
+.workspace__status-dot {
+  flex: 0 0 auto;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+}
+
+.workspace__status-dot--online {
+  background: var(--accent);
+}
+
+.workspace__status-dot--offline {
+  background: var(--danger);
+  animation: workspace-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes workspace-pulse {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.25; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .workspace__status-dot--offline { animation: none; }
 }
 
 .workspace__desk {

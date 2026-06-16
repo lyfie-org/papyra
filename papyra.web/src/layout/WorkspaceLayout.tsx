@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { NavLink, Outlet } from 'react-router-dom';
 import { useTheme } from '../hooks/useTheme';
+import { useSignalR } from '../hooks/useSignalR';
 import logo from '../assets/papyra_logo.png';
 import './WorkspaceLayout.css';
 
@@ -15,6 +16,7 @@ const NAV_ITEMS = [
 export default function WorkspaceLayout() {
   const { theme, toggleTheme } = useTheme();
   const [collapsed, setCollapsed] = useState(false);
+  const serverStatus = useSignalR();
 
   return (
     <div className={`workspace${collapsed ? ' workspace--collapsed' : ''}`}>
@@ -64,6 +66,15 @@ export default function WorkspaceLayout() {
               </li>
             ))}
           </ul>
+          <footer className="workspace__sidebar-footer">
+            <span
+              className={`workspace__status-dot workspace__status-dot--${serverStatus}`}
+              aria-hidden="true"
+            />
+            <span className="workspace__status-label">
+              {serverStatus === 'online' ? 'Server Online' : 'Server Offline'}
+            </span>
+          </footer>
         </nav>
 
         <main className="workspace__desk">
