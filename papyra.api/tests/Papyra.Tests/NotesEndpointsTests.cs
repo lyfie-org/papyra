@@ -143,6 +143,81 @@ public sealed class NotesEndpointsTests
     }
 
     [Fact]
+    public async Task Notes_UserExistsButNotSignedIn_Returns401()
+    {
+        var (factory, dir) = NewApp();
+        try
+        {
+            var seeded = factory.CreateClient();
+            await SeedAdminAsync(seeded); // a user now exists → past the 428 init gate
+
+            // A second client shares the DB but carries no auth cookie.
+            var anon = factory.CreateClient();
+            var res = await anon.GetAsync("/api/notes");
+            Assert.Equal(HttpStatusCode.Unauthorized, res.StatusCode);
+        }
+        finally
+        {
+            factory.Dispose();
+            SqliteConnection.ClearAllPools();
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task Login_GoodCredentials_GrantsAccess_LogoutRevokes()
+    {
+        var (factory, dir) = NewApp();
+        try
+        {
+            var seeded = factory.CreateClient();
+            await SeedAdminAsync(seeded);
+
+            var client = factory.CreateClient();
+            var login = await client.PostAsJsonAsync("/api/auth/login",
+                new LoginRequest(Username: "admin", Password: "hunter2"));
+            Assert.Equal(HttpStatusCode.OK, login.StatusCode);
+
+            var ok = await client.GetAsync("/api/notes");
+            Assert.Equal(HttpStatusCode.OK, ok.StatusCode);
+
+            var logout = await client.PostAsync("/api/auth/logout", content: null);
+            Assert.Equal(HttpStatusCode.NoContent, logout.StatusCode);
+
+            var after = await client.GetAsync("/api/notes");
+            Assert.Equal(HttpStatusCode.Unauthorized, after.StatusCode);
+        }
+        finally
+        {
+            factory.Dispose();
+            SqliteConnection.ClearAllPools();
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task Login_BadPassword_Returns401()
+    {
+        var (factory, dir) = NewApp();
+        try
+        {
+            var seeded = factory.CreateClient();
+            await SeedAdminAsync(seeded);
+
+            var client = factory.CreateClient();
+            var login = await client.PostAsJsonAsync("/api/auth/login",
+                new LoginRequest(Username: "admin", Password: "wrong"));
+            Assert.Equal(HttpStatusCode.Unauthorized, login.StatusCode);
+        }
+        finally
+        {
+            factory.Dispose();
+            SqliteConnection.ClearAllPools();
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task Delete_UnknownId_Returns404()
     {
         var (factory, dir) = NewApp();

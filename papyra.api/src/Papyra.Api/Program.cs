@@ -1,3 +1,7 @@
+using System.Security.Claims;
+using Microsoft.AspNetCore.Authentication;
+using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using Papyra.Api.Data;
@@ -49,6 +53,37 @@ builder.Services.AddHostedService<OrphanPruneService>();
 // Real-time push: the observer broadcasts metadata-only note events to clients.
 builder.Services.AddSignalR();
 
+// ── Cookie auth ──────────────────────────────────────────────────────────────
+// Sessions ride a single HttpOnly cookie. SameSite=Strict + (in prod) Secure;
+// sliding expiry keeps active users signed in. The SPA is same-origin in prod,
+// so we never need to surface this cookie to JS. Unauthenticated API calls get a
+// flat 401 (no login redirect) so the client router can route to /login itself.
+builder.Services
+    .AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
+    .AddCookie(options =>
+    {
+        options.Cookie.Name = "papyra.auth";
+        options.Cookie.HttpOnly = true;
+        options.Cookie.SameSite = SameSiteMode.Strict;
+        options.Cookie.SecurePolicy = builder.Environment.IsDevelopment()
+            ? CookieSecurePolicy.SameAsRequest
+            : CookieSecurePolicy.Always;
+        options.SlidingExpiration = true;
+        options.ExpireTimeSpan = TimeSpan.FromDays(7);
+        // API, not MVC: answer with status codes instead of 302 redirects.
+        options.Events.OnRedirectToLogin = ctx =>
+        {
+            ctx.Response.StatusCode = StatusCodes.Status401Unauthorized;
+            return Task.CompletedTask;
+        };
+        options.Events.OnRedirectToAccessDenied = ctx =>
+        {
+            ctx.Response.StatusCode = StatusCodes.Status403Forbidden;
+            return Task.CompletedTask;
+        };
+    });
+builder.Services.AddAuthorization();
+
 var allowedOrigins = builder.Configuration
     .GetSection("Cors:AllowedOrigins")
     .Get<string[]>()
@@ -97,6 +132,9 @@ app.Use(async (context, next) =>
 app.UseDefaultFiles();
 app.UseStaticFiles();
 
+app.UseAuthentication();
+app.UseAuthorization();
+
 app.MapOpenApi();
 
 app.MapScalarApiReference(options =>
@@ -117,7 +155,7 @@ app.MapGet("/health", () => Results.Ok(new { status = "Healthy", app = "Papyra A
 // account is always the admin. Login/logout + cookie sessions land in Sprint 6.2.
 var auth = app.MapGroup("/api/auth");
 
-auth.MapPost("/setup", async (SetupRequest body, AppDbContext db, CancellationToken ct) =>
+auth.MapPost("/setup", async (SetupRequest body, HttpContext http, AppDbContext db, CancellationToken ct) =>
 {
     if (await db.Users.AnyAsync(ct))
         return Results.Conflict(new { error = "Already initialized." });
@@ -137,14 +175,36 @@ auth.MapPost("/setup", async (SetupRequest body, AppDbContext db, CancellationTo
     db.Users.Add(user);
     await db.SaveChangesAsync(ct);
 
+    await SignInAsync(http, user); // the first admin starts signed in
     return Results.Ok(new { user.Id, user.Username, user.Name, user.Email, user.Role });
+});
+
+// Validate credentials against the BCrypt hash and mint the session cookie. Same
+// generic 401 for unknown user and bad password so we don't leak which one failed.
+auth.MapPost("/login", async (LoginRequest body, HttpContext http, AppDbContext db, CancellationToken ct) =>
+{
+    if (string.IsNullOrWhiteSpace(body.Username) || string.IsNullOrWhiteSpace(body.Password))
+        return Results.BadRequest(new { error = "Username and password are required." });
+
+    var user = await db.Users.FirstOrDefaultAsync(u => u.Username == body.Username.Trim(), ct);
+    if (user is null || !BCrypt.Net.BCrypt.Verify(body.Password, user.PasswordHash))
+        return Results.Json(new { error = "Invalid credentials." }, statusCode: StatusCodes.Status401Unauthorized);
+
+    await SignInAsync(http, user);
+    return Results.Ok(new { user.Id, user.Username, user.Name, user.Email, user.Role });
+});
+
+auth.MapPost("/logout", async (HttpContext http) =>
+{
+    await http.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+    return Results.NoContent();
 });
 
 // ── Notes CRUD ───────────────────────────────────────────────────────────────
 // Reads serve the in-memory vault (no disk hit); writes go through the atomic
 // markdown engine, logging the path in the Write-Ring so the watcher ignores the
 // echo. Filesystem stays the source of truth — VaultState is just a mirror.
-var notes = app.MapGroup("/api/notes");
+var notes = app.MapGroup("/api/notes").RequireAuthorization();
 
 notes.MapGet("/", (VaultState state) => Results.Ok(state.Snapshot()));
 
@@ -210,7 +270,7 @@ app.MapGet("/api/search", (string? q, SearchIndexService search, VaultState stat
     }).ToArray();
 
     return Results.Ok(results);
-});
+}).RequireAuthorization();
 
 // ── System: nuclear index rebuild ──────────────────────────────────────────────
 // Wipe the disposable caches and rebuild them from the .md files (the authority).
@@ -249,7 +309,7 @@ app.MapPost("/api/system/rebuild-index", async (
     await db.SaveChangesAsync(ct);
 
     return Results.Ok(new { rebuilt = scanned.Count });
-});
+}).RequireAuthorization();
 
 // ── Media uploads ───────────────────────────────────────────────────────────
 // Attachments land flat in the media dir and are referenced from note bodies via
@@ -286,6 +346,7 @@ app.MapPost("/api/media/upload", async (
 
     return Results.Ok(new { filename });
 })
+.RequireAuthorization()
 .DisableAntiforgery(); // no antiforgery middleware in this skeleton; same-origin SPA
 
 app.MapHub<NotesHub>("/hubs/notes");
@@ -293,6 +354,20 @@ app.MapHub<NotesHub>("/hubs/notes");
 app.MapFallbackToFile("index.html");
 
 app.Run();
+
+// Mint the session cookie for a user. UserId rides as NameIdentifier so the
+// services can scope per-user storage once Sprint 6.3 re-roots the path jail.
+static async Task SignInAsync(HttpContext http, User user)
+{
+    var claims = new List<Claim>
+    {
+        new(ClaimTypes.NameIdentifier, user.Id.ToString()),
+        new(ClaimTypes.Name, user.Username),
+        new(ClaimTypes.Role, user.Role),
+    };
+    var identity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
+    await http.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, new ClaimsPrincipal(identity));
+}
 
 // PUT payload for an upsert. Id comes from the route; the body carries metadata +
 // markdown. Foreign frontmatter on an existing file is preserved by the engine.
@@ -309,6 +384,11 @@ public sealed record SetupRequest(
     string? Username,
     string? Name,
     string? Email,
+    string? Password);
+
+// Login payload. Both required; failures answer with a generic 401.
+public sealed record LoginRequest(
+    string? Username,
     string? Password);
 
 // Makes the implicit top-level Program class visible to WebApplicationFactory in integration tests.
