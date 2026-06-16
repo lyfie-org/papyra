@@ -35,6 +35,11 @@ public static class PapyraPaths
     public static string UserTrashDir(IConfiguration config, string contentRoot, string userId)
         => Path.Combine(UsersDir(config, contentRoot), userId, ".trash");
 
+    // Timestamped version history per note, kept under the user's hidden .papyra
+    // dir (NOT the notes vault — the watcher must never see snapshot churn).
+    public static string UserSnapshotsDir(IConfiguration config, string contentRoot, string userId)
+        => Path.Combine(UsersDir(config, contentRoot), userId, ".papyra", "snapshots");
+
     public static string DbPath(IConfiguration config, string contentRoot)
         => Path.Combine(DotPapyra(config, contentRoot), "papyra.db");
 

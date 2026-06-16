@@ -45,6 +45,9 @@ builder.Services.AddSingleton(sp => new VaultObserverOptions
 // ── Ephemeral full-text index (Lucene — disposable; rebuilt from the .md files) ─
 builder.Services.AddSingleton<SearchIndexService>();
 
+// Timestamped version history per note (throttled + age-pruned), for recovery.
+builder.Services.AddSingleton<SnapshotService>();
+
 // Reconcile disk vs the caches on boot (before ports open), then watch live, then
 // sweep orphaned media nightly. Order matters: the cold-boot diff runs first.
 // The observer is a singleton too so the setup/provision flow can call WatchUser
@@ -309,7 +312,10 @@ notes.MapPut("/{id}", async (
     MarkdownStorageService storage,
     WriteRing writeRing,
     SearchIndexService search,
+    SnapshotService snapshots,
     VaultObserverOptions vault,
+    IConfiguration config,
+    IHostEnvironment env,
     ILoggerFactory loggerFactory,
     CancellationToken ct) =>
 {
@@ -328,6 +334,11 @@ notes.MapPut("/{id}", async (
         Archived = body.Archived,
         Body = body.Body ?? string.Empty,
     };
+
+    // Snapshot the prior on-disk revision before we overwrite it (throttled).
+    var snapRoot = PapyraPaths.UserSnapshotsDir(config, env.ContentRootPath, uid);
+    var noteSnapDir = PathGuard.ResolveAndVerify(snapRoot, id, loggerFactory.CreateLogger("PathGuard"));
+    await snapshots.CaptureAsync(noteSnapDir, path, ct);
 
     writeRing.Mark(path); // log self-write before touching disk (loop prevention)
     await storage.WriteAsync(path, note, ct);
@@ -354,6 +365,80 @@ notes.MapDelete("/{id}", (
     search.RemoveNote(id); // watcher skips the echo, so drop from the index here
 
     return Results.NoContent();
+});
+
+// ── Snapshots (version history & recovery) ──────────────────────────────────────
+// Throttled, age-pruned timestamped copies under the user's hidden .papyra dir.
+// List is metadata-only; the single-snapshot GET returns the archived body so the
+// editor can render a diff; restore atomically replaces the live .md.
+notes.MapGet("/{id}/snapshots", (
+    string id,
+    ClaimsPrincipal user,
+    SnapshotService snapshots,
+    IConfiguration config,
+    IHostEnvironment env,
+    ILoggerFactory loggerFactory) =>
+{
+    var snapRoot = PapyraPaths.UserSnapshotsDir(config, env.ContentRootPath, Uid(user));
+    var dir = PathGuard.ResolveAndVerify(snapRoot, id, loggerFactory.CreateLogger("PathGuard"));
+    return Results.Ok(snapshots.List(dir).Select(s => new { id = s.Id, timestamp = s.TimestampUtc }));
+});
+
+notes.MapGet("/{id}/snapshots/{snapshotId}", async (
+    string id,
+    string snapshotId,
+    ClaimsPrincipal user,
+    MarkdownStorageService storage,
+    IConfiguration config,
+    IHostEnvironment env,
+    ILoggerFactory loggerFactory,
+    CancellationToken ct) =>
+{
+    var snapRoot = PapyraPaths.UserSnapshotsDir(config, env.ContentRootPath, Uid(user));
+    var logger = loggerFactory.CreateLogger("PathGuard");
+    var snapPath = PathGuard.ResolveAndVerify(snapRoot, Path.Combine(id, $"{snapshotId}.md"), logger);
+
+    var note = await storage.ReadAsync(snapPath, ct);
+    return note is null ? Results.NotFound() : Results.Ok(note);
+});
+
+notes.MapPost("/{id}/restore/{snapshotId}", async (
+    string id,
+    string snapshotId,
+    ClaimsPrincipal user,
+    VaultState state,
+    MarkdownStorageService storage,
+    SnapshotService snapshots,
+    WriteRing writeRing,
+    SearchIndexService search,
+    VaultObserverOptions vault,
+    IConfiguration config,
+    IHostEnvironment env,
+    ILoggerFactory loggerFactory,
+    CancellationToken ct) =>
+{
+    var uid = Uid(user);
+    var logger = loggerFactory.CreateLogger("PathGuard");
+    var snapRoot = PapyraPaths.UserSnapshotsDir(config, env.ContentRootPath, uid);
+    var snapPath = PathGuard.ResolveAndVerify(snapRoot, Path.Combine(id, $"{snapshotId}.md"), logger);
+    if (!File.Exists(snapPath)) return Results.NotFound();
+
+    var path = state.PathFor(uid, id)
+        ?? PathGuard.ResolveAndVerify(vault.UserNotesDir(uid), $"{id}.md", logger);
+
+    // Archive the current revision first so the restore itself is reversible, then
+    // atomically swap the snapshot in. Log the self-write so the watcher ignores it.
+    var noteSnapDir = PathGuard.ResolveAndVerify(snapRoot, id, logger);
+    await snapshots.CaptureAsync(noteSnapDir, path, ct);
+
+    writeRing.Mark(path);
+    await snapshots.RestoreAsync(snapPath, path, ct);
+
+    var note = await storage.ReadAsync(path, ct);
+    if (note is null) return Results.NotFound();
+    state.Upsert(uid, path, note);
+    search.IndexNote(uid, note);
+    return Results.Ok(note);
 });
 
 // ── Search ────────────────────────────────────────────────────────────────────

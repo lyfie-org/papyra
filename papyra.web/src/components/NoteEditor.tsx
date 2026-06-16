@@ -7,6 +7,7 @@ import type { Note } from '../types/note';
 import { useAutoSave, type Draft } from '../hooks/useAutoSave';
 import { useTheme } from '../hooks/useTheme';
 import NoteToolbar from './NoteToolbar';
+import SnapshotPanel from './SnapshotPanel';
 import './NoteEditor.css';
 
 const STATUS_LABEL = {
@@ -46,6 +47,11 @@ export default function NoteEditor({ note }: { note: Note }) {
   const shown = useRef({ id: note.id, title: note.title, body: note.body });
   // A remote revision held back because the local draft is dirty (caret guard).
   const [pending, setPending] = useState<{ title: string; body: string } | null>(null);
+  // File-recovery overlay; while open the live draft body feeds the diff.
+  const [recoverOpen, setRecoverOpen] = useState(false);
+  // A restore is a deliberate adopt — override the dirty caret-guard for the
+  // refetched (restored) revision so it lands even over unsaved edits.
+  const forceAdopt = useRef(false);
 
   // Force the editor to display a remote revision, re-baselining the save state
   // so the adopted content isn't immediately written back.
@@ -65,6 +71,8 @@ export default function NoteEditor({ note }: { note: Note }) {
   useEffect(() => {
     const incoming = { title: note.title, body: note.body };
     if (note.id !== shown.current.id) { applyRemote(incoming); return; }
+    // A just-restored revision: adopt it even if the draft was dirty.
+    if (forceAdopt.current) { forceAdopt.current = false; applyRemote(incoming); return; }
     if (incoming.title === shown.current.title && incoming.body === shown.current.body) return;
     // Our own save echoing back through the cache — adopt silently, no remount.
     if (incoming.title === savedRef.current.title && incoming.body === savedRef.current.body) {
@@ -216,6 +224,7 @@ export default function NoteEditor({ note }: { note: Note }) {
           color={note.color}
           onTogglePin={() => void saveFrontmatter({ pinned: !note.pinned })}
           onPickColor={(c) => void saveFrontmatter({ color: c })}
+          onRecover={() => setRecoverOpen(true)}
           onArchive={() => { void saveFrontmatter({ archived: true }); navigate('/'); }}
           onTrash={() => {
             if (confirm('Delete this note? This permanently removes the .md file.')) void trash();
@@ -254,6 +263,15 @@ export default function NoteEditor({ note }: { note: Note }) {
           onReady={(methods) => { editorRef.current = methods; }}
         />
       </div>
+
+      {recoverOpen && (
+        <SnapshotPanel
+          noteId={note.id}
+          currentBody={getDraft().body}
+          onClose={() => setRecoverOpen(false)}
+          onRestored={() => { forceAdopt.current = true; }}
+        />
+      )}
     </section>
   );
 }
