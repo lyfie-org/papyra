@@ -31,6 +31,9 @@ builder.Services.AddSingleton(sp => new VaultObserverOptions
 });
 builder.Services.AddHostedService<VaultObserver>();
 
+// ── Ephemeral full-text index (Lucene — disposable; rebuilt from the .md files) ─
+builder.Services.AddSingleton<SearchIndexService>();
+
 // Real-time push: the observer broadcasts metadata-only note events to clients.
 builder.Services.AddSignalR();
 
@@ -87,6 +90,7 @@ notes.MapPut("/{id}", async (
     VaultState state,
     MarkdownStorageService storage,
     WriteRing writeRing,
+    SearchIndexService search,
     VaultObserverOptions vault,
     CancellationToken ct) =>
 {
@@ -104,6 +108,7 @@ notes.MapPut("/{id}", async (
     writeRing.Mark(path); // log self-write before touching disk (loop prevention)
     await storage.WriteAsync(path, note, ct);
     state.Upsert(path, note);
+    search.IndexNote(note); // watcher skips our own write echo, so index here
 
     return Results.Ok(note);
 });
@@ -111,7 +116,8 @@ notes.MapPut("/{id}", async (
 notes.MapDelete("/{id}", (
     string id,
     VaultState state,
-    WriteRing writeRing) =>
+    WriteRing writeRing,
+    SearchIndexService search) =>
 {
     var path = state.PathFor(id);
     if (path is null) return Results.NotFound();
@@ -119,8 +125,26 @@ notes.MapDelete("/{id}", (
     writeRing.Mark(path); // watcher ignores the delete echo
     if (File.Exists(path)) File.Delete(path);
     state.Remove(path);
+    search.RemoveNote(id); // watcher skips the echo, so drop from the index here
 
     return Results.NoContent();
+});
+
+// ── Search ────────────────────────────────────────────────────────────────────
+// Relevance-ranked full-text search over the Lucene index. The index stores only
+// metadata; snippets are highlighted against the live body in VaultState.
+app.MapGet("/api/search", (string? q, SearchIndexService search, VaultState state) =>
+{
+    if (string.IsNullOrWhiteSpace(q)) return Results.Ok(Array.Empty<object>());
+
+    var results = search.Search(q).Select(hit =>
+    {
+        var note = state.PathFor(hit.Id) is { } p && state.TryGet(p, out var n) ? n : null;
+        var snippet = note is not null ? search.BuildSnippet(q, note.Body) : string.Empty;
+        return new { id = hit.Id, title = hit.Title, snippet, score = hit.Score };
+    }).ToArray();
+
+    return Results.Ok(results);
 });
 
 app.MapHub<NotesHub>("/hubs/notes");

@@ -27,6 +27,7 @@ public sealed class VaultObserver : BackgroundService
     private readonly MarkdownStorageService _storage;
     private readonly VaultState _state;
     private readonly WriteRing _writeRing;
+    private readonly SearchIndexService? _search;
     private readonly IHubContext<NotesHub>? _hub;
     private readonly ILogger<VaultObserver> _logger;
 
@@ -46,7 +47,8 @@ public sealed class VaultObserver : BackgroundService
         VaultState state,
         WriteRing writeRing,
         ILogger<VaultObserver> logger,
-        IHubContext<NotesHub>? hub = null)
+        IHubContext<NotesHub>? hub = null,
+        SearchIndexService? search = null)
     {
         _options = options;
         _storage = storage;
@@ -54,6 +56,7 @@ public sealed class VaultObserver : BackgroundService
         _writeRing = writeRing;
         _logger = logger;
         _hub = hub;
+        _search = search;
     }
 
     protected override Task ExecuteAsync(CancellationToken stoppingToken)
@@ -127,6 +130,7 @@ public sealed class VaultObserver : BackgroundService
                 if (_state.TryGet(path, out var gone) && gone is not null)
                 {
                     _state.Remove(path);
+                    _search?.RemoveNote(gone.Id);
                     await Broadcast("NoteDeleted", gone, token);
                 }
             }
@@ -137,6 +141,7 @@ public sealed class VaultObserver : BackgroundService
                 {
                     var existed = _state.TryGet(path, out _);
                     _state.Upsert(path, note);
+                    _search?.IndexNote(note);
                     await Broadcast(existed ? "NoteUpdated" : "NoteCreated", note, token);
                 }
             }

@@ -24,4 +24,8 @@ public static class PapyraPaths
 
     public static string DbPath(IConfiguration config, string contentRoot)
         => Path.Combine(DotPapyra(config, contentRoot), "papyra.db");
+
+    // Disposable Lucene full-text index — rebuilt from the .md files at will.
+    public static string LuceneIndexDir(IConfiguration config, string contentRoot)
+        => Path.Combine(DotPapyra(config, contentRoot), "lucene-index");
 }
