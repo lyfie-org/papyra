@@ -13,6 +13,10 @@ Directory.CreateDirectory(Path.GetDirectoryName(dbPath)!);
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseSqlite($"Data Source={dbPath}"));
 
+// Zero-trust markdown engine (filesystem is the authority; this is the only
+// thing that serializes notes to/from .md).
+builder.Services.AddSingleton<MarkdownStorageService>();
+
 var allowedOrigins = builder.Configuration
     .GetSection("Cors:AllowedOrigins")
     .Get<string[]>()
