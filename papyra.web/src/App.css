@@ -8,3 +8,11 @@ body {
   background: var(--bg);
   color: var(--text);
 }
+
+.app-bootstrap {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  font-family: var(--sans);
+  color: var(--text);
+}

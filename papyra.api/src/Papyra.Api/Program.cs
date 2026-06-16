@@ -223,6 +223,75 @@ auth.MapPost("/logout", async (HttpContext http) =>
     return Results.NoContent();
 });
 
+// Current-session probe the SPA auth guard polls: 428 before any user exists
+// (route to /setup), 401 when unauthenticated (route to /login), else the user.
+auth.MapGet("/me", async (HttpContext http, AppDbContext db, CancellationToken ct) =>
+{
+    if (!await db.Users.AnyAsync(ct))
+        return Results.Json(new { error = "Setup required.", code = "setup_required" },
+            statusCode: StatusCodes.Status428PreconditionRequired);
+
+    if (http.User.Identity?.IsAuthenticated != true)
+        return Results.Json(new { error = "Not authenticated." },
+            statusCode: StatusCodes.Status401Unauthorized);
+
+    var id = int.Parse(http.User.FindFirstValue(ClaimTypes.NameIdentifier)!);
+    var user = await db.Users.FindAsync([id], ct);
+    if (user is null)
+        return Results.Json(new { error = "Not authenticated." },
+            statusCode: StatusCodes.Status401Unauthorized);
+
+    return Results.Ok(new { user.Id, user.Username, user.Name, user.Email, user.Role });
+});
+
+// ── Admin user management ──────────────────────────────────────────────────────
+// Role-gated provisioning for the settings Admin tab. Provisioned users get their
+// tenant vault created + watched, same as the first-admin setup flow.
+var admin = auth.MapGroup("/users").RequireAuthorization(p => p.RequireRole("Admin"));
+
+admin.MapGet("/", async (AppDbContext db, CancellationToken ct) =>
+    Results.Ok(await db.Users
+        .OrderBy(u => u.Id)
+        .Select(u => new { u.Id, u.Username, u.Name, u.Email, u.Role })
+        .ToListAsync(ct)));
+
+admin.MapPost("/", async (ProvisionRequest body, AppDbContext db, VaultObserver observer, CancellationToken ct) =>
+{
+    if (string.IsNullOrWhiteSpace(body.Username) || string.IsNullOrWhiteSpace(body.Password))
+        return Results.BadRequest(new { error = "Username and password are required." });
+
+    var username = body.Username.Trim();
+    if (await db.Users.AnyAsync(u => u.Username == username, ct))
+        return Results.Conflict(new { error = "Username already taken." });
+
+    var user = new User
+    {
+        Username = username,
+        Name = string.IsNullOrWhiteSpace(body.Name) ? username : body.Name.Trim(),
+        Email = body.Email?.Trim() ?? string.Empty,
+        PasswordHash = BCrypt.Net.BCrypt.HashPassword(body.Password),
+        Role = body.Role == "Admin" ? "Admin" : "User",
+    };
+    db.Users.Add(user);
+    await db.SaveChangesAsync(ct);
+
+    observer.WatchUser(user.Id.ToString()); // create + watch the new tenant's vault
+    return Results.Ok(new { user.Id, user.Username, user.Name, user.Email, user.Role });
+});
+
+admin.MapPost("/{id:int}/reset", async (int id, ResetRequest body, AppDbContext db, CancellationToken ct) =>
+{
+    if (string.IsNullOrWhiteSpace(body.Password))
+        return Results.BadRequest(new { error = "Password is required." });
+
+    var user = await db.Users.FindAsync([id], ct);
+    if (user is null) return Results.NotFound();
+
+    user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(body.Password);
+    await db.SaveChangesAsync(ct);
+    return Results.NoContent();
+});
+
 // ── Notes CRUD ───────────────────────────────────────────────────────────────
 // Reads serve the in-memory vault (no disk hit); writes go through the atomic
 // markdown engine, logging the path in the Write-Ring so the watcher ignores the
@@ -436,6 +505,18 @@ public sealed record SetupRequest(
 // Login payload. Both required; failures answer with a generic 401.
 public sealed record LoginRequest(
     string? Username,
+    string? Password);
+
+// Admin-provisioned user. Username + password required; Role defaults to "User".
+public sealed record ProvisionRequest(
+    string? Username,
+    string? Name,
+    string? Email,
+    string? Password,
+    string? Role);
+
+// Admin password reset payload for an existing user.
+public sealed record ResetRequest(
     string? Password);
 
 // Makes the implicit top-level Program class visible to WebApplicationFactory in integration tests.
