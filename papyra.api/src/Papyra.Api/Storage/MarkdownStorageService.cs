@@ -19,6 +19,7 @@ public sealed class MarkdownStorageService
     private const string KeyTags = "tags";
     private const string KeyColor = "color";
     private const string KeyPinned = "pinned";
+    private const string KeyArchived = "archived";
 
     private const int MaxRetries = 3;
     private const int BaseDelayMs = 50;
@@ -50,6 +51,7 @@ public sealed class MarkdownStorageService
             Tags = GetTags(frontmatter),
             Color = GetString(frontmatter, KeyColor),
             Pinned = GetBool(frontmatter, KeyPinned),
+            Archived = GetBool(frontmatter, KeyArchived),
             Body = body,
         };
     }
@@ -67,6 +69,7 @@ public sealed class MarkdownStorageService
         fm[KeyTags] = note.Tags;
         fm[KeyColor] = note.Color;
         fm[KeyPinned] = note.Pinned;
+        fm[KeyArchived] = note.Archived;
 
         var yaml = _yamlWriter.Serialize(fm).TrimEnd('\n', '\r');
         return $"---\n{yaml}\n---\n\n{note.Body}";

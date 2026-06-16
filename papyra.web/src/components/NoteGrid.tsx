@@ -27,10 +27,13 @@ function MasonrySection({ notes }: { notes: Note[] }) {
 }
 
 export default function NoteGrid({ notes }: { notes: Note[] }) {
-  const pinned = notes.filter(n => n.pinned);
-  const standard = notes.filter(n => !n.pinned);
+  // Archived notes live on disk (archived: true in frontmatter) but stay out of
+  // the main desk — the toolbar's Archive action sets the flag.
+  const active = notes.filter(n => !n.archived);
+  const pinned = active.filter(n => n.pinned);
+  const standard = active.filter(n => !n.pinned);
 
-  if (notes.length === 0) {
+  if (active.length === 0) {
     return <p className="note-grid__empty">No notes yet.</p>;
   }
 

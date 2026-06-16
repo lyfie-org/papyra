@@ -9,5 +9,6 @@ public class Note
     public List<string> Tags { get; set; } = [];
     public string? Color { get; set; }
     public bool Pinned { get; set; }
+    public bool Archived { get; set; }
     public string Body { get; set; } = string.Empty;
 }

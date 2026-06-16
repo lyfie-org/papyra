@@ -45,6 +45,7 @@ export function useAutoSave(note: Note, getDraft: () => Draft) {
         tags: note.tags,
         color: note.color,
         pinned: note.pinned,
+        archived: note.archived,
         body: draft.body,
       }),
     });
@@ -56,7 +57,7 @@ export function useAutoSave(note: Note, getDraft: () => Draft) {
     // Our own write is logged in the Write-Ring server-side (no broadcast echo),
     // so refresh the grid's snapshot ourselves.
     queryClient.invalidateQueries({ queryKey: ['notes'] });
-  }, [getDraft, note.id, note.tags, note.color, note.pinned, queryClient]);
+  }, [getDraft, note.id, note.tags, note.color, note.pinned, note.archived, queryClient]);
 
   // Mark dirty: reset the debounce window on every keystroke (reset-on-new).
   const bump = useCallback(() => {

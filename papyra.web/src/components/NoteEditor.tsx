@@ -1,9 +1,12 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import { MarkDownEditor, type ExtensiveEditorRef } from '@lyfie/luthor';
 import '@lyfie/luthor/styles.css';
 import type { Note } from '../types/note';
 import { useAutoSave, type Draft } from '../hooks/useAutoSave';
 import { useTheme } from '../hooks/useTheme';
+import NoteToolbar from './NoteToolbar';
 import './NoteEditor.css';
 
 const STATUS_LABEL = {
@@ -17,6 +20,8 @@ const STATUS_LABEL = {
 // input sits above it. Both feed the debounced auto-save.
 export default function NoteEditor({ note }: { note: Note }) {
   const { theme } = useTheme();
+  const navigate = useNavigate();
+  const queryClient = useQueryClient();
   const editorRef = useRef<ExtensiveEditorRef | null>(null);
   const [title, setTitle] = useState(note.title);
   // Mirror the title in a ref so the debounced save reads the live value, not a
@@ -75,6 +80,37 @@ export default function NoteEditor({ note }: { note: Note }) {
   // Keep my local edits and let the next save overwrite the remote revision.
   const keepLocal = useCallback(() => { setPending(null); bump(); }, [bump]);
 
+  // Toolbar frontmatter mutation: PUT the live draft plus the changed YAML field,
+  // so a pin/color/archive flip never clobbers unsaved body/title. Re-baselines
+  // the save state so the write doesn't immediately echo back as a dirty change.
+  const saveFrontmatter = useCallback(async (patch: Partial<Pick<Note, 'color' | 'pinned' | 'archived'>>) => {
+    const draft = getDraft();
+    const res = await fetch(`/api/notes/${encodeURIComponent(note.id)}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        title: draft.title,
+        tags: note.tags,
+        color: patch.color !== undefined ? patch.color : note.color,
+        pinned: patch.pinned !== undefined ? patch.pinned : note.pinned,
+        archived: patch.archived !== undefined ? patch.archived : note.archived,
+        body: draft.body,
+      }),
+    });
+    if (!res.ok) throw new Error(`PUT /api/notes/${note.id} failed: ${res.status}`);
+    reset(draft);
+    shown.current = { id: note.id, title: draft.title, body: draft.body };
+    queryClient.invalidateQueries({ queryKey: ['notes'] });
+  }, [getDraft, note, reset, queryClient]);
+
+  // Trash: hard-delete the .md (irreversible) then leave the editor.
+  const trash = useCallback(async () => {
+    const res = await fetch(`/api/notes/${encodeURIComponent(note.id)}`, { method: 'DELETE' });
+    if (!res.ok && res.status !== 404) throw new Error(`DELETE /api/notes/${note.id} failed: ${res.status}`);
+    queryClient.invalidateQueries({ queryKey: ['notes'] });
+    navigate('/');
+  }, [note.id, queryClient, navigate]);
+
   // YAML `color` tints the canvas; fonts come from the design tokens.
   const style = note.color ? { background: note.color } : undefined;
 
@@ -91,6 +127,16 @@ export default function NoteEditor({ note }: { note: Note }) {
         <span className="note-editor__status" role="status">
           {STATUS_LABEL[status]}
         </span>
+        <NoteToolbar
+          pinned={note.pinned}
+          color={note.color}
+          onTogglePin={() => void saveFrontmatter({ pinned: !note.pinned })}
+          onPickColor={(c) => void saveFrontmatter({ color: c })}
+          onArchive={() => { void saveFrontmatter({ archived: true }); navigate('/'); }}
+          onTrash={() => {
+            if (confirm('Delete this note? This permanently removes the .md file.')) void trash();
+          }}
+        />
       </header>
 
       {pending && (

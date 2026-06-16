@@ -6,5 +6,6 @@ export interface Note {
   tags: string[];
   color: string | null;
   pinned: boolean;
+  archived: boolean;
   body: string;
 }

@@ -108,6 +108,7 @@ notes.MapPut("/{id}", async (
         Tags = body.Tags ?? [],
         Color = body.Color,
         Pinned = body.Pinned,
+        Archived = body.Archived,
         Body = body.Body ?? string.Empty,
     };
 
@@ -205,6 +206,7 @@ public sealed record NoteWrite(
     List<string>? Tags,
     string? Color,
     bool Pinned,
+    bool Archived,
     string? Body);
 
 // Makes the implicit top-level Program class visible to WebApplicationFactory in integration tests.

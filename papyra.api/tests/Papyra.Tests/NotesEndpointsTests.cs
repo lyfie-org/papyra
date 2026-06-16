@@ -34,7 +34,7 @@ public sealed class NotesEndpointsTests
             var client = factory.CreateClient();
 
             var put = await client.PutAsJsonAsync("/api/notes/n1", new NoteWrite(
-                Title: "Hello", Tags: ["a", "b"], Color: "#7aaa8a", Pinned: true, Body: "world"));
+                Title: "Hello", Tags: ["a", "b"], Color: "#7aaa8a", Pinned: true, Archived: false, Body: "world"));
             Assert.Equal(HttpStatusCode.OK, put.StatusCode);
 
             var mdPath = Path.Combine(dir, "notes", "n1.md");
@@ -64,7 +64,7 @@ public sealed class NotesEndpointsTests
         {
             var client = factory.CreateClient();
             await client.PutAsJsonAsync("/api/notes/d1", new NoteWrite(
-                Title: "Doomed", Tags: null, Color: null, Pinned: false, Body: "bye"));
+                Title: "Doomed", Tags: null, Color: null, Pinned: false, Archived: false, Body: "bye"));
 
             var del = await client.DeleteAsync("/api/notes/d1");
             Assert.Equal(HttpStatusCode.NoContent, del.StatusCode);
