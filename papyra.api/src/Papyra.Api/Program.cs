@@ -17,6 +17,18 @@ builder.Services.AddDbContext<AppDbContext>(options =>
 // thing that serializes notes to/from .md).
 builder.Services.AddSingleton<MarkdownStorageService>();
 
+// ── Reactive observer: keep the in-memory vault in sync with the .md files ────
+builder.Services.AddMemoryCache();
+builder.Services.AddSingleton<VaultState>();
+builder.Services.AddSingleton<WriteRing>();
+builder.Services.AddSingleton(sp => new VaultObserverOptions
+{
+    NotesDir = PapyraPaths.NotesDir(
+        sp.GetRequiredService<IConfiguration>(),
+        sp.GetRequiredService<IHostEnvironment>().ContentRootPath),
+});
+builder.Services.AddHostedService<VaultObserver>();
+
 var allowedOrigins = builder.Configuration
     .GetSection("Cors:AllowedOrigins")
     .Get<string[]>()

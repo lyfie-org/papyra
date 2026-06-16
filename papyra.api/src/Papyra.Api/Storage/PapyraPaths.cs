@@ -18,6 +18,10 @@ public static class PapyraPaths
     public static string DotPapyra(IConfiguration config, string contentRoot)
         => Path.Combine(DataDir(config, contentRoot), ".papyra");
 
+    // The user-facing notes vault: the .md files are the source of truth.
+    public static string NotesDir(IConfiguration config, string contentRoot)
+        => Path.Combine(DataDir(config, contentRoot), "notes");
+
     public static string DbPath(IConfiguration config, string contentRoot)
         => Path.Combine(DotPapyra(config, contentRoot), "papyra.db");
 }
