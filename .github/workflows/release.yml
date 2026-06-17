@@ -1,0 +1,174 @@
+name: Release
+
+# One-button release, cut from main. Pick a bump (patch/minor/major) and this:
+#   1. builds the image and smoke-tests it boots + answers /health,
+#   2. bumps VERSION + prepends CHANGELOG.md from the commits since the last tag,
+#   3. commits + tags vX.Y.Z on main and pushes,
+#   4. pushes a multi-arch image to Docker Hub (vX.Y.Z + latest),
+#   5. publishes a GitHub Release with the same notes,
+#   6. fast-forwards development back to main so both branches stay in lockstep.
+#
+# Fresh start: VERSION begins at 0.0.0, so the first "patch" release is v0.0.1.
+on:
+  workflow_dispatch:
+    inputs:
+      bump:
+        description: 'Semver bump'
+        required: true
+        default: 'patch'
+        type: choice
+        options: [patch, minor, major]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    name: Build, test, tag & ship
+    runs-on: ubuntu-latest
+    # Releases are only ever cut from the stable branch.
+    if: github.ref == 'refs/heads/main'
+    env:
+      IMAGE: ${{ secrets.DOCKERHUB_USERNAME }}/papyra
+    steps:
+      - name: Checkout main (full history for changelog)
+        uses: actions/checkout@v4
+        with:
+          ref: main
+          fetch-depth: 0
+
+      # ── Compute the next version from the VERSION file (single source of truth) ──
+      - name: Compute next version
+        id: ver
+        run: |
+          CURRENT=$(cat VERSION 2>/dev/null || echo "0.0.0")
+          IFS='.' read -r MAJOR MINOR PATCH <<< "$CURRENT"
+          case "${{ github.event.inputs.bump }}" in
+            major) MAJOR=$((MAJOR+1)); MINOR=0; PATCH=0 ;;
+            minor) MINOR=$((MINOR+1)); PATCH=0 ;;
+            *)     PATCH=$((PATCH+1)) ;;
+          esac
+          NEW="$MAJOR.$MINOR.$PATCH"
+          echo "current=$CURRENT" >> "$GITHUB_OUTPUT"
+          echo "new=$NEW"         >> "$GITHUB_OUTPUT"
+          echo "tag=v$NEW"        >> "$GITHUB_OUTPUT"
+          echo "Releasing $CURRENT → $NEW"
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # ── 1. Build once locally and smoke-test that it actually boots ─────────────
+      - name: Build image for smoke test
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          load: true
+          tags: papyra:smoketest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Smoke test
+        run: |
+          docker run -d -p 8080:8080 --name smoke papyra:smoketest
+          echo "Waiting for boot..."
+          for i in $(seq 1 15); do
+            sleep 2
+            STATUS=$(docker inspect -f '{{.State.Status}}' smoke 2>/dev/null || echo missing)
+            if [ "$STATUS" != "running" ]; then
+              echo "❌ Container not running (status=$STATUS). Logs:"; docker logs smoke; exit 1
+            fi
+            CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/health || echo 000)
+            # 200 = healthy; 428 = healthy but awaiting first-admin setup. Both = boot OK.
+            if [ "$CODE" = "200" ] || [ "$CODE" = "428" ]; then
+              echo "✅ Smoke test passed (HTTP $CODE)"; docker rm -f smoke; exit 0
+            fi
+          done
+          echo "❌ /health never returned 200/428. Logs:"; docker logs smoke; exit 1
+
+      # ── 2. Bump VERSION + changelog from commits since the last tag ─────────────
+      - name: Update VERSION and CHANGELOG
+        id: notes
+        run: |
+          NEW="${{ steps.ver.outputs.new }}"
+          TAG="${{ steps.ver.outputs.tag }}"
+          DATE=$(date -u +%Y-%m-%d)
+
+          PREV_TAG=$(git describe --tags --abbrev=0 2>/dev/null || echo "")
+          if [ -n "$PREV_TAG" ]; then RANGE="$PREV_TAG..HEAD"; else RANGE=""; fi
+
+          # Conventional-ish commit list, merge commits dropped for signal.
+          COMMITS=$(git log $RANGE --no-merges --pretty=format:'- %s (%h)')
+          [ -z "$COMMITS" ] && COMMITS="- No code changes since the previous release."
+
+          echo "$NEW" > VERSION
+
+          # Insert the new section right after the marker, newest-first. The marker
+          # makes this robust no matter how long the header grows.
+          MARKER='<!-- new releases are inserted directly below this line -->'
+          if [ ! -f CHANGELOG.md ] || ! grep -qF "$MARKER" CHANGELOG.md; then
+            printf '# Changelog\n\n%s\n' "$MARKER" > CHANGELOG.md
+          fi
+          SECTION=$(printf '\n## [%s] - %s\n\n%s\n' "$NEW" "$DATE" "$COMMITS")
+          awk -v marker="$MARKER" -v section="$SECTION" '
+            { print }
+            $0 == marker && !done { print section; done=1 }
+          ' CHANGELOG.md > CHANGELOG.tmp && mv CHANGELOG.tmp CHANGELOG.md
+
+          # Stash the body for the GitHub Release.
+          {
+            echo "$COMMITS"
+            echo ""
+            echo "**Docker:** \`docker pull ${IMAGE}:${TAG}\`"
+          } > RELEASE_NOTES.md
+
+      - name: Commit, tag & push to main
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add VERSION CHANGELOG.md
+          git commit -m "release: ${{ steps.ver.outputs.tag }}"
+          git tag ${{ steps.ver.outputs.tag }}
+          git push origin HEAD:main
+          git push origin ${{ steps.ver.outputs.tag }}
+
+      # ── 3. Publish the multi-arch image ────────────────────────────────────────
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      - name: Build & push multi-arch image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:${{ steps.ver.outputs.tag }}
+            ${{ env.IMAGE }}:latest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      # ── 4. GitHub Release ───────────────────────────────────────────────────────
+      - name: Publish GitHub Release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "${{ steps.ver.outputs.tag }}" \
+            --title "${{ steps.ver.outputs.tag }}" \
+            --notes-file RELEASE_NOTES.md \
+            --target main
+
+      # ── 5. Keep development in lockstep with the freshly released main ──────────
+      - name: Sync development to main
+        run: |
+          git fetch origin development
+          git checkout -B development origin/development
+          git merge --ff-only origin/main || git merge --no-edit origin/main
+          git push origin development
+          echo "✅ development synced to main @ ${{ steps.ver.outputs.tag }}"
