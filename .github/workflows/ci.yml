@@ -1,0 +1,82 @@
+name: CI
+
+# Quality gate: build, type-check, lint, and the full test suite on every push
+# and PR to the working (development) and stable (main) branches. This is what
+# catches integration/regression/syntax breakage before a release is ever cut.
+on:
+  push:
+    branches: [main, development]
+  pull_request:
+    branches: [main, development]
+
+# Cancel an in-flight run when new commits land on the same ref — no point
+# burning minutes on stale code.
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend:
+    name: API — build & test (.NET 10)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 10
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: '10.0.x'
+
+      - name: Restore
+        run: dotnet restore Papyra.slnx
+
+      - name: Build (Release)
+        run: dotnet build Papyra.slnx --configuration Release --no-restore
+
+      - name: Test (integration + regression)
+        run: >-
+          dotnet test papyra.api/tests/Papyra.Tests/Papyra.Tests.csproj
+          --configuration Release --no-build --verbosity normal
+
+  frontend:
+    name: Web — type-check, lint & build
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 11.5.1
+
+      - name: Setup Node 22
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Type-check (syntax + types)
+        working-directory: papyra.web
+        run: pnpm exec tsc --noEmit
+
+      - name: Lint
+        working-directory: papyra.web
+        run: pnpm run lint
+
+      - name: Production build
+        working-directory: papyra.web
+        run: pnpm run build
+
+  # A green light only when BOTH halves pass — handy as the single required
+  # status check on a branch-protection rule.
+  ci-ok:
+    name: CI passed
+    needs: [backend, frontend]
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo "All checks green."
