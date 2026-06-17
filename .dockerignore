@@ -8,7 +8,16 @@ papyra.web/dist/
 
 node_modules/
 
-data/
+# Runtime data only — NOT the Data/ source namespace. A blanket `data/` here
+# excludes papyra.api/src/Papyra.Api/Data/ (case-insensitively / ambiguously) and
+# breaks the publish build by dropping AppDbContext + EF migrations from the context.
+/data/
+.localdata/
+**/.localdata/
+papyra.api/src/Papyra.Api/Data/.papyra/
+papyra.api/src/Papyra.Api/Data/notes/
+papyra.api/src/Papyra.Api/Data/users/
+papyra.api/src/Papyra.Api/Data/media/
 
 .git/
 .gitignore

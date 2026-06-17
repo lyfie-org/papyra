@@ -10,7 +10,10 @@ public static class PapyraPaths
         var configured = config["Papyra:DataDir"];
         var root = string.IsNullOrWhiteSpace(configured)
             ? Path.Combine(contentRoot, "data")
-            : configured;
+            // Absolute (e.g. the container's /data) is used as-is; a relative value
+            // resolves against the content root, not the process CWD, so it's stable
+            // no matter where `dotnet run` is invoked from.
+            : Path.IsPathRooted(configured) ? configured : Path.Combine(contentRoot, configured);
         return Path.GetFullPath(root);
     }
 
