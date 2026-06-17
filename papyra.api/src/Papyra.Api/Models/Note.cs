@@ -1,3 +1,5 @@
+using System.Text.Json.Serialization;
+
 namespace Papyra.Api.Models;
 
 // The authoritative shape of a note. Lives on disk as a .md file: YAML
@@ -11,4 +13,11 @@ public class Note
     public bool Pinned { get; set; }
     public bool Archived { get; set; }
     public string Body { get; set; } = string.Empty;
+
+    // Foreign frontmatter keys we don't own (Obsidian/Syncthing/plugin fields).
+    // Carried verbatim so the storage engine can round-trip them untouched — even
+    // on a fresh write (import) where there's no existing file to merge from.
+    // JsonIgnore'd: an internal preservation bag, never part of the API payload.
+    [JsonIgnore]
+    public Dictionary<string, object?> ExtraFrontmatter { get; set; } = [];
 }

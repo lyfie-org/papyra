@@ -21,6 +21,10 @@ public sealed class MarkdownStorageService
     private const string KeyPinned = "pinned";
     private const string KeyArchived = "archived";
 
+    // The keys we own; anything else in the frontmatter is foreign and preserved.
+    private static readonly HashSet<string> KnownKeys = new(StringComparer.OrdinalIgnoreCase)
+        { KeyId, KeyTitle, KeyTags, KeyColor, KeyPinned, KeyArchived };
+
     private const int MaxRetries = 3;
     private const int BaseDelayMs = 50;
 
@@ -53,16 +57,22 @@ public sealed class MarkdownStorageService
             Pinned = GetBool(frontmatter, KeyPinned),
             Archived = GetBool(frontmatter, KeyArchived),
             Body = body,
+            // Carry every non-owned key so a fresh write (import) preserves it too.
+            ExtraFrontmatter = frontmatter
+                .Where(kv => !KnownKeys.Contains(kv.Key))
+                .ToDictionary(kv => kv.Key, kv => kv.Value),
         };
     }
 
-    // Render a Note back to a .md document. Any foreign keys in `preserve` (the
-    // frontmatter of the existing file) are merged through untouched.
+    // Render a Note back to a .md document. Foreign keys are merged through
+    // untouched: first from the note's own carried bag (so imports keep them), then
+    // overlaid by `preserve` — the existing file's frontmatter — which wins, since
+    // that reflects whatever a sync tool most recently wrote to disk.
     public string Serialize(Note note, IDictionary<string, object?>? preserve = null)
     {
-        var fm = preserve is null
-            ? new Dictionary<string, object?>()
-            : new Dictionary<string, object?>(preserve);
+        var fm = new Dictionary<string, object?>(note.ExtraFrontmatter);
+        if (preserve is not null)
+            foreach (var (k, v) in preserve) fm[k] = v;
 
         fm[KeyId] = note.Id;
         fm[KeyTitle] = note.Title;

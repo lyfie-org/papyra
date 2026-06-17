@@ -136,8 +136,9 @@ public sealed class ImportService : BackgroundService
             ct);
     }
 
-    // An Obsidian note is already markdown; reuse the zero-trust parser (foreign
-    // frontmatter preserved) and only mint an id/title where the file lacks one.
+    // An Obsidian note is already markdown; reuse the zero-trust parser — which
+    // carries foreign frontmatter on the Note (ExtraFrontmatter) so the fresh write
+    // preserves it — and only mint an id/title where the file lacks one.
     private async Task<Note?> ReadObsidianNoteAsync(ZipArchiveEntry entry, CancellationToken ct)
     {
         var content = await ReadEntryTextAsync(entry, ct);
