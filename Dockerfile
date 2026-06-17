@@ -42,12 +42,15 @@ RUN dotnet publish papyra.api/src/Papyra.Api/Papyra.Api.csproj \
 # ─── Stage 4: Runtime ─────────────────────────────────────────────────────────
 FROM mcr.microsoft.com/dotnet/aspnet:10.0-alpine AS runtime
 
-RUN apk add --no-cache icu-libs
+# icu-libs: globalization; su-exec: drop privileges; shadow: usermod/groupmod realign
+RUN apk add --no-cache icu-libs su-exec shadow
 ENV DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=false
 
 WORKDIR /app
 
 COPY --from=dotnet-publish /app/publish ./
+COPY entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
 
 ENV ASPNETCORE_URLS="http://+:8080" \
     ASPNETCORE_ENVIRONMENT="Production" \
@@ -58,4 +61,6 @@ EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
     CMD wget -qO- http://localhost:8080/health || exit 1
 
-ENTRYPOINT ["dotnet", "Papyra.Api.dll"]
+VOLUME ["/data"]
+
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]
