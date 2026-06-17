@@ -6,6 +6,13 @@ import react from '@vitejs/plugin-react';
 // paths already resolve same-origin and need no proxy.
 export default defineConfig({
   plugins: [react()],
+  // Prod build emits straight into the API's wwwroot so a single Kestrel
+  // process serves the SPA (UseStaticFiles + MapFallbackToFile). emptyOutDir
+  // clears stale assets across rebuilds.
+  build: {
+    outDir: '../papyra.api/src/Papyra.Api/wwwroot',
+    emptyOutDir: true,
+  },
   server: {
     proxy: {
       '/api': { target: 'http://localhost:5220', changeOrigin: true },
