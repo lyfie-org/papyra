@@ -484,7 +484,16 @@ $RECYCLE.BIN/
 
 # User data — notes and uploaded images; never commit
 /data/
-# Runtime data dir created next to the API during local dev (SQLite cache, etc.)
+# Runtime data dir created next to the API during local dev (SQLite cache, notes,
+# users, media). NOTE: on case-insensitive Windows this `data/` rule also matches
+# the SOURCE folder `papyra.api/src/Papyra.Api/Data/` (the Papyra.Api.Data EF
+# namespace), and the dev server writes its runtime data INTO that same folder.
+# So: ignore everything in that folder EXCEPT the committed EF source below.
 data/
+!papyra.api/src/Papyra.Api/Data/
+papyra.api/src/Papyra.Api/Data/*
+!papyra.api/src/Papyra.Api/Data/AppDbContext.cs
+!papyra.api/src/Papyra.Api/Data/Migrations/
+!papyra.api/src/Papyra.Api/Data/Migrations/**
 CLAUDE.md
 CODEBASE_MAP.md
