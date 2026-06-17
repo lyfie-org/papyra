@@ -31,8 +31,10 @@ RUN dotnet restore papyra.api/src/Papyra.Api/Papyra.Api.csproj
 # ─── Stage 3: .NET — publish (inject SPA assets) ─────────────────────────────
 FROM dotnet-restore AS dotnet-publish
 
-# Embed frontend dist into wwwroot so StaticFiles serves the SPA without a CDN
-COPY --from=frontend /build/papyra.web/dist papyra.api/src/Papyra.Api/wwwroot/
+# Embed frontend build into wwwroot so StaticFiles serves the SPA without a CDN.
+# Vite's outDir is ../papyra.api/src/Papyra.Api/wwwroot (single-process local serve),
+# so in this stage the assets land there — not in papyra.web/dist.
+COPY --from=frontend /build/papyra.api/src/Papyra.Api/wwwroot papyra.api/src/Papyra.Api/wwwroot/
 
 RUN dotnet publish papyra.api/src/Papyra.Api/Papyra.Api.csproj \
       -c Release \
@@ -42,15 +44,22 @@ RUN dotnet publish papyra.api/src/Papyra.Api/Papyra.Api.csproj \
 # ─── Stage 4: Runtime ─────────────────────────────────────────────────────────
 FROM mcr.microsoft.com/dotnet/aspnet:10.0-alpine AS runtime
 
-RUN apk add --no-cache icu-libs
+# icu-libs: globalization; su-exec: drop privileges; shadow: usermod/groupmod realign
+RUN apk add --no-cache icu-libs su-exec shadow
 ENV DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=false
 
 WORKDIR /app
 
 COPY --from=dotnet-publish /app/publish ./
+COPY entrypoint.sh /usr/local/bin/entrypoint.sh
+RUN chmod +x /usr/local/bin/entrypoint.sh
 
+# Point the API at the /data volume the entrypoint chowns. ASP.NET maps the
+# __ delimiter to the "Papyra:DataDir" config key; plain PAPYRA_DATA_DIR would
+# NOT bind, leaving the API on its <contentRoot>/data default (/app/data).
 ENV ASPNETCORE_URLS="http://+:8080" \
     ASPNETCORE_ENVIRONMENT="Production" \
+    Papyra__DataDir="/data" \
     DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=false
 
 EXPOSE 8080
@@ -58,4 +67,6 @@ EXPOSE 8080
 HEALTHCHECK --interval=30s --timeout=5s --start-period=20s --retries=3 \
     CMD wget -qO- http://localhost:8080/health || exit 1
 
-ENTRYPOINT ["dotnet", "Papyra.Api.dll"]
+VOLUME ["/data"]
+
+ENTRYPOINT ["/usr/local/bin/entrypoint.sh"]

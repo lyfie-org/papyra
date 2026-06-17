@@ -1,0 +1,92 @@
+.note-card__link {
+  display: block;
+  text-decoration: none;
+  color: inherit;
+}
+
+.note-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 16px 18px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  box-shadow: var(--shadow-card);
+  cursor: pointer;
+  transition: box-shadow 0.15s ease, transform 0.15s ease;
+}
+.note-card:hover {
+  box-shadow: var(--shadow-card-hover);
+  transform: translateY(-1px);
+}
+
+/* Pastel YAML colors are always light → keep dark ink for contrast in both themes. */
+.note-card--colored .note-card__title {
+  color: #3d2c1e;
+}
+.note-card--colored .note-card__snippet {
+  color: #5c4636;
+}
+.note-card--colored .note-card__tag {
+  background: rgba(61, 44, 30, 0.1);
+  color: #3d2c1e;
+}
+
+.note-card__conflict {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  align-self: flex-start;
+  padding: 4px 10px;
+  border: 1px solid var(--danger);
+  border-radius: 999px;
+  background: var(--danger-bg);
+  color: var(--danger);
+  font-family: var(--sans);
+  font-size: 11px;
+  cursor: pointer;
+}
+.note-card__conflict:hover {
+  background: var(--danger);
+  color: var(--surface);
+}
+.note-card__conflict:focus-visible {
+  outline: 2px solid var(--danger);
+  outline-offset: 2px;
+}
+
+.note-card__title {
+  margin: 0;
+  font-family: var(--heading);
+  font-size: 19px;
+  line-height: 1.25;
+  color: var(--text-h);
+}
+
+.note-card__snippet {
+  margin: 0;
+  font-family: var(--sans);
+  font-size: 14px;
+  line-height: 1.5;
+  color: var(--text);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.note-card__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: 4px 0 0;
+  padding: 0;
+  list-style: none;
+}
+.note-card__tag {
+  font-family: var(--mono);
+  font-size: 11px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: var(--accent-bg);
+  color: var(--accent-text);
+}
