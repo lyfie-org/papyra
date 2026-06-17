@@ -101,16 +101,24 @@ builder.Services
     });
 builder.Services.AddAuthorization();
 
-var allowedOrigins = builder.Configuration
+// CORS is a dev affordance: in prod the SPA is served same-origin from wwwroot,
+// so cross-origin requests never happen. Enable it only in Development, or in prod
+// when a self-hoster explicitly lists origins (split reverse-proxy deploy). Never a
+// wildcard — credentialed requests require named origins anyway.
+var configuredOrigins = builder.Configuration
     .GetSection("Cors:AllowedOrigins")
-    .Get<string[]>()
-    ?? ["http://localhost:5173"];
+    .Get<string[]>();
+var enableCors = builder.Environment.IsDevelopment() || configuredOrigins is { Length: > 0 };
+var allowedOrigins = configuredOrigins ?? ["http://localhost:5173"];
 
-builder.Services.AddCors(options => options.AddPolicy("AllowedOrigins", policy =>
-    policy.WithOrigins(allowedOrigins)
-          .AllowAnyHeader()
-          .AllowAnyMethod()
-          .AllowCredentials()));
+if (enableCors)
+{
+    builder.Services.AddCors(options => options.AddPolicy("AllowedOrigins", policy =>
+        policy.WithOrigins(allowedOrigins)
+              .AllowAnyHeader()
+              .AllowAnyMethod()
+              .AllowCredentials()));
+}
 
 var app = builder.Build();
 
@@ -120,7 +128,7 @@ using (var scope = app.Services.CreateScope())
     scope.ServiceProvider.GetRequiredService<AppDbContext>().Database.Migrate();
 }
 
-app.UseCors("AllowedOrigins");
+if (enableCors) app.UseCors("AllowedOrigins");
 
 // ── Init gate ────────────────────────────────────────────────────────────────
 // Until the first admin exists, every /api call (except the auth endpoints that
@@ -170,16 +178,20 @@ app.Use(async (context, next) =>
     }
 });
 
-app.MapOpenApi();
+// OpenAPI + Scalar docs are dev-only: never expose the API surface in prod.
+if (app.Environment.IsDevelopment())
+{
+    app.MapOpenApi();
 
-app.MapScalarApiReference(options =>
-    options.WithTitle("Papyra API")
-           .WithClassicLayout()
-           .HideSearch()
-           .HideDeveloperTools()
-           .WithDocumentDownloadType(DocumentDownloadType.None)
-           .DisableAgent()
-           .WithCustomCss(".scalar-app .references-header { display: none !important; }"));
+    app.MapScalarApiReference(options =>
+        options.WithTitle("Papyra API")
+               .WithClassicLayout()
+               .HideSearch()
+               .HideDeveloperTools()
+               .WithDocumentDownloadType(DocumentDownloadType.None)
+               .DisableAgent()
+               .WithCustomCss(".scalar-app .references-header { display: none !important; }"));
+}
 
 // ── Health ─────────────────────────────────────────────────────────────────
 app.MapGet("/health", () => Results.Ok(new { status = "Healthy", app = "Papyra API" }))

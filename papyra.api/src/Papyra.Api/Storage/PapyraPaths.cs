@@ -2,7 +2,7 @@ namespace Papyra.Api.Storage;
 
 // Resolves the on-disk data root cross-platform. Container mounts a volume at
 // /data; local dev falls back to <contentRoot>/data. Override via config
-// "Papyra:DataDir" or env PAPYRA_DATA_DIR.
+// "Papyra:DataDir" (env var Papyra__DataDir — the __ maps to the : delimiter).
 public static class PapyraPaths
 {
     public static string DataDir(IConfiguration config, string contentRoot)
