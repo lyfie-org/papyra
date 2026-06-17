@@ -495,5 +495,9 @@ papyra.api/src/Papyra.Api/Data/*
 !papyra.api/src/Papyra.Api/Data/AppDbContext.cs
 !papyra.api/src/Papyra.Api/Data/Migrations/
 !papyra.api/src/Papyra.Api/Data/Migrations/**
+
+# Local dev runtime data (SQLite cache, notes, users, media) — kept in its own
+# folder so it never collides with the Data/ source namespace.
+.localdata/
 CLAUDE.md
 CODEBASE_MAP.md
