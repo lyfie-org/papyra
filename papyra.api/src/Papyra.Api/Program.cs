@@ -4,6 +4,7 @@ using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.SignalR;
+using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.EntityFrameworkCore;
 using Papyra.Api.Data;
 using Papyra.Api.Hubs;
@@ -684,6 +685,34 @@ app.MapPost("/api/media/upload", async (
 })
 .RequireAuthorization()
 .DisableAntiforgery(); // no antiforgery middleware in this skeleton; same-origin SPA
+
+// Serve an attachment back to the editor. The PapyraEditor adapter's
+// resolveMediaUrl points ![[file]] embeds here. PathGuard jails the filename to
+// the caller's own media dir, so one tenant can never read another's files.
+app.MapGet("/api/media/{filename}", (
+    string filename,
+    ClaimsPrincipal user,
+    IConfiguration config,
+    IHostEnvironment env,
+    ILoggerFactory loggerFactory) =>
+{
+    var mediaDir = PapyraPaths.UserMediaDir(config, env.ContentRootPath, Uid(user));
+    string dest;
+    try
+    {
+        dest = PathGuard.ResolveAndVerify(mediaDir, filename, loggerFactory.CreateLogger("PathGuard"));
+    }
+    catch (SecurityException)
+    {
+        return Results.Forbid();
+    }
+    if (!File.Exists(dest)) return Results.NotFound();
+
+    if (!new FileExtensionContentTypeProvider().TryGetContentType(dest, out var contentType))
+        contentType = "application/octet-stream";
+    return Results.File(dest, contentType, enableRangeProcessing: true);
+})
+.RequireAuthorization();
 
 // ── Import / Export ───────────────────────────────────────────────────────────
 // Import parks the uploaded archive on disk and hands it to the background queue,

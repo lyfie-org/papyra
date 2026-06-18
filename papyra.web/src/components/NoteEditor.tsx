@@ -1,11 +1,12 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { MarkDownEditor, type ExtensiveEditorRef } from '@lyfie/luthor';
+import { PapyraEditor, type PapyraEditorRef } from '@lyfie/luthor/presets/papyra';
 import '@lyfie/luthor/styles.css';
 import type { Note } from '../types/note';
 import { useAutoSave, type Draft } from '../hooks/useAutoSave';
 import { useTheme } from '../hooks/useTheme';
+import { createPapyraEditorAdapter } from '../lib/papyraEditorAdapter';
 import NoteToolbar from './NoteToolbar';
 import SnapshotPanel from './SnapshotPanel';
 import './NoteEditor.css';
@@ -23,7 +24,16 @@ export default function NoteEditor({ note }: { note: Note }) {
   const { theme } = useTheme();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
-  const editorRef = useRef<ExtensiveEditorRef | null>(null);
+  const editorRef = useRef<PapyraEditorRef | null>(null);
+
+  // The host seam: media GET/upload → /api/media, [[ search → notes cache,
+  // wikilink activation → router push. Rebuilt only when the open note or the
+  // injected services change. The editor owns the drop/paste upload pipeline
+  // through adapter.uploadMedia, so Papyra no longer hand-splices ![[…]].
+  const adapter = useMemo(
+    () => createPapyraEditorAdapter({ noteId: note.id, navigate, queryClient }),
+    [note.id, navigate, queryClient],
+  );
   const [title, setTitle] = useState(note.title);
   // Mirror the title in a ref so the debounced save reads the live value, not a
   // value captured in the closure of the render that scheduled it.
@@ -88,79 +98,6 @@ export default function NoteEditor({ note }: { note: Note }) {
   // Keep my local edits and let the next save overwrite the remote revision.
   const keepLocal = useCallback(() => { setPending(null); bump(); }, [bump]);
 
-  // Count of in-flight media uploads — drives the inline "Uploading…" indicator.
-  const [uploading, setUploading] = useState(0);
-
-  // Splice fresh markdown into the canvas. Luthor is uncontrolled, so adopting new
-  // body = remount with a fresh key (never patch the live DOM). bump() marks the
-  // draft dirty so the new ![[…]] reference is picked up by the 1.5s auto-save.
-  const applyBody = useCallback((next: string) => {
-    setBody(next);
-    setEditorKey((k) => k + 1);
-    shown.current = { id: note.id, title: titleRef.current, body: next };
-    bump();
-  }, [bump, note.id]);
-
-  // Dropped/pasted blobs → POST to the media endpoint, then swap each placeholder
-  // for its ![[filename]] reference. Placeholders go in immediately (one remount),
-  // and a single final remount lands the resolved references — minimising churn
-  // and the brief caret loss each remount costs.
-  const uploadFiles = useCallback(async (files: File[]) => {
-    if (files.length === 0) return;
-    const jobs = files.map((f) => ({
-      file: f,
-      token: `![[uploading ${crypto.randomUUID().slice(0, 8)}…]]`,
-      name: null as string | null,
-    }));
-
-    let md = editorRef.current?.getMarkdown() ?? body;
-    md = `${md}\n\n${jobs.map((j) => j.token).join('\n')}\n`;
-    applyBody(md);
-    setUploading((n) => n + jobs.length);
-
-    await Promise.all(jobs.map(async (job) => {
-      try {
-        const form = new FormData();
-        form.append('file', job.file);
-        const res = await fetch(`/api/media/upload?noteId=${encodeURIComponent(note.id)}`, {
-          method: 'POST',
-          body: form,
-        });
-        if (!res.ok) throw new Error(`upload failed: ${res.status}`);
-        job.name = (await res.json() as { filename: string }).filename;
-      } catch {
-        job.name = null; // failed upload → drop the placeholder on the final pass
-      } finally {
-        setUploading((n) => n - 1);
-      }
-    }));
-
-    let final = md;
-    for (const job of jobs) {
-      final = final.replace(job.token, job.name ? `![[${job.name}]]` : '');
-    }
-    applyBody(final);
-  }, [applyBody, body, note.id]);
-
-  const onDrop = useCallback((e: React.DragEvent) => {
-    const files = Array.from(e.dataTransfer?.files ?? []);
-    if (files.length === 0) return;
-    e.preventDefault();
-    void uploadFiles(files);
-  }, [uploadFiles]);
-
-  const onPaste = useCallback((e: React.ClipboardEvent) => {
-    const files = Array.from(e.clipboardData?.files ?? []);
-    if (files.length === 0) return; // text paste → let Luthor handle it
-    e.preventDefault();
-    void uploadFiles(files);
-  }, [uploadFiles]);
-
-  // Tell the browser a file drop is welcome (otherwise it navigates to the file).
-  const onDragOver = useCallback((e: React.DragEvent) => {
-    if (e.dataTransfer?.types?.includes('Files')) e.preventDefault();
-  }, []);
-
   // Toolbar frontmatter mutation: PUT the live draft plus the changed YAML field,
   // so a pin/color/archive flip never clobbers unsaved body/title. Re-baselines
   // the save state so the write doesn't immediately echo back as a dirty change.
@@ -215,9 +152,7 @@ export default function NoteEditor({ note }: { note: Note }) {
           onChange={(e) => { titleRef.current = e.target.value; setTitle(e.target.value); bump(); }}
         />
         <span className="note-editor__status" role="status">
-          {uploading > 0
-            ? `Uploading ${uploading} file${uploading > 1 ? 's' : ''}…`
-            : STATUS_LABEL[status]}
+          {STATUS_LABEL[status]}
         </span>
         <NoteToolbar
           pinned={note.pinned}
@@ -243,23 +178,14 @@ export default function NoteEditor({ note }: { note: Note }) {
       )}
 
       {/* contenteditable input events bubble here → mark the draft dirty. */}
-      <div
-        className="note-editor__canvas"
-        onInput={bump}
-        onDropCapture={onDrop}
-        onPasteCapture={onPaste}
-        onDragOver={onDragOver}
-      >
-        <MarkDownEditor
+      <div className="note-editor__canvas" onInput={bump}>
+        <PapyraEditor
           key={`${note.id}-${editorKey}-${editorTheme}-${note.color ?? 'none'}`}
-          initialTheme={editorTheme}
+          initialTheme={theme}
+          colored={colored}
           defaultContent={body}
           placeholder="Start writing…"
-          // No persistent chrome while writing: hide the mode tabs and the pinned
-          // toolbar, surface a minimal markdown formatting bar only on selection.
-          isEditorViewTabsVisible={false}
-          isToolbarEnabled={false}
-          featureFlags={{ floatingToolbar: true }}
+          adapter={adapter}
           onReady={(methods) => { editorRef.current = methods; }}
         />
       </div>
