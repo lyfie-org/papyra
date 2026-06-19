@@ -77,9 +77,18 @@ export function useAutoSave(note: Note, getDraft: () => Draft) {
     setStatus('idle');
   }, []);
 
+  // Flush any pending edit on unmount (e.g. the editor modal closing) so closing
+  // a note never drops the last keystrokes. flush is a no-op when already clean,
+  // so the redundant call after an explicit close is harmless. Held in a ref so
+  // this runs only on the real unmount, not whenever flush's identity changes.
+  const flushRef = useRef(flush);
+  flushRef.current = flush;
   useEffect(() => () => {
-    if (timer.current) clearTimeout(timer.current);
+    if (timer.current) {
+      clearTimeout(timer.current);
+      void flushRef.current();
+    }
   }, []);
 
-  return { status, isDirty, bump, reset, savedRef: saved };
+  return { status, isDirty, bump, reset, flush, savedRef: saved };
 }

@@ -20,10 +20,12 @@ public sealed class MarkdownStorageService
     private const string KeyColor = "color";
     private const string KeyPinned = "pinned";
     private const string KeyArchived = "archived";
+    private const string KeyTrashed = "trashed";
+    private const string KeyTrashedAt = "trashedAt";
 
     // The keys we own; anything else in the frontmatter is foreign and preserved.
     private static readonly HashSet<string> KnownKeys = new(StringComparer.OrdinalIgnoreCase)
-        { KeyId, KeyTitle, KeyTags, KeyColor, KeyPinned, KeyArchived };
+        { KeyId, KeyTitle, KeyTags, KeyColor, KeyPinned, KeyArchived, KeyTrashed, KeyTrashedAt };
 
     private const int MaxRetries = 3;
     private const int BaseDelayMs = 50;
@@ -56,6 +58,8 @@ public sealed class MarkdownStorageService
             Color = GetString(frontmatter, KeyColor),
             Pinned = GetBool(frontmatter, KeyPinned),
             Archived = GetBool(frontmatter, KeyArchived),
+            Trashed = GetBool(frontmatter, KeyTrashed),
+            TrashedAt = GetDateTime(frontmatter, KeyTrashedAt),
             Body = body,
             // Carry every non-owned key so a fresh write (import) preserves it too.
             ExtraFrontmatter = frontmatter
@@ -80,6 +84,17 @@ public sealed class MarkdownStorageService
         fm[KeyColor] = note.Color;
         fm[KeyPinned] = note.Pinned;
         fm[KeyArchived] = note.Archived;
+        // Keep the frontmatter clean: only stamp trash keys while actually trashed.
+        if (note.Trashed)
+        {
+            fm[KeyTrashed] = true;
+            fm[KeyTrashedAt] = (note.TrashedAt ?? DateTime.UtcNow).ToString("o");
+        }
+        else
+        {
+            fm.Remove(KeyTrashed);
+            fm.Remove(KeyTrashedAt);
+        }
 
         var yaml = _yamlWriter.Serialize(fm).TrimEnd('\n', '\r');
         return $"---\n{yaml}\n---\n\n{note.Body}";
@@ -175,6 +190,11 @@ public sealed class MarkdownStorageService
 
     private static bool GetBool(IDictionary<string, object?> fm, string key)
         => GetString(fm, key) is { } s && bool.TryParse(s, out var b) && b;
+
+    private static DateTime? GetDateTime(IDictionary<string, object?> fm, string key)
+        => GetString(fm, key) is { } s
+           && DateTime.TryParse(s, null, System.Globalization.DateTimeStyles.RoundtripKind, out var dt)
+            ? dt : null;
 
     private static List<string> GetTags(IDictionary<string, object?> fm)
     {

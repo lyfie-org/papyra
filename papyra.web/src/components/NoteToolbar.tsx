@@ -36,7 +36,7 @@ export default function NoteToolbar({
         aria-label={pinned ? 'Unpin note' : 'Pin note'}
         onClick={onTogglePin}
       >
-        <Pin size={18} />
+        <Pin size={18} fill={pinned ? 'currentColor' : 'none'} />
       </button>
 
       <div className="note-toolbar__palette-wrap">

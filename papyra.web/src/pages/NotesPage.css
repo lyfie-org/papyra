@@ -31,3 +31,25 @@
 .notes-page__status {
   color: var(--text);
 }
+
+.notes-page__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.notes-page__title {
+  margin: 0;
+  font-family: var(--heading);
+  font-size: 1.6rem;
+  color: var(--text-h);
+}
+
+.notes-page__hint {
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  opacity: 0.8;
+}

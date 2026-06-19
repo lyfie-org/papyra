@@ -28,7 +28,10 @@ export default function SetupPage() {
         setError(data?.error ?? 'Setup failed.');
         return;
       }
-      await queryClient.invalidateQueries({ queryKey: ['auth'] });
+      // Seed the auth cache from the setup response so RequireAuth lands the new
+      // admin straight on the workspace instead of bouncing through /setup again.
+      const user = await res.json();
+      queryClient.setQueryData(['auth'], { state: 'authed', user });
       navigate('/', { replace: true });
     } catch {
       setError('Couldn’t reach the server.');

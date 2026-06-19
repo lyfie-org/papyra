@@ -89,6 +89,32 @@
   color: var(--text-h);
 }
 
+.settings__hint {
+  margin: 0 0 1rem;
+  max-width: 38rem;
+  color: var(--text);
+  font-size: 0.85rem;
+}
+
+.settings__field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  max-width: 20rem;
+  color: var(--text);
+  font-size: 0.85rem;
+}
+
+.settings__select {
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text-h);
+  font-family: var(--sans);
+  font-size: 0.9rem;
+}
+
 .settings__provision-row {
   display: flex;
   flex-wrap: wrap;

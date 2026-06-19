@@ -6,6 +6,10 @@ papyra.api/**/*.trx
 papyra.web/node_modules/
 papyra.web/dist/
 
+# Stale local SPA build — the frontend stage rebuilds and COPYs a fresh wwwroot
+# into the publish stage, so never send a developer's local build into the context.
+papyra.api/src/Papyra.Api/wwwroot/
+
 node_modules/
 
 # Runtime data only — NOT the Data/ source namespace. A blanket `data/` here
@@ -25,6 +29,7 @@ papyra.api/src/Papyra.Api/Data/media/
 .vs/
 .vscode/
 .idea/
+**/.claude/
 **/*.user
 **/*.suo
 

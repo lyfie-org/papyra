@@ -1,16 +1,23 @@
 import { useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth, type AuthUser } from '../hooks/useAuth';
 import { useNotes } from '../hooks/useNotes';
+import { useSettings, useUpdateSettings, RETENTION_OPTIONS } from '../hooks/useSettings';
 import './SettingsPage.css';
 
-type Tab = 'profile' | 'admin';
+type Tab = 'profile' | 'trash' | 'admin';
 
 export default function SettingsPage() {
   const { user } = useAuth();
-  const [tab, setTab] = useState<Tab>('profile');
   const isAdmin = user?.role === 'Admin';
+  // The avatar dropdown deep-links to a tab via ?tab=…; keep it in the URL so the
+  // active tab survives a refresh / back.
+  const [params, setParams] = useSearchParams();
+  const requested = params.get('tab');
+  const tab: Tab = requested === 'admin' && isAdmin ? 'admin'
+    : requested === 'trash' ? 'trash' : 'profile';
+  const setTab = (t: Tab) => setParams(t === 'profile' ? {} : { tab: t }, { replace: true });
 
   return (
     <section className="settings">
@@ -18,19 +25,22 @@ export default function SettingsPage() {
 
       <div className="settings__tabs" role="tablist">
         <button
-          type="button"
-          role="tab"
-          aria-selected={tab === 'profile'}
+          type="button" role="tab" aria-selected={tab === 'profile'}
           className={`settings__tab${tab === 'profile' ? ' settings__tab--active' : ''}`}
           onClick={() => setTab('profile')}
         >
           Profile
         </button>
+        <button
+          type="button" role="tab" aria-selected={tab === 'trash'}
+          className={`settings__tab${tab === 'trash' ? ' settings__tab--active' : ''}`}
+          onClick={() => setTab('trash')}
+        >
+          Trash
+        </button>
         {isAdmin && (
           <button
-            type="button"
-            role="tab"
-            aria-selected={tab === 'admin'}
+            type="button" role="tab" aria-selected={tab === 'admin'}
             className={`settings__tab${tab === 'admin' ? ' settings__tab--active' : ''}`}
             onClick={() => setTab('admin')}
           >
@@ -40,8 +50,38 @@ export default function SettingsPage() {
       </div>
 
       {tab === 'profile' && <ProfileTab user={user} />}
+      {tab === 'trash' && <TrashTab />}
       {tab === 'admin' && isAdmin && <AdminTab />}
     </section>
+  );
+}
+
+function TrashTab() {
+  const { data: settings, isLoading } = useSettings();
+  const update = useUpdateSettings();
+
+  return (
+    <div className="settings__panel">
+      <h2 className="settings__subhead">Trash auto-delete</h2>
+      <p className="settings__hint">
+        How long deleted notes stay in Trash before they’re permanently removed.
+        “Delete immediately” skips Trash — those deletes can’t be recovered.
+      </p>
+      <label className="settings__field">
+        Permanently delete trashed notes
+        <select
+          className="settings__select"
+          disabled={isLoading || update.isPending}
+          value={settings?.trashRetentionDays ?? 30}
+          onChange={(e) => update.mutate({ trashRetentionDays: Number(e.target.value) })}
+        >
+          {RETENTION_OPTIONS.map(o => (
+            <option key={o.value} value={o.value}>{o.label}</option>
+          ))}
+        </select>
+      </label>
+      {update.isError && <p className="settings__error">Couldn’t save the setting.</p>}
+    </div>
   );
 }
 

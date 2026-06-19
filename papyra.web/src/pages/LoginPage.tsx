@@ -25,7 +25,10 @@ export default function LoginPage() {
         setError('Invalid credentials.');
         return;
       }
-      await queryClient.invalidateQueries({ queryKey: ['auth'] });
+      // Seed the auth cache from the login response so RequireAuth sees an authed
+      // session immediately instead of bouncing on the stale 'login' snapshot.
+      const user = await res.json();
+      queryClient.setQueryData(['auth'], { state: 'authed', user });
       navigate('/', { replace: true });
     } catch {
       setError('Couldn’t reach the server.');

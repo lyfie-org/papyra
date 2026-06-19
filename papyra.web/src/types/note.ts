@@ -7,5 +7,7 @@ export interface Note {
   color: string | null;
   pinned: boolean;
   archived: boolean;
+  trashed: boolean;
+  trashedAt?: string | null;
   body: string;
 }

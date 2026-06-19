@@ -62,6 +62,9 @@ builder.Services.AddHostedService<ColdBootDiffService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<VaultObserver>());
 builder.Services.AddHostedService<OrphanPruneService>();
 
+// Permanently purges trashed notes once they outlive the retention window.
+builder.Services.AddHostedService<TrashPurgeService>();
+
 // Background import queue: drains uploaded Obsidian/Keep archives into the vault
 // off the request thread, pushing progress over SignalR. Singleton so the endpoint
 // can Enqueue onto the same instance the hosted worker drains.
@@ -388,6 +391,66 @@ notes.MapDelete("/{id}", (
     search.RemoveNote(id); // watcher skips the echo, so drop from the index here
 
     return Results.NoContent();
+});
+
+// ── Soft-delete (trash / restore) ───────────────────────────────────────────────
+// Trash flips the frontmatter flag + stamps TrashedAt; the note stays on disk
+// (recoverable) until the retention sweep purges it. DELETE above is the permanent
+// purge. Restore clears the flag and re-indexes the note.
+notes.MapPost("/{id}/trash", async (
+    string id, ClaimsPrincipal user, VaultState state,
+    MarkdownStorageService storage, WriteRing writeRing, SearchIndexService search,
+    CancellationToken ct) =>
+{
+    var uid = Uid(user);
+    var path = state.PathFor(uid, id);
+    if (path is null || !state.TryGet(uid, path, out var note) || note is null) return Results.NotFound();
+
+    note.Trashed = true;
+    note.TrashedAt = DateTime.UtcNow;
+    writeRing.Mark(path);
+    await storage.WriteAsync(path, note, ct);
+    state.Upsert(uid, path, note);
+    search.RemoveNote(id); // hidden from search while trashed
+    return Results.NoContent();
+});
+
+notes.MapPost("/{id}/untrash", async (
+    string id, ClaimsPrincipal user, VaultState state,
+    MarkdownStorageService storage, WriteRing writeRing, SearchIndexService search,
+    CancellationToken ct) =>
+{
+    var uid = Uid(user);
+    var path = state.PathFor(uid, id);
+    if (path is null || !state.TryGet(uid, path, out var note) || note is null) return Results.NotFound();
+
+    note.Trashed = false;
+    note.TrashedAt = null;
+    writeRing.Mark(path);
+    await storage.WriteAsync(path, note, ct);
+    state.Upsert(uid, path, note);
+    search.IndexNote(uid, note);
+    return Results.NoContent();
+});
+
+// ── Settings (trash retention) ───────────────────────────────────────────────────
+// Single global key for now: how long trashed notes survive before the sweep
+// purges them. -1 = keep forever, 0 = purge immediately, else N days.
+var settings = app.MapGroup("/api/settings").RequireAuthorization();
+
+settings.MapGet("/", async (AppDbContext db, CancellationToken ct) =>
+    Results.Ok(new { trashRetentionDays = await TrashRetention.ReadDays(db, ct) }));
+
+settings.MapPut("/", async (SettingsRequest body, AppDbContext db, CancellationToken ct) =>
+{
+    if (!TrashRetention.Allowed.Contains(body.TrashRetentionDays))
+        return Results.BadRequest(new { error = "Invalid retention value." });
+
+    var row = await db.Settings.FindAsync([TrashRetention.Key], ct);
+    if (row is null) db.Settings.Add(new AppSetting { Key = TrashRetention.Key, Value = body.TrashRetentionDays.ToString() });
+    else row.Value = body.TrashRetentionDays.ToString();
+    await db.SaveChangesAsync(ct);
+    return Results.Ok(new { trashRetentionDays = body.TrashRetentionDays });
 });
 
 // ── Snapshots (version history & recovery) ──────────────────────────────────────
@@ -822,6 +885,9 @@ public sealed record ProvisionRequest(
 // Admin password reset payload for an existing user.
 public sealed record ResetRequest(
     string? Password);
+
+// Trash retention update: how many days a trashed note survives (-1/0/3/7/30/60).
+public sealed record SettingsRequest(int TrashRetentionDays);
 
 // Conflict resolution choice: "left" (keep parent), "right" (keep the copy),
 // or "both" (promote the copy to a new note). The rejected .md is deleted either way.

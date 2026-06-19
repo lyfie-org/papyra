@@ -43,14 +43,25 @@ export default function NoteEditor({ note }: { note: Note }) {
   // key — never patching the live DOM, which would hijack the caret.
   const [body, setBody] = useState(note.body);
   const [editorKey, setEditorKey] = useState(0);
+  // Latest markdown seen from the live editor, kept current on every input. Lets
+  // a flush on close/unmount read the draft even after Luthor's ref tears down.
+  const latestBody = useRef(note.body);
 
-  // Read the live draft on demand: title from the ref, body from Luthor's ref.
+  // Read the live draft on demand: title from the ref, body from Luthor's ref
+  // (falling back to the last value mirrored on input when the ref is gone).
   const getDraft = useCallback((): Draft => ({
     title: titleRef.current,
-    body: editorRef.current?.getMarkdown() ?? body,
-  }), [body]);
+    body: editorRef.current?.getMarkdown() ?? latestBody.current,
+  }), []);
 
-  const { status, isDirty, bump, reset, savedRef } = useAutoSave(note, getDraft);
+  const { status, isDirty, bump, reset, flush, savedRef } = useAutoSave(note, getDraft);
+
+  // Close the editor modal: persist the draft first so closing never loses edits,
+  // then return to the grid. Backdrop click and Escape both route here.
+  const close = useCallback(async () => {
+    await flush();
+    navigate('/');
+  }, [flush, navigate]);
 
   // What the editor currently displays — the yardstick for detecting that the
   // server snapshot (refreshed by SignalR invalidation) carries a new revision.
@@ -67,6 +78,7 @@ export default function NoteEditor({ note }: { note: Note }) {
   // so the adopted content isn't immediately written back.
   const applyRemote = useCallback((next: { title: string; body: string }) => {
     titleRef.current = next.title;
+    latestBody.current = next.body;
     setTitle(next.title);
     setBody(next.body);
     setEditorKey((k) => k + 1);
@@ -98,6 +110,16 @@ export default function NoteEditor({ note }: { note: Note }) {
   // Keep my local edits and let the next save overwrite the remote revision.
   const keepLocal = useCallback(() => { setPending(null); bump(); }, [bump]);
 
+  // Escape closes the modal — but let an open sub-panel (recovery) or the conflict
+  // banner claim the key first so it doesn't yank the user out unexpectedly.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && !recoverOpen && !pending) void close();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [close, recoverOpen, pending]);
+
   // Toolbar frontmatter mutation: PUT the live draft plus the changed YAML field,
   // so a pin/color/archive flip never clobbers unsaved body/title. Re-baselines
   // the save state so the write doesn't immediately echo back as a dirty change.
@@ -119,6 +141,7 @@ export default function NoteEditor({ note }: { note: Note }) {
     reset(draft);
     // A color flip remounts the editor (theme swap, see key/style below); seed the
     // fresh mount with the live text so unsaved edits survive the remount.
+    latestBody.current = draft.body;
     setBody(draft.body);
     shown.current = { id: note.id, title: draft.title, body: draft.body };
     queryClient.invalidateQueries({ queryKey: ['notes'] });
@@ -142,7 +165,17 @@ export default function NoteEditor({ note }: { note: Note }) {
   const style = note.color ? { background: note.color } : undefined;
 
   return (
-    <section className={`note-editor${colored ? ' note-editor--colored' : ''}`} style={style}>
+    <div
+      className="note-modal"
+      onMouseDown={(e) => { if (e.target === e.currentTarget) void close(); }}
+    >
+    <section
+      className={`note-editor${colored ? ' note-editor--colored' : ''}`}
+      style={style}
+      role="dialog"
+      aria-modal="true"
+      onMouseDown={(e) => e.stopPropagation()}
+    >
       <header className="note-editor__bar">
         <input
           className="note-editor__title"
@@ -177,16 +210,29 @@ export default function NoteEditor({ note }: { note: Note }) {
         </div>
       )}
 
-      {/* contenteditable input events bubble here → mark the draft dirty. */}
-      <div className="note-editor__canvas" onInput={bump}>
+      {/* contenteditable input events bubble here → mirror the markdown + mark dirty. */}
+      <div
+        className="note-editor__canvas"
+        onInput={() => {
+          const md = editorRef.current?.getMarkdown();
+          if (md != null) latestBody.current = md;
+          bump();
+        }}
+      >
         <PapyraEditor
           key={`${note.id}-${editorKey}-${editorTheme}-${note.color ?? 'none'}`}
           initialTheme={theme}
           colored={colored}
+          defaultEditorView="visual"
           defaultContent={body}
           placeholder="Start writing…"
           adapter={adapter}
-          onReady={(methods) => { editorRef.current = methods; }}
+          onReady={(methods) => {
+            editorRef.current = methods;
+            // defaultContent loads as plain text, so parse the markdown into the
+            // visual surface explicitly — otherwise the body renders as raw source.
+            methods.setMarkdown(body);
+          }}
         />
       </div>
 
@@ -199,5 +245,6 @@ export default function NoteEditor({ note }: { note: Note }) {
         />
       )}
     </section>
+    </div>
   );
 }

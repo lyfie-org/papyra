@@ -12,6 +12,10 @@ public class Note
     public string? Color { get; set; }
     public bool Pinned { get; set; }
     public bool Archived { get; set; }
+    // Soft-delete: a trashed note stays on disk (recoverable) until a retention
+    // sweep purges it. TrashedAt anchors that retention window.
+    public bool Trashed { get; set; }
+    public DateTime? TrashedAt { get; set; }
     public string Body { get; set; } = string.Empty;
 
     // Foreign frontmatter keys we don't own (Obsidian/Syncthing/plugin fields).

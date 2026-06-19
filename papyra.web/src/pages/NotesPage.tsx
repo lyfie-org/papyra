@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Outlet, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { Plus } from 'lucide-react';
 import NoteGrid from '../components/NoteGrid';
@@ -62,6 +62,9 @@ export default function NotesPage() {
       {resolving && (
         <ConflictResolver conflictId={resolving} onClose={() => setResolving(null)} />
       )}
+
+      {/* /note/:id renders the editor modal over this grid. */}
+      <Outlet />
     </section>
   );
 }
