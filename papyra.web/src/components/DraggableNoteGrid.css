@@ -1,0 +1,23 @@
+/* Masonry column child is the sortable wrapper, so the gap sits on it. */
+.note-grid__col > .dnd-card {
+  margin-bottom: 16px;
+}
+
+.dnd-card {
+  cursor: grab;
+  touch-action: manipulation;
+}
+.dnd-card:active {
+  cursor: grabbing;
+}
+
+/* The lifted card shown under the cursor during a drag — fixed size, no morph. */
+.dnd-card--overlay {
+  cursor: grabbing;
+  margin-bottom: 0;
+}
+
+/* Empty sections still need a drop target. */
+.dnd-section {
+  min-height: 8px;
+}

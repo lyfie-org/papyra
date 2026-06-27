@@ -7,6 +7,8 @@ import CategoriesPage from './pages/CategoriesPage';
 import ArchivePage from './pages/ArchivePage';
 import TrashPage from './pages/TrashPage';
 import SettingsPage from './pages/SettingsPage';
+import SharedWithMePage from './pages/SharedWithMePage';
+import SharedNotePage from './pages/SharedNotePage';
 import LoginPage from './pages/LoginPage';
 import SetupPage from './pages/SetupPage';
 import { useAuth } from './hooks/useAuth';
@@ -28,6 +30,8 @@ export default function App() {
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route path="/setup" element={<SetupPage />} />
+      {/* Public tokenised share link — no session required. */}
+      <Route path="/shared/:token" element={<SharedNotePage />} />
       <Route element={<RequireAuth />}>
         {/* The editor renders as a modal over the grid, so note/:id is a child of
             NotesPage (which keeps the grid mounted behind it via <Outlet />). */}
@@ -36,6 +40,7 @@ export default function App() {
         </Route>
         <Route path="todo" element={<TodoPage />} />
         <Route path="categories" element={<CategoriesPage />} />
+        <Route path="shared-with-me" element={<SharedWithMePage />} />
         <Route path="archive" element={<ArchivePage />} />
         <Route path="trash" element={<TrashPage />} />
         <Route path="settings" element={<SettingsPage />} />

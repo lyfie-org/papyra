@@ -36,7 +36,13 @@ function stripMarkdown(md: string): string {
 }
 
 function snippet(body: string): string {
-  const text = stripMarkdown(body).replace(/\s+/g, ' ').trim();
+  // Keep line breaks so a multi-line note renders as stacked lines (the card CSS
+  // has white-space: pre-wrap + line-clamp). Only collapse intra-line whitespace.
+  const text = stripMarkdown(body)
+    .replace(/[ \t]+/g, ' ')           // collapse runs of spaces/tabs
+    .replace(/[ \t]*\n[ \t]*/g, '\n')  // trim space around newlines
+    .replace(/\n{3,}/g, '\n\n')        // cap blank-line runs
+    .trim();
   return text.length > SNIPPET_LEN ? `${text.slice(0, SNIPPET_LEN)}…` : text;
 }
 
@@ -87,7 +93,7 @@ export default function NoteCard({ note, variant = 'active', conflictId, conflic
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         title: note.title, tags: note.tags, color: note.color,
-        pinned: note.pinned, archived: note.archived, body: note.body,
+        pinned: note.pinned, archived: note.archived, kind: note.kind, body: note.body,
         ...patch,
       }),
     });
@@ -124,7 +130,7 @@ export default function NoteCard({ note, variant = 'active', conflictId, conflic
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         title: title === 'Untitled' ? '' : `${note.title} copy`,
-        tags: note.tags, color: note.color, pinned: false, archived: false, body: note.body,
+        tags: note.tags, color: note.color, pinned: false, archived: false, kind: note.kind, body: note.body,
       }),
     });
     if (!res.ok) throw new Error(`duplicate failed: ${res.status}`);

@@ -37,19 +37,20 @@
   color: #3d2c1e;
 }
 
-/* Dark mode: the pastel glares, so dim it toward surface and use theme ink. */
+/* Dark mode: keep the tint a bright pastel and pin dark ink for contrast (the
+   tints are always light, so dark ink reads far better than the theme's tan). */
 [data-theme='dark'] .note-card--colored {
-  background: color-mix(in srgb, var(--note-tint) 30%, var(--surface));
+  background: color-mix(in srgb, var(--note-tint) 78%, var(--surface));
 }
 [data-theme='dark'] .note-card--colored .note-card__title {
-  color: var(--text-h);
+  color: #3d2c1e;
 }
 [data-theme='dark'] .note-card--colored .note-card__snippet {
-  color: var(--text);
+  color: #4a3526;
 }
 [data-theme='dark'] .note-card--colored .note-card__tag {
-  background: var(--accent-bg);
-  color: var(--accent-text);
+  background: rgba(61, 44, 30, 0.1);
+  color: #3d2c1e;
 }
 
 .note-card__conflict {
@@ -91,6 +92,12 @@
   color: var(--text);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+  /* Stacked multi-line preview, capped so tall notes don't blow out the card. */
+  display: -webkit-box;
+  -webkit-line-clamp: 10;
+  line-clamp: 10;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .note-card__tags {
@@ -168,7 +175,10 @@
   background: rgba(255, 255, 255, 0.65);
 }
 [data-theme='dark'] .note-card--colored .note-card__actions {
-  background: var(--surface);
+  background: rgba(255, 255, 255, 0.72);
+}
+[data-theme='dark'] .note-card--colored .note-card__action {
+  color: #5c4636;
 }
 
 .note-card__action {

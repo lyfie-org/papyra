@@ -58,13 +58,15 @@
 }
 
 .workspace__theme-toggle {
-  font-family: var(--sans);
-  font-size: 14px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
   color: var(--text-h);
   background: transparent;
   border: 1px solid var(--border);
-  border-radius: 8px;
-  padding: 6px 14px;
+  border-radius: 50%;
   cursor: pointer;
 }
 .workspace__theme-toggle:hover {

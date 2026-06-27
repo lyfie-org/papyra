@@ -9,6 +9,7 @@ import { useTheme } from '../hooks/useTheme';
 import { createPapyraEditorAdapter } from '../lib/papyraEditorAdapter';
 import NoteToolbar from './NoteToolbar';
 import SnapshotPanel from './SnapshotPanel';
+import CategoryEditor from './CategoryEditor';
 import './NoteEditor.css';
 
 const STATUS_LABEL = {
@@ -123,17 +124,18 @@ export default function NoteEditor({ note }: { note: Note }) {
   // Toolbar frontmatter mutation: PUT the live draft plus the changed YAML field,
   // so a pin/color/archive flip never clobbers unsaved body/title. Re-baselines
   // the save state so the write doesn't immediately echo back as a dirty change.
-  const saveFrontmatter = useCallback(async (patch: Partial<Pick<Note, 'color' | 'pinned' | 'archived'>>) => {
+  const saveFrontmatter = useCallback(async (patch: Partial<Pick<Note, 'color' | 'pinned' | 'archived' | 'tags' | 'kind'>>) => {
     const draft = getDraft();
     const res = await fetch(`/api/notes/${encodeURIComponent(note.id)}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         title: draft.title,
-        tags: note.tags,
+        tags: patch.tags !== undefined ? patch.tags : note.tags,
         color: patch.color !== undefined ? patch.color : note.color,
         pinned: patch.pinned !== undefined ? patch.pinned : note.pinned,
         archived: patch.archived !== undefined ? patch.archived : note.archived,
+        kind: patch.kind !== undefined ? patch.kind : note.kind,
         body: draft.body,
       }),
     });
@@ -190,7 +192,9 @@ export default function NoteEditor({ note }: { note: Note }) {
         <NoteToolbar
           pinned={note.pinned}
           color={note.color}
+          isTodo={note.kind === 'todo'}
           onTogglePin={() => void saveFrontmatter({ pinned: !note.pinned })}
+          onToggleTodo={() => void saveFrontmatter({ kind: note.kind === 'todo' ? 'note' : 'todo' })}
           onPickColor={(c) => void saveFrontmatter({ color: c })}
           onRecover={() => setRecoverOpen(true)}
           onArchive={() => { void saveFrontmatter({ archived: true }); navigate('/'); }}
@@ -199,6 +203,8 @@ export default function NoteEditor({ note }: { note: Note }) {
           }}
         />
       </header>
+
+      <CategoryEditor tags={note.tags} onChange={(tags) => void saveFrontmatter({ tags })} />
 
       {pending && (
         <div className="note-editor__conflict" role="alert">

@@ -1,5 +1,5 @@
 .settings {
-  max-width: 48rem;
+  max-width: 62rem;
 }
 
 .settings__title {
@@ -180,6 +180,12 @@
 .settings__link:hover {
   text-decoration: underline;
 }
+.settings__link + .settings__link {
+  margin-left: 0.75rem;
+}
+.settings__link--danger {
+  color: var(--danger);
+}
 
 .settings__danger {
   align-self: flex-start;
@@ -206,4 +212,214 @@
   color: var(--danger);
   font-family: var(--sans);
   font-size: 0.85rem;
+}
+
+/* ── Left-rail shell ─────────────────────────────────────────────── */
+.settings__shell {
+  display: grid;
+  grid-template-columns: 13rem 1fr;
+  gap: 1.5rem;
+  align-items: start;
+}
+@media (max-width: 720px) {
+  .settings__shell {
+    grid-template-columns: 1fr;
+  }
+  .settings__rail {
+    flex-direction: row !important;
+    flex-wrap: wrap;
+  }
+}
+
+.settings__rail {
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  position: sticky;
+  top: 1rem;
+}
+.settings__rail-item {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.55rem 0.8rem;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 0.92rem;
+  text-align: left;
+  cursor: pointer;
+}
+.settings__rail-item:hover {
+  background: var(--accent-bg);
+  color: var(--accent-text);
+}
+.settings__rail-item.is-active {
+  background: var(--accent-bg);
+  color: var(--accent-text);
+  font-weight: 600;
+}
+
+.settings__content {
+  min-width: 0;
+  padding: 1.4rem 1.5rem;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: var(--shadow-card);
+}
+
+/* ── Profile ─────────────────────────────────────────────────────── */
+.settings__profile-head {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+}
+.settings__avatar {
+  position: relative;
+  width: 64px;
+  height: 64px;
+  border: none;
+  border-radius: 50%;
+  background: var(--accent);
+  color: var(--accent-fg);
+  font-family: var(--heading);
+  font-size: 28px;
+  cursor: pointer;
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.settings__avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.settings__avatar-edit {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 22px;
+  height: 22px;
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--text-h);
+  box-shadow: var(--shadow-card);
+}
+.settings__profile-name {
+  font-family: var(--heading);
+  font-size: 1.2rem;
+  color: var(--text-h);
+}
+.settings__profile-sub {
+  font-family: var(--mono);
+  font-size: 0.8rem;
+  color: var(--text);
+}
+
+.settings__form {
+  display: flex;
+  flex-direction: column;
+  gap: 0.8rem;
+}
+.settings__form .settings__field input {
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text-h);
+  font-family: var(--sans);
+  font-size: 0.9rem;
+}
+.settings__form-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+}
+.settings__field--inline {
+  flex-direction: row;
+  align-items: center;
+  gap: 0.75rem;
+  max-width: none;
+}
+
+.settings__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  align-self: flex-start;
+  padding: 0.5rem 0.9rem;
+  border: 1px solid var(--accent-border);
+  border-radius: 8px;
+  background: var(--accent-bg);
+  color: var(--accent-text);
+  font-family: var(--sans);
+  font-size: 0.9rem;
+  text-decoration: none;
+  cursor: pointer;
+}
+.settings__btn:hover {
+  border-color: var(--accent);
+}
+.settings__msg {
+  color: var(--text);
+  font-size: 0.85rem;
+}
+.settings__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.6rem;
+}
+
+/* ── Appearance segmented control ─────────────────────────────────── */
+.settings__segment {
+  display: inline-flex;
+  gap: 0.3rem;
+  padding: 0.3rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg);
+}
+.settings__segment-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  padding: 0.5rem 0.9rem;
+  border: none;
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+.settings__segment-btn.is-active {
+  background: var(--accent);
+  color: var(--accent-fg);
+}
+
+/* ── API keys ─────────────────────────────────────────────────────── */
+.settings__token {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 0.7rem 0.9rem;
+  border: 1px solid var(--accent-border);
+  border-radius: 8px;
+  background: var(--accent-bg);
+}
+.settings__token-value {
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  white-space: nowrap;
+  background: transparent;
+  color: var(--text-h);
+  font-size: 0.8rem;
 }

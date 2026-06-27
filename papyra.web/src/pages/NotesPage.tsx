@@ -2,7 +2,7 @@ import { useMemo, useState } from 'react';
 import { Outlet, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { Plus } from 'lucide-react';
-import NoteGrid from '../components/NoteGrid';
+import DraggableNoteGrid from '../components/DraggableNoteGrid';
 import ConflictResolver from '../components/ConflictResolver';
 import { useNotes } from '../hooks/useNotes';
 import { useConflicts, type Conflict } from '../hooks/useConflicts';
@@ -52,7 +52,7 @@ export default function NotesPage() {
       {isLoading && <p className="notes-page__status">Loading notes…</p>}
       {isError && <p className="notes-page__status">Couldn’t reach the server.</p>}
       {!isLoading && !isError && (
-        <NoteGrid
+        <DraggableNoteGrid
           notes={notes ?? []}
           conflictsByParent={conflictsByParent}
           onResolveConflict={setResolving}

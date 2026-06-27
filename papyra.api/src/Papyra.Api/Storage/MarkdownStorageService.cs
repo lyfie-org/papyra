@@ -22,10 +22,11 @@ public sealed class MarkdownStorageService
     private const string KeyArchived = "archived";
     private const string KeyTrashed = "trashed";
     private const string KeyTrashedAt = "trashedAt";
+    private const string KeyKind = "kind";
 
     // The keys we own; anything else in the frontmatter is foreign and preserved.
     private static readonly HashSet<string> KnownKeys = new(StringComparer.OrdinalIgnoreCase)
-        { KeyId, KeyTitle, KeyTags, KeyColor, KeyPinned, KeyArchived, KeyTrashed, KeyTrashedAt };
+        { KeyId, KeyTitle, KeyTags, KeyColor, KeyPinned, KeyArchived, KeyTrashed, KeyTrashedAt, KeyKind };
 
     private const int MaxRetries = 3;
     private const int BaseDelayMs = 50;
@@ -58,6 +59,7 @@ public sealed class MarkdownStorageService
             Color = GetString(frontmatter, KeyColor),
             Pinned = GetBool(frontmatter, KeyPinned),
             Archived = GetBool(frontmatter, KeyArchived),
+            Kind = GetString(frontmatter, KeyKind) ?? "note",
             Trashed = GetBool(frontmatter, KeyTrashed),
             TrashedAt = GetDateTime(frontmatter, KeyTrashedAt),
             Body = body,
@@ -84,6 +86,9 @@ public sealed class MarkdownStorageService
         fm[KeyColor] = note.Color;
         fm[KeyPinned] = note.Pinned;
         fm[KeyArchived] = note.Archived;
+        // Keep YAML clean: only stamp kind when it's not the default note.
+        if (string.Equals(note.Kind, "todo", StringComparison.OrdinalIgnoreCase)) fm[KeyKind] = "todo";
+        else fm.Remove(KeyKind);
         // Keep the frontmatter clean: only stamp trash keys while actually trashed.
         if (note.Trashed)
         {
@@ -107,7 +112,10 @@ public sealed class MarkdownStorageService
     {
         if (!File.Exists(path)) return null;
         var content = await WithBackoff(() => File.ReadAllTextAsync(path, ct));
-        return Deserialize(content);
+        var note = Deserialize(content);
+        // mtime is the source of "last modified" — not a frontmatter key.
+        note.Updated = File.GetLastWriteTimeUtc(path);
+        return note;
     }
 
     // Atomically persist a note: write a uuid.tmp sibling, fsync, then replace the

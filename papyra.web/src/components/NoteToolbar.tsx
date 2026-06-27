@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Pin, Palette, History, Archive, Trash2 } from 'lucide-react';
+import { Pin, Palette, History, Archive, Trash2, ListTodo } from 'lucide-react';
 import PalettePicker from './PalettePicker';
 import './NoteToolbar.css';
 
@@ -9,7 +9,9 @@ import './NoteToolbar.css';
 interface Props {
   pinned: boolean;
   color: string | null;
+  isTodo: boolean;
   onTogglePin: () => void;
+  onToggleTodo: () => void;
   onPickColor: (color: string | null) => void;
   onRecover: () => void;
   onArchive: () => void;
@@ -19,7 +21,9 @@ interface Props {
 export default function NoteToolbar({
   pinned,
   color,
+  isTodo,
   onTogglePin,
+  onToggleTodo,
   onPickColor,
   onRecover,
   onArchive,
@@ -59,6 +63,16 @@ export default function NoteToolbar({
           />
         )}
       </div>
+
+      <button
+        type="button"
+        className={`note-toolbar__btn${isTodo ? ' is-active' : ''}`}
+        aria-pressed={isTodo}
+        aria-label={isTodo ? 'Convert to note' : 'Convert to to-do'}
+        onClick={onToggleTodo}
+      >
+        <ListTodo size={18} />
+      </button>
 
       <button
         type="button"

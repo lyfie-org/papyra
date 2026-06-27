@@ -1,0 +1,136 @@
+.todo-page {
+  padding: 8px 4px 48px;
+}
+
+.todo-page__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  flex-wrap: wrap;
+}
+.todo-page__title {
+  margin: 0;
+}
+.todo-page__new {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border: 1px solid var(--accent-border);
+  border-radius: 8px;
+  background: var(--accent-bg);
+  color: var(--accent-text);
+  font-family: var(--sans);
+  font-size: 14px;
+  cursor: pointer;
+}
+.todo-page__new:hover {
+  border-color: var(--accent);
+}
+.todo-page__status {
+  margin: 24px 0;
+  color: var(--text);
+}
+
+.todo-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  gap: 16px;
+  align-items: start;
+  margin-top: 20px;
+}
+
+/* TodoCard reuses the .note-card shell; these add the checklist UI. */
+.todo-card {
+  cursor: default;
+}
+.todo-card__title-link {
+  text-decoration: none;
+  color: inherit;
+}
+.todo-card__progress {
+  font-family: var(--mono);
+  font-size: 11px;
+  color: var(--text);
+  opacity: 0.8;
+}
+
+.todo-card__list {
+  list-style: none;
+  margin: 4px 0 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.todo-card__item {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-family: var(--sans);
+  font-size: 14px;
+  color: var(--text-h);
+}
+.todo-card__item.is-done .todo-card__text {
+  text-decoration: line-through;
+  opacity: 0.6;
+}
+.todo-card__check {
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  margin-top: 1px;
+  border: 1.5px solid var(--accent-border);
+  border-radius: 5px;
+  background: transparent;
+  color: var(--accent-fg);
+  font-size: 12px;
+  line-height: 1;
+  cursor: pointer;
+}
+.todo-card__item.is-done .todo-card__check {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.todo-card__text {
+  overflow-wrap: anywhere;
+}
+
+.todo-card__add {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+}
+.todo-card__add-input {
+  flex: 1;
+  min-width: 0;
+  padding: 5px 10px;
+  border: 1px dashed var(--border);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-h);
+  font-family: var(--sans);
+  font-size: 13px;
+}
+.todo-card__add-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  border: none;
+  border-radius: 6px;
+  background: var(--accent-bg);
+  color: var(--accent-text);
+  cursor: pointer;
+}
+.todo-card__add-btn:hover {
+  background: var(--accent);
+  color: var(--accent-fg);
+}

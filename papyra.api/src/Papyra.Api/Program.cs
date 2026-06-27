@@ -32,6 +32,12 @@ builder.Services.AddDbContext<AppDbContext>((sp, options) =>
 // thing that serializes notes to/from .md).
 builder.Services.AddSingleton<MarkdownStorageService>();
 
+// Per-user manual note ordering (drag positions), persisted under .papyra/.
+builder.Services.AddSingleton<OrderStore>();
+
+// Per-user category registry (promoted tags + colours), persisted under .papyra/.
+builder.Services.AddSingleton<CategoryStore>();
+
 // ── Reactive observer: keep the in-memory vault in sync with the .md files ────
 builder.Services.AddMemoryCache();
 builder.Services.AddSingleton<VaultState>();
@@ -162,6 +168,46 @@ app.UseDefaultFiles();
 app.UseStaticFiles();
 
 app.UseAuthentication();
+
+// ── API-key bearer auth ────────────────────────────────────────────────────────
+// When a request arrives without a cookie session but with `Authorization: Bearer
+// <token>`, resolve it against the personal-access-token table (SHA-256 lookup)
+// and attach the owning user as the principal — so the same RequireAuthorization
+// endpoints work for scripts/integrations, not just the browser.
+app.Use(async (context, next) =>
+{
+    if (context.User.Identity?.IsAuthenticated != true)
+    {
+        var header = context.Request.Headers.Authorization.ToString();
+        if (header.StartsWith("Bearer ", StringComparison.Ordinal))
+        {
+            var token = header["Bearer ".Length..].Trim();
+            if (token.Length > 0)
+            {
+                var hash = Sha256Hex(token);
+                var db = context.RequestServices.GetRequiredService<AppDbContext>();
+                var key = await db.ApiKeys.FirstOrDefaultAsync(k => k.TokenHash == hash, context.RequestAborted);
+                if (key is not null)
+                {
+                    var user = await db.Users.FindAsync([key.UserId], context.RequestAborted);
+                    if (user is not null)
+                    {
+                        key.LastUsedUtc = DateTime.UtcNow;
+                        await db.SaveChangesAsync(context.RequestAborted);
+                        context.User = new ClaimsPrincipal(new ClaimsIdentity(
+                        [
+                            new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
+                            new Claim(ClaimTypes.Name, user.Username),
+                            new Claim(ClaimTypes.Role, user.Role),
+                        ], "ApiKey"));
+                    }
+                }
+            }
+        }
+    }
+    await next();
+});
+
 app.UseAuthorization();
 
 // ── Path-jail backstop ────────────────────────────────────────────────────────
@@ -273,6 +319,72 @@ auth.MapGet("/me", async (HttpContext http, AppDbContext db, CancellationToken c
     return Results.Ok(new { user.Id, user.Username, user.Name, user.Email, user.Role });
 });
 
+// ── Profile (self-service) ──────────────────────────────────────────────────────
+// The signed-in user edits their own display name + email, changes their password,
+// and uploads an avatar. Avatar lives under the user's hidden .papyra dir (UI
+// state, not the notes vault).
+auth.MapPut("/profile", async (ProfileRequest body, ClaimsPrincipal principal, AppDbContext db, CancellationToken ct) =>
+{
+    var id = int.Parse(Uid(principal));
+    var user = await db.Users.FindAsync([id], ct);
+    if (user is null) return Results.NotFound();
+
+    if (!string.IsNullOrWhiteSpace(body.Name)) user.Name = body.Name.Trim();
+    user.Email = body.Email?.Trim() ?? string.Empty;
+    await db.SaveChangesAsync(ct);
+    return Results.Ok(new { user.Id, user.Username, user.Name, user.Email, user.Role });
+}).RequireAuthorization();
+
+auth.MapPost("/password", async (PasswordRequest body, ClaimsPrincipal principal, AppDbContext db, CancellationToken ct) =>
+{
+    if (string.IsNullOrWhiteSpace(body.Next))
+        return Results.BadRequest(new { error = "New password is required." });
+
+    var id = int.Parse(Uid(principal));
+    var user = await db.Users.FindAsync([id], ct);
+    if (user is null) return Results.NotFound();
+
+    if (!BCrypt.Net.BCrypt.Verify(body.Current ?? string.Empty, user.PasswordHash))
+        return Results.Json(new { error = "Current password is incorrect." }, statusCode: StatusCodes.Status400BadRequest);
+
+    user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(body.Next);
+    await db.SaveChangesAsync(ct);
+    return Results.NoContent();
+}).RequireAuthorization();
+
+auth.MapPost("/avatar", async (
+    IFormFile file, ClaimsPrincipal principal, IConfiguration config, IHostEnvironment env, CancellationToken ct) =>
+{
+    if (file is null || file.Length == 0) return Results.BadRequest(new { error = "No file." });
+
+    var dir = PapyraPaths.UserDotPapyra(config, env.ContentRootPath, Uid(principal));
+    Directory.CreateDirectory(dir);
+    // One avatar per user: clear any prior file, then write avatar.<ext> atomically.
+    foreach (var old in Directory.EnumerateFiles(dir, "avatar.*")) File.Delete(old);
+
+    var ext = Path.GetExtension(file.FileName);
+    if (string.IsNullOrEmpty(ext) || ext.Length > 5) ext = ".png";
+    var dest = Path.Combine(dir, $"avatar{ext}");
+    var tmp = Path.Combine(dir, $"{Guid.NewGuid():N}.tmp");
+    await using (var fs = new FileStream(tmp, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+    {
+        await file.CopyToAsync(fs, ct);
+        await fs.FlushAsync(ct);
+    }
+    File.Move(tmp, dest, overwrite: true);
+    return Results.Ok(new { ok = true });
+}).RequireAuthorization().DisableAntiforgery();
+
+auth.MapGet("/avatar", (ClaimsPrincipal principal, IConfiguration config, IHostEnvironment env) =>
+{
+    var dir = PapyraPaths.UserDotPapyra(config, env.ContentRootPath, Uid(principal));
+    var file = Directory.Exists(dir) ? Directory.EnumerateFiles(dir, "avatar.*").FirstOrDefault() : null;
+    if (file is null) return Results.NotFound();
+    if (!new FileExtensionContentTypeProvider().TryGetContentType(file, out var contentType))
+        contentType = "application/octet-stream";
+    return Results.File(file, contentType);
+}).RequireAuthorization();
+
 // ── Admin user management ──────────────────────────────────────────────────────
 // Role-gated provisioning for the settings Admin tab. Provisioned users get their
 // tenant vault created + watched, same as the first-admin setup flow.
@@ -321,6 +433,28 @@ admin.MapPost("/{id:int}/reset", async (int id, ResetRequest body, AppDbContext 
     return Results.NoContent();
 });
 
+// Delete a user account. Refuses self-deletion (avoid locking yourself out) and
+// removing the last admin. Clears the account's API keys + shares (owned and
+// received); the user's note files stay on disk (the source of truth) so nothing
+// is silently destroyed — a self-hoster can reclaim or re-import them.
+admin.MapDelete("/{id:int}", async (int id, ClaimsPrincipal me, AppDbContext db, CancellationToken ct) =>
+{
+    if (id == int.Parse(Uid(me)))
+        return Results.BadRequest(new { error = "You can't delete your own account." });
+
+    var user = await db.Users.FindAsync([id], ct);
+    if (user is null) return Results.NotFound();
+
+    if (user.Role == "Admin" && await db.Users.CountAsync(u => u.Role == "Admin", ct) <= 1)
+        return Results.BadRequest(new { error = "Can't delete the last admin." });
+
+    db.ApiKeys.RemoveRange(db.ApiKeys.Where(k => k.UserId == id));
+    db.Shares.RemoveRange(db.Shares.Where(s => s.OwnerId == id || s.GranteeUserId == id));
+    db.Users.Remove(user);
+    await db.SaveChangesAsync(ct);
+    return Results.NoContent();
+});
+
 // ── Notes CRUD ───────────────────────────────────────────────────────────────
 // Reads serve the in-memory vault (no disk hit); writes go through the atomic
 // markdown engine, logging the path in the Write-Ring so the watcher ignores the
@@ -329,6 +463,23 @@ var notes = app.MapGroup("/api/notes").RequireAuthorization();
 
 notes.MapGet("/", (ClaimsPrincipal user, VaultState state) =>
     Results.Ok(state.Snapshot(Uid(user))));
+
+// ── Manual ordering (drag-and-drop) ──────────────────────────────────────────
+// The grid default-sorts by `updated` (recency); a manual drag overrides that by
+// pinning a note to a fractional Key. `SetAt` is the note's mtime at drag time, so
+// the client can ignore a stale Key once the note is edited again (edit → top).
+// Literal "/order" outranks the "/{id}" param route, so there's no collision.
+notes.MapGet("/order", (ClaimsPrincipal user, OrderStore order) =>
+    Results.Ok(order.Read(Uid(user))));
+
+notes.MapPut("/order", (OrderWrite body, ClaimsPrincipal user, OrderStore order) =>
+{
+    var map = (body.Entries ?? [])
+        .Where(e => !string.IsNullOrEmpty(e.Id))
+        .ToDictionary(e => e.Id, e => new OrderStore.Entry(e.Key, e.SetAt), StringComparer.Ordinal);
+    order.Write(Uid(user), map);
+    return Results.Ok(map);
+});
 
 notes.MapPut("/{id}", async (
     string id,
@@ -359,6 +510,8 @@ notes.MapPut("/{id}", async (
         Pinned = body.Pinned,
         Archived = body.Archived,
         Body = body.Body ?? string.Empty,
+        Kind = string.Equals(body.Kind, "todo", StringComparison.OrdinalIgnoreCase) ? "todo" : "note",
+        Updated = DateTime.UtcNow,
     };
 
     // Snapshot the prior on-disk revision before we overwrite it (throttled).
@@ -430,6 +583,114 @@ notes.MapPost("/{id}/untrash", async (
     await storage.WriteAsync(path, note, ct);
     state.Upsert(uid, path, note);
     search.IndexNote(uid, note);
+    return Results.NoContent();
+});
+
+// ── Categories (promoted tags) ───────────────────────────────────────────────────
+// A category is a curated note tag. The notes' own `tags` frontmatter is the
+// authority for membership; the registry (.papyra/categories.json) only adds a
+// colour and lets an empty category exist before any note uses it. GET unions the
+// registry with every tag live on the user's notes, attaching a count to each.
+var categories = app.MapGroup("/api/categories").RequireAuthorization();
+
+categories.MapGet("/", (ClaimsPrincipal user, VaultState state, CategoryStore store) =>
+{
+    var uid = Uid(user);
+    var counts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+    var display = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+    foreach (var note in state.Snapshot(uid).Where(n => !n.Trashed))
+        foreach (var tag in note.Tags)
+        {
+            if (string.IsNullOrWhiteSpace(tag)) continue;
+            counts[tag] = counts.GetValueOrDefault(tag) + 1;
+            display.TryAdd(tag, tag);
+        }
+
+    var colors = new Dictionary<string, string?>(StringComparer.OrdinalIgnoreCase);
+    foreach (var c in store.Read(uid))
+    {
+        display.TryAdd(c.Name, c.Name);
+        colors[c.Name] = c.Color;
+    }
+
+    var result = display.Values
+        .Select(name => new
+        {
+            name,
+            color = colors.GetValueOrDefault(name),
+            count = counts.GetValueOrDefault(name),
+        })
+        .OrderByDescending(c => c.count)
+        .ThenBy(c => c.name, StringComparer.OrdinalIgnoreCase)
+        .ToList();
+
+    return Results.Ok(result);
+});
+
+categories.MapPost("/", (CategoryWrite body, ClaimsPrincipal user, CategoryStore store) =>
+{
+    var name = body.Name?.Trim();
+    if (string.IsNullOrWhiteSpace(name))
+        return Results.BadRequest(new { error = "Category name is required." });
+    store.Upsert(Uid(user), name, string.IsNullOrWhiteSpace(body.Color) ? null : body.Color);
+    return Results.Ok(new { name, color = body.Color });
+});
+
+categories.MapDelete("/{name}", (string name, ClaimsPrincipal user, CategoryStore store) =>
+{
+    store.Remove(Uid(user), name);
+    return Results.NoContent();
+});
+
+// ── API keys (personal access tokens) ────────────────────────────────────────────
+// The raw token is returned exactly once at creation; only its SHA-256 hash is
+// stored. Use it as `Authorization: Bearer <token>` (see the bearer middleware).
+var keys = app.MapGroup("/api/keys").RequireAuthorization();
+
+keys.MapGet("/", async (ClaimsPrincipal user, AppDbContext db, CancellationToken ct) =>
+{
+    var uid = int.Parse(Uid(user));
+    return Results.Ok(await db.ApiKeys
+        .Where(k => k.UserId == uid)
+        .OrderByDescending(k => k.CreatedUtc)
+        .Select(k => new { k.Id, k.Name, k.Prefix, k.CreatedUtc, k.LastUsedUtc })
+        .ToListAsync(ct));
+});
+
+keys.MapPost("/", async (ApiKeyWrite body, ClaimsPrincipal user, AppDbContext db, CancellationToken ct) =>
+{
+    var uid = int.Parse(Uid(user));
+    var name = string.IsNullOrWhiteSpace(body.Name) ? "Untitled key" : body.Name.Trim();
+
+    // 32 bytes of entropy → high enough that a plain SHA-256 (no per-row bcrypt) is
+    // a safe, fast lookup key.
+    var raw = System.Security.Cryptography.RandomNumberGenerator.GetBytes(32);
+    var secret = Convert.ToBase64String(raw).Replace("+", "").Replace("/", "").Replace("=", "");
+    var token = $"papyra_{secret}";
+    var prefix = token[..14];
+
+    var key = new ApiKey
+    {
+        UserId = uid,
+        Name = name,
+        Prefix = prefix,
+        TokenHash = Sha256Hex(token),
+        CreatedUtc = DateTime.UtcNow,
+    };
+    db.ApiKeys.Add(key);
+    await db.SaveChangesAsync(ct);
+
+    // token is shown to the caller this once, never persisted in the clear.
+    return Results.Ok(new { key.Id, key.Name, key.Prefix, key.CreatedUtc, token });
+});
+
+keys.MapDelete("/{id:int}", async (int id, ClaimsPrincipal user, AppDbContext db, CancellationToken ct) =>
+{
+    var uid = int.Parse(Uid(user));
+    var key = await db.ApiKeys.FirstOrDefaultAsync(k => k.Id == id && k.UserId == uid, ct);
+    if (key is null) return Results.NotFound();
+    db.ApiKeys.Remove(key);
+    await db.SaveChangesAsync(ct);
     return Results.NoContent();
 });
 
@@ -645,6 +906,186 @@ conflicts.MapPost("/{id}/resolve", async (
     return Results.NoContent();
 });
 
+// ── Sharing ─────────────────────────────────────────────────────────────────────
+// Two kinds of grant: public tokenised links (optional expiry + view-count cap)
+// and internal user-to-user shares. The note stays in the owner's vault; a Share
+// row is just an authorisation pointer. Owners manage shares per note; the public
+// link is anonymous; the grantee reaches incoming shares through their session.
+
+// Owner: list a note's shares (with grantee usernames resolved).
+notes.MapGet("/{id}/shares", async (string id, ClaimsPrincipal user, AppDbContext db, CancellationToken ct) =>
+{
+    var uid = int.Parse(Uid(user));
+    var rows = await db.Shares.Where(s => s.OwnerId == uid && s.NoteId == id)
+        .OrderByDescending(s => s.CreatedUtc).ToListAsync(ct);
+    var granteeIds = rows.Where(s => s.GranteeUserId != null).Select(s => s.GranteeUserId!.Value).ToHashSet();
+    var names = await db.Users.Where(u => granteeIds.Contains(u.Id))
+        .ToDictionaryAsync(u => u.Id, u => u.Username, ct);
+    return Results.Ok(rows.Select(s => new
+    {
+        s.Id, s.Kind, s.Access, s.Token, s.ExpiresUtc, s.MaxViews, s.ViewCount,
+        grantee = s.GranteeUserId is { } g && names.TryGetValue(g, out var n) ? n : null,
+    }));
+});
+
+// Owner: create a share for a note.
+notes.MapPost("/{id}/shares", async (string id, ShareWrite body, ClaimsPrincipal user, AppDbContext db, CancellationToken ct) =>
+{
+    var uid = int.Parse(Uid(user));
+    var kind = body.Kind?.Trim().ToLowerInvariant();
+    var access = body.Access?.Trim().ToLowerInvariant() == "edit" ? "edit" : "view";
+    if (kind is not ("link" or "user")) return Results.BadRequest(new { error = "kind must be link or user." });
+
+    var share = new Share
+    {
+        NoteId = id, OwnerId = uid, Kind = kind, Access = access,
+        ExpiresUtc = body.ExpiresUtc,
+        MaxViews = body.MaxViews is > 0 ? body.MaxViews : null,
+        CreatedUtc = DateTime.UtcNow,
+    };
+
+    if (kind == "user")
+    {
+        var uname = body.GranteeUsername?.Trim();
+        if (string.IsNullOrWhiteSpace(uname)) return Results.BadRequest(new { error = "granteeUsername is required." });
+        var grantee = await db.Users.FirstOrDefaultAsync(u => u.Username == uname, ct);
+        if (grantee is null) return Results.NotFound(new { error = "No such user." });
+        if (grantee.Id == uid) return Results.BadRequest(new { error = "You already own this note." });
+        share.GranteeUserId = grantee.Id;
+    }
+    else
+    {
+        var raw = System.Security.Cryptography.RandomNumberGenerator.GetBytes(24);
+        share.Token = Convert.ToBase64String(raw).Replace("+", "").Replace("/", "").Replace("=", "");
+    }
+
+    db.Shares.Add(share);
+    await db.SaveChangesAsync(ct);
+    return Results.Ok(new { share.Id, share.Kind, share.Access, share.Token, share.ExpiresUtc, share.MaxViews });
+});
+
+// Owner: revoke any of their own shares.
+var shares = app.MapGroup("/api/shares").RequireAuthorization();
+
+shares.MapDelete("/{shareId:int}", async (int shareId, ClaimsPrincipal user, AppDbContext db, CancellationToken ct) =>
+{
+    var uid = int.Parse(Uid(user));
+    var share = await db.Shares.FirstOrDefaultAsync(s => s.Id == shareId && s.OwnerId == uid, ct);
+    if (share is null) return Results.NotFound();
+    db.Shares.Remove(share);
+    await db.SaveChangesAsync(ct);
+    return Results.NoContent();
+});
+
+// Grantee: notes shared *with me* by other users.
+shares.MapGet("/incoming", async (
+    ClaimsPrincipal user, AppDbContext db, VaultState state, MarkdownStorageService storage,
+    VaultObserverOptions vault, ILoggerFactory lf, CancellationToken ct) =>
+{
+    var uid = int.Parse(Uid(user));
+    var rows = await db.Shares.Where(s => s.GranteeUserId == uid && s.Kind == "user").ToListAsync(ct);
+    var ownerNames = await db.Users.Where(u => rows.Select(r => r.OwnerId).Contains(u.Id))
+        .ToDictionaryAsync(u => u.Id, u => u.Username, ct);
+
+    var result = new List<object>();
+    foreach (var s in rows)
+    {
+        var note = await storage.ReadAsync(OwnerNotePath(state, vault, lf, s.OwnerId.ToString(), s.NoteId), ct);
+        result.Add(new
+        {
+            shareId = s.Id, noteId = s.NoteId, access = s.Access,
+            owner = ownerNames.GetValueOrDefault(s.OwnerId, "?"),
+            title = note?.Title ?? string.Empty,
+        });
+    }
+    return Results.Ok(result);
+});
+
+// Grantee: read one incoming shared note.
+shares.MapGet("/incoming/{shareId:int}", async (
+    int shareId, ClaimsPrincipal user, AppDbContext db, VaultState state, MarkdownStorageService storage,
+    VaultObserverOptions vault, ILoggerFactory lf, CancellationToken ct) =>
+{
+    var uid = int.Parse(Uid(user));
+    var share = await db.Shares.FirstOrDefaultAsync(s => s.Id == shareId && s.GranteeUserId == uid, ct);
+    if (share is null) return Results.NotFound();
+    var note = await storage.ReadAsync(OwnerNotePath(state, vault, lf, share.OwnerId.ToString(), share.NoteId), ct);
+    if (note is null) return Results.NotFound();
+    return Results.Ok(new { note.Title, note.Body, note.Color, access = share.Access });
+});
+
+// Grantee: media embedded in an incoming shared note (resolved in owner's vault).
+shares.MapGet("/incoming/{shareId:int}/media/{filename}", async (
+    int shareId, string filename, ClaimsPrincipal user, AppDbContext db,
+    IConfiguration config, IHostEnvironment env, ILoggerFactory lf, CancellationToken ct) =>
+{
+    var uid = int.Parse(Uid(user));
+    var share = await db.Shares.FirstOrDefaultAsync(s => s.Id == shareId && s.GranteeUserId == uid, ct);
+    if (share is null) return Results.NotFound();
+    return ServeOwnerMedia(share.OwnerId.ToString(), filename, config, env, lf);
+});
+
+// Grantee: edit an incoming shared note (only when access == edit).
+shares.MapPut("/incoming/{shareId:int}", async (
+    int shareId, SharedBodyWrite body, ClaimsPrincipal user, AppDbContext db, VaultState state,
+    MarkdownStorageService storage, WriteRing writeRing, SearchIndexService search,
+    IHubContext<NotesHub> hub, VaultObserverOptions vault, ILoggerFactory lf, CancellationToken ct) =>
+{
+    var uid = int.Parse(Uid(user));
+    var share = await db.Shares.FirstOrDefaultAsync(s => s.Id == shareId && s.GranteeUserId == uid, ct);
+    if (share is null) return Results.NotFound();
+    if (share.Access != "edit") return Results.Forbid();
+    return await ApplySharedEdit(share.OwnerId.ToString(), share.NoteId, body.Body ?? string.Empty,
+        state, storage, writeRing, search, hub, vault, lf, ct);
+});
+
+// Public: read a link-shared note (enforces expiry + view cap, counts the view).
+app.MapGet("/api/shared/{token}", async (
+    string token, AppDbContext db, VaultState state, MarkdownStorageService storage,
+    VaultObserverOptions vault, ILoggerFactory lf, CancellationToken ct) =>
+{
+    var share = await db.Shares.FirstOrDefaultAsync(s => s.Token == token && s.Kind == "link", ct);
+    if (share is null) return Results.NotFound();
+    if (share.ExpiresUtc is { } exp && exp < DateTime.UtcNow)
+        return Results.Json(new { error = "This link has expired." }, statusCode: StatusCodes.Status410Gone);
+    if (share.MaxViews is { } mv && share.ViewCount >= mv)
+        return Results.Json(new { error = "This link has reached its view limit." }, statusCode: StatusCodes.Status410Gone);
+
+    share.ViewCount++;
+    await db.SaveChangesAsync(ct);
+    var note = await storage.ReadAsync(OwnerNotePath(state, vault, lf, share.OwnerId.ToString(), share.NoteId), ct);
+    if (note is null) return Results.NotFound();
+    return Results.Ok(new { note.Title, note.Body, note.Color, access = share.Access });
+});
+
+// Public: media embedded in a link-shared note. No session needed; the token is
+// the authorisation. Validity (expiry) is enforced; media GETs don't count a view.
+app.MapGet("/api/shared/{token}/media/{filename}", async (
+    string token, string filename, AppDbContext db,
+    IConfiguration config, IHostEnvironment env, ILoggerFactory lf, CancellationToken ct) =>
+{
+    var share = await db.Shares.FirstOrDefaultAsync(s => s.Token == token && s.Kind == "link", ct);
+    if (share is null) return Results.NotFound();
+    if (share.ExpiresUtc is { } exp && exp < DateTime.UtcNow)
+        return Results.Json(new { error = "This link has expired." }, statusCode: StatusCodes.Status410Gone);
+    return ServeOwnerMedia(share.OwnerId.ToString(), filename, config, env, lf);
+});
+
+// Public: edit a link-shared note (only when access == edit; doesn't count a view).
+app.MapPut("/api/shared/{token}", async (
+    string token, SharedBodyWrite body, AppDbContext db, VaultState state, MarkdownStorageService storage,
+    WriteRing writeRing, SearchIndexService search, IHubContext<NotesHub> hub,
+    VaultObserverOptions vault, ILoggerFactory lf, CancellationToken ct) =>
+{
+    var share = await db.Shares.FirstOrDefaultAsync(s => s.Token == token && s.Kind == "link", ct);
+    if (share is null) return Results.NotFound();
+    if (share.ExpiresUtc is { } exp && exp < DateTime.UtcNow)
+        return Results.Json(new { error = "This link has expired." }, statusCode: StatusCodes.Status410Gone);
+    if (share.Access != "edit") return Results.Forbid();
+    return await ApplySharedEdit(share.OwnerId.ToString(), share.NoteId, body.Body ?? string.Empty,
+        state, storage, writeRing, search, hub, vault, lf, ct);
+});
+
 // ── Search ────────────────────────────────────────────────────────────────────
 // Relevance-ranked full-text search over the Lucene index. The index stores only
 // metadata; snippets are highlighted against the live body in VaultState.
@@ -838,6 +1279,54 @@ static string Uid(ClaimsPrincipal user) =>
     user.FindFirstValue(ClaimTypes.NameIdentifier)
     ?? throw new SecurityException("Authenticated principal carries no user id.");
 
+// Hex SHA-256 — the at-rest form of an API token (lookup key on each request).
+static string Sha256Hex(string input) =>
+    Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
+        System.Text.Encoding.UTF8.GetBytes(input)));
+
+// Resolve a note's .md path inside an arbitrary owner's vault (used by shares to
+// reach across tenants — authorised by the Share row, jailed by PathGuard).
+static string OwnerNotePath(VaultState state, VaultObserverOptions vault, ILoggerFactory lf, string ownerUid, string noteId) =>
+    state.PathFor(ownerUid, noteId)
+    ?? PathGuard.ResolveAndVerify(vault.UserNotesDir(ownerUid), $"{noteId}.md", lf.CreateLogger("PathGuard"));
+
+// Serve a media file from an arbitrary owner's vault (for shared notes). The
+// caller's authorisation is established before this is reached (a valid link token
+// or an incoming share row); PathGuard still jails the filename to that owner.
+static IResult ServeOwnerMedia(
+    string ownerUid, string filename, IConfiguration config, IHostEnvironment env, ILoggerFactory lf)
+{
+    var mediaDir = PapyraPaths.UserMediaDir(config, env.ContentRootPath, ownerUid);
+    string dest;
+    try { dest = PathGuard.ResolveAndVerify(mediaDir, filename, lf.CreateLogger("PathGuard")); }
+    catch (SecurityException) { return Results.Forbid(); }
+    if (!File.Exists(dest)) return Results.NotFound();
+    if (!new FileExtensionContentTypeProvider().TryGetContentType(dest, out var contentType))
+        contentType = "application/octet-stream";
+    return Results.File(dest, contentType, enableRangeProcessing: true);
+}
+
+// Apply a body-only edit to a note in the owner's vault on behalf of a sharee,
+// keeping the caches + watchers consistent (mirrors the notes PUT write path).
+static async Task<IResult> ApplySharedEdit(
+    string ownerUid, string noteId, string newBody,
+    VaultState state, MarkdownStorageService storage, WriteRing writeRing, SearchIndexService search,
+    IHubContext<NotesHub> hub, VaultObserverOptions vault, ILoggerFactory lf, CancellationToken ct)
+{
+    var path = OwnerNotePath(state, vault, lf, ownerUid, noteId);
+    var note = await storage.ReadAsync(path, ct);
+    if (note is null) return Results.NotFound();
+
+    note.Body = newBody;
+    note.Updated = DateTime.UtcNow;
+    writeRing.Mark(path);
+    await storage.WriteAsync(path, note, ct);
+    state.Upsert(ownerUid, path, note);
+    search.IndexNote(ownerUid, note);
+    await hub.Clients.All.SendAsync("NoteUpdated", NoteMetadata.From(note), ct);
+    return Results.NoContent();
+}
+
 // Mint the session cookie for a user. UserId rides as NameIdentifier so the
 // services scope per-user storage (the Sprint 6.3 path jail keys off it).
 static async Task SignInAsync(HttpContext http, User user)
@@ -860,7 +1349,16 @@ public sealed record NoteWrite(
     string? Color,
     bool Pinned,
     bool Archived,
-    string? Body);
+    string? Body,
+    string? Kind = null);
+
+// Manual ordering payload: the full desired map of note id → fractional sort key
+// plus the note's mtime at drag time. Replaces the stored order wholesale.
+public sealed record OrderWrite(List<OrderEntryDto>? Entries);
+public sealed record OrderEntryDto(string Id, double Key, long SetAt);
+
+// Category registry upsert: a curated tag name + optional colour.
+public sealed record CategoryWrite(string? Name, string? Color);
 
 // First-admin bootstrap payload. Email/Name optional; username + password required.
 public sealed record SetupRequest(
@@ -885,6 +1383,23 @@ public sealed record ProvisionRequest(
 // Admin password reset payload for an existing user.
 public sealed record ResetRequest(
     string? Password);
+
+// Self-service profile update (display name + email).
+public sealed record ProfileRequest(string? Name, string? Email);
+
+// Self-service password change: verify Current, set Next.
+public sealed record PasswordRequest(string? Current, string? Next);
+
+// API key creation payload (just a human label).
+public sealed record ApiKeyWrite(string? Name);
+
+// Share creation: kind (link|user) + access (view|edit). Link shares accept an
+// optional expiry + max view count; user shares require a grantee username.
+public sealed record ShareWrite(
+    string? Kind, string? Access, string? GranteeUsername, DateTime? ExpiresUtc, int? MaxViews);
+
+// Body-only edit payload for a shared note (sharees can't touch frontmatter).
+public sealed record SharedBodyWrite(string? Body);
 
 // Trash retention update: how many days a trashed note survives (-1/0/3/7/30/60).
 public sealed record SettingsRequest(int TrashRetentionDays);

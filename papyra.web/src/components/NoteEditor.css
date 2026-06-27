@@ -79,6 +79,54 @@
   font-family: 'Sora', sans-serif;
 }
 
+/* Inline category (tag) editor under the title bar. */
+.note-cats {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+  margin-bottom: 1rem;
+}
+.note-cats__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 4px 2px 10px;
+  border-radius: 999px;
+  background: var(--accent-bg);
+  color: var(--accent-text);
+  font-family: var(--mono);
+  font-size: 12px;
+}
+.note-cats__chip button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  border: none;
+  border-radius: 50%;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+.note-cats__chip button:hover {
+  background: rgba(0, 0, 0, 0.12);
+}
+.note-cats__input {
+  min-width: 140px;
+  padding: 4px 8px;
+  border: 1px dashed var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-h);
+  font-family: var(--sans);
+  font-size: 12px;
+}
+.note-editor--colored .note-cats__input {
+  color: #3d2c1e;
+}
+
 .note-editor__conflict {
   display: flex;
   align-items: center;

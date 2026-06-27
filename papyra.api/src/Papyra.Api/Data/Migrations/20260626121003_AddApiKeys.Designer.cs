@@ -2,6 +2,7 @@
 using System;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Papyra.Api.Data;
 
@@ -10,9 +11,11 @@ using Papyra.Api.Data;
 namespace Papyra.Api.Data.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260626121003_AddApiKeys")]
+    partial class AddApiKeys
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder.HasAnnotation("ProductVersion", "10.0.0");
@@ -86,56 +89,6 @@ namespace Papyra.Api.Data.Migrations
                     b.HasKey("Id");
 
                     b.ToTable("NoteCache");
-                });
-
-            modelBuilder.Entity("Papyra.Api.Models.Share", b =>
-                {
-                    b.Property<int>("Id")
-                        .ValueGeneratedOnAdd()
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("Access")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTime>("CreatedUtc")
-                        .HasColumnType("TEXT");
-
-                    b.Property<DateTime?>("ExpiresUtc")
-                        .HasColumnType("TEXT");
-
-                    b.Property<int?>("GranteeUserId")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("Kind")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.Property<int?>("MaxViews")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("NoteId")
-                        .IsRequired()
-                        .HasColumnType("TEXT");
-
-                    b.Property<int>("OwnerId")
-                        .HasColumnType("INTEGER");
-
-                    b.Property<string>("Token")
-                        .HasColumnType("TEXT");
-
-                    b.Property<int>("ViewCount")
-                        .HasColumnType("INTEGER");
-
-                    b.HasKey("Id");
-
-                    b.HasIndex("GranteeUserId");
-
-                    b.HasIndex("NoteId");
-
-                    b.HasIndex("Token");
-
-                    b.ToTable("Shares");
                 });
 
             modelBuilder.Entity("Papyra.Api.Models.User", b =>
