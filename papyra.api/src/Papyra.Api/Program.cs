@@ -52,6 +52,9 @@ builder.Services.AddSingleton(sp => new VaultObserverOptions
 // ── Ephemeral full-text index (Lucene — disposable; rebuilt from the .md files) ─
 builder.Services.AddSingleton<SearchIndexService>();
 
+// AES-GCM encrypted, password-derived vault backups (generate + restore).
+builder.Services.AddSingleton<EncryptedBackupService>();
+
 // Timestamped version history per note (throttled + age-pruned), for recovery.
 builder.Services.AddSingleton<SnapshotService>();
 
@@ -1267,6 +1270,129 @@ app.MapGet("/api/export", (
 })
 .RequireAuthorization();
 
+// ── Encrypted backups (cryptographic vaults) ────────────────────────────────
+// AES-GCM, password-derived backups of the caller's own notes+media. The account
+// password gates both directions. Generate streams a .papyra-vault file; restore
+// decrypts into staging first (so a wrong password never touches the live vault),
+// then swaps the vault contents in place and forces a per-tenant cache rebuild.
+var backups = app.MapGroup("/api/backups").RequireAuthorization();
+
+backups.MapPost("/generate", async (
+    BackupRequest body,
+    ClaimsPrincipal principal,
+    AppDbContext db,
+    EncryptedBackupService backup,
+    IConfiguration config,
+    IHostEnvironment env,
+    HttpContext http,
+    CancellationToken ct) =>
+{
+    if (string.IsNullOrEmpty(body.Password))
+        return Results.BadRequest(new { error = "Account password is required." });
+
+    var uid = int.Parse(Uid(principal));
+    var user = await db.Users.FindAsync([uid], ct);
+    if (user is null) return Results.NotFound();
+    if (!BCrypt.Net.BCrypt.Verify(body.Password, user.PasswordHash))
+        return Results.Json(new { error = "Password is incorrect." }, statusCode: StatusCodes.Status401Unauthorized);
+
+    var root = env.ContentRootPath;
+    var uidStr = uid.ToString();
+    var sources = new[]
+    {
+        ("notes", PapyraPaths.UserNotesDir(config, root, uidStr)),
+        ("media", PapyraPaths.UserMediaDir(config, root, uidStr)),
+    };
+
+    http.Response.ContentType = "application/octet-stream";
+    http.Response.Headers.ContentDisposition = "attachment; filename=\"papyra-backup.papyra-vault\"";
+    await backup.BackupAsync(sources, body.Password, http.Response.Body, ct);
+    return Results.Empty;
+});
+
+backups.MapPost("/restore", async (
+    HttpRequest request,
+    ClaimsPrincipal principal,
+    AppDbContext db,
+    EncryptedBackupService backup,
+    VaultState state,
+    SearchIndexService search,
+    MarkdownStorageService storage,
+    VaultObserver observer,
+    IHubContext<NotesHub> hub,
+    IConfiguration config,
+    IHostEnvironment env,
+    CancellationToken ct) =>
+{
+    if (!request.HasFormContentType) return Results.BadRequest(new { error = "Expected a multipart upload." });
+    var form = await request.ReadFormAsync(ct);
+    var password = form["password"].ToString();
+    var file = form.Files["file"];
+    if (string.IsNullOrEmpty(password) || file is null || file.Length == 0)
+        return Results.BadRequest(new { error = "Password and backup file are required." });
+
+    var uid = int.Parse(Uid(principal));
+    var user = await db.Users.FindAsync([uid], ct);
+    if (user is null) return Results.NotFound();
+    if (!BCrypt.Net.BCrypt.Verify(password, user.PasswordHash))
+        return Results.Json(new { error = "Password is incorrect." }, statusCode: StatusCodes.Status401Unauthorized);
+
+    var root = env.ContentRootPath;
+    var uidStr = uid.ToString();
+    var dotPapyra = PapyraPaths.UserDotPapyra(config, root, uidStr);
+    Directory.CreateDirectory(dotPapyra);
+    var staging = Path.Combine(dotPapyra, $"restore-{Guid.NewGuid():N}");
+
+    try
+    {
+        // Decrypt + extract fully into staging first — a wrong password or corrupt
+        // file fails here, before the live vault is touched.
+        Directory.CreateDirectory(staging);
+        await using (var upload = file.OpenReadStream())
+        {
+            try { await backup.RestoreAsync(upload, password, staging, ct); }
+            catch (System.Security.Cryptography.CryptographicException)
+            {
+                return Results.Json(new { error = "Wrong password or corrupt backup." }, statusCode: StatusCodes.Status400BadRequest);
+            }
+            catch (InvalidDataException)
+            {
+                return Results.Json(new { error = "Not a valid Papyra backup file." }, statusCode: StatusCodes.Status400BadRequest);
+            }
+        }
+
+        // In-place content swap: clearing/refilling the dirs (rather than moving them)
+        // keeps the live FileSystemWatcher handle valid.
+        var notesDir = PapyraPaths.UserNotesDir(config, root, uidStr);
+        var mediaDir = PapyraPaths.UserMediaDir(config, root, uidStr);
+        ReplaceDirContents(Path.Combine(staging, "notes"), notesDir);
+        ReplaceDirContents(Path.Combine(staging, "media"), mediaDir);
+
+        // Force a per-tenant cache rebuild from the restored .md files (the authority).
+        // Stale notes removed by the restore fall out when the watcher fires their
+        // deletes; this just makes the new set visible immediately.
+        await hub.Clients.All.SendAsync("SystemRebuilding", ct);
+        observer.WatchUser(uidStr); // ensures the dir exists + is watched (no-op if so)
+
+        var scanned = new List<Note>();
+        foreach (var path in Directory.EnumerateFiles(notesDir, "*.md", SearchOption.AllDirectories))
+        {
+            if (ConflictDetector.IsConflict(Path.GetFileName(path))) continue;
+            var note = await storage.ReadAsync(path, ct);
+            if (note is null || string.IsNullOrEmpty(note.Id)) continue;
+            state.Upsert(uidStr, path, note);
+            scanned.Add(note);
+        }
+        search.RebuildUser(uidStr, scanned);
+
+        return Results.Ok(new { restored = scanned.Count });
+    }
+    finally
+    {
+        if (Directory.Exists(staging)) Directory.Delete(staging, recursive: true);
+    }
+}).DisableAntiforgery();
+
 app.MapHub<NotesHub>("/hubs/notes");
 
 app.MapFallbackToFile("index.html");
@@ -1325,6 +1451,22 @@ static async Task<IResult> ApplySharedEdit(
     search.IndexNote(ownerUid, note);
     await hub.Clients.All.SendAsync("NoteUpdated", NoteMetadata.From(note), ct);
     return Results.NoContent();
+}
+
+// Replace targetDir's contents with sourceDir's, keeping targetDir itself (so a
+// live FileSystemWatcher on it stays valid). Clears the target first, then mirrors
+// the source tree in. A missing source tree just leaves the target empty.
+static void ReplaceDirContents(string sourceDir, string targetDir)
+{
+    Directory.CreateDirectory(targetDir);
+    foreach (var f in Directory.EnumerateFiles(targetDir, "*", SearchOption.AllDirectories)) File.Delete(f);
+    foreach (var d in Directory.EnumerateDirectories(targetDir)) Directory.Delete(d, recursive: true);
+
+    if (!Directory.Exists(sourceDir)) return;
+    foreach (var dir in Directory.EnumerateDirectories(sourceDir, "*", SearchOption.AllDirectories))
+        Directory.CreateDirectory(Path.Combine(targetDir, Path.GetRelativePath(sourceDir, dir)));
+    foreach (var file in Directory.EnumerateFiles(sourceDir, "*", SearchOption.AllDirectories))
+        File.Move(file, Path.Combine(targetDir, Path.GetRelativePath(sourceDir, file)), overwrite: true);
 }
 
 // Mint the session cookie for a user. UserId rides as NameIdentifier so the
@@ -1392,6 +1534,10 @@ public sealed record PasswordRequest(string? Current, string? Next);
 
 // API key creation payload (just a human label).
 public sealed record ApiKeyWrite(string? Name);
+
+// Encrypted-backup generation payload: the account password (verified, then reused
+// as the vault encryption secret).
+public sealed record BackupRequest(string? Password);
 
 // Share creation: kind (link|user) + access (view|edit). Link shares accept an
 // optional expiry + max view count; user shares require a grantee username.

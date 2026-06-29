@@ -3,7 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   User as UserIcon, Palette, Database, Shield, Info, Camera,
-  Sun, Moon, Monitor, Upload, Download, RefreshCw, KeyRound, Copy, Trash2,
+  Sun, Moon, Monitor, Upload, Download, RefreshCw, KeyRound, Copy, Trash2, Lock, ShieldAlert,
 } from 'lucide-react';
 import { useAuth, type AuthUser } from '../hooks/useAuth';
 import { useNotes } from '../hooks/useNotes';
@@ -270,6 +270,8 @@ function DataTab() {
         <Download size={16} /> Export all notes
       </a>
 
+      <EncryptedBackupSection />
+
       <h2 className="settings__subhead">Maintenance</h2>
       <p className="settings__hint">Rebuild the search index from the markdown files (the source of truth).</p>
       <button type="button" className="settings__btn" onClick={() => void rebuild()}>
@@ -293,6 +295,115 @@ function DataTab() {
       </label>
       {update.isError && <p className="settings__error">Couldn’t save the setting.</p>}
     </div>
+  );
+}
+
+// ── Encrypted backup ──────────────────────────────────────────────────────────────
+// AES-GCM vault export/restore, gated by the account password. Restore replaces
+// the signed-in user's notes + media with the backup's contents.
+function EncryptedBackupSection() {
+  const queryClient = useQueryClient();
+  const restoreRef = useRef<HTMLInputElement | null>(null);
+
+  const [exportPw, setExportPw] = useState('');
+  const [exportMsg, setExportMsg] = useState<string | null>(null);
+  const [exportBusy, setExportBusy] = useState(false);
+
+  const [restorePw, setRestorePw] = useState('');
+  const [restoreMsg, setRestoreMsg] = useState<string | null>(null);
+  const [restoreBusy, setRestoreBusy] = useState(false);
+
+  async function generate(e: React.FormEvent) {
+    e.preventDefault();
+    setExportMsg(null);
+    setExportBusy(true);
+    try {
+      const res = await fetch('/api/backups/generate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: exportPw }),
+      });
+      if (!res.ok) {
+        const data = await res.json().catch(() => null);
+        setExportMsg(data?.error ?? 'Couldn’t generate the backup.');
+        return;
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = 'papyra-backup.papyra-vault';
+      a.click();
+      URL.revokeObjectURL(url);
+      setExportPw('');
+      setExportMsg('Encrypted backup downloaded.');
+    } finally {
+      setExportBusy(false);
+    }
+  }
+
+  async function restore(file: File) {
+    if (!restorePw) { setRestoreMsg('Enter your account password first.'); return; }
+    if (!confirm('Restore this backup? It replaces all your current notes and media with the backup’s contents. This can’t be undone.')) return;
+    setRestoreMsg('Restoring…');
+    setRestoreBusy(true);
+    try {
+      const form = new FormData();
+      form.append('password', restorePw);
+      form.append('file', file);
+      const res = await fetch('/api/backups/restore', { method: 'POST', body: form });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) { setRestoreMsg(data?.error ?? 'Restore failed.'); return; }
+      setRestorePw('');
+      setRestoreMsg(`Restored ${data?.restored ?? 0} notes.`);
+      await queryClient.invalidateQueries({ queryKey: ['notes'] });
+      await queryClient.invalidateQueries({ queryKey: ['categories'] });
+    } finally {
+      setRestoreBusy(false);
+    }
+  }
+
+  return (
+    <>
+      <h2 className="settings__subhead">Encrypted backup</h2>
+      <p className="settings__hint">
+        Download an encrypted <code>.papyra-vault</code> of every note and attachment, sealed with your account
+        password (AES-GCM). Keep the password — without it the backup can’t be opened.
+      </p>
+      <form className="settings__row" onSubmit={generate}>
+        <input
+          className="settings__select" type="password" autoComplete="current-password"
+          placeholder="Account password" value={exportPw} onChange={e => setExportPw(e.target.value)} required
+        />
+        <button type="submit" className="settings__btn" disabled={exportBusy || !exportPw}>
+          <Lock size={16} /> {exportBusy ? 'Encrypting…' : 'Download encrypted backup'}
+        </button>
+      </form>
+      {exportMsg && <p className="settings__msg">{exportMsg}</p>}
+
+      <h2 className="settings__subhead">Restore from encrypted backup</h2>
+      <p className="settings__hint settings__hint--warn">
+        <ShieldAlert size={15} /> Restoring <strong>replaces</strong> all your current notes and attachments with the
+        backup’s contents. Enter the password the backup was sealed with.
+      </p>
+      <div className="settings__row">
+        <input
+          className="settings__select" type="password" autoComplete="off"
+          placeholder="Backup password" value={restorePw} onChange={e => setRestorePw(e.target.value)}
+        />
+        <button
+          type="button" className="settings__btn" disabled={restoreBusy || !restorePw}
+          onClick={() => restoreRef.current?.click()}
+        >
+          <Upload size={16} /> Choose vault file
+        </button>
+        <input
+          ref={restoreRef} type="file" accept=".papyra-vault" hidden
+          onChange={e => { const f = e.target.files?.[0]; if (f) void restore(f); e.target.value = ''; }}
+        />
+      </div>
+      {restoreMsg && <p className="settings__msg">{restoreMsg}</p>}
+    </>
   );
 }
 

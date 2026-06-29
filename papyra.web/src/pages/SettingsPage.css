@@ -96,6 +96,18 @@
   font-size: 0.85rem;
 }
 
+.settings__hint--warn {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.4rem;
+}
+
+.settings__hint--warn svg {
+  flex: none;
+  margin-top: 0.1rem;
+  color: var(--accent);
+}
+
 .settings__field {
   display: flex;
   flex-direction: column;
