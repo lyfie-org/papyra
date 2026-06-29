@@ -14,7 +14,38 @@ using Scalar.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
-builder.Services.AddOpenApi();
+// OpenAPI document for the /docs developer portal. A document transformer registers
+// the personal-access-token scheme (X-API-Key) so the portal offers a token field
+// and marks the endpoints as secured.
+builder.Services.AddOpenApi(options =>
+{
+    options.AddDocumentTransformer((document, context, ct) =>
+    {
+        document.Info.Title = "Papyra API";
+        document.Info.Description =
+            "Self-hosted, file-first notes. Authenticate with a personal access token " +
+            "(Settings → API Keys), sent as an `X-API-Key` header.";
+
+        var apiKeyScheme = new Microsoft.OpenApi.OpenApiSecurityScheme
+        {
+            Type = Microsoft.OpenApi.SecuritySchemeType.ApiKey,
+            In = Microsoft.OpenApi.ParameterLocation.Header,
+            Name = "X-API-Key",
+            Description = "Personal access token. Send as: X-API-Key: <token>",
+        };
+
+        document.Components ??= new Microsoft.OpenApi.OpenApiComponents();
+        document.Components.SecuritySchemes ??= new Dictionary<string, Microsoft.OpenApi.IOpenApiSecurityScheme>();
+        document.Components.SecuritySchemes["ApiKey"] = apiKeyScheme;
+
+        document.Security ??= [];
+        document.Security.Add(new Microsoft.OpenApi.OpenApiSecurityRequirement
+        {
+            [new Microsoft.OpenApi.OpenApiSecuritySchemeReference("ApiKey", document)] = [],
+        });
+        return Task.CompletedTask;
+    });
+});
 
 // ── Relational cache (SQLite — disposable; filesystem is the authority) ──────
 // Resolve the DB path at DI time (not builder time) so test/host config overrides
@@ -236,20 +267,20 @@ app.Use(async (context, next) =>
     }
 });
 
-// OpenAPI + Scalar docs are dev-only: never expose the API surface in prod.
-if (app.Environment.IsDevelopment())
-{
-    app.MapOpenApi();
+// OpenAPI document + Scalar developer portal, mounted at /docs. Deliberately
+// reachable in prod (a carve-out from P8 hardening) so self-hosters get live API
+// docs; the documented surface is the same authenticated endpoints, gated by a
+// personal access token (X-API-Key) the reader pastes into the portal.
+app.MapOpenApi();
 
-    app.MapScalarApiReference(options =>
-        options.WithTitle("Papyra API")
-               .WithClassicLayout()
-               .HideSearch()
-               .HideDeveloperTools()
-               .WithDocumentDownloadType(DocumentDownloadType.None)
-               .DisableAgent()
-               .WithCustomCss(".scalar-app .references-header { display: none !important; }"));
-}
+app.MapScalarApiReference("/docs", options =>
+    options.WithTitle("Papyra API")
+           .WithClassicLayout()
+           .HideSearch()
+           .HideDeveloperTools()
+           .WithDocumentDownloadType(DocumentDownloadType.None)
+           .DisableAgent()
+           .WithCustomCss(".scalar-app .references-header { display: none !important; }"));
 
 // ── Health ─────────────────────────────────────────────────────────────────
 app.MapGet("/health", () => Results.Ok(new { status = "Healthy", app = "Papyra API" }))
@@ -258,7 +289,7 @@ app.MapGet("/health", () => Results.Ok(new { status = "Healthy", app = "Papyra A
 // ── Auth: first-admin setup ──────────────────────────────────────────────────
 // One-shot bootstrap. Only succeeds while the user table is empty; the created
 // account is always the admin. Login/logout + cookie sessions land in Sprint 6.2.
-var auth = app.MapGroup("/api/auth");
+var auth = app.MapGroup("/api/auth").WithTags("Auth");
 
 auth.MapPost("/setup", async (SetupRequest body, HttpContext http, AppDbContext db, VaultObserver observer, CancellationToken ct) =>
 {
@@ -396,7 +427,7 @@ auth.MapGet("/avatar", (ClaimsPrincipal principal, IConfiguration config, IHostE
 // ── Admin user management ──────────────────────────────────────────────────────
 // Role-gated provisioning for the settings Admin tab. Provisioned users get their
 // tenant vault created + watched, same as the first-admin setup flow.
-var admin = auth.MapGroup("/users").RequireAuthorization(p => p.RequireRole("Admin"));
+var admin = auth.MapGroup("/users").RequireAuthorization(p => p.RequireRole("Admin")).WithTags("Admin");
 
 admin.MapGet("/", async (AppDbContext db, CancellationToken ct) =>
     Results.Ok(await db.Users
@@ -467,10 +498,12 @@ admin.MapDelete("/{id:int}", async (int id, ClaimsPrincipal me, AppDbContext db,
 // Reads serve the in-memory vault (no disk hit); writes go through the atomic
 // markdown engine, logging the path in the Write-Ring so the watcher ignores the
 // echo. Filesystem stays the source of truth — VaultState is just a mirror.
-var notes = app.MapGroup("/api/notes").RequireAuthorization();
+var notes = app.MapGroup("/api/notes").RequireAuthorization().WithTags("Notes");
 
 notes.MapGet("/", (ClaimsPrincipal user, VaultState state) =>
-    Results.Ok(state.Snapshot(Uid(user))));
+    Results.Ok(state.Snapshot(Uid(user))))
+    .WithSummary("List notes")
+    .WithDescription("Returns the caller's notes (metadata + body) from the in-memory vault.");
 
 // ── Manual ordering (drag-and-drop) ──────────────────────────────────────────
 // The grid default-sorts by `updated` (recency); a manual drag overrides that by
@@ -599,7 +632,7 @@ notes.MapPost("/{id}/untrash", async (
 // authority for membership; the registry (.papyra/categories.json) only adds a
 // colour and lets an empty category exist before any note uses it. GET unions the
 // registry with every tag live on the user's notes, attaching a count to each.
-var categories = app.MapGroup("/api/categories").RequireAuthorization();
+var categories = app.MapGroup("/api/categories").RequireAuthorization().WithTags("Categories");
 
 categories.MapGet("/", (ClaimsPrincipal user, VaultState state, CategoryStore store) =>
 {
@@ -653,7 +686,7 @@ categories.MapDelete("/{name}", (string name, ClaimsPrincipal user, CategoryStor
 // ── API keys (personal access tokens) ────────────────────────────────────────────
 // The raw token is returned exactly once at creation; only its SHA-256 hash is
 // stored. Use it as `Authorization: Bearer <token>` (see the bearer middleware).
-var keys = app.MapGroup("/api/keys").RequireAuthorization();
+var keys = app.MapGroup("/api/keys").RequireAuthorization().WithTags("API Keys");
 
 keys.MapGet("/", async (ClaimsPrincipal user, AppDbContext db, CancellationToken ct) =>
 {
@@ -690,7 +723,9 @@ keys.MapPost("/", async (ApiKeyWrite body, ClaimsPrincipal user, AppDbContext db
 
     // token is shown to the caller this once, never persisted in the clear.
     return Results.Ok(new { key.Id, key.Name, key.Prefix, key.CreatedUtc, token });
-});
+})
+    .WithSummary("Create API key")
+    .WithDescription("Generates a personal access token. The raw token is returned once — store it; only its hash is kept.");
 
 keys.MapDelete("/{id:int}", async (int id, ClaimsPrincipal user, AppDbContext db, CancellationToken ct) =>
 {
@@ -705,7 +740,7 @@ keys.MapDelete("/{id:int}", async (int id, ClaimsPrincipal user, AppDbContext db
 // ── Settings (trash retention) ───────────────────────────────────────────────────
 // Single global key for now: how long trashed notes survive before the sweep
 // purges them. -1 = keep forever, 0 = purge immediately, else N days.
-var settings = app.MapGroup("/api/settings").RequireAuthorization();
+var settings = app.MapGroup("/api/settings").RequireAuthorization().WithTags("Settings");
 
 settings.MapGet("/", async (AppDbContext db, CancellationToken ct) =>
     Results.Ok(new { trashRetentionDays = await TrashRetention.ReadDays(db, ct) }));
@@ -802,7 +837,7 @@ notes.MapPost("/{id}/restore/{snapshotId}", async (
 // parsing them as notes. List is metadata-only; the detail GET returns both bodies
 // for the split-pane resolver; resolve keeps left (parent), right (the copy), or
 // both (the copy becomes a new note) and always deletes the rejected .md.
-var conflicts = app.MapGroup("/api/conflicts").RequireAuthorization();
+var conflicts = app.MapGroup("/api/conflicts").RequireAuthorization().WithTags("Conflicts");
 
 conflicts.MapGet("/", (ClaimsPrincipal user, ConflictState conflictState, VaultState state) =>
 {
@@ -973,7 +1008,7 @@ notes.MapPost("/{id}/shares", async (string id, ShareWrite body, ClaimsPrincipal
 });
 
 // Owner: revoke any of their own shares.
-var shares = app.MapGroup("/api/shares").RequireAuthorization();
+var shares = app.MapGroup("/api/shares").RequireAuthorization().WithTags("Sharing");
 
 shares.MapDelete("/{shareId:int}", async (int shareId, ClaimsPrincipal user, AppDbContext db, CancellationToken ct) =>
 {
@@ -1280,7 +1315,7 @@ app.MapGet("/api/export", (
 // password gates both directions. Generate streams a .papyra-vault file; restore
 // decrypts into staging first (so a wrong password never touches the live vault),
 // then swaps the vault contents in place and forces a per-tenant cache rebuild.
-var backups = app.MapGroup("/api/backups").RequireAuthorization();
+var backups = app.MapGroup("/api/backups").RequireAuthorization().WithTags("Backups");
 
 backups.MapPost("/generate", async (
     BackupRequest body,
@@ -1313,7 +1348,9 @@ backups.MapPost("/generate", async (
     http.Response.Headers.ContentDisposition = "attachment; filename=\"papyra-backup.papyra-vault\"";
     await backup.BackupAsync(sources, body.Password, http.Response.Body, ct);
     return Results.Empty;
-});
+})
+    .WithSummary("Generate encrypted backup")
+    .WithDescription("Verifies the account password, then streams an AES-GCM encrypted .papyra-vault of the caller's notes + media.");
 
 backups.MapPost("/restore", async (
     HttpRequest request,
@@ -1396,7 +1433,10 @@ backups.MapPost("/restore", async (
     {
         if (Directory.Exists(staging)) Directory.Delete(staging, recursive: true);
     }
-}).DisableAntiforgery();
+})
+    .DisableAntiforgery()
+    .WithSummary("Restore from encrypted backup")
+    .WithDescription("Decrypts an uploaded .papyra-vault (multipart: password + file) and replaces the caller's notes + media, then rebuilds the cache.");
 
 app.MapHub<NotesHub>("/hubs/notes");
 
