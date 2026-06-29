@@ -172,38 +172,43 @@ app.UseStaticFiles();
 
 app.UseAuthentication();
 
-// ── API-key bearer auth ────────────────────────────────────────────────────────
-// When a request arrives without a cookie session but with `Authorization: Bearer
-// <token>`, resolve it against the personal-access-token table (SHA-256 lookup)
-// and attach the owning user as the principal — so the same RequireAuthorization
-// endpoints work for scripts/integrations, not just the browser.
+// ── API-key auth ───────────────────────────────────────────────────────────────
+// When a request arrives without a cookie session, resolve a personal-access-token
+// from either the dedicated `X-API-Key: <token>` header or the standard
+// `Authorization: Bearer <token>` form (SHA-256 lookup) and attach the owning user
+// as the principal — built with the SAME UserId, so the key inherits the per-tenant
+// chroot jail. The same RequireAuthorization endpoints then work for scripts and
+// integrations, not just the browser.
 app.Use(async (context, next) =>
 {
     if (context.User.Identity?.IsAuthenticated != true)
     {
-        var header = context.Request.Headers.Authorization.ToString();
-        if (header.StartsWith("Bearer ", StringComparison.Ordinal))
+        var token = context.Request.Headers["X-API-Key"].ToString().Trim();
+        if (token.Length == 0)
         {
-            var token = header["Bearer ".Length..].Trim();
-            if (token.Length > 0)
+            var header = context.Request.Headers.Authorization.ToString();
+            if (header.StartsWith("Bearer ", StringComparison.Ordinal))
+                token = header["Bearer ".Length..].Trim();
+        }
+
+        if (token.Length > 0)
+        {
+            var hash = Sha256Hex(token);
+            var db = context.RequestServices.GetRequiredService<AppDbContext>();
+            var key = await db.ApiKeys.FirstOrDefaultAsync(k => k.TokenHash == hash, context.RequestAborted);
+            if (key is not null)
             {
-                var hash = Sha256Hex(token);
-                var db = context.RequestServices.GetRequiredService<AppDbContext>();
-                var key = await db.ApiKeys.FirstOrDefaultAsync(k => k.TokenHash == hash, context.RequestAborted);
-                if (key is not null)
+                var user = await db.Users.FindAsync([key.UserId], context.RequestAborted);
+                if (user is not null)
                 {
-                    var user = await db.Users.FindAsync([key.UserId], context.RequestAborted);
-                    if (user is not null)
-                    {
-                        key.LastUsedUtc = DateTime.UtcNow;
-                        await db.SaveChangesAsync(context.RequestAborted);
-                        context.User = new ClaimsPrincipal(new ClaimsIdentity(
-                        [
-                            new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
-                            new Claim(ClaimTypes.Name, user.Username),
-                            new Claim(ClaimTypes.Role, user.Role),
-                        ], "ApiKey"));
-                    }
+                    key.LastUsedUtc = DateTime.UtcNow;
+                    await db.SaveChangesAsync(context.RequestAborted);
+                    context.User = new ClaimsPrincipal(new ClaimsIdentity(
+                    [
+                        new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
+                        new Claim(ClaimTypes.Name, user.Username),
+                        new Claim(ClaimTypes.Role, user.Role),
+                    ], "ApiKey"));
                 }
             }
         }

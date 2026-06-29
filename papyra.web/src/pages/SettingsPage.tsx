@@ -455,8 +455,9 @@ function KeysTab() {
     <div className="settings__panel">
       <h2 className="settings__subhead">Personal access tokens</h2>
       <p className="settings__hint">
-        Use a token as <code>Authorization: Bearer &lt;token&gt;</code> to reach the API from scripts and
-        integrations. The token is shown once — store it somewhere safe.
+        Send a token as <code>X-API-Key: &lt;token&gt;</code> (or <code>Authorization: Bearer &lt;token&gt;</code>)
+        to reach the API from scripts and integrations. A token carries your own access only. It’s shown
+        once — store it somewhere safe.
       </p>
 
       {created && (

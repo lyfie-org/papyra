@@ -240,4 +240,40 @@ public sealed class NotesEndpointsTests
             Directory.Delete(dir, recursive: true);
         }
     }
+
+    [Fact]
+    public async Task ApiKey_AuthenticatesViaXApiKeyHeader_InheritsOwnerVault()
+    {
+        var (factory, dir) = NewApp();
+        try
+        {
+            // Owner signs in (cookie) and mints a personal access token.
+            var owner = factory.CreateClient();
+            var uid = await SeedAdminAsync(owner);
+            await owner.PutAsJsonAsync("/api/notes/k1", new NoteWrite(
+                Title: "Keyed", Tags: null, Color: null, Pinned: false, Archived: false, Body: "via key"));
+
+            var keyRes = await owner.PostAsJsonAsync("/api/keys", new ApiKeyWrite("CLI"));
+            Assert.Equal(HttpStatusCode.OK, keyRes.StatusCode);
+            var token = (await keyRes.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>())
+                .GetProperty("token").GetString()!;
+
+            // A cookieless client authenticates with X-API-Key and sees the owner's notes.
+            var script = factory.CreateClient();
+            script.DefaultRequestHeaders.Add("X-API-Key", token);
+            var notes = await script.GetFromJsonAsync<List<Note>>("/api/notes");
+            Assert.Equal("k1", Assert.Single(notes!).Id); // same UserId → same vault
+
+            // A bad token resolves to no principal → 401.
+            var bad = factory.CreateClient();
+            bad.DefaultRequestHeaders.Add("X-API-Key", "papyra_not-a-real-token");
+            Assert.Equal(HttpStatusCode.Unauthorized, (await bad.GetAsync("/api/notes")).StatusCode);
+        }
+        finally
+        {
+            factory.Dispose();
+            SqliteConnection.ClearAllPools();
+            Directory.Delete(dir, recursive: true);
+        }
+    }
 }
