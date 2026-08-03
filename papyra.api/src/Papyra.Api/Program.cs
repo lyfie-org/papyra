@@ -627,6 +627,38 @@ notes.MapPost("/{id}/untrash", async (
     return Results.NoContent();
 });
 
+// ── Backlinks (ghost cards) ──────────────────────────────────────────────────────
+// Notes that link to this one via a `[[Title]]` wikilink. Detection runs against
+// the in-memory vault (the authority) by literal substring — Lucene's analyzer
+// strips the `[[ ]]` brackets, so an exact wikilink match isn't reliable there; the
+// highlighter still builds the ~150-char snippet around the title mention.
+notes.MapGet("/{id}/backlinks", (string id, ClaimsPrincipal user, VaultState state, SearchIndexService search) =>
+{
+    var uid = Uid(user);
+    var path = state.PathFor(uid, id);
+    if (path is null || !state.TryGet(uid, path, out var target) || target is null) return Results.NotFound();
+
+    var title = target.Title;
+    if (string.IsNullOrWhiteSpace(title)) return Results.Ok(Array.Empty<object>());
+
+    var needle = $"[[{title}]]";
+    var results = state.Snapshot(uid)
+        .Where(n => !n.Trashed && n.Id != id && !string.IsNullOrEmpty(n.Body)
+                    && n.Body.Contains(needle, StringComparison.OrdinalIgnoreCase))
+        .Select(n => new
+        {
+            noteId = n.Id,
+            title = n.Title,
+            snippet = search.BuildSnippet(title, n.Body),
+            color = n.Color,
+        })
+        .ToList();
+
+    return Results.Ok(results);
+})
+    .WithSummary("List backlinks")
+    .WithDescription("Notes that reference this note through a [[Title]] wikilink, each with a highlighted snippet.");
+
 // ── Categories (promoted tags) ───────────────────────────────────────────────────
 // A category is a curated note tag. The notes' own `tags` frontmatter is the
 // authority for membership; the registry (.papyra/categories.json) only adds a

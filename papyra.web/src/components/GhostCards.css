@@ -1,0 +1,86 @@
+.ghost-cards {
+  margin: 0.5rem 1.5rem 1.5rem;
+}
+
+.ghost-cards__head {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0 0 0.6rem;
+  font-family: 'Sora', sans-serif;
+  font-size: 0.8rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  text-transform: uppercase;
+  color: var(--text);
+}
+
+.ghost-cards__count {
+  display: inline-grid;
+  place-items: center;
+  min-width: 1.2rem;
+  height: 1.2rem;
+  padding: 0 0.35rem;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 30%, transparent);
+  color: var(--text-h);
+  font-size: 0.7rem;
+}
+
+.ghost-cards__list {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(15rem, 1fr));
+  gap: 0.6rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+/* Translucent, dashed — a "ghost" of the linking note. */
+.ghost-card {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  width: 100%;
+  padding: 0.7rem 0.8rem;
+  border: 1px dashed var(--border);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--surface) 55%, transparent);
+  text-align: left;
+  cursor: pointer;
+  transition: background 0.15s ease, border-color 0.15s ease, transform 0.1s ease;
+}
+
+.ghost-card:hover {
+  background: color-mix(in srgb, var(--surface) 90%, transparent);
+  transform: translateY(-1px);
+}
+
+.ghost-card:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.ghost-card__title {
+  font-family: 'Marcellus', serif;
+  font-size: 0.95rem;
+  color: var(--text-h);
+}
+
+.ghost-card__snippet {
+  font-family: 'Sora', sans-serif;
+  font-size: 0.78rem;
+  line-height: 1.4;
+  color: var(--text);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.ghost-card__snippet mark {
+  background: color-mix(in srgb, var(--accent) 45%, transparent);
+  color: var(--text-h);
+  border-radius: 3px;
+  padding: 0 0.1rem;
+}

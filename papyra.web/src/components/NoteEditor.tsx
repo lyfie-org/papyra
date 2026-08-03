@@ -10,6 +10,8 @@ import { createPapyraEditorAdapter } from '../lib/papyraEditorAdapter';
 import NoteToolbar from './NoteToolbar';
 import SnapshotPanel from './SnapshotPanel';
 import CategoryEditor from './CategoryEditor';
+import GhostCards from './GhostCards';
+import TimeMachineSlider from './TimeMachineSlider';
 import './NoteEditor.css';
 
 const STATUS_LABEL = {
@@ -57,12 +59,26 @@ export default function NoteEditor({ note }: { note: Note }) {
 
   const { status, isDirty, bump, reset, flush, savedRef } = useAutoSave(note, getDraft);
 
+  // Time-machine scrub bar. While open, autosave is hard-disabled (suppressSave)
+  // so previewing a historical revision never overwrites the live file — only an
+  // explicit "Restore this version" writes to disk.
+  const [timeMachine, setTimeMachine] = useState(false);
+  const suppressSave = useRef(false);
+
   // Close the editor modal: persist the draft first so closing never loses edits,
   // then return to the grid. Backdrop click and Escape both route here.
   const close = useCallback(async () => {
+    // If the time machine is open, the editor is showing a historical preview —
+    // restore the live draft before flushing so closing never writes an old
+    // revision to disk.
+    if (timeMachine) {
+      editorRef.current?.setMarkdown(latestBody.current);
+      suppressSave.current = false;
+      setTimeMachine(false);
+    }
     await flush();
     navigate('/');
-  }, [flush, navigate]);
+  }, [flush, navigate, timeMachine]);
 
   // What the editor currently displays — the yardstick for detecting that the
   // server snapshot (refreshed by SignalR invalidation) carries a new revision.
@@ -115,11 +131,13 @@ export default function NoteEditor({ note }: { note: Note }) {
   // banner claim the key first so it doesn't yank the user out unexpectedly.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && !recoverOpen && !pending) void close();
+      // Let an open sub-panel (recovery, time machine) or the conflict banner claim
+      // Escape first, so it doesn't yank the user out of the editor unexpectedly.
+      if (e.key === 'Escape' && !recoverOpen && !pending && !timeMachine) void close();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [close, recoverOpen, pending]);
+  }, [close, recoverOpen, pending, timeMachine]);
 
   // Toolbar frontmatter mutation: PUT the live draft plus the changed YAML field,
   // so a pin/color/archive flip never clobbers unsaved body/title. Re-baselines
@@ -148,6 +166,41 @@ export default function NoteEditor({ note }: { note: Note }) {
     shown.current = { id: note.id, title: draft.title, body: draft.body };
     queryClient.invalidateQueries({ queryKey: ['notes'] });
   }, [getDraft, note, reset, queryClient]);
+
+  // Enter the time machine. Flush any unsaved edits FIRST (so the live draft is on
+  // disk and the slider's "Now" matches it), then hard-disable autosave for the
+  // duration. Without the upfront flush a pending debounce could fire mid-scrub and
+  // write a historical revision over the live file.
+  const openTimeMachine = useCallback(async () => {
+    await flush();
+    // Cancel any still-pending debounce from edits made just before opening —
+    // otherwise it could fire mid-scrub and flush the previewed (old) body. reset
+    // clears the timer and re-baselines to the now-saved live draft.
+    reset(getDraft());
+    suppressSave.current = true;
+    setTimeMachine(true);
+  }, [flush, reset, getDraft]);
+
+  // Exit without restoring: put the live draft back on screen and re-enable saving.
+  const closeTimeMachine = useCallback(() => {
+    editorRef.current?.setMarkdown(latestBody.current);
+    suppressSave.current = false;
+    setTimeMachine(false);
+  }, []);
+
+  // Restore a scrubbed revision: the API archives the current version first (so the
+  // restore is itself reversible), then the refetched note adopts via forceAdopt.
+  const restoreVersion = useCallback(async (snapshotId: string) => {
+    const res = await fetch(
+      `/api/notes/${encodeURIComponent(note.id)}/restore/${encodeURIComponent(snapshotId)}`,
+      { method: 'POST' },
+    );
+    if (!res.ok) throw new Error(`POST restore failed: ${res.status}`);
+    forceAdopt.current = true; // adopt the restored body even over the scrubbed view
+    suppressSave.current = false;
+    setTimeMachine(false);
+    await queryClient.invalidateQueries({ queryKey: ['notes'] });
+  }, [note.id, queryClient]);
 
   // Trash: hard-delete the .md (irreversible) then leave the editor.
   const trash = useCallback(async () => {
@@ -197,6 +250,7 @@ export default function NoteEditor({ note }: { note: Note }) {
           onToggleTodo={() => void saveFrontmatter({ kind: note.kind === 'todo' ? 'note' : 'todo' })}
           onPickColor={(c) => void saveFrontmatter({ color: c })}
           onRecover={() => setRecoverOpen(true)}
+          onTimeMachine={() => void openTimeMachine()}
           onArchive={() => { void saveFrontmatter({ archived: true }); navigate('/'); }}
           onTrash={() => {
             if (confirm('Delete this note? This permanently removes the .md file.')) void trash();
@@ -216,10 +270,23 @@ export default function NoteEditor({ note }: { note: Note }) {
         </div>
       )}
 
+      {timeMachine && (
+        <TimeMachineSlider
+          noteId={note.id}
+          liveBody={latestBody.current}
+          onPreview={(b) => editorRef.current?.setMarkdown(b)}
+          onRestore={restoreVersion}
+          onClose={closeTimeMachine}
+        />
+      )}
+
       {/* contenteditable input events bubble here → mirror the markdown + mark dirty. */}
       <div
         className="note-editor__canvas"
         onInput={() => {
+          // Suppressed while scrubbing history — a preview is not an edit, and
+          // must never schedule a save of an old revision over the live file.
+          if (suppressSave.current) return;
           const md = editorRef.current?.getMarkdown();
           if (md != null) latestBody.current = md;
           bump();
@@ -241,6 +308,8 @@ export default function NoteEditor({ note }: { note: Note }) {
           }}
         />
       </div>
+
+      <GhostCards noteId={note.id} />
 
       {recoverOpen && (
         <SnapshotPanel

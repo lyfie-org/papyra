@@ -242,6 +242,38 @@ public sealed class NotesEndpointsTests
     }
 
     [Fact]
+    public async Task Backlinks_FindsNotesLinkingViaWikilink()
+    {
+        var (factory, dir) = NewApp();
+        try
+        {
+            var client = factory.CreateClient();
+            await SeedAdminAsync(client);
+
+            // "target" is referenced by "source" via [[Target]]; "other" doesn't link it.
+            await client.PutAsJsonAsync("/api/notes/target", new NoteWrite(
+                Title: "Target", Tags: null, Color: null, Pinned: false, Archived: false, Body: "I am linked"));
+            await client.PutAsJsonAsync("/api/notes/source", new NoteWrite(
+                Title: "Source", Tags: null, Color: "#7aaa8a", Pinned: false, Archived: false, Body: "see [[Target]] here"));
+            await client.PutAsJsonAsync("/api/notes/other", new NoteWrite(
+                Title: "Other", Tags: null, Color: null, Pinned: false, Archived: false, Body: "no links at all"));
+
+            var links = await client.GetFromJsonAsync<List<System.Text.Json.JsonElement>>("/api/notes/target/backlinks");
+            var link = Assert.Single(links!);
+            Assert.Equal("source", link.GetProperty("noteId").GetString());
+            Assert.Equal("Source", link.GetProperty("title").GetString());
+            Assert.Equal("#7aaa8a", link.GetProperty("color").GetString());
+            Assert.False(string.IsNullOrEmpty(link.GetProperty("snippet").GetString()));
+        }
+        finally
+        {
+            factory.Dispose();
+            SqliteConnection.ClearAllPools();
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task ApiKey_AuthenticatesViaXApiKeyHeader_InheritsOwnerVault()
     {
         var (factory, dir) = NewApp();

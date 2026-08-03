@@ -1,0 +1,91 @@
+.time-machine {
+  margin: 0 1.5rem 1rem;
+  padding: 0.7rem 0.9rem;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--surface) 70%, transparent);
+}
+
+.time-machine__row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 0.5rem;
+}
+
+.time-machine__label {
+  font-family: 'Sora', sans-serif;
+  font-size: 0.78rem;
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--text);
+}
+
+.time-machine__close {
+  display: grid;
+  place-items: center;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  border-radius: 6px;
+  padding: 0.2rem;
+}
+
+.time-machine__close:hover { color: var(--text-h); }
+
+.time-machine__controls {
+  display: flex;
+  align-items: center;
+  gap: 0.8rem;
+}
+
+.time-machine__range {
+  flex: 1;
+  accent-color: var(--accent);
+  cursor: pointer;
+}
+
+.time-machine__stamp {
+  font-family: 'Roboto Mono', monospace;
+  font-size: 0.76rem;
+  color: var(--text);
+  white-space: nowrap;
+  min-width: 8rem;
+  text-align: center;
+}
+
+.time-machine__stamp.is-now {
+  color: var(--accent);
+  font-weight: 600;
+}
+
+.time-machine__restore {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.4rem 0.7rem;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  background: var(--accent);
+  color: var(--accent-fg);
+  font-family: 'Sora', sans-serif;
+  font-size: 0.78rem;
+  cursor: pointer;
+  white-space: nowrap;
+}
+
+.time-machine__restore:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+.time-machine__error,
+.time-machine__empty {
+  margin: 0.3rem 0 0;
+  font-size: 0.78rem;
+  color: var(--text);
+}
+
+.time-machine__error { color: #b4543f; }
