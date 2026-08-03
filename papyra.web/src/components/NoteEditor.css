@@ -14,6 +14,7 @@
 }
 
 .note-editor {
+  position: relative; /* offsetParent for the TOC's heading offset measurements */
   width: 100%;
   max-width: 820px;
   margin: 0 auto;

@@ -12,6 +12,7 @@ import SnapshotPanel from './SnapshotPanel';
 import CategoryEditor from './CategoryEditor';
 import GhostCards from './GhostCards';
 import TimeMachineSlider from './TimeMachineSlider';
+import NoteToc from './NoteToc';
 import './NoteEditor.css';
 
 const STATUS_LABEL = {
@@ -28,6 +29,8 @@ export default function NoteEditor({ note }: { note: Note }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const editorRef = useRef<PapyraEditorRef | null>(null);
+  // The scrolling editor panel — the ghost TOC measures heading offsets against it.
+  const editorScrollRef = useRef<HTMLElement>(null);
 
   // The host seam: media GET/upload → /api/media, [[ search → notes cache,
   // wikilink activation → router push. Rebuilt only when the open note or the
@@ -225,12 +228,15 @@ export default function NoteEditor({ note }: { note: Note }) {
       onMouseDown={(e) => { if (e.target === e.currentTarget) void close(); }}
     >
     <section
+      ref={editorScrollRef}
       className={`note-editor${colored ? ' note-editor--colored' : ''}`}
       style={style}
       role="dialog"
       aria-modal="true"
       onMouseDown={(e) => e.stopPropagation()}
     >
+      <NoteToc scrollRef={editorScrollRef} />
+
       <header className="note-editor__bar">
         <input
           className="note-editor__title"
