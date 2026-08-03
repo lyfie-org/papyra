@@ -105,6 +105,9 @@ builder.Services.AddHostedService<OrphanPruneService>();
 // Permanently purges trashed notes once they outlive the retention window.
 builder.Services.AddHostedService<TrashPurgeService>();
 
+// Hard-deletes expired / view-exhausted share links (burn-after-reading cleanup).
+builder.Services.AddHostedService<ShareCleanupService>();
+
 // Background import queue: drains uploaded Obsidian/Keep archives into the vault
 // off the request thread, pushing progress over SignalR. Singleton so the endpoint
 // can Enqueue onto the same instance the hosted worker drains.
