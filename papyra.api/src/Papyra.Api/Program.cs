@@ -108,6 +108,9 @@ builder.Services.AddHostedService<TrashPurgeService>();
 // Hard-deletes expired / view-exhausted share links (burn-after-reading cleanup).
 builder.Services.AddHostedService<ShareCleanupService>();
 
+// Offline audio transcription (local Whisper). No-ops unless a model is configured.
+builder.Services.AddHostedService<AudioTranscriptionService>();
+
 // Background import queue: drains uploaded Obsidian/Keep archives into the vault
 // off the request thread, pushing progress over SignalR. Singleton so the endpoint
 // can Enqueue onto the same instance the hosted worker drains.
