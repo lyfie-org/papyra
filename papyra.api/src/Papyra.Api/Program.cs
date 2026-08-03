@@ -111,6 +111,11 @@ builder.Services.AddHostedService<ShareCleanupService>();
 // Offline audio transcription (local Whisper). No-ops unless a model is configured.
 builder.Services.AddHostedService<AudioTranscriptionService>();
 
+// Read-it-later web archiver: SSRF-guarded background fetch of URLs found in notes.
+// Singleton so the note-write endpoint enqueues onto the same instance the worker drains.
+builder.Services.AddSingleton<WebArchiverService>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<WebArchiverService>());
+
 // Background import queue: drains uploaded Obsidian/Keep archives into the vault
 // off the request thread, pushing progress over SignalR. Singleton so the endpoint
 // can Enqueue onto the same instance the hosted worker drains.
@@ -620,6 +625,7 @@ notes.MapPut("/{id}", async (
     WriteRing writeRing,
     SearchIndexService search,
     SnapshotService snapshots,
+    WebArchiverService archiver,
     VaultObserverOptions vault,
     IConfiguration config,
     IHostEnvironment env,
@@ -653,6 +659,8 @@ notes.MapPut("/{id}", async (
     await storage.WriteAsync(path, note, ct);
     state.Upsert(uid, path, note);
     search.IndexNote(uid, note); // watcher skips our own write echo, so index here
+
+    archiver.Enqueue(uid, id, note.Body); // background-archive any new URLs in the body
 
     return Results.Ok(note);
 });
