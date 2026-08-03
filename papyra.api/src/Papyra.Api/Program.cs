@@ -119,13 +119,22 @@ builder.Services.AddSignalR();
 // sliding expiry keeps active users signed in. The SPA is same-origin in prod,
 // so we never need to surface this cookie to JS. Unauthenticated API calls get a
 // flat 401 (no login redirect) so the client router can route to /login itself.
-builder.Services
-    .AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme)
-    .AddCookie(options =>
+// Optional OIDC SSO: enabled only when an Authority + ClientId are configured, so
+// the default password-only deployment needs no IdP. SameSite must relax to Lax for
+// the external redirect callback to carry the correlation cookie back.
+var oidc = builder.Configuration.GetSection("Oidc").Get<OidcSettings>();
+var oidcEnabled = !string.IsNullOrWhiteSpace(oidc?.Authority) && !string.IsNullOrWhiteSpace(oidc?.ClientId);
+
+var authBuilder = builder.Services
+    .AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme);
+
+authBuilder.AddCookie(options =>
     {
         options.Cookie.Name = "papyra.auth";
         options.Cookie.HttpOnly = true;
-        options.Cookie.SameSite = SameSiteMode.Strict;
+        // OIDC bounces the browser to the IdP and back; a Strict cookie wouldn't ride
+        // the cross-site return, so relax to Lax when SSO is on (still not None).
+        options.Cookie.SameSite = oidcEnabled ? SameSiteMode.Lax : SameSiteMode.Strict;
         options.Cookie.SecurePolicy = builder.Environment.IsDevelopment()
             ? CookieSecurePolicy.SameAsRequest
             : CookieSecurePolicy.Always;
@@ -143,6 +152,67 @@ builder.Services
             return Task.CompletedTask;
         };
     });
+
+if (oidcEnabled)
+{
+    authBuilder.AddOpenIdConnect("oidc", options =>
+    {
+        options.Authority = oidc!.Authority;
+        options.ClientId = oidc.ClientId;
+        options.ClientSecret = oidc.ClientSecret;
+        options.ResponseType = "code";
+        // The external identity is exchanged for our own cookie session, so the rest
+        // of the app keeps reading the internal UserId claim as before.
+        options.SignInScheme = CookieAuthenticationDefaults.AuthenticationScheme;
+        options.GetClaimsFromUserInfoEndpoint = true;
+        options.SaveTokens = false;
+        options.Scope.Add("email");
+        options.Scope.Add("profile");
+        options.CallbackPath = "/signin-oidc";
+        options.Events = new Microsoft.AspNetCore.Authentication.OpenIdConnect.OpenIdConnectEvents
+        {
+            // JIT provisioning: map the external subject to an internal user (creating
+            // one + its vault on first sight), then swap in an internal-claims
+            // principal so the cookie carries our UserId (chroot key), not the IdP's.
+            OnTokenValidated = async ctx =>
+            {
+                var sp = ctx.HttpContext.RequestServices;
+                var db = sp.GetRequiredService<AppDbContext>();
+                var observer = sp.GetRequiredService<VaultObserver>();
+
+                var ext = ctx.Principal;
+                var sub = ext?.FindFirstValue(ClaimTypes.NameIdentifier) ?? ext?.FindFirstValue("sub");
+                if (string.IsNullOrEmpty(sub)) { ctx.Fail("OIDC token carries no subject."); return; }
+
+                var user = await db.Users.FirstOrDefaultAsync(u => u.ExternalId == sub, ctx.HttpContext.RequestAborted);
+                if (user is null)
+                {
+                    var email = ext?.FindFirstValue(ClaimTypes.Email) ?? ext?.FindFirstValue("email") ?? string.Empty;
+                    var display = ext?.FindFirstValue("name") ?? ext?.FindFirstValue(ClaimTypes.Name) ?? email;
+                    user = new User
+                    {
+                        Username = await UniqueSsoUsername(db, email, sub, ctx.HttpContext.RequestAborted),
+                        Name = string.IsNullOrWhiteSpace(display) ? "SSO user" : display.Trim(),
+                        Email = email.Trim(),
+                        PasswordHash = string.Empty, // SSO account: no local password
+                        Role = "User",
+                        ExternalId = sub,
+                    };
+                    db.Users.Add(user);
+                    await db.SaveChangesAsync(ctx.HttpContext.RequestAborted);
+                    observer.WatchUser(user.Id.ToString()); // create + watch the tenant vault so PathGuard won't fail
+                }
+
+                var identity = new ClaimsIdentity(CookieAuthenticationDefaults.AuthenticationScheme);
+                identity.AddClaim(new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()));
+                identity.AddClaim(new Claim(ClaimTypes.Name, user.Username));
+                identity.AddClaim(new Claim(ClaimTypes.Role, user.Role));
+                ctx.Principal = new ClaimsPrincipal(identity);
+            },
+        };
+    });
+}
+
 builder.Services.AddAuthorization();
 
 // CORS is a dev affordance: in prod the SPA is served same-origin from wwwroot,
@@ -335,6 +405,19 @@ auth.MapPost("/logout", async (HttpContext http) =>
 {
     await http.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
     return Results.NoContent();
+});
+
+// ── SSO (OIDC) ────────────────────────────────────────────────────────────────
+// Anonymous. `providers` tells the login screen whether an SSO button belongs
+// there; `login/sso` kicks off the OIDC challenge (→ IdP → /signin-oidc callback →
+// cookie session via OnTokenValidated → back to the app).
+auth.MapGet("/providers", () =>
+    Results.Ok(new { sso = oidcEnabled, ssoName = string.IsNullOrWhiteSpace(oidc?.DisplayName) ? "SSO" : oidc!.DisplayName }));
+
+auth.MapGet("/login/sso", () =>
+{
+    if (!oidcEnabled) return Results.NotFound(new { error = "SSO is not configured." });
+    return Results.Challenge(new AuthenticationProperties { RedirectUri = "/" }, ["oidc"]);
 });
 
 // Current-session probe the SPA auth guard polls: 428 before any user exists
@@ -1546,6 +1629,22 @@ static void ReplaceDirContents(string sourceDir, string targetDir)
         File.Move(file, Path.Combine(targetDir, Path.GetRelativePath(sourceDir, file)), overwrite: true);
 }
 
+// A collision-free Username for a JIT-provisioned SSO account: prefer the email
+// local-part, else a subject-derived handle, suffixing a counter if it's taken so
+// the unique Username index never trips.
+static async Task<string> UniqueSsoUsername(AppDbContext db, string email, string sub, CancellationToken ct)
+{
+    var baseName = email.Contains('@') ? email[..email.IndexOf('@')] : $"sso-{sub}";
+    baseName = new string(baseName.Where(c => char.IsLetterOrDigit(c) || c is '-' or '_' or '.').ToArray());
+    if (string.IsNullOrWhiteSpace(baseName)) baseName = "sso-user";
+
+    var candidate = baseName;
+    var n = 1;
+    while (await db.Users.AnyAsync(u => u.Username == candidate, ct))
+        candidate = $"{baseName}-{++n}";
+    return candidate;
+}
+
 // Mint the session cookie for a user. UserId rides as NameIdentifier so the
 // services scope per-user storage (the Sprint 6.3 path jail keys off it).
 static async Task SignInAsync(HttpContext http, User user)
@@ -1615,6 +1714,16 @@ public sealed record ApiKeyWrite(string? Name);
 // Encrypted-backup generation payload: the account password (verified, then reused
 // as the vault encryption secret).
 public sealed record BackupRequest(string? Password);
+
+// OIDC SSO configuration (appsettings "Oidc"). SSO is enabled only when Authority
+// and ClientId are both set; ClientSecret is needed for confidential clients.
+public sealed class OidcSettings
+{
+    public string? Authority { get; set; }
+    public string? ClientId { get; set; }
+    public string? ClientSecret { get; set; }
+    public string? DisplayName { get; set; }
+}
 
 // Share creation: kind (link|user) + access (view|edit). Link shares accept an
 // optional expiry + max view count; user shares require a grantee username.

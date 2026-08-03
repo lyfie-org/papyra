@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import './AuthForm.css';
@@ -8,8 +8,17 @@ export default function LoginPage() {
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
+  // Whether an SSO button belongs on this screen (server tells us if OIDC is on).
+  const [sso, setSso] = useState<{ enabled: boolean; name: string } | null>(null);
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+
+  useEffect(() => {
+    fetch('/api/auth/providers')
+      .then(r => (r.ok ? r.json() : null))
+      .then(d => { if (d) setSso({ enabled: !!d.sso, name: d.ssoName ?? 'SSO' }); })
+      .catch(() => { /* SSO simply stays hidden */ });
+  }, []);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -57,6 +66,19 @@ export default function LoginPage() {
         <button className="auth__submit" type="submit" disabled={busy}>
           {busy ? 'Signing in…' : 'Sign in'}
         </button>
+
+        {sso?.enabled && (
+          <>
+            <div className="auth__divider"><span>or</span></div>
+            <button
+              type="button"
+              className="auth__sso"
+              onClick={() => { window.location.href = '/api/auth/login/sso'; }}
+            >
+              Continue with {sso.name}
+            </button>
+          </>
+        )}
       </form>
     </div>
   );

@@ -17,6 +17,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         modelBuilder.Entity<AppSetting>().HasKey(s => s.Key);
         modelBuilder.Entity<NoteCache>().HasKey(n => n.Id);
         modelBuilder.Entity<User>().HasIndex(u => u.Username).IsUnique();
+        // Unique per IdP subject; SQLite treats NULLs as distinct, so local
+        // (non-SSO) accounts with a null ExternalId don't collide.
+        modelBuilder.Entity<User>().HasIndex(u => u.ExternalId).IsUnique();
         modelBuilder.Entity<ApiKey>().HasIndex(k => k.TokenHash).IsUnique();
         modelBuilder.Entity<ApiKey>().HasIndex(k => k.UserId);
         modelBuilder.Entity<Share>().HasIndex(s => s.Token);
