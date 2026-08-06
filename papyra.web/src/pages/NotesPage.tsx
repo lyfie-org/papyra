@@ -1,8 +1,9 @@
 import { useMemo, useState } from 'react';
 import { Outlet, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { Plus, UploadCloud } from 'lucide-react';
+import { Plus, UploadCloud, X } from 'lucide-react';
 import DraggableNoteGrid from '../components/DraggableNoteGrid';
+import KnowledgeHeatmap from '../components/KnowledgeHeatmap';
 import ConflictResolver from '../components/ConflictResolver';
 import { useNotes } from '../hooks/useNotes';
 import { useConflicts, type Conflict } from '../hooks/useConflicts';
@@ -16,6 +17,13 @@ export default function NotesPage() {
   const [resolving, setResolving] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
   const [importMsg, setImportMsg] = useState<string | null>(null);
+  // Heatmap cell → filter the grid to notes last modified that day (YYYY-MM-DD).
+  const [dayFilter, setDayFilter] = useState<string | null>(null);
+
+  const visibleNotes = useMemo(
+    () => (dayFilter ? (notes ?? []).filter((n) => n.updated.slice(0, 10) === dayFilter) : notes ?? []),
+    [notes, dayFilter],
+  );
 
   // Quick-import: drop .md/.txt onto the grid → new notes (native DnD, no lib).
   async function importFiles(fileList: FileList) {
@@ -85,11 +93,22 @@ export default function NotesPage() {
         </div>
       )}
 
+      {!isLoading && !isError && <KnowledgeHeatmap selectedDay={dayFilter} onSelectDay={setDayFilter} />}
+
+      {dayFilter && (
+        <div className="notes-page__filter">
+          Showing notes from {dayFilter}
+          <button type="button" onClick={() => setDayFilter(null)} aria-label="Clear date filter">
+            <X size={14} /> Clear
+          </button>
+        </div>
+      )}
+
       {isLoading && <p className="notes-page__status">Loading notes…</p>}
       {isError && <p className="notes-page__status">Couldn’t reach the server.</p>}
       {!isLoading && !isError && (
         <DraggableNoteGrid
-          notes={notes ?? []}
+          notes={visibleNotes}
           conflictsByParent={conflictsByParent}
           onResolveConflict={setResolving}
         />

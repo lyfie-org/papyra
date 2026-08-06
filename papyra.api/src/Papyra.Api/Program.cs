@@ -608,10 +608,23 @@ admin.MapDelete("/{id:int}", async (int id, ClaimsPrincipal me, AppDbContext db,
 // echo. Filesystem stays the source of truth — VaultState is just a mirror.
 var notes = app.MapGroup("/api/notes").RequireAuthorization().WithTags("Notes");
 
-notes.MapGet("/", (ClaimsPrincipal user, VaultState state) =>
-    Results.Ok(state.Snapshot(Uid(user))))
+notes.MapGet("/", (ClaimsPrincipal user, VaultState state, DateTime? from, DateTime? to) =>
+{
+    var snap = state.Snapshot(Uid(user));
+    if (from is null && to is null) return Results.Ok(snap);
+    // Inclusive day-range filter (heatmap cell → dashboard filter).
+    var filtered = snap.Where(n =>
+        (from is null || n.Updated.Date >= from.Value.Date) &&
+        (to is null || n.Updated.Date <= to.Value.Date));
+    return Results.Ok(filtered);
+})
     .WithSummary("List notes")
-    .WithDescription("Returns the caller's notes (metadata + body) from the in-memory vault.");
+    .WithDescription("Returns the caller's notes (metadata + body) from the in-memory vault. Optional from/to filter by last-modified date.");
+
+// Note activity by day (year → month → day → count) for the knowledge heatmap.
+notes.MapGet("/activity", (ClaimsPrincipal user, VaultState state) =>
+    Results.Ok(TemporalActivity.Group(state.Snapshot(Uid(user)).Where(n => !n.Trashed).Select(n => n.Updated))))
+    .WithSummary("Note activity heatmap");
 
 // ── Manual ordering (drag-and-drop) ──────────────────────────────────────────
 // The grid default-sorts by `updated` (recency); a manual drag overrides that by
