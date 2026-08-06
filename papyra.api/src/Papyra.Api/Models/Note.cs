@@ -20,6 +20,10 @@ public class Note
     // sweep purges it. TrashedAt anchors that retention window.
     public bool Trashed { get; set; }
     public DateTime? TrashedAt { get; set; }
+    // YAML `secure: true` marks a note whose Body the API withholds until the caller
+    // presents a valid biometric unlock token. The gate is enforced server-side —
+    // the client's blur is only cosmetic.
+    public bool Secure { get; set; }
     public string Body { get; set; } = string.Empty;
 
     // Last-modified, surfaced to the client so the grid can default-sort by recency

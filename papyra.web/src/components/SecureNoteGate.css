@@ -1,0 +1,76 @@
+.secure-gate {
+  position: relative;
+  min-height: 16rem;
+  margin: 0 1.5rem 1.5rem;
+}
+
+/* Redacted stand-in for the withheld body. The real text never reaches the client
+   until the unlock succeeds, so there is nothing here to un-blur. */
+.secure-gate__placeholder {
+  filter: blur(10px);
+  user-select: none;
+  opacity: 0.5;
+  font-family: 'Sora', sans-serif;
+  line-height: 2;
+  color: var(--text);
+}
+
+.secure-gate__panel {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.4rem;
+  padding: 1.5rem;
+  border: 1px dashed var(--border);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--surface) 80%, transparent);
+  text-align: center;
+}
+
+.secure-gate__icon { color: var(--accent); }
+
+.secure-gate__title {
+  margin: 0.2rem 0 0;
+  font-family: 'Marcellus', serif;
+  font-size: 1.15rem;
+  color: var(--text-h);
+}
+
+.secure-gate__hint {
+  margin: 0 0 0.6rem;
+  max-width: 26rem;
+  font-family: 'Sora', sans-serif;
+  font-size: 0.82rem;
+  color: var(--text);
+}
+
+.secure-gate__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.55rem 1rem;
+  border: 1px solid var(--accent);
+  border-radius: 8px;
+  background: var(--accent);
+  color: var(--accent-fg);
+  font-family: 'Sora', sans-serif;
+  font-size: 0.88rem;
+  cursor: pointer;
+}
+
+.secure-gate__btn:disabled { opacity: 0.6; cursor: default; }
+
+.secure-gate__btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.secure-gate__error {
+  margin: 0.4rem 0 0;
+  font-family: 'Sora', sans-serif;
+  font-size: 0.8rem;
+  color: #b4543f;
+}

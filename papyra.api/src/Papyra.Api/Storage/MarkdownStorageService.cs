@@ -23,10 +23,11 @@ public sealed class MarkdownStorageService
     private const string KeyTrashed = "trashed";
     private const string KeyTrashedAt = "trashedAt";
     private const string KeyKind = "kind";
+    private const string KeySecure = "secure";
 
     // The keys we own; anything else in the frontmatter is foreign and preserved.
     private static readonly HashSet<string> KnownKeys = new(StringComparer.OrdinalIgnoreCase)
-        { KeyId, KeyTitle, KeyTags, KeyColor, KeyPinned, KeyArchived, KeyTrashed, KeyTrashedAt, KeyKind };
+        { KeyId, KeyTitle, KeyTags, KeyColor, KeyPinned, KeyArchived, KeyTrashed, KeyTrashedAt, KeyKind, KeySecure };
 
     private const int MaxRetries = 3;
     private const int BaseDelayMs = 50;
@@ -62,6 +63,7 @@ public sealed class MarkdownStorageService
             Kind = GetString(frontmatter, KeyKind) ?? "note",
             Trashed = GetBool(frontmatter, KeyTrashed),
             TrashedAt = GetDateTime(frontmatter, KeyTrashedAt),
+            Secure = GetBool(frontmatter, KeySecure),
             Body = body,
             // Carry every non-owned key so a fresh write (import) preserves it too.
             ExtraFrontmatter = frontmatter
@@ -89,6 +91,9 @@ public sealed class MarkdownStorageService
         // Keep YAML clean: only stamp kind when it's not the default note.
         if (string.Equals(note.Kind, "todo", StringComparison.OrdinalIgnoreCase)) fm[KeyKind] = "todo";
         else fm.Remove(KeyKind);
+        // Likewise only stamp `secure` while the note is actually locked.
+        if (note.Secure) fm[KeySecure] = true;
+        else fm.Remove(KeySecure);
         // Keep the frontmatter clean: only stamp trash keys while actually trashed.
         if (note.Trashed)
         {

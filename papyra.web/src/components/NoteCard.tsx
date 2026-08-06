@@ -171,7 +171,13 @@ export default function NoteCard({ note, variant = 'active', conflictId, conflic
         </button>
       )}
       <h3 className="note-card__title">{title}</h3>
-      {note.body.trim() && (
+      {/* A secure note's body never reaches the client, so there's no snippet to
+          show — a redacted placeholder stands in until it's unlocked. */}
+      {note.secure ? (
+        <p className="note-card__snippet note-card__snippet--locked" aria-label="Locked note">
+          ███ ██████ ████ ███████
+        </p>
+      ) : note.body.trim() && (
         <p className="note-card__snippet">{snippet(note.body)}</p>
       )}
       {note.tags.length > 0 && (

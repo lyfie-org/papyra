@@ -704,12 +704,13 @@ var notes = app.MapGroup("/api/notes").RequireAuthorization().WithTags("Notes");
 notes.MapGet("/", (ClaimsPrincipal user, VaultState state, DateTime? from, DateTime? to) =>
 {
     var snap = state.Snapshot(Uid(user));
-    if (from is null && to is null) return Results.Ok(snap);
     // Inclusive day-range filter (heatmap cell → dashboard filter).
-    var filtered = snap.Where(n =>
-        (from is null || n.Updated.Date >= from.Value.Date) &&
-        (to is null || n.Updated.Date <= to.Value.Date));
-    return Results.Ok(filtered);
+    if (from is not null || to is not null)
+        snap = snap.Where(n =>
+            (from is null || n.Updated.Date >= from.Value.Date) &&
+            (to is null || n.Updated.Date <= to.Value.Date)).ToList();
+    // `secure: true` bodies never ride the list — metadata only.
+    return Results.Ok(snap.Select(RedactSecure));
 })
     .WithSummary("List notes")
     .WithDescription("Returns the caller's notes (metadata + body) from the in-memory vault. Optional from/to filter by last-modified date.");
@@ -718,6 +719,26 @@ notes.MapGet("/", (ClaimsPrincipal user, VaultState state, DateTime? from, DateT
 notes.MapGet("/activity", (ClaimsPrincipal user, VaultState state) =>
     Results.Ok(TemporalActivity.Group(state.Snapshot(Uid(user)).Where(n => !n.Trashed).Select(n => n.Updated))))
     .WithSummary("Note activity heatmap");
+
+// Reveal a `secure: true` note's body. The ONLY route that serves it, and only in
+// exchange for a live biometric unlock token belonging to this same user (see
+// Sprint 17.1). Without one the body is never sent — the gate is server-side, so a
+// bypassed client blur reveals nothing.
+notes.MapGet("/{id}/secure", (
+    string id, ClaimsPrincipal user, HttpRequest request, VaultState state, UnlockTokenStore unlockTokens) =>
+{
+    var uid = Uid(user);
+    var token = request.Headers["X-Unlock-Token"].ToString();
+    if (!unlockTokens.IsValid(token, uid))
+        return Results.Json(new { error = "Unlock required.", code = "locked" },
+            statusCode: StatusCodes.Status401Unauthorized);
+
+    var path = state.PathFor(uid, id);
+    if (path is null || !state.TryGet(uid, path, out var note) || note is null) return Results.NotFound();
+    return Results.Ok(new { note.Id, note.Title, note.Body });
+})
+    .WithSummary("Reveal a secure note's body")
+    .WithDescription("Requires a valid X-Unlock-Token from a successful WebAuthn assertion; 401 otherwise.");
 
 // ── Manual ordering (drag-and-drop) ──────────────────────────────────────────
 // The grid default-sorts by `updated` (recency); a manual drag overrides that by
@@ -773,6 +794,9 @@ notes.MapPut("/{id}", async (
         Archived = body.Archived,
         Body = body.Body ?? string.Empty,
         Kind = string.Equals(body.Kind, "todo", StringComparison.OrdinalIgnoreCase) ? "todo" : "note",
+        // Omitted `secure` keeps whatever the note already had — a client that
+        // doesn't know about the flag must never silently unlock a secure note.
+        Secure = body.Secure ?? prior?.Secure ?? false,
         Updated = DateTime.UtcNow,
     };
 
@@ -1573,8 +1597,10 @@ app.MapGet("/api/search", (string? q, ClaimsPrincipal user, SearchIndexService s
     var results = search.Search(uid, q).Select(hit =>
     {
         var note = state.PathFor(uid, hit.Id) is { } p && state.TryGet(uid, p, out var n) ? n : null;
-        var snippet = note is not null ? search.BuildSnippet(q, note.Body) : string.Empty;
-        return new { id = hit.Id, title = hit.Title, snippet, score = hit.Score };
+        // A secure note stays findable by title, but its body must never leak
+        // through a search snippet — that would defeat the unlock gate.
+        var snippet = note is not null && !note.Secure ? search.BuildSnippet(q, note.Body) : string.Empty;
+        return new { id = hit.Id, title = hit.Title, snippet, score = hit.Score, secure = note?.Secure ?? false };
     }).ToArray();
 
     return Results.Ok(results);
@@ -2004,6 +2030,29 @@ static void ReplaceDirContents(string sourceDir, string targetDir)
         File.Move(file, Path.Combine(targetDir, Path.GetRelativePath(sourceDir, file)), overwrite: true);
 }
 
+// Withhold a secure note's body. Returns a COPY (never mutates the live vault
+// object) with Body blanked, so `secure: true` notes travel as metadata only until
+// the caller proves a biometric unlock. Non-secure notes pass through untouched.
+static Note RedactSecure(Note note)
+{
+    if (!note.Secure) return note;
+    return new Note
+    {
+        Id = note.Id,
+        Title = note.Title,
+        Tags = note.Tags,
+        Color = note.Color,
+        Pinned = note.Pinned,
+        Archived = note.Archived,
+        Kind = note.Kind,
+        Trashed = note.Trashed,
+        TrashedAt = note.TrashedAt,
+        Secure = true,
+        Body = string.Empty, // withheld — see /api/notes/{id}/secure
+        Updated = note.Updated,
+    };
+}
+
 // The JSON body delivered to webhooks for a note event.
 static object WebhookPayload(string eventName, Note note) => new
 {
@@ -2054,7 +2103,9 @@ public sealed record NoteWrite(
     bool Pinned,
     bool Archived,
     string? Body,
-    string? Kind = null);
+    string? Kind = null,
+    // Nullable on purpose: omitted means "leave the existing lock state alone".
+    bool? Secure = null);
 
 // Manual ordering payload: the full desired map of note id → fractional sort key
 // plus the note's mtime at drag time. Replaces the stored order wholesale.

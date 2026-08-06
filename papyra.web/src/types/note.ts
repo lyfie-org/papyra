@@ -12,6 +12,9 @@ export interface Note {
   kind: 'note' | 'todo';
   trashed: boolean;
   trashedAt?: string | null;
+  // YAML `secure: true`. The API withholds the body of a secure note until a
+  // biometric unlock token is presented, so `body` arrives empty until unlocked.
+  secure?: boolean;
   // Last-modified (ISO). Drives the default recency sort and the "edit bumps to
   // top" rule that overrides a stale manual drag position.
   updated: string;

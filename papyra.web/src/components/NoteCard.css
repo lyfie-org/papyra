@@ -238,3 +238,10 @@
   background: var(--accent-bg);
   color: var(--accent-text);
 }
+
+/* Redacted stand-in for a `secure: true` note — the real body isn't in the client. */
+.note-card__snippet--locked {
+  filter: blur(3px);
+  user-select: none;
+  opacity: 0.55;
+}

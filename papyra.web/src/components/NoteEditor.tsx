@@ -13,6 +13,7 @@ import CategoryEditor from './CategoryEditor';
 import GhostCards from './GhostCards';
 import TimeMachineSlider from './TimeMachineSlider';
 import NoteToc from './NoteToc';
+import SecureNoteGate from './SecureNoteGate';
 import { Minimize2, RefreshCw, Volume2, VolumeX } from 'lucide-react';
 import { useFocus } from '../hooks/useFocus';
 import { useAmbient } from '../hooks/useAmbient';
@@ -75,6 +76,11 @@ export default function NoteEditor({ note }: { note: Note }) {
   // explicit "Restore this version" writes to disk.
   const [timeMachine, setTimeMachine] = useState(false);
   const suppressSave = useRef(false);
+  // A `secure: true` note arrives with an empty body — the API withholds it until a
+  // biometric unlock. Until then the canvas is replaced by the gate, so the editor
+  // can never autosave an empty body over the real (locked) content on disk.
+  const [unlocked, setUnlocked] = useState(false);
+  const isLocked = !!note.secure && !unlocked;
 
   // Close the editor modal: persist the draft first so closing never loses edits,
   // then return to the grid. Backdrop click and Escape both route here.
@@ -87,9 +93,11 @@ export default function NoteEditor({ note }: { note: Note }) {
       suppressSave.current = false;
       setTimeMachine(false);
     }
-    await flush();
+    // A still-locked note holds an empty body (withheld server-side) — flushing
+    // would write that emptiness over the real content on disk.
+    if (!isLocked) await flush();
     navigate('/');
-  }, [flush, navigate, timeMachine]);
+  }, [flush, navigate, timeMachine, isLocked]);
 
   // What the editor currently displays — the yardstick for detecting that the
   // server snapshot (refreshed by SignalR invalidation) carries a new revision.
@@ -156,6 +164,9 @@ export default function NoteEditor({ note }: { note: Note }) {
   // so a pin/color/archive flip never clobbers unsaved body/title. Re-baselines
   // the save state so the write doesn't immediately echo back as a dirty change.
   const saveFrontmatter = useCallback(async (patch: Partial<Pick<Note, 'color' | 'pinned' | 'archived' | 'tags' | 'kind'>>) => {
+    // While locked the draft body is the withheld (empty) one — writing it would
+    // destroy the note's real content, so frontmatter edits wait for the unlock.
+    if (isLocked) return;
     const draft = getDraft();
     const res = await fetch(`/api/notes/${encodeURIComponent(note.id)}`, {
       method: 'PUT',
@@ -178,7 +189,7 @@ export default function NoteEditor({ note }: { note: Note }) {
     setBody(draft.body);
     shown.current = { id: note.id, title: draft.title, body: draft.body };
     queryClient.invalidateQueries({ queryKey: ['notes'] });
-  }, [getDraft, note, reset, queryClient]);
+  }, [getDraft, note, reset, queryClient, isLocked]);
 
   // Enter the time machine. Flush any unsaved edits FIRST (so the live draft is on
   // disk and the slider's "Now" matches it), then hard-disable autosave for the
@@ -275,6 +286,9 @@ export default function NoteEditor({ note }: { note: Note }) {
           value={title}
           placeholder="Untitled"
           aria-label="Note title"
+          // Locked notes are read-only until unlocked: a title edit would schedule a
+          // save whose (withheld) body is empty.
+          readOnly={isLocked}
           onChange={(e) => { titleRef.current = e.target.value; setTitle(e.target.value); bump(); }}
         />
         {!focus && (
@@ -323,7 +337,20 @@ export default function NoteEditor({ note }: { note: Note }) {
         />
       )}
 
+      {isLocked && (
+        <SecureNoteGate
+          noteId={note.id}
+          onUnlocked={(revealed) => {
+            // Adopt the revealed body and re-baseline, so the unlock itself is never
+            // mistaken for an edit.
+            applyRemote({ title: note.title, body: revealed });
+            setUnlocked(true);
+          }}
+        />
+      )}
+
       {/* contenteditable input events bubble here → mirror the markdown + mark dirty. */}
+      {!isLocked && (
       <div
         className="note-editor__canvas"
         onInput={() => {
@@ -351,8 +378,9 @@ export default function NoteEditor({ note }: { note: Note }) {
           }}
         />
       </div>
+      )}
 
-      {!focus && <GhostCards noteId={note.id} />}
+      {!focus && !isLocked && <GhostCards noteId={note.id} />}
 
       {recoverOpen && (
         <SnapshotPanel
