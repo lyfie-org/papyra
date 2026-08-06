@@ -1499,6 +1499,63 @@ app.MapPost("/api/import/{provider}", async (
 .RequireAuthorization()
 .DisableAntiforgery();
 
+// Dashboard quick-import: drag one or more .md/.txt files onto the grid. Each becomes
+// a new note immediately (synchronous, small files) — sanitized, titled from the
+// first heading or filename, and written through the atomic markdown engine.
+app.MapPost("/api/import/quick", async (
+    HttpRequest request,
+    ClaimsPrincipal user,
+    VaultState state,
+    MarkdownStorageService storage,
+    WriteRing writeRing,
+    SearchIndexService search,
+    VaultObserverOptions vault,
+    ILoggerFactory loggerFactory,
+    CancellationToken ct) =>
+{
+    if (!request.HasFormContentType) return Results.BadRequest(new { error = "Expected a multipart upload." });
+    var form = await request.ReadFormAsync(ct);
+    if (form.Files.Count == 0) return Results.BadRequest(new { error = "No files." });
+
+    var uid = Uid(user);
+    var notesDir = vault.UserNotesDir(uid);
+    Directory.CreateDirectory(notesDir);
+    var guard = loggerFactory.CreateLogger("PathGuard");
+    const long maxBytes = 2 * 1024 * 1024;
+
+    var imported = new List<object>();
+    foreach (var file in form.Files)
+    {
+        var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
+        if (ext is not (".md" or ".txt") || file.Length == 0 || file.Length > maxBytes) continue;
+
+        string raw;
+        using (var reader = new StreamReader(file.OpenReadStream()))
+            raw = await reader.ReadToEndAsync(ct);
+
+        var body = QuickImport.Sanitize(raw);
+        var id = Guid.NewGuid().ToString();
+        var note = new Note
+        {
+            Id = id,
+            Title = QuickImport.TitleFrom(body, file.FileName),
+            Body = body,
+            Updated = DateTime.UtcNow,
+        };
+
+        var path = PathGuard.ResolveAndVerify(notesDir, $"{id}.md", guard);
+        writeRing.Mark(path);
+        await storage.WriteAsync(path, note, ct);
+        state.Upsert(uid, path, note);
+        search.IndexNote(uid, note);
+        imported.Add(new { id, note.Title });
+    }
+
+    return Results.Ok(new { imported });
+})
+.RequireAuthorization()
+.DisableAntiforgery();
+
 app.MapGet("/api/export", (
     ClaimsPrincipal user,
     IConfiguration config,
