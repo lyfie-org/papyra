@@ -149,6 +149,9 @@ builder.Services.AddFido2(options =>
 builder.Services.AddSingleton<EmbeddingService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<EmbeddingService>());
 
+// Retrieval-augmented chat over the vault (local Ollama LLM + the vector cache).
+builder.Services.AddSingleton<RagChatService>();
+
 // Pending challenges + unlock tokens outlive a request, so they're singletons; the
 // service itself is scoped because IFido2 and the DbContext are.
 builder.Services.AddSingleton<WebAuthnChallengeStore>();
@@ -1636,6 +1639,48 @@ app.MapGet("/api/search/semantic", async (
     }));
 }).RequireAuthorization();
 
+// ── Conversational RAG ────────────────────────────────────────────────────────
+// Ask a question of your own notes. The prompt is embedded, the closest chunks are
+// retrieved, and a local LLM answers grounded in them. Responds as newline-delimited
+// JSON so the client can render citations immediately and stream the answer:
+//   {"type":"citations", ...} → {"type":"token", ...}* → {"type":"done"}
+// Secure notes are never embedded, so they can never be retrieved into an answer.
+app.MapPost("/api/ai/chat", async (
+    AiChatRequest body, ClaimsPrincipal user, RagChatService rag, HttpContext http, CancellationToken ct) =>
+{
+    var question = body.Question?.Trim();
+    if (string.IsNullOrWhiteSpace(question))
+        return Results.BadRequest(new { error = "A question is required." });
+
+    var citations = await rag.RetrieveAsync(Uid(user), question, ct);
+
+    http.Response.ContentType = "application/x-ndjson";
+    var writer = new StreamWriter(http.Response.Body);
+
+    await writer.WriteLineAsync(JsonSerializer.Serialize(new
+    {
+        type = "citations",
+        citations = citations.Select(c => new { noteId = c.NoteId, title = c.Title, snippet = c.Snippet, score = c.Score }),
+    }));
+    await writer.FlushAsync(ct);
+
+    var any = false;
+    await foreach (var token in rag.StreamAnswerAsync(question, citations, ct))
+    {
+        any = true;
+        await writer.WriteLineAsync(JsonSerializer.Serialize(new { type = "token", value = token }));
+        await writer.FlushAsync(ct); // flush per token so the UI streams
+    }
+
+    // No tokens at all means the local model wasn't reachable — say so plainly
+    // rather than leaving the client with an empty answer.
+    await writer.WriteLineAsync(JsonSerializer.Serialize(
+        any ? new { type = "done", error = (string?)null }
+            : new { type = "done", error = (string?)"The local model is unavailable." }));
+    await writer.FlushAsync(ct);
+    return Results.Empty;
+}).RequireAuthorization();
+
 // Rebuild the whole semantic index from the vault (vectors are a disposable cache).
 app.MapPost("/api/system/rebuild-embeddings", (
     ClaimsPrincipal user, VaultState state, EmbeddingService embeddings) =>
@@ -2205,6 +2250,9 @@ public sealed record SmartCollectionWrite(string? Name, string? RulesJson);
 // WebAuthn enrolment: the browser's attestation response + a friendly device label.
 public sealed record WebAuthnRegisterRequest(
     Fido2NetLib.AuthenticatorAttestationRawResponse? Response, string? Name);
+
+// A question asked of the vault via retrieval-augmented chat.
+public sealed record AiChatRequest(string? Question);
 
 // WebAuthn unlock: the browser's assertion response.
 public sealed record WebAuthnAssertRequest(Fido2NetLib.AuthenticatorAssertionRawResponse? Response);

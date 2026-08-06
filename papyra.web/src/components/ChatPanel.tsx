@@ -1,0 +1,130 @@
+import { useRef, useState } from 'react';
+import { Link } from 'react-router-dom';
+import { X, Sparkles, CornerDownLeft } from 'lucide-react';
+import './ChatPanel.css';
+
+interface Citation {
+  noteId: string;
+  title: string;
+  snippet: string;
+  score: number;
+}
+
+// Ask-your-notes side panel. Streams a locally-generated answer over NDJSON and
+// shows the notes it was grounded in, each linking back to the source. Everything
+// runs on the local Ollama model — nothing leaves the machine.
+export default function ChatPanel({ onClose }: { onClose: () => void }) {
+  const [question, setQuestion] = useState('');
+  const [asked, setAsked] = useState<string | null>(null);
+  const [answer, setAnswer] = useState('');
+  const [citations, setCitations] = useState<Citation[]>([]);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const answerRef = useRef<HTMLDivElement | null>(null);
+
+  async function ask(e: React.FormEvent) {
+    e.preventDefault();
+    const q = question.trim();
+    if (!q || busy) return;
+
+    setBusy(true);
+    setError(null);
+    setAnswer('');
+    setCitations([]);
+    setAsked(q);
+    setQuestion('');
+
+    try {
+      const res = await fetch('/api/ai/chat', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ question: q }),
+      });
+      if (!res.ok || !res.body) throw new Error('Could not reach the assistant.');
+
+      // NDJSON: citations first, then a token frame per fragment, then done.
+      const reader = res.body.getReader();
+      const decoder = new TextDecoder();
+      let buffer = '';
+      for (;;) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop() ?? ''; // keep the partial line for the next chunk
+        for (const line of lines) {
+          if (!line.trim()) continue;
+          const frame = JSON.parse(line);
+          if (frame.type === 'citations') setCitations(frame.citations ?? []);
+          else if (frame.type === 'token') {
+            setAnswer((a) => a + frame.value);
+            answerRef.current?.scrollTo({ top: answerRef.current.scrollHeight });
+          } else if (frame.type === 'done' && frame.error) setError(frame.error);
+        }
+      }
+    } catch {
+      setError('Could not reach the assistant.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <aside className="chat-panel" aria-label="Ask your notes">
+      <header className="chat-panel__head">
+        <h2 className="chat-panel__title"><Sparkles size={16} /> Ask your notes</h2>
+        <button type="button" className="chat-panel__close" aria-label="Close assistant" onClick={onClose}>
+          <X size={16} />
+        </button>
+      </header>
+
+      <div className="chat-panel__body" ref={answerRef}>
+        {asked === null && (
+          <p className="chat-panel__empty">
+            Ask a question and Papyra will answer from your own notes — locally, on this machine.
+          </p>
+        )}
+
+        {asked !== null && <p className="chat-panel__question">{asked}</p>}
+
+        {error && <p className="chat-panel__error" role="alert">{error}</p>}
+
+        {(answer || busy) && (
+          <div className="chat-panel__answer">
+            {answer}
+            {busy && <span className="chat-panel__caret" aria-hidden="true" />}
+          </div>
+        )}
+
+        {citations.length > 0 && (
+          <div className="chat-panel__citations">
+            <h3>Sources</h3>
+            <ul>
+              {citations.map((c) => (
+                <li key={c.noteId}>
+                  <Link to={`/note/${encodeURIComponent(c.noteId)}`} onClick={onClose}>
+                    {c.title || 'Untitled'}
+                  </Link>
+                  <span className="chat-panel__score">{Math.round(c.score * 100)}%</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+      </div>
+
+      <form className="chat-panel__form" onSubmit={ask}>
+        <input
+          className="chat-panel__input"
+          placeholder="What did I write about…?"
+          value={question}
+          onChange={(e) => setQuestion(e.target.value)}
+          aria-label="Your question"
+        />
+        <button type="submit" className="chat-panel__send" disabled={busy || !question.trim()}>
+          <CornerDownLeft size={15} />
+        </button>
+      </form>
+    </aside>
+  );
+}

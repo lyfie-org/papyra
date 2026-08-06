@@ -3,8 +3,9 @@ import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   Menu, StickyNote, ListTodo, Tags, Archive, Settings, Trash2,
-  User, Shield, LogOut, Sun, Moon, Share2, Layers,
+  User, Shield, LogOut, Sun, Moon, Share2, Layers, Sparkles,
 } from 'lucide-react';
+import ChatPanel from '../components/ChatPanel';
 import { useTheme } from '../hooks/useTheme';
 import { useSignalR } from '../hooks/useSignalR';
 import { useAuth } from '../hooks/useAuth';
@@ -28,6 +29,7 @@ export default function WorkspaceLayout() {
   const queryClient = useQueryClient();
   const [collapsed, setCollapsed] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [chatOpen, setChatOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const serverStatus = useSignalR();
 
@@ -69,6 +71,16 @@ export default function WorkspaceLayout() {
           <span className="workspace__wordmark">Papyra</span>
         </div>
         <div className="workspace__nav-actions">
+          <button
+            type="button"
+            className="workspace__theme-toggle"
+            onClick={() => setChatOpen(o => !o)}
+            aria-label="Ask your notes"
+            title="Ask your notes"
+            aria-expanded={chatOpen}
+          >
+            <Sparkles size={18} />
+          </button>
           <button
             type="button"
             className="workspace__theme-toggle"
@@ -160,6 +172,8 @@ export default function WorkspaceLayout() {
           <Outlet />
         </main>
       </div>
+
+      {chatOpen && <ChatPanel onClose={() => setChatOpen(false)} />}
     </div>
   );
 }
