@@ -125,6 +125,11 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<WebArchiverService
 builder.Services.AddSingleton<WebhookDispatcherService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<WebhookDispatcherService>());
 
+// Native git sync of the notes vault. Singleton so the manual-trigger endpoint runs
+// the same instance as the background loop. Idle until a remote is configured.
+builder.Services.AddSingleton<GitSyncService>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<GitSyncService>());
+
 // Background import queue: drains uploaded Obsidian/Keep archives into the vault
 // off the request thread, pushing progress over SignalR. Singleton so the endpoint
 // can Enqueue onto the same instance the hosted worker drains.
@@ -942,6 +947,52 @@ webhooksApi.MapDelete("/{id:int}", async (int id, ClaimsPrincipal user, AppDbCon
     db.Webhooks.Remove(hook);
     await db.SaveChangesAsync(ct);
     return Results.NoContent();
+});
+
+// ── Git sync (admin) ──────────────────────────────────────────────────────────────
+// Configure + trigger native git backup of the notes vault. Admin-only. The token is
+// stored in the clear (git auth needs the raw PAT) and never returned; the read shows
+// only whether one is set, plus the last-sync/conflict status.
+var gitApi = app.MapGroup("/api/git").RequireAuthorization(p => p.RequireRole("Admin")).WithTags("Git");
+
+gitApi.MapGet("/", async (AppDbContext db, CancellationToken ct) =>
+{
+    var settings = await db.Settings
+        .Where(s => s.Key.StartsWith("git."))
+        .ToDictionaryAsync(s => s.Key, s => s.Value, ct);
+    string? Get(string k) => settings.GetValueOrDefault(k);
+    return Results.Ok(new
+    {
+        remoteUrl = Get("git.remoteUrl") ?? string.Empty,
+        branch = string.IsNullOrWhiteSpace(Get("git.branch")) ? "main" : Get("git.branch"),
+        hasToken = !string.IsNullOrEmpty(Get("git.token")),
+        conflict = Get("git.conflict") == "true",
+        lastSyncUtc = string.IsNullOrEmpty(Get("git.lastSyncUtc")) ? null : Get("git.lastSyncUtc"),
+        lastError = string.IsNullOrEmpty(Get("git.lastError")) ? null : Get("git.lastError"),
+    });
+});
+
+gitApi.MapPut("/", async (GitConfigWrite body, AppDbContext db, CancellationToken ct) =>
+{
+    async Task Set(string key, string value)
+    {
+        var row = await db.Settings.FindAsync([key], ct);
+        if (row is null) db.Settings.Add(new AppSetting { Key = key, Value = value });
+        else row.Value = value;
+    }
+
+    await Set("git.remoteUrl", body.RemoteUrl?.Trim() ?? string.Empty);
+    await Set("git.branch", string.IsNullOrWhiteSpace(body.Branch) ? "main" : body.Branch.Trim());
+    // Only overwrite the token when one is supplied, so saving config doesn't wipe it.
+    if (body.Token is not null) await Set("git.token", body.Token.Trim());
+    await db.SaveChangesAsync(ct);
+    return Results.NoContent();
+});
+
+gitApi.MapPost("/sync", async (GitSyncService git, CancellationToken ct) =>
+{
+    var result = await git.SyncOnceAsync(ct);
+    return Results.Ok(new { result.Status, result.Detail });
 });
 
 // ── Settings (trash retention) ───────────────────────────────────────────────────
@@ -1874,6 +1925,9 @@ public sealed record ApiKeyWrite(string? Name);
 // Webhook registration: which event, the target URL, and an optional shared secret
 // (one is generated + returned once if omitted).
 public sealed record WebhookWrite(string? Event, string? Url, string? Secret);
+
+// Git-sync config. Token is write-only (null leaves the stored one untouched).
+public sealed record GitConfigWrite(string? RemoteUrl, string? Branch, string? Token);
 
 // Encrypted-backup generation payload: the account password (verified, then reused
 // as the vault encryption secret).
