@@ -1,5 +1,6 @@
 using System.Security;
 using System.Security.Claims;
+using System.Text.Json;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.Http;
@@ -908,6 +909,75 @@ keys.MapDelete("/{id:int}", async (int id, ClaimsPrincipal user, AppDbContext db
     db.ApiKeys.Remove(key);
     await db.SaveChangesAsync(ct);
     return Results.NoContent();
+});
+
+// ── Smart collections (saved searches) ────────────────────────────────────────────
+// A collection is a named AND/OR rule set evaluated live against the vault. Notes are
+// never moved — they stay on the main feed; a collection is just a view.
+// Rules arrive as camelCase JSON from the rule builder.
+var JsonOpts = new JsonSerializerOptions(JsonSerializerDefaults.Web);
+var collections = app.MapGroup("/api/collections").RequireAuthorization().WithTags("Collections");
+
+collections.MapGet("/", async (ClaimsPrincipal user, AppDbContext db, CancellationToken ct) =>
+{
+    var uid = int.Parse(Uid(user));
+    return Results.Ok(await db.SmartCollections
+        .Where(c => c.UserId == uid)
+        .OrderBy(c => c.Name)
+        .Select(c => new { c.Id, c.Name, c.RulesJson, c.CreatedUtc })
+        .ToListAsync(ct));
+});
+
+collections.MapPost("/", async (SmartCollectionWrite body, ClaimsPrincipal user, AppDbContext db, CancellationToken ct) =>
+{
+    var name = body.Name?.Trim();
+    if (string.IsNullOrWhiteSpace(name)) return Results.BadRequest(new { error = "Name is required." });
+
+    // Validate the rules round-trip before persisting so a collection can't be saved broken.
+    SmartRules? rules;
+    try { rules = JsonSerializer.Deserialize<SmartRules>(body.RulesJson ?? "", JsonOpts); }
+    catch (JsonException) { return Results.BadRequest(new { error = "rulesJson is not valid JSON." }); }
+    if (rules?.Conditions is null || rules.Conditions.Count == 0)
+        return Results.BadRequest(new { error = "At least one condition is required." });
+
+    var collection = new SmartCollection
+    {
+        UserId = int.Parse(Uid(user)),
+        Name = name,
+        RulesJson = body.RulesJson!,
+        CreatedUtc = DateTime.UtcNow,
+    };
+    db.SmartCollections.Add(collection);
+    await db.SaveChangesAsync(ct);
+    return Results.Ok(new { collection.Id, collection.Name, collection.RulesJson, collection.CreatedUtc });
+});
+
+collections.MapDelete("/{id:int}", async (int id, ClaimsPrincipal user, AppDbContext db, CancellationToken ct) =>
+{
+    var uid = int.Parse(Uid(user));
+    var collection = await db.SmartCollections.FirstOrDefaultAsync(c => c.Id == id && c.UserId == uid, ct);
+    if (collection is null) return Results.NotFound();
+    db.SmartCollections.Remove(collection);
+    await db.SaveChangesAsync(ct);
+    return Results.NoContent();
+});
+
+// Run a saved collection: evaluate its rules over the live vault.
+collections.MapGet("/{id:int}/notes", async (
+    int id, ClaimsPrincipal user, AppDbContext db, VaultState state, CancellationToken ct) =>
+{
+    var uid = Uid(user);
+    var collection = await db.SmartCollections
+        .FirstOrDefaultAsync(c => c.Id == id && c.UserId == int.Parse(uid), ct);
+    if (collection is null) return Results.NotFound();
+
+    SmartRules? rules;
+    try { rules = JsonSerializer.Deserialize<SmartRules>(collection.RulesJson, JsonOpts); }
+    catch (JsonException) { return Results.BadRequest(new { error = "Stored rules are invalid." }); }
+    if (rules is null) return Results.Ok(Array.Empty<Note>());
+
+    return Results.Ok(state.Snapshot(uid)
+        .Where(n => !n.Trashed && SmartCollectionEvaluator.Matches(n, rules)));
 });
 
 // ── Webhooks (event-driven outbound) ──────────────────────────────────────────────
@@ -1941,6 +2011,9 @@ public sealed record WebhookWrite(string? Event, string? Url, string? Secret);
 
 // Git-sync config. Token is write-only (null leaves the stored one untouched).
 public sealed record GitConfigWrite(string? RemoteUrl, string? Branch, string? Token);
+
+// Smart-collection creation: a display name + the serialized AND/OR rule set.
+public sealed record SmartCollectionWrite(string? Name, string? RulesJson);
 
 // Encrypted-backup generation payload: the account password (verified, then reused
 // as the vault encryption secret).

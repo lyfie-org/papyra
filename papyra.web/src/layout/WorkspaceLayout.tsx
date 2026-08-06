@@ -3,7 +3,7 @@ import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   Menu, StickyNote, ListTodo, Tags, Archive, Settings, Trash2,
-  User, Shield, LogOut, Sun, Moon, Share2,
+  User, Shield, LogOut, Sun, Moon, Share2, Layers,
 } from 'lucide-react';
 import { useTheme } from '../hooks/useTheme';
 import { useSignalR } from '../hooks/useSignalR';
@@ -15,6 +15,7 @@ const NAV_ITEMS = [
   { to: '/', label: 'Notes', icon: StickyNote, end: true },
   { to: '/todo', label: 'To Do', icon: ListTodo, end: false },
   { to: '/categories', label: 'Categories', icon: Tags, end: false },
+  { to: '/collections', label: 'Collections', icon: Layers, end: false },
   { to: '/shared-with-me', label: 'Shared', icon: Share2, end: false },
   { to: '/archive', label: 'Archive', icon: Archive, end: false },
   { to: '/settings', label: 'Settings', icon: Settings, end: false },

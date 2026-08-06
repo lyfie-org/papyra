@@ -4,6 +4,7 @@ import NotesPage from './pages/NotesPage';
 import NoteEditorPage from './pages/NoteEditorPage';
 import TodoPage from './pages/TodoPage';
 import CategoriesPage from './pages/CategoriesPage';
+import CollectionsPage from './pages/CollectionsPage';
 import ArchivePage from './pages/ArchivePage';
 import TrashPage from './pages/TrashPage';
 import SettingsPage from './pages/SettingsPage';
@@ -45,6 +46,7 @@ export default function App() {
         </Route>
         <Route path="todo" element={<TodoPage />} />
         <Route path="categories" element={<CategoriesPage />} />
+        <Route path="collections" element={<CollectionsPage />} />
         <Route path="shared-with-me" element={<SharedWithMePage />} />
         <Route path="archive" element={<ArchivePage />} />
         <Route path="trash" element={<TrashPage />} />
