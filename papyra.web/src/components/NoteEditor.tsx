@@ -13,6 +13,9 @@ import CategoryEditor from './CategoryEditor';
 import GhostCards from './GhostCards';
 import TimeMachineSlider from './TimeMachineSlider';
 import NoteToc from './NoteToc';
+import { Minimize2, RefreshCw, Volume2, VolumeX } from 'lucide-react';
+import { useFocus } from '../hooks/useFocus';
+import { useAmbient } from '../hooks/useAmbient';
 import './NoteEditor.css';
 
 const STATUS_LABEL = {
@@ -31,6 +34,11 @@ export default function NoteEditor({ note }: { note: Note }) {
   const editorRef = useRef<PapyraEditorRef | null>(null);
   // The scrolling editor panel — the ghost TOC measures heading offsets against it.
   const editorScrollRef = useRef<HTMLElement>(null);
+  // Distraction-free focus mode (shared with the SignalR bridge, which buffers
+  // updates while focused). Aliased to avoid clashing with the conflict-banner
+  // `pending` state below.
+  const { focus, pending: pendingUpdates, enter: enterFocus, exit: exitFocus, flush: flushUpdates } = useFocus();
+  const ambient = useAmbient();
 
   // The host seam: media GET/upload → /api/media, [[ search → notes cache,
   // wikilink activation → router push. Rebuilt only when the open note or the
@@ -134,13 +142,15 @@ export default function NoteEditor({ note }: { note: Note }) {
   // banner claim the key first so it doesn't yank the user out unexpectedly.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      // Let an open sub-panel (recovery, time machine) or the conflict banner claim
-      // Escape first, so it doesn't yank the user out of the editor unexpectedly.
-      if (e.key === 'Escape' && !recoverOpen && !pending && !timeMachine) void close();
+      if (e.key !== 'Escape') return;
+      // Escape exits focus mode first (not the editor); otherwise let an open
+      // sub-panel or the conflict banner claim it before closing the editor.
+      if (focus) { exitFocus(); return; }
+      if (!recoverOpen && !pending && !timeMachine) void close();
     };
     window.addEventListener('keydown', onKey);
     return () => window.removeEventListener('keydown', onKey);
-  }, [close, recoverOpen, pending, timeMachine]);
+  }, [close, recoverOpen, pending, timeMachine, focus, exitFocus]);
 
   // Toolbar frontmatter mutation: PUT the live draft plus the changed YAML field,
   // so a pin/color/archive flip never clobbers unsaved body/title. Re-baselines
@@ -224,18 +234,40 @@ export default function NoteEditor({ note }: { note: Note }) {
 
   return (
     <div
-      className="note-modal"
-      onMouseDown={(e) => { if (e.target === e.currentTarget) void close(); }}
+      className={`note-modal${focus ? ' note-modal--focus' : ''}`}
+      onMouseDown={(e) => { if (!focus && e.target === e.currentTarget) void close(); }}
     >
     <section
       ref={editorScrollRef}
-      className={`note-editor${colored ? ' note-editor--colored' : ''}`}
+      className={`note-editor${colored ? ' note-editor--colored' : ''}${focus ? ' note-editor--focus' : ''}`}
       style={style}
       role="dialog"
       aria-modal="true"
       onMouseDown={(e) => e.stopPropagation()}
     >
-      <NoteToc scrollRef={editorScrollRef} />
+      {focus && (
+        <div className="note-editor__focusbar">
+          {pendingUpdates > 0 && (
+            <button type="button" className="note-editor__pending" onClick={() => flushUpdates()}>
+              <RefreshCw size={14} /> {pendingUpdates} new update{pendingUpdates > 1 ? 's' : ''} pending
+            </button>
+          )}
+          <button
+            type="button"
+            className="note-editor__focusbtn"
+            aria-pressed={ambient.playing}
+            aria-label={ambient.playing ? 'Mute ambient audio' : 'Play ambient audio'}
+            onClick={ambient.toggle}
+          >
+            {ambient.playing ? <Volume2 size={16} /> : <VolumeX size={16} />}
+          </button>
+          <button type="button" className="note-editor__focusbtn" aria-label="Exit focus mode" onClick={exitFocus}>
+            <Minimize2 size={16} />
+          </button>
+        </div>
+      )}
+
+      {!focus && <NoteToc scrollRef={editorScrollRef} />}
 
       <header className="note-editor__bar">
         <input
@@ -245,26 +277,31 @@ export default function NoteEditor({ note }: { note: Note }) {
           aria-label="Note title"
           onChange={(e) => { titleRef.current = e.target.value; setTitle(e.target.value); bump(); }}
         />
-        <span className="note-editor__status" role="status">
-          {STATUS_LABEL[status]}
-        </span>
-        <NoteToolbar
-          pinned={note.pinned}
-          color={note.color}
-          isTodo={note.kind === 'todo'}
-          onTogglePin={() => void saveFrontmatter({ pinned: !note.pinned })}
-          onToggleTodo={() => void saveFrontmatter({ kind: note.kind === 'todo' ? 'note' : 'todo' })}
-          onPickColor={(c) => void saveFrontmatter({ color: c })}
-          onRecover={() => setRecoverOpen(true)}
-          onTimeMachine={() => void openTimeMachine()}
-          onArchive={() => { void saveFrontmatter({ archived: true }); navigate('/'); }}
-          onTrash={() => {
-            if (confirm('Delete this note? This permanently removes the .md file.')) void trash();
-          }}
-        />
+        {!focus && (
+          <>
+            <span className="note-editor__status" role="status">
+              {STATUS_LABEL[status]}
+            </span>
+            <NoteToolbar
+              pinned={note.pinned}
+              color={note.color}
+              isTodo={note.kind === 'todo'}
+              onTogglePin={() => void saveFrontmatter({ pinned: !note.pinned })}
+              onToggleTodo={() => void saveFrontmatter({ kind: note.kind === 'todo' ? 'note' : 'todo' })}
+              onPickColor={(c) => void saveFrontmatter({ color: c })}
+              onRecover={() => setRecoverOpen(true)}
+              onTimeMachine={() => void openTimeMachine()}
+              onFocus={enterFocus}
+              onArchive={() => { void saveFrontmatter({ archived: true }); navigate('/'); }}
+              onTrash={() => {
+                if (confirm('Delete this note? This permanently removes the .md file.')) void trash();
+              }}
+            />
+          </>
+        )}
       </header>
 
-      <CategoryEditor tags={note.tags} onChange={(tags) => void saveFrontmatter({ tags })} />
+      {!focus && <CategoryEditor tags={note.tags} onChange={(tags) => void saveFrontmatter({ tags })} />}
 
       {pending && (
         <div className="note-editor__conflict" role="alert">
@@ -315,7 +352,7 @@ export default function NoteEditor({ note }: { note: Note }) {
         />
       </div>
 
-      <GhostCards noteId={note.id} />
+      {!focus && <GhostCards noteId={note.id} />}
 
       {recoverOpen && (
         <SnapshotPanel

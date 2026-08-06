@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Pin, Palette, History, Archive, Trash2, ListTodo, Rewind } from 'lucide-react';
+import { Pin, Palette, History, Archive, Trash2, ListTodo, Rewind, Maximize2 } from 'lucide-react';
 import PalettePicker from './PalettePicker';
 import './NoteToolbar.css';
 
@@ -15,6 +15,7 @@ interface Props {
   onPickColor: (color: string | null) => void;
   onRecover: () => void;
   onTimeMachine: () => void;
+  onFocus: () => void;
   onArchive: () => void;
   onTrash: () => void;
 }
@@ -28,6 +29,7 @@ export default function NoteToolbar({
   onPickColor,
   onRecover,
   onTimeMachine,
+  onFocus,
   onArchive,
   onTrash,
 }: Props) {
@@ -92,6 +94,15 @@ export default function NoteToolbar({
         onClick={onTimeMachine}
       >
         <Rewind size={18} />
+      </button>
+
+      <button
+        type="button"
+        className="note-toolbar__btn"
+        aria-label="Focus mode"
+        onClick={onFocus}
+      >
+        <Maximize2 size={18} />
       </button>
 
       <button

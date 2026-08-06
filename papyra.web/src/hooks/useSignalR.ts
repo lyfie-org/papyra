@@ -1,14 +1,17 @@
 import { useEffect, useState } from 'react';
 import { HubConnectionBuilder, HubConnectionState, type HubConnection } from '@microsoft/signalr';
 import { useQueryClient } from '@tanstack/react-query';
+import { useFocus } from './useFocus';
 
 export type ServerStatus = 'online' | 'offline';
 
 // Global real-time bridge: connect to /hubs/notes, and on any external note event
-// invalidate the notes query so the grid re-hydrates. The connection state drives
-// the sidebar "Server Online/Offline" telemetry dot.
+// refresh the grid. In focus mode the refresh is buffered (see useFocus) so a remote
+// sync never re-hydrates the grid mid-edit. The connection state drives the sidebar
+// "Server Online/Offline" telemetry dot.
 export function useSignalR(): ServerStatus {
   const queryClient = useQueryClient();
+  const { onExternalUpdate } = useFocus();
   const [status, setStatus] = useState<ServerStatus>('offline');
 
   useEffect(() => {
@@ -17,12 +20,12 @@ export function useSignalR(): ServerStatus {
       .withAutomaticReconnect()
       .build();
 
-    const invalidate = () => queryClient.invalidateQueries({ queryKey: ['notes'] });
     const invalidateConflicts = () => queryClient.invalidateQueries({ queryKey: ['conflicts'] });
 
-    connection.on('NoteCreated', invalidate);
-    connection.on('NoteUpdated', invalidate);
-    connection.on('NoteDeleted', invalidate);
+    // Note events go through the focus buffer; conflicts always refresh their banner.
+    connection.on('NoteCreated', onExternalUpdate);
+    connection.on('NoteUpdated', onExternalUpdate);
+    connection.on('NoteDeleted', onExternalUpdate);
     // Sync conflict copies appear/resolve out of band; refresh the grid banners.
     connection.on('NoteConflict', invalidateConflicts);
     connection.on('ConflictResolved', invalidateConflicts);
@@ -47,7 +50,7 @@ export function useSignalR(): ServerStatus {
         void connection.stop();
       }
     };
-  }, [queryClient]);
+  }, [queryClient, onExternalUpdate]);
 
   return status;
 }

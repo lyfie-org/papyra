@@ -12,6 +12,7 @@ import SharedNotePage from './pages/SharedNotePage';
 import LoginPage from './pages/LoginPage';
 import SetupPage from './pages/SetupPage';
 import { useAuth } from './hooks/useAuth';
+import { FocusProvider } from './hooks/useFocus';
 import './App.css';
 
 // Gate the workspace behind a live session. The /me probe decides where an
@@ -22,7 +23,11 @@ function RequireAuth() {
   if (state === 'setup') return <Navigate to="/setup" replace />;
   if (state === 'login') return <Navigate to="/login" replace />;
   if (state === 'error') return <div className="app-bootstrap">Couldn’t reach the server.</div>;
-  return <WorkspaceLayout />;
+  return (
+    <FocusProvider>
+      <WorkspaceLayout />
+    </FocusProvider>
+  );
 }
 
 export default function App() {

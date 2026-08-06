@@ -80,6 +80,80 @@
   font-family: 'Sora', sans-serif;
 }
 
+/* ── Focus (distraction-free) mode ─────────────────────────────────────────────
+   The modal fills the viewport, chrome is unmounted, and the measure widens with
+   more generous line spacing. */
+.note-modal--focus {
+  padding: 0;
+  background: var(--bg);
+  backdrop-filter: none;
+}
+
+.note-editor--focus {
+  max-width: min(48rem, 92vw);
+  max-height: 100vh;
+  min-height: 100vh;
+  border-radius: 0;
+  padding: 3.5rem clamp(1rem, 6vw, 4rem) 6rem;
+  box-shadow: none;
+}
+
+.note-editor--focus .note-editor__title {
+  font-size: 2.1rem;
+  margin-bottom: 0.5rem;
+}
+
+.note-editor--focus .note-editor__canvas {
+  font-size: 1.075rem;
+  line-height: 1.9;
+}
+
+/* Floating controls in the top-right while focused. */
+.note-editor__focusbar {
+  position: sticky;
+  top: 0;
+  z-index: 4;
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  height: 0;
+}
+
+.note-editor__focusbtn {
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--surface) 85%, transparent);
+  color: var(--text);
+  cursor: pointer;
+  transition: color 0.15s ease, border-color 0.15s ease;
+}
+.note-editor__focusbtn:hover { color: var(--text-h); border-color: var(--accent); }
+.note-editor__focusbtn[aria-pressed='true'] { color: var(--accent); border-color: var(--accent); }
+
+.note-editor__pending {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.7rem;
+  border: 1px solid var(--accent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 22%, transparent);
+  color: var(--text-h);
+  font-family: 'Sora', sans-serif;
+  font-size: 0.78rem;
+  cursor: pointer;
+}
+.note-editor__focusbtn:focus-visible,
+.note-editor__pending:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 /* Inline category (tag) editor under the title bar. */
 .note-cats {
   display: flex;
