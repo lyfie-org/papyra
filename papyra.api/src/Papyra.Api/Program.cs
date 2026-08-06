@@ -144,6 +144,11 @@ builder.Services.AddFido2(options =>
         ?? ["http://localhost:5173", "http://localhost:5220"];
     options.Origins = origins.ToHashSet();
 });
+// Local semantic index: chunks + embeds notes via Ollama into the SQLite vector
+// cache. Singleton so the note-write endpoint enqueues onto the worker's instance.
+builder.Services.AddSingleton<EmbeddingService>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<EmbeddingService>());
+
 // Pending challenges + unlock tokens outlive a request, so they're singletons; the
 // service itself is scoped because IFido2 and the DbContext are.
 builder.Services.AddSingleton<WebAuthnChallengeStore>();
@@ -768,6 +773,7 @@ notes.MapPut("/{id}", async (
     SnapshotService snapshots,
     WebArchiverService archiver,
     WebhookDispatcherService webhooks,
+    EmbeddingService embeddings,
     VaultObserverOptions vault,
     IConfiguration config,
     IHostEnvironment env,
@@ -811,6 +817,10 @@ notes.MapPut("/{id}", async (
     search.IndexNote(uid, note); // watcher skips our own write echo, so index here
 
     archiver.Enqueue(uid, id, note.Body); // background-archive any new URLs in the body
+
+    // Re-embed for semantic search — but never a secure note: its chunks would sit
+    // in the vector cache as plaintext, outside the unlock gate.
+    if (!note.Secure) embeddings.Enqueue(uid, id, note.Body);
 
     // Fire webhook events off the diff against the prior revision.
     if (prior is null)
@@ -1604,6 +1614,40 @@ app.MapGet("/api/search", (string? q, ClaimsPrincipal user, SearchIndexService s
     }).ToArray();
 
     return Results.Ok(results);
+}).RequireAuthorization();
+
+// ── Semantic search (local embeddings) ────────────────────────────────────────
+// Meaning-based retrieval: the query is embedded and compared by cosine similarity
+// against the note chunks, so "marketing spend" can surface an "Advertising budget"
+// note that shares no keywords. Falls back to nothing when Ollama is absent —
+// callers should keep using /api/search for keyword results.
+app.MapGet("/api/search/semantic", async (
+    string? q, int? take, ClaimsPrincipal user, EmbeddingService embeddings,
+    VaultState state, CancellationToken ct) =>
+{
+    if (string.IsNullOrWhiteSpace(q)) return Results.Ok(Array.Empty<object>());
+
+    var uid = Uid(user);
+    var hits = await embeddings.SearchAsync(uid, q, Math.Clamp(take ?? 5, 1, 25), ct);
+    return Results.Ok(hits.Select(h =>
+    {
+        var note = state.PathFor(uid, h.NoteId) is { } p && state.TryGet(uid, p, out var n) ? n : null;
+        return new { id = h.NoteId, title = note?.Title ?? string.Empty, snippet = h.Text, score = h.Score };
+    }));
+}).RequireAuthorization();
+
+// Rebuild the whole semantic index from the vault (vectors are a disposable cache).
+app.MapPost("/api/system/rebuild-embeddings", (
+    ClaimsPrincipal user, VaultState state, EmbeddingService embeddings) =>
+{
+    var uid = Uid(user);
+    var queued = 0;
+    foreach (var note in state.Snapshot(uid).Where(n => !n.Trashed && !n.Secure))
+    {
+        embeddings.Enqueue(uid, note.Id, note.Body);
+        queued++;
+    }
+    return Results.Ok(new { queued });
 }).RequireAuthorization();
 
 // ── System: nuclear index rebuild ──────────────────────────────────────────────
