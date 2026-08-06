@@ -131,6 +131,25 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<WebhookDispatcherS
 builder.Services.AddSingleton<GitSyncService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<GitSyncService>());
 
+// ── WebAuthn (biometric gatekeeper) ─────────────────────────────────────────────
+// Relying-party identity for platform authenticators. ServerDomain must be the bare
+// host (no scheme/port); Origins must list every origin the SPA is served from — in
+// dev that includes the Vite port. All signature/challenge/origin verification is
+// delegated to Fido2NetLib.
+builder.Services.AddFido2(options =>
+{
+    options.ServerDomain = builder.Configuration["WebAuthn:ServerDomain"] ?? "localhost";
+    options.ServerName = "Papyra";
+    var origins = builder.Configuration.GetSection("WebAuthn:Origins").Get<string[]>()
+        ?? ["http://localhost:5173", "http://localhost:5220"];
+    options.Origins = origins.ToHashSet();
+});
+// Pending challenges + unlock tokens outlive a request, so they're singletons; the
+// service itself is scoped because IFido2 and the DbContext are.
+builder.Services.AddSingleton<WebAuthnChallengeStore>();
+builder.Services.AddSingleton<UnlockTokenStore>();
+builder.Services.AddScoped<BiometricAuthService>();
+
 // Background import queue: drains uploaded Obsidian/Keep archives into the vault
 // off the request thread, pushing progress over SignalR. Singleton so the endpoint
 // can Enqueue onto the same instance the hosted worker drains.
@@ -465,6 +484,79 @@ auth.MapGet("/me", async (HttpContext http, AppDbContext db, CancellationToken c
             statusCode: StatusCodes.Status401Unauthorized);
 
     return Results.Ok(new { user.Id, user.Username, user.Name, user.Email, user.Role });
+});
+
+// ── WebAuthn (biometric gatekeeper) ───────────────────────────────────────────
+// Enrol a platform authenticator, then prove possession to mint a short-lived
+// unlock token (consumed by secure notes in 17.2). Verification is delegated to
+// Fido2NetLib; challenges are single-use and scoped to the signed-in user.
+var webauthn = auth.MapGroup("/webauthn").RequireAuthorization().WithTags("WebAuthn");
+
+webauthn.MapGet("/credentials", async (ClaimsPrincipal principal, AppDbContext db, CancellationToken ct) =>
+{
+    var uid = int.Parse(Uid(principal));
+    return Results.Ok(await db.WebAuthnCredentials
+        .Where(c => c.UserId == uid)
+        .Select(c => new { c.Id, c.Name, c.CreatedUtc, c.LastUsedUtc })
+        .ToListAsync(ct));
+});
+
+webauthn.MapPost("/register/challenge", async (
+    ClaimsPrincipal principal, AppDbContext db, BiometricAuthService bio, CancellationToken ct) =>
+{
+    var user = await db.Users.FindAsync([int.Parse(Uid(principal))], ct);
+    if (user is null) return Results.NotFound();
+    return Results.Text((await bio.RegisterChallengeAsync(user, ct)).ToJson(), "application/json");
+});
+
+webauthn.MapPost("/register/verify", async (
+    WebAuthnRegisterRequest body, ClaimsPrincipal principal, AppDbContext db,
+    BiometricAuthService bio, CancellationToken ct) =>
+{
+    if (body.Response is null) return Results.BadRequest(new { error = "Missing attestation response." });
+    var user = await db.Users.FindAsync([int.Parse(Uid(principal))], ct);
+    if (user is null) return Results.NotFound();
+    try
+    {
+        var ok = await bio.RegisterVerifyAsync(user, body.Response, body.Name, ct);
+        return ok
+            ? Results.Ok(new { registered = true })
+            : Results.BadRequest(new { error = "No pending registration challenge." });
+    }
+    catch (Fido2NetLib.Fido2VerificationException ex)
+    {
+        return Results.BadRequest(new { error = ex.Message });
+    }
+});
+
+webauthn.MapPost("/challenge", async (ClaimsPrincipal principal, BiometricAuthService bio, CancellationToken ct) =>
+{
+    var options = await bio.AssertChallengeAsync(int.Parse(Uid(principal)), ct);
+    return options is null
+        ? Results.BadRequest(new { error = "No authenticator registered.", code = "no_credential" })
+        : Results.Text(options.ToJson(), "application/json");
+});
+
+webauthn.MapPost("/verify", async (
+    WebAuthnAssertRequest body, ClaimsPrincipal principal, BiometricAuthService bio, CancellationToken ct) =>
+{
+    if (body.Response is null) return Results.BadRequest(new { error = "Missing assertion response." });
+    var token = await bio.AssertVerifyAsync(int.Parse(Uid(principal)), body.Response, ct);
+    // A failed assertion never explains why — don't help an attacker probe.
+    return token is null
+        ? Results.Json(new { error = "Verification failed." }, statusCode: StatusCodes.Status401Unauthorized)
+        : Results.Ok(new { unlockToken = token });
+});
+
+webauthn.MapDelete("/credentials/{id:int}", async (
+    int id, ClaimsPrincipal principal, AppDbContext db, CancellationToken ct) =>
+{
+    var uid = int.Parse(Uid(principal));
+    var credential = await db.WebAuthnCredentials.FirstOrDefaultAsync(c => c.Id == id && c.UserId == uid, ct);
+    if (credential is null) return Results.NotFound();
+    db.WebAuthnCredentials.Remove(credential);
+    await db.SaveChangesAsync(ct);
+    return Results.NoContent();
 });
 
 // ── Profile (self-service) ──────────────────────────────────────────────────────
@@ -2014,6 +2106,13 @@ public sealed record GitConfigWrite(string? RemoteUrl, string? Branch, string? T
 
 // Smart-collection creation: a display name + the serialized AND/OR rule set.
 public sealed record SmartCollectionWrite(string? Name, string? RulesJson);
+
+// WebAuthn enrolment: the browser's attestation response + a friendly device label.
+public sealed record WebAuthnRegisterRequest(
+    Fido2NetLib.AuthenticatorAttestationRawResponse? Response, string? Name);
+
+// WebAuthn unlock: the browser's assertion response.
+public sealed record WebAuthnAssertRequest(Fido2NetLib.AuthenticatorAssertionRawResponse? Response);
 
 // Encrypted-backup generation payload: the account password (verified, then reused
 // as the vault encryption secret).

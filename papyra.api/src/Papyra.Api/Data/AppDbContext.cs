@@ -13,6 +13,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<Share> Shares => Set<Share>();
     public DbSet<Webhook> Webhooks => Set<Webhook>();
     public DbSet<SmartCollection> SmartCollections => Set<SmartCollection>();
+    public DbSet<WebAuthnCredential> WebAuthnCredentials => Set<WebAuthnCredential>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -29,5 +30,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         modelBuilder.Entity<Share>().HasIndex(s => s.GranteeUserId);
         modelBuilder.Entity<Webhook>().HasIndex(w => new { w.UserId, w.TriggerEvent });
         modelBuilder.Entity<SmartCollection>().HasIndex(c => c.UserId);
+        modelBuilder.Entity<WebAuthnCredential>().HasIndex(c => c.CredentialId).IsUnique();
+        modelBuilder.Entity<WebAuthnCredential>().HasIndex(c => c.UserId);
     }
 }
