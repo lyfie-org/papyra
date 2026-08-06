@@ -11,6 +11,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<NoteCache> NoteCache => Set<NoteCache>();
     public DbSet<ApiKey> ApiKeys => Set<ApiKey>();
     public DbSet<Share> Shares => Set<Share>();
+    public DbSet<Webhook> Webhooks => Set<Webhook>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -25,5 +26,6 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         modelBuilder.Entity<Share>().HasIndex(s => s.Token);
         modelBuilder.Entity<Share>().HasIndex(s => s.NoteId);
         modelBuilder.Entity<Share>().HasIndex(s => s.GranteeUserId);
+        modelBuilder.Entity<Webhook>().HasIndex(w => new { w.UserId, w.TriggerEvent });
     }
 }

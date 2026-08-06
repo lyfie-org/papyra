@@ -116,6 +116,11 @@ builder.Services.AddHostedService<AudioTranscriptionService>();
 builder.Services.AddSingleton<WebArchiverService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<WebArchiverService>());
 
+// Event-driven outbound webhooks (HMAC-signed). Singleton so the note-write endpoint
+// enqueues onto the same instance the dispatcher worker drains.
+builder.Services.AddSingleton<WebhookDispatcherService>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<WebhookDispatcherService>());
+
 // Background import queue: drains uploaded Obsidian/Keep archives into the vault
 // off the request thread, pushing progress over SignalR. Singleton so the endpoint
 // can Enqueue onto the same instance the hosted worker drains.
@@ -626,6 +631,7 @@ notes.MapPut("/{id}", async (
     SearchIndexService search,
     SnapshotService snapshots,
     WebArchiverService archiver,
+    WebhookDispatcherService webhooks,
     VaultObserverOptions vault,
     IConfiguration config,
     IHostEnvironment env,
@@ -633,8 +639,13 @@ notes.MapPut("/{id}", async (
     CancellationToken ct) =>
 {
     var uid = Uid(user);
+    // Capture the prior revision (if any) so we can diff for webhook events below.
+    var priorPath = state.PathFor(uid, id);
+    Note? prior = null;
+    if (priorPath is not null) state.TryGet(uid, priorPath, out prior);
+
     // Resolve under the caller's vault and verify it can't escape (→ 403).
-    var path = state.PathFor(uid, id)
+    var path = priorPath
         ?? PathGuard.ResolveAndVerify(vault.UserNotesDir(uid), $"{id}.md", loggerFactory.CreateLogger("PathGuard"));
 
     var note = new Note
@@ -661,6 +672,17 @@ notes.MapPut("/{id}", async (
     search.IndexNote(uid, note); // watcher skips our own write echo, so index here
 
     archiver.Enqueue(uid, id, note.Body); // background-archive any new URLs in the body
+
+    // Fire webhook events off the diff against the prior revision.
+    if (prior is null)
+        webhooks.Enqueue(uid, WebhookEvents.NoteCreated, WebhookPayload(WebhookEvents.NoteCreated, note));
+    else
+    {
+        if (prior.Pinned != note.Pinned)
+            webhooks.Enqueue(uid, WebhookEvents.PinToggled, WebhookPayload(WebhookEvents.PinToggled, note));
+        if (note.Tags.Except(prior.Tags, StringComparer.OrdinalIgnoreCase).Any())
+            webhooks.Enqueue(uid, WebhookEvents.TagAdded, WebhookPayload(WebhookEvents.TagAdded, note));
+    }
 
     return Results.Ok(note);
 });
@@ -862,6 +884,58 @@ keys.MapDelete("/{id:int}", async (int id, ClaimsPrincipal user, AppDbContext db
     var key = await db.ApiKeys.FirstOrDefaultAsync(k => k.Id == id && k.UserId == uid, ct);
     if (key is null) return Results.NotFound();
     db.ApiKeys.Remove(key);
+    await db.SaveChangesAsync(ct);
+    return Results.NoContent();
+});
+
+// ── Webhooks (event-driven outbound) ──────────────────────────────────────────────
+// Register a URL to receive HMAC-signed JSON when NoteCreated/TagAdded/PinToggled
+// fires for the caller's notes. The secret is returned once at creation (stored in
+// the clear since HMAC needs the raw key); the list never re-exposes it.
+var webhooksApi = app.MapGroup("/api/webhooks").RequireAuthorization().WithTags("Webhooks");
+
+webhooksApi.MapGet("/", async (ClaimsPrincipal user, AppDbContext db, CancellationToken ct) =>
+{
+    var uid = int.Parse(Uid(user));
+    return Results.Ok(await db.Webhooks
+        .Where(w => w.UserId == uid)
+        .OrderByDescending(w => w.CreatedUtc)
+        .Select(w => new { w.Id, w.TriggerEvent, w.WebhookUrl, w.CreatedUtc })
+        .ToListAsync(ct));
+});
+
+webhooksApi.MapPost("/", async (WebhookWrite body, ClaimsPrincipal user, AppDbContext db, CancellationToken ct) =>
+{
+    if (string.IsNullOrWhiteSpace(body.Event) || !WebhookEvents.All.Contains(body.Event))
+        return Results.BadRequest(new { error = $"event must be one of: {string.Join(", ", WebhookEvents.All)}." });
+    if (!Uri.TryCreate(body.Url, UriKind.Absolute, out var uri) ||
+        (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps))
+        return Results.BadRequest(new { error = "url must be an absolute http(s) URL." });
+
+    // Use the caller's secret if supplied, else generate one and return it once.
+    var secret = string.IsNullOrWhiteSpace(body.Secret)
+        ? Convert.ToHexString(System.Security.Cryptography.RandomNumberGenerator.GetBytes(24)).ToLowerInvariant()
+        : body.Secret.Trim();
+
+    var hook = new Webhook
+    {
+        UserId = int.Parse(Uid(user)),
+        TriggerEvent = body.Event,
+        WebhookUrl = uri.ToString(),
+        SecretKey = secret,
+        CreatedUtc = DateTime.UtcNow,
+    };
+    db.Webhooks.Add(hook);
+    await db.SaveChangesAsync(ct);
+    return Results.Ok(new { hook.Id, hook.TriggerEvent, hook.WebhookUrl, hook.CreatedUtc, secret });
+});
+
+webhooksApi.MapDelete("/{id:int}", async (int id, ClaimsPrincipal user, AppDbContext db, CancellationToken ct) =>
+{
+    var uid = int.Parse(Uid(user));
+    var hook = await db.Webhooks.FirstOrDefaultAsync(w => w.Id == id && w.UserId == uid, ct);
+    if (hook is null) return Results.NotFound();
+    db.Webhooks.Remove(hook);
     await db.SaveChangesAsync(ct);
     return Results.NoContent();
 });
@@ -1643,6 +1717,17 @@ static void ReplaceDirContents(string sourceDir, string targetDir)
         File.Move(file, Path.Combine(targetDir, Path.GetRelativePath(sourceDir, file)), overwrite: true);
 }
 
+// The JSON body delivered to webhooks for a note event.
+static object WebhookPayload(string eventName, Note note) => new
+{
+    @event = eventName,
+    noteId = note.Id,
+    title = note.Title,
+    tags = note.Tags,
+    pinned = note.Pinned,
+    occurredAt = note.Updated,
+};
+
 // A collision-free Username for a JIT-provisioned SSO account: prefer the email
 // local-part, else a subject-derived handle, suffixing a counter if it's taken so
 // the unique Username index never trips.
@@ -1724,6 +1809,10 @@ public sealed record PasswordRequest(string? Current, string? Next);
 
 // API key creation payload (just a human label).
 public sealed record ApiKeyWrite(string? Name);
+
+// Webhook registration: which event, the target URL, and an optional shared secret
+// (one is generated + returned once if omitted).
+public sealed record WebhookWrite(string? Event, string? Url, string? Secret);
 
 // Encrypted-backup generation payload: the account password (verified, then reused
 // as the vault encryption secret).
