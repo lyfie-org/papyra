@@ -111,6 +111,10 @@ builder.Services.AddHostedService<ShareCleanupService>();
 // Offline audio transcription (local Whisper). No-ops unless a model is configured.
 builder.Services.AddHostedService<AudioTranscriptionService>();
 
+// Local-only OCR of images in the media dir → searchable text. No-ops unless
+// Tesseract tessdata is configured.
+builder.Services.AddHostedService<OcrProcessorService>();
+
 // Read-it-later web archiver: SSRF-guarded background fetch of URLs found in notes.
 // Singleton so the note-write endpoint enqueues onto the same instance the worker drains.
 builder.Services.AddSingleton<WebArchiverService>();
