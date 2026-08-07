@@ -64,9 +64,20 @@ public sealed class VaultObserverTests
         {
             await observer.StartAsync(default);
             var path = Path.Combine(notesDir, "hello.md");
-            await File.WriteAllTextAsync(path, "---\nid: h1\ntitle: Hello\n---\n\nworld");
+            const string content = "---\nid: h1\ntitle: Hello\n---\n\nworld";
 
-            await WaitUntil(() => state.Count(Uid) >= 1, WaitTimeoutMs);
+            // Arming a FileSystemWatcher isn't instantaneous — on Linux the inotify
+            // watch is registered slightly after EnableRaisingEvents returns, so a
+            // single write issued right away can land before the watch exists and be
+            // missed with no retry. (That's why RapidWrites, which writes 20 times,
+            // is reliable while this test was not.) Re-emit until the observer sees
+            // it: rewriting the same content is idempotent — the note is keyed by
+            // path, so the assertions below stay exact.
+            await WaitUntil(async () =>
+            {
+                await File.WriteAllTextAsync(path, content);
+                return state.Count(Uid) >= 1;
+            }, WaitTimeoutMs);
 
             Assert.Equal(1, state.Count(Uid));
             Assert.Equal("Hello", state.Snapshot(Uid).Single().Title);
@@ -108,6 +119,14 @@ public sealed class VaultObserverTests
     {
         var sw = Stopwatch.StartNew();
         while (!cond() && sw.ElapsedMilliseconds < timeoutMs) await Task.Delay(25);
+    }
+
+    // Async variant for conditions that also nudge the system (e.g. re-writing a
+    // file until the watcher reports it). Polls slower, since each attempt does I/O.
+    private static async Task WaitUntil(Func<Task<bool>> cond, int timeoutMs)
+    {
+        var sw = Stopwatch.StartNew();
+        while (!await cond() && sw.ElapsedMilliseconds < timeoutMs) await Task.Delay(200);
     }
 
     private static string NewTempDir()
