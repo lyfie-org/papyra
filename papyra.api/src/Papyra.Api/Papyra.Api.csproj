@@ -7,12 +7,12 @@
   </PropertyGroup>
 
   <ItemGroup>
-    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.8" />
-    <PackageReference Include="Microsoft.AspNetCore.Authentication.OpenIdConnect" Version="10.0.8" />
+    <PackageReference Include="Microsoft.AspNetCore.OpenApi" Version="10.0.10" />
+    <PackageReference Include="Microsoft.AspNetCore.Authentication.OpenIdConnect" Version="10.0.10" />
     <PackageReference Include="Markdig" Version="0.42.0" />
     <PackageReference Include="YamlDotNet" Version="16.3.0" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.0" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.0">
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.10" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.10">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
@@ -28,6 +28,17 @@
     <PackageReference Include="Tesseract" Version="5.2.0" />
     <PackageReference Include="LibGit2Sharp" Version="0.32.0" />
     <PackageReference Include="Fido2.AspNet" Version="4.0.1" />
+
+    <!-- Transitive security pins (NU1903). These aren't used directly — they're
+         here only to lift vulnerable versions that our dependencies pin:
+           * Microsoft.OpenApi 2.0.0 (via Microsoft.AspNetCore.OpenApi) — stack
+             overflow on circular schema refs; fixed in 2.7.5. Held on the 2.x line
+             because ASP.NET Core's OpenAPI integration targets it.
+           * SQLitePCLRaw 2.1.11 (via EF Core Sqlite) — bundles SQLite < 3.50.2;
+             fixed in 2.1.12. Pinning the bundle keeps core/provider/lib in step.
+         Drop these once the parent packages ship the fixed versions themselves. -->
+    <PackageReference Include="Microsoft.OpenApi" Version="2.7.5" />
+    <PackageReference Include="SQLitePCLRaw.bundle_e_sqlite3" Version="2.1.12" />
   </ItemGroup>
 
   <ItemGroup>
