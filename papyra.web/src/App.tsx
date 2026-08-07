@@ -13,7 +13,7 @@ import SharedNotePage from './pages/SharedNotePage';
 import LoginPage from './pages/LoginPage';
 import SetupPage from './pages/SetupPage';
 import { useAuth } from './hooks/useAuth';
-import { FocusProvider } from './hooks/useFocus';
+import { FocusProvider } from './hooks/FocusProvider';
 import './App.css';
 
 // Gate the workspace behind a live session. The /me probe decides where an

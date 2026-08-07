@@ -2,7 +2,7 @@ import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Pin, PinOff } from 'lucide-react';
 import {
   DndContext, PointerSensor, useSensor, useSensors, useDraggable,
-  type DragStartEvent, type DragMoveEvent, type DragEndEvent,
+  type DragStartEvent, type DragMoveEvent,
 } from '@dnd-kit/core';
 import { useQueryClient } from '@tanstack/react-query';
 import type { Note } from '../types/note';
@@ -190,7 +190,9 @@ export default function DraggableNoteGrid({ notes, conflictsByParent, onResolveC
     setActiveId(null); setOrigin(null); setDrop(null); setStartBox(null);
   }
 
-  async function onDragEnd(_e: DragEndEvent) {
+  // Drop handler — dnd-kit passes the event, but the committed position comes from
+  // our own hit-testing state (activeId/origin/drop), so the event isn't needed.
+  async function onDragEnd() {
     const id = activeId;
     const o = origin;
     const d = drop;
@@ -205,7 +207,13 @@ export default function DraggableNoteGrid({ notes, conflictsByParent, onResolveC
       below ? effectiveKey(below, order) : null,
     );
 
-    const nextOrder: OrderMap = { ...(order ?? {}), [id]: { key: newKey, setAt: Date.now() } };
+    // `setAt` stamps when the drag was committed, so a later edit can retire a stale
+    // manual position. Reading the clock is impure, but this runs only from
+    // DndContext's onDragEnd — never during render. The lint rule can't prove a
+    // component-body function is event-only, so silence it here deliberately.
+    // eslint-disable-next-line react-hooks/purity
+    const droppedAt = Date.now();
+    const nextOrder: OrderMap = { ...(order ?? {}), [id]: { key: newKey, setAt: droppedAt } };
     const crossed = d.section !== o;
     const note = byId.get(id);
 

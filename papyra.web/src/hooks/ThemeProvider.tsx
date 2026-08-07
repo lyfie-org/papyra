@@ -1,12 +1,5 @@
-import {
-  createContext, useCallback, useContext, useEffect, useMemo, useState,
-  type ReactNode,
-} from 'react';
-
-// Preference is what the user chose; Theme is the resolved light/dark applied to
-// the DOM. 'system' follows the OS and reacts to OS changes live.
-export type ThemePreference = 'light' | 'dark' | 'system';
-type Theme = 'light' | 'dark';
+import { useCallback, useEffect, useMemo, useState, type ReactNode } from 'react';
+import { ThemeContext, type Theme, type ThemePreference } from './useTheme';
 
 const LS_KEY = 'papyra-theme';
 const TRANSITION_MS = 300;
@@ -29,17 +22,6 @@ function applyTheme(theme: Theme) {
   root.style.colorScheme = theme;
   setTimeout(() => root.classList.remove('theme-transitioning'), TRANSITION_MS);
 }
-
-interface ThemeContextValue {
-  /** Resolved light/dark currently applied. */
-  theme: Theme;
-  /** The user's stored choice (may be 'system'). */
-  preference: ThemePreference;
-  setPreference: (p: ThemePreference) => void;
-  toggleTheme: () => void;
-}
-
-const ThemeContext = createContext<ThemeContextValue | null>(null);
 
 // Single source of truth for theme, shared by the toolbar toggle, the Settings
 // Appearance panel, and the editor — so they never drift out of sync.
@@ -76,10 +58,4 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
   );
 
   return <ThemeContext.Provider value={value}>{children}</ThemeContext.Provider>;
-}
-
-export function useTheme() {
-  const ctx = useContext(ThemeContext);
-  if (!ctx) throw new Error('useTheme must be used within ThemeProvider');
-  return ctx;
 }

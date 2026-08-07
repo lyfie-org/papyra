@@ -1,22 +1,8 @@
-import { createContext, useCallback, useContext, useMemo, useRef, useState } from 'react';
+import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
+import { FocusContext } from './useFocus';
 
-// Distraction-free "focus mode" state, shared between the SignalR bridge and the
-// editor. While focus is on, incoming note events are BUFFERED (counted) instead of
-// invalidating the notes query — so a remote sync never re-hydrates the grid and
-// disturbs the writer mid-sentence. Exiting focus flushes the buffer.
-interface FocusApi {
-  focus: boolean;
-  pending: number;
-  enter: () => void;
-  exit: () => void;
-  flush: () => void;            // apply buffered updates now, staying in focus
-  onExternalUpdate: () => void; // called by the hub bridge on a note event
-}
-
-const FocusContext = createContext<FocusApi | null>(null);
-
-export function FocusProvider({ children }: { children: React.ReactNode }) {
+export function FocusProvider({ children }: { children: ReactNode }) {
   const queryClient = useQueryClient();
   const [focus, setFocus] = useState(false);
   const [pending, setPending] = useState(0);
@@ -48,10 +34,4 @@ export function FocusProvider({ children }: { children: React.ReactNode }) {
     [focus, pending, enter, exit, flush, onExternalUpdate],
   );
   return <FocusContext.Provider value={value}>{children}</FocusContext.Provider>;
-}
-
-export function useFocus(): FocusApi {
-  const ctx = useContext(FocusContext);
-  if (!ctx) throw new Error('useFocus must be used within a FocusProvider');
-  return ctx;
 }
