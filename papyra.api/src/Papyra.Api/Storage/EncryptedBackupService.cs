@@ -146,11 +146,11 @@ public sealed class EncryptedBackupService
         }
     }
 
-    private static byte[] DeriveKey(string password, byte[] salt)
-    {
-        using var kdf = new Rfc2898DeriveBytes(password, salt, Pbkdf2Iterations, HashAlgorithmName.SHA256);
-        return kdf.GetBytes(KeySize);
-    }
+    // PBKDF2-HMAC-SHA256. This is part of the on-disk vault format — changing the
+    // algorithm, iteration count or output size orphans every existing backup, so
+    // BackupKeyDerivationTests pins it to a known vector.
+    private static byte[] DeriveKey(string password, byte[] salt) =>
+        Rfc2898DeriveBytes.Pbkdf2(password, salt, Pbkdf2Iterations, HashAlgorithmName.SHA256, KeySize);
 
     // Read up to buffer.Length bytes; returns the count actually read (short only at
     // EOF). Streams may hand back partial reads, so loop until full or exhausted.
