@@ -52,7 +52,7 @@ public sealed class EmbeddingLifecycleTests
                 Title: "Budget", Tags: null, Color: null, Pinned: false, Archived: false, Body: "spend figures"));
 
             // Stand in for the background embedder (which needs a live model).
-            SeedEmbeddingOnce(factory, "n1");
+            await SeedEmbeddingOnceAsync(factory, "n1");
 
             var res = await client.PostAsync("/api/notes/n1/trash", content: null);
             Assert.Equal(HttpStatusCode.NoContent, res.StatusCode);
@@ -73,7 +73,7 @@ public sealed class EmbeddingLifecycleTests
             await client.PutAsJsonAsync("/api/notes/n1", new NoteWrite(
                 Title: "Budget", Tags: null, Color: null, Pinned: false, Archived: false, Body: "spend figures"));
 
-            SeedEmbeddingOnce(factory, "n1");
+            await SeedEmbeddingOnceAsync(factory, "n1");
             var res = await client.DeleteAsync("/api/notes/n1");
             Assert.Equal(HttpStatusCode.NoContent, res.StatusCode);
 
@@ -94,7 +94,11 @@ public sealed class EmbeddingLifecycleTests
     // the note before inserting its own, so a naive seed can be wiped from under us.
     // Retry until the row survives — at that point the worker has finished and the
     // test is measuring only what trash/delete does.
-    private static void SeedEmbeddingOnce(WebApplicationFactory<Program> factory, string noteId)
+    //
+    // Awaits rather than Thread.Sleep on purpose: blocking here occupies a
+    // thread-pool thread, and enough of that starves other tests' timers (it made
+    // the VaultObserver debounce tests flake under parallel runs).
+    private static async Task SeedEmbeddingOnceAsync(WebApplicationFactory<Program> factory, string noteId)
     {
         for (var attempt = 0; attempt < 40; attempt++)
         {
@@ -110,10 +114,10 @@ public sealed class EmbeddingLifecycleTests
                     Vector = EmbeddingService.ToBytes([0.1f, 0.2f, 0.3f]),
                     CreatedUtc = DateTime.UtcNow,
                 });
-                db.SaveChanges();
+                await db.SaveChangesAsync();
             }
 
-            Thread.Sleep(100);
+            await Task.Delay(100);
             if (CountEmbeddings(factory, noteId) > 0) return; // survived → worker done
         }
         Assert.Fail("Could not seed an embedding row that survived the background embedder.");
