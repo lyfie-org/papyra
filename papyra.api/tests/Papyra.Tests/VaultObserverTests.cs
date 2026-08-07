@@ -5,9 +5,15 @@ using Papyra.Api.Storage;
 
 namespace Papyra.Tests;
 
+[Collection(TimingSensitiveCollection.Name)]
 public sealed class VaultObserverTests
 {
     private const string Uid = "1";
+
+    // Generous ceiling, not an expectation: WaitUntil returns as soon as the
+    // condition holds, so this only matters on a loaded CI runner where the
+    // debounce flush is scheduled late. The assertions after it stay exact.
+    private const int WaitTimeoutMs = 15_000;
 
     // Build an observer over a users-root and pre-create tenant "1"'s notes dir so
     // StartAsync auto-discovers and watches it.
@@ -35,7 +41,7 @@ public sealed class VaultObserverTests
             for (var i = 0; i < 20; i++)
                 await File.WriteAllTextAsync(path, $"---\nid: n1\ntitle: v{i}\n---\n\nbody {i}");
 
-            await WaitUntil(() => observer.ProcessedEvents >= 1, 3000);
+            await WaitUntil(() => observer.ProcessedEvents >= 1, WaitTimeoutMs);
             await Task.Delay(300); // settle: prove no further flushes land
 
             Assert.Equal(1, observer.ProcessedEvents); // debounced to one update
@@ -60,7 +66,7 @@ public sealed class VaultObserverTests
             var path = Path.Combine(notesDir, "hello.md");
             await File.WriteAllTextAsync(path, "---\nid: h1\ntitle: Hello\n---\n\nworld");
 
-            await WaitUntil(() => state.Count(Uid) >= 1, 3000);
+            await WaitUntil(() => state.Count(Uid) >= 1, WaitTimeoutMs);
 
             Assert.Equal(1, state.Count(Uid));
             Assert.Equal("Hello", state.Snapshot(Uid).Single().Title);
