@@ -1,15 +1,5 @@
 import { useCallback, useState } from 'react';
-
-// ── base64url ⇄ ArrayBuffer (the wire format WebAuthn uses) ────────────────────
-function fromB64Url(value: string): Uint8Array {
-  const b64 = value.replace(/-/g, '+').replace(/_/g, '/').padEnd(Math.ceil(value.length / 4) * 4, '=');
-  return Uint8Array.from(atob(b64), (c) => c.charCodeAt(0));
-}
-
-function toB64Url(buffer: ArrayBuffer): string {
-  return btoa(String.fromCharCode(...new Uint8Array(buffer)))
-    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
-}
+import { fromB64Url, toB64Url, isWebAuthnAvailable } from '../lib/webauthn';
 
 type UnlockState = 'locked' | 'authenticating' | 'unlocked' | 'error';
 
@@ -29,7 +19,7 @@ export function useSecureNote(noteId: string) {
     setState('authenticating');
     setError(null);
     try {
-      if (!window.PublicKeyCredential) throw new Error('This browser has no platform authenticator.');
+      if (!isWebAuthnAvailable()) throw new Error('This browser has no platform authenticator.');
 
       const challengeRes = await fetch('/api/auth/webauthn/challenge', { method: 'POST' });
       if (!challengeRes.ok) {

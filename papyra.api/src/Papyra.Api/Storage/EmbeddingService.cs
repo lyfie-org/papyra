@@ -27,15 +27,17 @@ public sealed class EmbeddingService : BackgroundService
 
     private readonly IServiceScopeFactory _scopes;
     private readonly IConfiguration _config;
+    private readonly VaultState _state;
     private readonly ILogger<EmbeddingService> _logger;
     private readonly HttpClient _http;
     private readonly string _model;
 
     public EmbeddingService(
-        IServiceScopeFactory scopes, IConfiguration config, ILogger<EmbeddingService> logger)
+        IServiceScopeFactory scopes, IConfiguration config, VaultState state, ILogger<EmbeddingService> logger)
     {
         _scopes = scopes;
         _config = config;
+        _state = state;
         _logger = logger;
         _model = config["Ollama:EmbedModel"] ?? "nomic-embed-text";
         var baseUrl = config["Ollama:BaseUrl"] ?? "http://localhost:11434";
@@ -89,6 +91,10 @@ public sealed class EmbeddingService : BackgroundService
     }
 
     // Top-N most semantically similar chunks for a query, fenced to one tenant.
+    // Vectors outlive their note (a trashed note keeps its rows until purged, and an
+    // externally deleted file leaves them orphaned), so every hit is re-checked
+    // against the live vault. Filtering HERE rather than at the endpoint means RAG
+    // chat gets the same guarantee — a trashed note can't be cited in an answer.
     public async Task<IReadOnlyList<SemanticHit>> SearchAsync(
         string userId, string query, int take, CancellationToken ct)
     {
@@ -100,6 +106,7 @@ public sealed class EmbeddingService : BackgroundService
         var rows = await db.NoteEmbeddings.Where(e => e.UserId == userId).ToListAsync(ct);
 
         return rows
+            .Where(r => IsRetrievable(userId, r.NoteId))
             .Select(r => new SemanticHit(r.NoteId, r.Text, Cosine(queryVector, ToFloats(r.Vector))))
             .Where(h => h.Score > 0)
             .GroupBy(h => h.NoteId)                       // best chunk represents its note
@@ -107,6 +114,37 @@ public sealed class EmbeddingService : BackgroundService
             .OrderByDescending(h => h.Score)
             .Take(take)
             .ToList();
+    }
+
+    // A note may only be retrieved while it's live in the vault: present, not
+    // trashed, and not secure. (Secure notes are never embedded in the first place;
+    // checked anyway so a stale row from before the flag was set can't leak.)
+    internal bool IsRetrievable(string userId, string noteId)
+    {
+        var path = _state.PathFor(userId, noteId);
+        if (path is null) return false;                        // deleted or never loaded
+        if (!_state.TryGet(userId, path, out var note) || note is null) return false;
+        return !note.Trashed && !note.Secure;
+    }
+
+    // Drop a note's vectors outright — used when it's trashed or deleted, so the
+    // table doesn't accumulate rows the search filter would only skip over.
+    public async Task RemoveNoteAsync(string userId, string noteId, CancellationToken ct = default)
+    {
+        try
+        {
+            using var scope = _scopes.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            await db.NoteEmbeddings
+                .Where(e => e.NoteId == noteId && e.UserId == userId)
+                .ExecuteDeleteAsync(ct);
+        }
+        catch (Exception ex)
+        {
+            // Vectors are a disposable cache; failing to prune must never break the
+            // note operation that triggered it (the search filter still hides them).
+            _logger.LogWarning(ex, "Could not remove embeddings for note {NoteId}", noteId);
+        }
     }
 
     // Ask Ollama for one embedding. Returns null (rather than throwing) when Ollama

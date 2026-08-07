@@ -839,12 +839,14 @@ notes.MapPut("/{id}", async (
     return Results.Ok(note);
 });
 
-notes.MapDelete("/{id}", (
+notes.MapDelete("/{id}", async (
     string id,
     ClaimsPrincipal user,
     VaultState state,
     WriteRing writeRing,
-    SearchIndexService search) =>
+    SearchIndexService search,
+    EmbeddingService embeddings,
+    CancellationToken ct) =>
 {
     var uid = Uid(user);
     var path = state.PathFor(uid, id);
@@ -854,6 +856,7 @@ notes.MapDelete("/{id}", (
     if (File.Exists(path)) File.Delete(path);
     state.Remove(uid, path);
     search.RemoveNote(id); // watcher skips the echo, so drop from the index here
+    await embeddings.RemoveNoteAsync(uid, id, ct); // and drop its vectors
 
     return Results.NoContent();
 });
@@ -865,7 +868,7 @@ notes.MapDelete("/{id}", (
 notes.MapPost("/{id}/trash", async (
     string id, ClaimsPrincipal user, VaultState state,
     MarkdownStorageService storage, WriteRing writeRing, SearchIndexService search,
-    CancellationToken ct) =>
+    EmbeddingService embeddings, CancellationToken ct) =>
 {
     var uid = Uid(user);
     var path = state.PathFor(uid, id);
@@ -877,13 +880,14 @@ notes.MapPost("/{id}/trash", async (
     await storage.WriteAsync(path, note, ct);
     state.Upsert(uid, path, note);
     search.RemoveNote(id); // hidden from search while trashed
+    await embeddings.RemoveNoteAsync(uid, id, ct); // and from semantic search + RAG
     return Results.NoContent();
 });
 
 notes.MapPost("/{id}/untrash", async (
     string id, ClaimsPrincipal user, VaultState state,
     MarkdownStorageService storage, WriteRing writeRing, SearchIndexService search,
-    CancellationToken ct) =>
+    EmbeddingService embeddings, CancellationToken ct) =>
 {
     var uid = Uid(user);
     var path = state.PathFor(uid, id);
@@ -895,6 +899,8 @@ notes.MapPost("/{id}/untrash", async (
     await storage.WriteAsync(path, note, ct);
     state.Upsert(uid, path, note);
     search.IndexNote(uid, note);
+    // Restore semantic coverage too — the vectors were dropped when it was trashed.
+    if (!note.Secure) embeddings.Enqueue(uid, id, note.Body);
     return Results.NoContent();
 });
 

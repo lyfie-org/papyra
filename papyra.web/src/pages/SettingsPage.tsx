@@ -1,10 +1,13 @@
-import { useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   User as UserIcon, Palette, Database, Shield, Info, Camera,
   Sun, Moon, Monitor, Upload, Download, RefreshCw, KeyRound, Copy, Trash2, Lock, ShieldAlert,
+  Fingerprint, CheckCircle2,
 } from 'lucide-react';
+import { useWebAuthnDevices } from '../hooks/useWebAuthnDevices';
+import { hasPlatformAuthenticator, isWebAuthnAvailable } from '../lib/webauthn';
 import { useAuth, type AuthUser } from '../hooks/useAuth';
 import { useNotes } from '../hooks/useNotes';
 import { useCategories } from '../hooks/useCategories';
@@ -14,11 +17,12 @@ import './SettingsPage.css';
 
 const APP_VERSION = '0.0.1';
 
-type Tab = 'profile' | 'appearance' | 'data' | 'keys' | 'admin' | 'about';
+type Tab = 'profile' | 'appearance' | 'security' | 'data' | 'keys' | 'admin' | 'about';
 
 const NAV: { id: Tab; label: string; icon: typeof UserIcon; adminOnly?: boolean }[] = [
   { id: 'profile', label: 'Profile', icon: UserIcon },
   { id: 'appearance', label: 'Appearance', icon: Palette },
+  { id: 'security', label: 'Security', icon: Fingerprint },
   { id: 'data', label: 'Data & Storage', icon: Database },
   { id: 'keys', label: 'API Keys', icon: KeyRound },
   { id: 'admin', label: 'Administration', icon: Shield, adminOnly: true },
@@ -55,6 +59,7 @@ export default function SettingsPage() {
         <div className="settings__content">
           {tab === 'profile' && <ProfileTab user={user} />}
           {tab === 'appearance' && <AppearanceTab />}
+          {tab === 'security' && <SecurityTab />}
           {tab === 'data' && <DataTab />}
           {tab === 'keys' && <KeysTab />}
           {tab === 'admin' && isAdmin && <AdminTab />}
@@ -219,6 +224,108 @@ function AppearanceTab() {
           </button>
         ))}
       </div>
+    </div>
+  );
+}
+
+// ── Security (biometric devices) ─────────────────────────────────────────────────
+// Enrol a platform authenticator so `secure: true` notes can be unlocked. The
+// private key never leaves the device; Papyra only stores the public key.
+function SecurityTab() {
+  const { devices, enroll, revoke, enrolling, error, setError } = useWebAuthnDevices();
+  const [name, setName] = useState('');
+  const [justEnrolled, setJustEnrolled] = useState(false);
+  // Whether this machine actually offers Touch ID / Windows Hello, so we can
+  // explain an unavailable button instead of just disabling it.
+  const [platformAvailable, setPlatformAvailable] = useState<boolean | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    void hasPlatformAuthenticator().then(ok => { if (!cancelled) setPlatformAvailable(ok); });
+    return () => { cancelled = true; };
+  }, []);
+
+  const supported = isWebAuthnAvailable();
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setJustEnrolled(false);
+    const ok = await enroll(name);
+    if (ok) { setName(''); setJustEnrolled(true); }
+  }
+
+  async function remove(device: { id: number; name: string }) {
+    if (!confirm(`Remove “${device.name}”? You won’t be able to unlock secure notes with it any more.`)) return;
+    await revoke(device.id);
+  }
+
+  return (
+    <div className="settings__panel">
+      <h2 className="settings__subhead">Biometric unlock</h2>
+      <p className="settings__hint">
+        Register this device’s built-in authenticator (Touch ID, Face ID, or Windows Hello) to unlock notes
+        marked <code>secure: true</code>. The private key never leaves your device — Papyra only stores the
+        public key, and a locked note’s contents stay on the server until you authenticate.
+      </p>
+
+      {!supported && (
+        <p className="settings__hint settings__hint--warn">
+          <ShieldAlert size={15} />
+          This browser can’t register a key here. WebAuthn needs a secure context — use{' '}
+          <code>localhost</code> or serve Papyra over HTTPS.
+        </p>
+      )}
+      {supported && platformAvailable === false && (
+        <p className="settings__hint settings__hint--warn">
+          <ShieldAlert size={15} />
+          No built-in biometric sensor was detected on this device. You can still register a security key
+          if your browser offers one.
+        </p>
+      )}
+
+      <form className="settings__row" onSubmit={submit}>
+        <input
+          className="settings__select"
+          placeholder="Device name (e.g. Work laptop)"
+          value={name}
+          onChange={e => { setName(e.target.value); setError(null); }}
+          disabled={!supported || enrolling}
+        />
+        <button type="submit" className="settings__btn" disabled={!supported || enrolling}>
+          <Fingerprint size={16} /> {enrolling ? 'Waiting for authenticator…' : 'Register this device'}
+        </button>
+      </form>
+
+      {error && <p className="settings__error" role="alert">{error}</p>}
+      {justEnrolled && (
+        <p className="settings__msg"><CheckCircle2 size={14} /> Device registered — you can now unlock secure notes.</p>
+      )}
+
+      {devices.isLoading && <p>Loading devices…</p>}
+      {devices.data && devices.data.length > 0 && (
+        <table className="settings__users">
+          <thead>
+            <tr><th>Device</th><th>Registered</th><th>Last used</th><th /></tr>
+          </thead>
+          <tbody>
+            {devices.data.map(d => (
+              <tr key={d.id}>
+                <td>{d.name}</td>
+                <td>{new Date(d.createdUtc).toLocaleDateString()}</td>
+                <td>{d.lastUsedUtc ? new Date(d.lastUsedUtc).toLocaleString() : 'Never'}</td>
+                <td>
+                  <button type="button" className="settings__link settings__link--danger" onClick={() => void remove(d)}>
+                    <Trash2 size={13} /> Remove
+                  </button>
+                </td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+      {devices.data && devices.data.length === 0 && (
+        <p className="settings__hint">No devices registered yet. Secure notes stay locked until you add one.</p>
+      )}
     </div>
   );
 }
