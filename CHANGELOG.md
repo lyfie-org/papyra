@@ -6,6 +6,38 @@ a Docker Hub tag and a GitHub Release.
 
 <!-- new releases are inserted directly below this line -->
 
+## [0.1.0] - 2026-08-07
+
+- fix: test case cleaned up (4c09fa3)
+- fix: test case updated (7519e14)
+- fix: CI warnings addressed (9994b2a)
+- fix: lint fix (38c23ae)
+- feat: passkey setup for encrypted notes (4c993c9)
+- feat: local semantic rag (ollama embeddings + chat) (c03dcd4)
+- feat: local vector embedding pipeline for semantic search (d9ff3a7)
+- feat: webauthn-gated secure notes with reactive blur (e87f5b4)
+- feat: webauthn gatekeeper + ephemeral unlock tokens (f34e8b6)
+- feat: knowledge heatmap + rule-based smart collections (c220101)
+- feat: knowledge heatmap of note activity (4c0c98f)
+- feat: drag-drop quick-import + native libgit2sharp sync (e08307c)
+- feat: drag-drop quick-import of md/txt notes (308e1be)
+- feat: local tesseract ocr + distraction-free focus mode (01caa98)
+- feat: local tesseract ocr for images (d705208)
+- feat: local whisper transcription + web archiver + signed webhooks (c3b794d)
+- feat: ssrf-guarded read-it-later web archiver (c49e8ee)
+- feat: local whisper audio transcription (4fd09da)
+- feat: cron cleanup for expired/exhausted share links (32dba17)
+- feat: oidc sso login with jit user provisioning (edb6e6b)
+- feat: ghost-card backlinks + time-machine scrub + toc scrollbar (bf1fb82)
+- feat: time-machine snapshot scrubber in the editor (be0511f)
+- feat: docs portal (16319f2)
+- feat: accept X-API-Key header for personal access tokens (bad57ed)
+- feat: aes-gcm encrypted backups — generate + restore (ded1629)
+- feat: click + drag logic fixed (a66d4b0)
+- feat: notes UX overhaul — ordering, sharing, categories, to-dos, settings (65f39df)
+- fix: minor ui changes per description below (97d3409)
+- feat: integrate PapyraEditor preset (luthor 2.9.0) + media serve endpoint (3cf4b9d)
+
 ## [0.0.1] - 2026-06-17
 
 - feat: updating dockerignore (e03babe)
