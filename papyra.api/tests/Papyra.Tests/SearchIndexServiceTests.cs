@@ -92,6 +92,47 @@ public sealed class SearchIndexServiceTests
         }
     }
 
+    [Fact]
+    public void OcrText_IsSearchable_AndResolvesToParentNote()
+    {
+        var dir = NewTempDir();
+        var svc = new SearchIndexService(dir);
+        try
+        {
+            svc.IndexNote(Uid, new Note { Id = "n1", Title = "Receipt", Body = "see ![[scan.png]]" });
+            svc.IndexOcr(Uid, "ocr:u1:scan.png", "n1", "TOTAL DUE 42.00 invoicexyz");
+
+            // A term that only appears in the image resolves to the parent note.
+            var hit = Assert.Single(svc.Search(Uid, "invoicexyz"));
+            Assert.Equal("n1", hit.Id);
+        }
+        finally
+        {
+            svc.Dispose();
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void ReindexingNote_DoesNotWipeItsOcrText()
+    {
+        var dir = NewTempDir();
+        var svc = new SearchIndexService(dir);
+        try
+        {
+            svc.IndexNote(Uid, new Note { Id = "n1", Title = "First", Body = "hello" });
+            svc.IndexOcr(Uid, "ocr:u1:scan.png", "n1", "ocronlytoken");
+            svc.IndexNote(Uid, new Note { Id = "n1", Title = "Edited", Body = "hello world" }); // note re-index
+
+            Assert.Equal("n1", Assert.Single(svc.Search(Uid, "ocronlytoken")).Id); // OCR survived
+        }
+        finally
+        {
+            svc.Dispose();
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
     private static string NewTempDir()
     {
         var dir = Path.Combine(Path.GetTempPath(), "papyra-idx-" + Guid.NewGuid().ToString("N"));

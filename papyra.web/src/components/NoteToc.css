@@ -1,0 +1,93 @@
+/* Sticky, zero-height anchor pinned to the top of the editor's scrollport; the bar
+   itself is absolutely positioned off it, so it stays in view as the note scrolls. */
+.note-toc {
+  position: sticky;
+  top: 0;
+  height: 0;
+  z-index: 6;
+  /* Ignore pointer events on the empty anchor; only the bar/ticks are interactive. */
+  pointer-events: none;
+}
+
+.note-toc__bar {
+  position: absolute;
+  top: 12px;
+  right: 2px;
+  width: 14px;
+  height: 78vh;
+  pointer-events: auto;
+}
+
+/* A heading tick: a short dash on the rail, growing a text label on hover. */
+.note-toc__tick {
+  position: absolute;
+  right: 0;
+  transform: translateY(-50%);
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 6px;
+  padding: 0;
+  border: none;
+  background: transparent;
+  cursor: pointer;
+}
+
+.note-toc__dash {
+  display: block;
+  height: 2px;
+  border-radius: 2px;
+  background: var(--text);
+  opacity: 0.4;
+  transition: opacity 0.15s ease, background 0.15s ease;
+}
+
+/* Indent by heading depth so the outline reads at a glance. */
+.note-toc__tick--h1 .note-toc__dash { width: 14px; }
+.note-toc__tick--h2 .note-toc__dash { width: 10px; }
+.note-toc__tick--h3 .note-toc__dash { width: 7px; }
+
+.note-toc__label {
+  max-width: 0;
+  overflow: hidden;
+  white-space: nowrap;
+  font-family: 'Sora', sans-serif;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: var(--text-h);
+  opacity: 0;
+  transition: max-width 0.2s ease, opacity 0.2s ease, padding 0.2s ease;
+}
+
+/* Hover anywhere on the rail expands it into a labelled mini-map. */
+.note-toc__bar:hover {
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  border-radius: 8px;
+  box-shadow: var(--shadow-card);
+  width: 220px;
+}
+
+.note-toc__bar:hover .note-toc__dash {
+  opacity: 0.8;
+  background: var(--accent);
+}
+
+.note-toc__bar:hover .note-toc__label {
+  max-width: 190px;
+  opacity: 1;
+  padding: 2px 8px 2px 0;
+}
+
+.note-toc__tick:hover .note-toc__dash { opacity: 1; background: var(--accent); }
+.note-toc__tick:hover .note-toc__label { color: var(--accent); }
+
+.note-toc__tick:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
+/* On narrow screens the rail would crowd the text — hide it. */
+@media (max-width: 640px) {
+  .note-toc { display: none; }
+}

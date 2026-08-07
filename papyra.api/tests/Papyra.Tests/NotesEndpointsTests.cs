@@ -240,4 +240,72 @@ public sealed class NotesEndpointsTests
             Directory.Delete(dir, recursive: true);
         }
     }
+
+    [Fact]
+    public async Task Backlinks_FindsNotesLinkingViaWikilink()
+    {
+        var (factory, dir) = NewApp();
+        try
+        {
+            var client = factory.CreateClient();
+            await SeedAdminAsync(client);
+
+            // "target" is referenced by "source" via [[Target]]; "other" doesn't link it.
+            await client.PutAsJsonAsync("/api/notes/target", new NoteWrite(
+                Title: "Target", Tags: null, Color: null, Pinned: false, Archived: false, Body: "I am linked"));
+            await client.PutAsJsonAsync("/api/notes/source", new NoteWrite(
+                Title: "Source", Tags: null, Color: "#7aaa8a", Pinned: false, Archived: false, Body: "see [[Target]] here"));
+            await client.PutAsJsonAsync("/api/notes/other", new NoteWrite(
+                Title: "Other", Tags: null, Color: null, Pinned: false, Archived: false, Body: "no links at all"));
+
+            var links = await client.GetFromJsonAsync<List<System.Text.Json.JsonElement>>("/api/notes/target/backlinks");
+            var link = Assert.Single(links!);
+            Assert.Equal("source", link.GetProperty("noteId").GetString());
+            Assert.Equal("Source", link.GetProperty("title").GetString());
+            Assert.Equal("#7aaa8a", link.GetProperty("color").GetString());
+            Assert.False(string.IsNullOrEmpty(link.GetProperty("snippet").GetString()));
+        }
+        finally
+        {
+            factory.Dispose();
+            SqliteConnection.ClearAllPools();
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task ApiKey_AuthenticatesViaXApiKeyHeader_InheritsOwnerVault()
+    {
+        var (factory, dir) = NewApp();
+        try
+        {
+            // Owner signs in (cookie) and mints a personal access token.
+            var owner = factory.CreateClient();
+            var uid = await SeedAdminAsync(owner);
+            await owner.PutAsJsonAsync("/api/notes/k1", new NoteWrite(
+                Title: "Keyed", Tags: null, Color: null, Pinned: false, Archived: false, Body: "via key"));
+
+            var keyRes = await owner.PostAsJsonAsync("/api/keys", new ApiKeyWrite("CLI"));
+            Assert.Equal(HttpStatusCode.OK, keyRes.StatusCode);
+            var token = (await keyRes.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>())
+                .GetProperty("token").GetString()!;
+
+            // A cookieless client authenticates with X-API-Key and sees the owner's notes.
+            var script = factory.CreateClient();
+            script.DefaultRequestHeaders.Add("X-API-Key", token);
+            var notes = await script.GetFromJsonAsync<List<Note>>("/api/notes");
+            Assert.Equal("k1", Assert.Single(notes!).Id); // same UserId → same vault
+
+            // A bad token resolves to no principal → 401.
+            var bad = factory.CreateClient();
+            bad.DefaultRequestHeaders.Add("X-API-Key", "papyra_not-a-real-token");
+            Assert.Equal(HttpStatusCode.Unauthorized, (await bad.GetAsync("/api/notes")).StatusCode);
+        }
+        finally
+        {
+            factory.Dispose();
+            SqliteConnection.ClearAllPools();
+            Directory.Delete(dir, recursive: true);
+        }
+    }
 }

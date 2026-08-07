@@ -1,7 +1,69 @@
+.notes-page {
+  position: relative;
+}
+
 .notes-page__head {
   display: flex;
+  align-items: center;
   justify-content: flex-end;
+  gap: 0.75rem;
   margin-bottom: 1rem;
+}
+
+.notes-page__import-msg {
+  font-family: 'Sora', sans-serif;
+  font-size: 0.8rem;
+  color: var(--text);
+}
+
+.notes-page__filter {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-bottom: 1rem;
+  padding: 0.4rem 0.5rem 0.4rem 0.8rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--surface);
+  font-family: 'Sora', sans-serif;
+  font-size: 0.82rem;
+  color: var(--text-h);
+}
+
+.notes-page__filter button {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  padding: 0.2rem 0.5rem;
+  border: none;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  color: var(--text-h);
+  font: inherit;
+  cursor: pointer;
+}
+
+/* Drag-over overlay for quick-import. */
+.notes-page__dropzone {
+  position: absolute;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 0.75rem;
+  border: 2px dashed var(--accent);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--bg) 82%, transparent);
+  color: var(--text-h);
+  font-family: 'Sora', sans-serif;
+  pointer-events: none;
+}
+
+.notes-page__dropzone code {
+  font-family: 'Roboto Mono', monospace;
+  color: var(--accent);
 }
 
 .notes-page__new {
@@ -30,4 +92,26 @@
 
 .notes-page__status {
   color: var(--text);
+}
+
+.notes-page__bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 1rem;
+}
+
+.notes-page__title {
+  margin: 0;
+  font-family: var(--heading);
+  font-size: 1.6rem;
+  color: var(--text-h);
+}
+
+.notes-page__hint {
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 0.75rem;
+  opacity: 0.8;
 }

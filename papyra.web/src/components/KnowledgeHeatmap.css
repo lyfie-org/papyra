@@ -1,0 +1,32 @@
+.heatmap {
+  margin-bottom: 1rem;
+  overflow-x: auto;
+}
+
+.heatmap__svg {
+  max-width: 100%;
+  height: auto;
+}
+
+.heatmap__cell {
+  cursor: pointer;
+  stroke: var(--border);
+  stroke-width: 0.5;
+  transition: opacity 0.12s ease;
+}
+
+.heatmap__cell:hover {
+  opacity: 0.75;
+}
+
+/* Beige (empty) → sage (busy). */
+.heatmap__cell[data-level='0'] { fill: color-mix(in srgb, var(--surface) 70%, var(--bg)); }
+.heatmap__cell[data-level='1'] { fill: color-mix(in srgb, var(--accent) 28%, var(--surface)); }
+.heatmap__cell[data-level='2'] { fill: color-mix(in srgb, var(--accent) 50%, var(--surface)); }
+.heatmap__cell[data-level='3'] { fill: color-mix(in srgb, var(--accent) 74%, var(--surface)); }
+.heatmap__cell[data-level='4'] { fill: var(--accent); }
+
+.heatmap__cell.is-selected {
+  stroke: var(--text-h);
+  stroke-width: 1.5;
+}

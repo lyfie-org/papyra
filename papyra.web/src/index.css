@@ -37,6 +37,25 @@
   --sans: 'Sora', system-ui, 'Segoe UI', sans-serif;
   --mono: 'Roboto Mono', ui-monospace, Consolas, monospace;
 
+  /* PapyraEditor (luthor) token bridge. The preset reads these and otherwise
+     falls back to its own light palette — which is why the editor ignored the
+     app theme. They point at the design tokens above, so dark mode re-resolves
+     automatically (no separate dark block needed). */
+  --papyra-surface:          var(--surface);
+  --papyra-surface-muted:    var(--code-bg);
+  --papyra-text:             var(--text-h);
+  --papyra-text-muted:       var(--text);
+  --papyra-text-heading:     var(--text-h);
+  --papyra-border:           var(--border);
+  --papyra-accent:           var(--accent);
+  --papyra-accent-text:      var(--accent-text);
+  --papyra-accent-contrast:  var(--accent-fg);
+  --papyra-accent-surface:   var(--accent-bg);
+  --papyra-code-surface:     var(--code-bg);
+  --papyra-font-body:        var(--sans);
+  --papyra-font-heading:     var(--heading);
+  --papyra-font-mono:        var(--mono);
+
   font: 18px/145% var(--sans);
   letter-spacing: 0.18px;
   color-scheme: light dark;
@@ -164,4 +183,17 @@ pre {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
   border-radius: 4px;
+}
+
+/* Colored notes light-lock the editor (the host paints the tint). Make the
+   editor surface transparent so the note tint shows through, and pin dark ink
+   for contrast — mirrors the NoteCard/NoteEditor colored convention. */
+.luthor-preset-papyra--colored {
+  --papyra-surface:       transparent;
+  --papyra-surface-muted: rgba(61, 44, 30, 0.06);
+  --papyra-text:          #3d2c1e;
+  --papyra-text-muted:    #5c4636;
+  --papyra-text-heading:  #3d2c1e;
+  --papyra-border:        rgba(61, 44, 30, 0.18);
+  --papyra-code-surface:  rgba(61, 44, 30, 0.06);
 }

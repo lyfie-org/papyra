@@ -10,10 +10,11 @@ interface SnapshotMeta {
   timestamp: string;
 }
 
-// File Recovery overlay: lists a note's archived revisions, shows a line diff of
-// the selected snapshot against the current body, and restores it on demand.
-// Restore goes through the API (atomic .md replace); the notes query is
-// invalidated so the editor re-baselines on the restored revision.
+// File Recovery overlay: lists a note's archived revisions, shows a GitHub-style
+// line diff of the selected snapshot against the live body, and restores it.
+// Restore goes through the API (which snapshots the current revision first), so a
+// restore is itself reversible — the pre-restore version reappears in the list to
+// "undo" with. The panel stays open after a restore so that undo is one click away.
 interface Props {
   noteId: string;
   currentBody: string;
@@ -26,29 +27,36 @@ export default function SnapshotPanel({ noteId, currentBody, onClose, onRestored
   const [snapshots, setSnapshots] = useState<SnapshotMeta[] | null>(null);
   const [selected, setSelected] = useState<string | null>(null);
   const [selectedBody, setSelectedBody] = useState<string | null>(null);
+  // The body the diff treats as "current". Updated after a restore so the next
+  // diff (for undo) compares against what's actually on disk now.
+  const [liveBody, setLiveBody] = useState(currentBody);
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [restoring, setRestoring] = useState(false);
 
-  // Load the revision list when the panel opens.
-  useEffect(() => {
-    let live = true;
-    (async () => {
-      try {
-        const res = await fetch(`/api/notes/${encodeURIComponent(noteId)}/snapshots`);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const list = (await res.json()) as SnapshotMeta[];
-        if (live) setSnapshots(list);
-      } catch {
-        if (live) setError('Could not load version history.');
-      }
-    })();
-    return () => { live = false; };
+  const loadSnapshots = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/notes/${encodeURIComponent(noteId)}/snapshots`);
+      if (!res.ok) throw new Error(`HTTP ${res.status}`);
+      setSnapshots((await res.json()) as SnapshotMeta[]);
+    } catch {
+      setError('Could not load version history.');
+    }
   }, [noteId]);
 
-  // Fetch one snapshot's body to diff against the live note.
+  useEffect(() => { void loadSnapshots(); }, [loadSnapshots]);
+
+  // Esc closes.
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [onClose]);
+
   const select = useCallback(async (snapshotId: string) => {
     setSelected(snapshotId);
     setSelectedBody(null);
+    setNotice(null);
     try {
       const res = await fetch(`/api/notes/${encodeURIComponent(noteId)}/snapshots/${encodeURIComponent(snapshotId)}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
@@ -61,6 +69,7 @@ export default function SnapshotPanel({ noteId, currentBody, onClose, onRestored
 
   const restore = useCallback(async (snapshotId: string) => {
     setRestoring(true);
+    setError(null);
     try {
       const res = await fetch(
         `/api/notes/${encodeURIComponent(noteId)}/restore/${encodeURIComponent(snapshotId)}`,
@@ -68,18 +77,31 @@ export default function SnapshotPanel({ noteId, currentBody, onClose, onRestored
       );
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       await queryClient.invalidateQueries({ queryKey: ['notes'] });
-      onRestored();
-      onClose();
+      onRestored(); // editor adopts the restored body
+      // The restored snapshot's body is now the live body; the prior version was
+      // archived by the API, so refresh the list to expose the undo target.
+      if (selectedBody !== null) setLiveBody(selectedBody);
+      setSelected(null);
+      setSelectedBody(null);
+      setNotice('Restored. To undo, restore the most recent version below.');
+      await loadSnapshots();
     } catch {
       setError('Restore failed.');
+    } finally {
       setRestoring(false);
     }
-  }, [noteId, queryClient, onRestored, onClose]);
+  }, [noteId, queryClient, onRestored, selectedBody, loadSnapshots]);
 
-  const rows = selectedBody !== null ? lineDiff(selectedBody, currentBody) : null;
+  const rows = selectedBody !== null ? lineDiff(selectedBody, liveBody) : null;
 
   return (
-    <div className="snapshot-panel" role="dialog" aria-label="File recovery" aria-modal="true">
+    <div
+      className="snapshot-panel"
+      role="dialog"
+      aria-label="File recovery"
+      aria-modal="true"
+      onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
+    >
       <div className="snapshot-panel__sheet">
         <header className="snapshot-panel__head">
           <h2 className="snapshot-panel__title">File Recovery</h2>
@@ -89,6 +111,7 @@ export default function SnapshotPanel({ noteId, currentBody, onClose, onRestored
         </header>
 
         {error && <p className="snapshot-panel__error" role="alert">{error}</p>}
+        {notice && <p className="snapshot-panel__notice" role="status">{notice}</p>}
 
         <div className="snapshot-panel__body">
           <ul className="snapshot-panel__list">
@@ -108,7 +131,9 @@ export default function SnapshotPanel({ noteId, currentBody, onClose, onRestored
           </ul>
 
           <div className="snapshot-panel__diff">
-            {selected === null && <p className="snapshot-panel__muted">Pick a version to see what changed.</p>}
+            {selected === null && (
+              <p className="snapshot-panel__muted">Pick a version to see what changed.</p>
+            )}
             {selected !== null && rows === null && <p className="snapshot-panel__muted">Loading diff…</p>}
             {rows !== null && (
               <>
@@ -116,16 +141,16 @@ export default function SnapshotPanel({ noteId, currentBody, onClose, onRestored
                   <span className="snapshot-panel__swatch snapshot-panel__swatch--del" /> this version
                   <span className="snapshot-panel__swatch snapshot-panel__swatch--add" /> current
                 </p>
-                <pre className="snapshot-panel__pre">
+                <div className="snapshot-panel__diffscroll">
                   {rows.map((r, i) => (
                     <div key={i} className={`snapshot-panel__row snapshot-panel__row--${r.kind}`}>
-                      <span className="snapshot-panel__sign">
-                        {r.kind === 'add' ? '+' : r.kind === 'del' ? '−' : ' '}
+                      <span className="snapshot-panel__sign" aria-hidden="true">
+                        {r.kind === 'add' ? '+' : r.kind === 'del' ? '−' : ''}
                       </span>
-                      {r.text || ' '}
+                      <code className="snapshot-panel__code">{r.text || ' '}</code>
                     </div>
                   ))}
-                </pre>
+                </div>
                 <div className="snapshot-panel__actions">
                   <button
                     type="button"

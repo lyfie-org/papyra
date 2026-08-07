@@ -18,7 +18,7 @@ namespace Papyra.Api.Storage;
 public sealed class SearchIndexService : IDisposable
 {
     private const LuceneVersion Version = LuceneVersion.LUCENE_48;
-    private static readonly string[] SearchFields = ["title", "body", "tags"];
+    private static readonly string[] SearchFields = ["title", "body", "tags", "extractedText"];
 
     private readonly FSDirectory _dir;
     private readonly StandardAnalyzer _analyzer;
@@ -86,6 +86,23 @@ public sealed class SearchIndexService : IDisposable
         _writer.Commit();
     }
 
+    // Index OCR text extracted from an image as its own document, tied to the parent
+    // note via a stored `noteId`. Kept separate so re-indexing the note (which
+    // rebuilds the note doc) never wipes the extracted text. The OCR text lives ONLY
+    // here — if the index is dropped, re-scanning the media recreates it (zero-DB).
+    public void IndexOcr(string userId, string ocrId, string noteId, string text)
+    {
+        if (string.IsNullOrEmpty(ocrId) || string.IsNullOrEmpty(noteId)) return;
+        _writer.UpdateDocument(new Term("id", ocrId), new Document
+        {
+            new StringField("id", ocrId, Field.Store.YES),
+            new StringField("userId", userId, Field.Store.YES),
+            new StringField("noteId", noteId, Field.Store.YES),
+            new TextField("extractedText", text ?? string.Empty, Field.Store.NO),
+        });
+        _writer.Commit();
+    }
+
     // Relevance-ranked search over title/body/tags, fenced to one tenant. Returns
     // id + title + score; the snippet is built by the caller from the live body
     // (body isn't stored).
@@ -105,13 +122,29 @@ public sealed class SearchIndexService : IDisposable
         };
 
         var hits = searcher.Search(query, max).ScoreDocs;
-        var results = new List<SearchHit>(hits.Length);
+        // A doc is either a note (its own id) or an OCR fragment (carries the parent
+        // noteId). Resolve both to the note and collapse duplicates — an image match
+        // and a body match for the same note surface once, at the best score.
+        var byNote = new Dictionary<string, SearchHit>(StringComparer.Ordinal);
         foreach (var h in hits)
         {
             var doc = searcher.Doc(h.Doc);
-            results.Add(new SearchHit(doc.Get("id"), doc.Get("title") ?? string.Empty, h.Score));
+            var noteId = doc.Get("noteId") ?? doc.Get("id");
+            if (string.IsNullOrEmpty(noteId)) continue;
+            var title = doc.Get("title") ?? string.Empty;
+
+            if (byNote.TryGetValue(noteId, out var existing))
+            {
+                var bestTitle = string.IsNullOrEmpty(existing.Title) ? title : existing.Title;
+                if (h.Score > existing.Score) byNote[noteId] = new SearchHit(noteId, bestTitle, h.Score);
+                else if (existing.Title.Length == 0 && title.Length > 0) byNote[noteId] = existing with { Title = title };
+            }
+            else
+            {
+                byNote[noteId] = new SearchHit(noteId, title, h.Score);
+            }
         }
-        return results;
+        return byNote.Values.OrderByDescending(r => r.Score).ToList();
     }
 
     // A ~150-char highlighted snippet for a query over a body string. Falls back to

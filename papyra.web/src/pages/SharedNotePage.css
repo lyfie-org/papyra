@@ -1,0 +1,23 @@
+.shared-page {
+  min-height: 100%;
+  background: var(--bg);
+}
+.shared-page__brand {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 1rem 1.5rem;
+  border-bottom: 1px solid var(--border);
+}
+.shared-page__logo { width: 28px; height: 28px; }
+.shared-page__wordmark {
+  font-family: var(--heading);
+  font-size: 1.2rem;
+  color: var(--text-h);
+}
+.shared-page__main { padding: 4vh 1rem; }
+.shared-page__status {
+  text-align: center;
+  margin-top: 2rem;
+  color: var(--text);
+}

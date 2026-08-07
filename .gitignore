@@ -37,8 +37,12 @@ bld/
 
 # Visual Studio 2015/2017 cache/options directory
 .vs/
-# Uncomment if you have tasks that create the project's static files in wwwroot
-#wwwroot/
+
+# Built SPA — Vite output injected into the API's wwwroot. The real source lives
+# in papyra.web/ (public assets + index.html + bundled TSX); the Docker image and
+# CI regenerate this whole folder via `pnpm build`. Committing it is pure churn
+# (hash-named assets change every build) and ships nothing the build can't recreate.
+papyra.api/src/Papyra.Api/wwwroot/
 
 # Visual Studio 2017 auto generated files
 Generated\ Files/
@@ -480,7 +484,11 @@ $RECYCLE.BIN/
 
 # Vim temporary swap files
 *.swp
+
+# Claude Code working dirs — root and any nested package (e.g. papyra.web/.claude).
+# Local agent/editor scaffolding, not part of the shipped source.
 /.claude
+**/.claude/
 
 # User data — notes and uploaded images; never commit
 /data/

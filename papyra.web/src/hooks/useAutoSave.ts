@@ -46,6 +46,7 @@ export function useAutoSave(note: Note, getDraft: () => Draft) {
         color: note.color,
         pinned: note.pinned,
         archived: note.archived,
+        kind: note.kind,
         body: draft.body,
       }),
     });
@@ -57,7 +58,7 @@ export function useAutoSave(note: Note, getDraft: () => Draft) {
     // Our own write is logged in the Write-Ring server-side (no broadcast echo),
     // so refresh the grid's snapshot ourselves.
     queryClient.invalidateQueries({ queryKey: ['notes'] });
-  }, [getDraft, note.id, note.tags, note.color, note.pinned, note.archived, queryClient]);
+  }, [getDraft, note.id, note.tags, note.color, note.pinned, note.archived, note.kind, queryClient]);
 
   // Mark dirty: reset the debounce window on every keystroke (reset-on-new).
   const bump = useCallback(() => {
@@ -77,9 +78,18 @@ export function useAutoSave(note: Note, getDraft: () => Draft) {
     setStatus('idle');
   }, []);
 
+  // Flush any pending edit on unmount (e.g. the editor modal closing) so closing
+  // a note never drops the last keystrokes. flush is a no-op when already clean,
+  // so the redundant call after an explicit close is harmless. Held in a ref so
+  // this runs only on the real unmount, not whenever flush's identity changes.
+  const flushRef = useRef(flush);
+  flushRef.current = flush;
   useEffect(() => () => {
-    if (timer.current) clearTimeout(timer.current);
+    if (timer.current) {
+      clearTimeout(timer.current);
+      void flushRef.current();
+    }
   }, []);
 
-  return { status, isDirty, bump, reset, savedRef: saved };
+  return { status, isDirty, bump, reset, flush, savedRef: saved };
 }

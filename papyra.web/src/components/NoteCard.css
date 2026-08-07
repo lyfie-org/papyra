@@ -5,6 +5,7 @@
 }
 
 .note-card {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -21,7 +22,10 @@
   transform: translateY(-1px);
 }
 
-/* Pastel YAML colors are always light → keep dark ink for contrast in both themes. */
+/* Light mode: pastel tint at full strength with dark ink. */
+.note-card--colored {
+  background: var(--note-tint);
+}
 .note-card--colored .note-card__title {
   color: #3d2c1e;
 }
@@ -29,6 +33,22 @@
   color: #5c4636;
 }
 .note-card--colored .note-card__tag {
+  background: rgba(61, 44, 30, 0.1);
+  color: #3d2c1e;
+}
+
+/* Dark mode: keep the tint a bright pastel and pin dark ink for contrast (the
+   tints are always light, so dark ink reads far better than the theme's tan). */
+[data-theme='dark'] .note-card--colored {
+  background: color-mix(in srgb, var(--note-tint) 78%, var(--surface));
+}
+[data-theme='dark'] .note-card--colored .note-card__title {
+  color: #3d2c1e;
+}
+[data-theme='dark'] .note-card--colored .note-card__snippet {
+  color: #4a3526;
+}
+[data-theme='dark'] .note-card--colored .note-card__tag {
   background: rgba(61, 44, 30, 0.1);
   color: #3d2c1e;
 }
@@ -72,6 +92,12 @@
   color: var(--text);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
+  /* Stacked multi-line preview, capped so tall notes don't blow out the card. */
+  display: -webkit-box;
+  -webkit-line-clamp: 10;
+  line-clamp: 10;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .note-card__tags {
@@ -89,4 +115,133 @@
   border-radius: 999px;
   background: var(--accent-bg);
   color: var(--accent-text);
+}
+
+/* ---- Keep-style corner pin ---- */
+.note-card__pin {
+  position: absolute;
+  top: -10px;
+  right: -10px;
+  z-index: 2;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow-card);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.12s ease, color 0.12s ease, background 0.12s ease;
+}
+.note-card:hover .note-card__pin,
+.note-card__pin:focus-visible {
+  opacity: 1;
+}
+.note-card__pin:hover {
+  color: var(--accent-text);
+  border-color: var(--accent);
+}
+/* Pinned: always shown, filled + accented so the state reads at a glance. */
+.note-card__pin--active {
+  opacity: 1;
+  background: var(--accent);
+  border-color: var(--accent);
+  color: var(--accent-fg);
+}
+
+/* ---- Hover action rail ---- */
+.note-card__actions {
+  position: absolute;
+  bottom: 8px;
+  right: 8px;
+  display: flex;
+  gap: 2px;
+  padding: 2px;
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: var(--shadow-card);
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+.note-card:hover .note-card__actions,
+.note-card__actions:focus-within {
+  opacity: 1;
+}
+.note-card--colored .note-card__actions {
+  background: rgba(255, 255, 255, 0.65);
+}
+[data-theme='dark'] .note-card--colored .note-card__actions {
+  background: rgba(255, 255, 255, 0.72);
+}
+[data-theme='dark'] .note-card--colored .note-card__action {
+  color: #5c4636;
+}
+
+.note-card__action {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+.note-card__action:hover {
+  background: var(--accent-bg);
+  color: var(--accent-text);
+}
+.note-card__action--danger:hover {
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+
+.note-card__menu-wrap {
+  position: relative;
+  display: inline-flex;
+}
+.note-card__menu {
+  position: absolute;
+  bottom: calc(100% + 4px);
+  right: 0;
+  z-index: 3;
+  display: flex;
+  flex-direction: column;
+  min-width: 9rem;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface);
+  box-shadow: var(--shadow-card-hover);
+}
+.note-card__menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 7px 10px;
+  border: none;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--text-h);
+  font-family: var(--sans);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+.note-card__menu-item:hover {
+  background: var(--accent-bg);
+  color: var(--accent-text);
+}
+
+/* Redacted stand-in for a `secure: true` note — the real body isn't in the client. */
+.note-card__snippet--locked {
+  filter: blur(3px);
+  user-select: none;
+  opacity: 0.55;
 }

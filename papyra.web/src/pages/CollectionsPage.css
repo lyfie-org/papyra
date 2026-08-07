@@ -1,0 +1,80 @@
+.collections__title {
+  margin: 0 0 0.25rem;
+  font-family: 'Marcellus', serif;
+  font-size: 1.6rem;
+  color: var(--text-h);
+}
+
+.collections__hint {
+  margin: 0 0 1rem;
+  max-width: 42rem;
+  font-family: 'Sora', sans-serif;
+  font-size: 0.85rem;
+  color: var(--text);
+}
+
+.collections__status {
+  font-family: 'Sora', sans-serif;
+  font-size: 0.85rem;
+  color: var(--text);
+}
+
+.collections__list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  margin: 0 0 1rem;
+  padding: 0;
+  list-style: none;
+}
+
+.collections__list li {
+  display: inline-flex;
+  align-items: center;
+}
+
+.collections__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.4rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 999px 0 0 999px;
+  background: var(--surface);
+  color: var(--text-h);
+  font-family: 'Sora', sans-serif;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.collections__chip.is-active {
+  border-color: var(--accent);
+  background: color-mix(in srgb, var(--accent) 22%, var(--surface));
+}
+
+.collections__remove {
+  display: grid;
+  place-items: center;
+  width: 1.9rem;
+  height: 100%;
+  min-height: 2rem;
+  border: 1px solid var(--border);
+  border-left: none;
+  border-radius: 0 999px 999px 0;
+  background: var(--surface);
+  color: var(--text);
+  cursor: pointer;
+}
+
+.collections__chip:focus-visible,
+.collections__remove:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.collections__rules {
+  margin: 0 0 0.8rem;
+  font-family: 'Roboto Mono', monospace;
+  font-size: 0.75rem;
+  color: var(--text);
+}

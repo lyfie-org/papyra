@@ -43,6 +43,19 @@ public static class PapyraPaths
     public static string UserSnapshotsDir(IConfiguration config, string contentRoot, string userId)
         => Path.Combine(UsersDir(config, contentRoot), userId, ".papyra", "snapshots");
 
+    // Per-user manual note ordering (drag-and-drop positions). UI state, so it
+    // lives under the user's hidden .papyra dir — never the notes vault.
+    public static string UserOrderFile(IConfiguration config, string contentRoot, string userId)
+        => Path.Combine(UsersDir(config, contentRoot), userId, ".papyra", "order.json");
+
+    // Per-user category registry (promoted tags + colours). UI/organisation state.
+    public static string UserCategoriesFile(IConfiguration config, string contentRoot, string userId)
+        => Path.Combine(UsersDir(config, contentRoot), userId, ".papyra", "categories.json");
+
+    // Per-user hidden state dir (avatar, order, categories live here).
+    public static string UserDotPapyra(IConfiguration config, string contentRoot, string userId)
+        => Path.Combine(UsersDir(config, contentRoot), userId, ".papyra");
+
     public static string DbPath(IConfiguration config, string contentRoot)
         => Path.Combine(DotPapyra(config, contentRoot), "papyra.db");
 

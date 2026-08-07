@@ -23,7 +23,10 @@
   padding-left: 16px;
   background-clip: padding-box;
 }
-.note-grid__col > .note-card {
+/* The card is wrapped in a .note-card__link, so the gap must sit on the link
+   (the actual masonry column child), not on .note-card. */
+.note-grid__col > .note-card__link {
+  display: block;
   margin-bottom: 16px;
 }
 

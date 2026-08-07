@@ -1,2 +1,5 @@
 packages:
   - papyra.web
+minimumReleaseAgeExclude:
+  - '@lyfie/luthor-headless@2.9.0'
+  - '@lyfie/luthor@2.9.0'
