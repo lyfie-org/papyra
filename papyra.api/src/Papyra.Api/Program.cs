@@ -1,8 +1,10 @@
+using System.IO.Compression;
 using System.Security;
 using System.Security.Claims;
 using System.Text.Json;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.AspNetCore.StaticFiles;
@@ -101,7 +103,11 @@ builder.Services.AddSingleton<ConflictState>();
 builder.Services.AddSingleton<VaultObserver>();
 builder.Services.AddHostedService<ColdBootDiffService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<VaultObserver>());
-builder.Services.AddHostedService<OrphanPruneService>();
+// Registered as a singleton as well as a hosted service so the housekeeping
+// endpoint can run the same sweep on demand — a 24h timer is not something an
+// admin (or a test) can wait for.
+builder.Services.AddSingleton<OrphanPruneService>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<OrphanPruneService>());
 
 // Permanently purges trashed notes once they outlive the retention window.
 builder.Services.AddHostedService<TrashPurgeService>();
@@ -177,6 +183,18 @@ builder.Services.AddSignalR();
 // the external redirect callback to carry the correlation cookie back.
 var oidc = builder.Configuration.GetSection("Oidc").Get<OidcSettings>();
 var oidcEnabled = !string.IsNullOrWhiteSpace(oidc?.Authority) && !string.IsNullOrWhiteSpace(oidc?.ClientId);
+
+// The cookie is only as durable as the key ring that signs it. By default those
+// keys live in the container's ephemeral filesystem, so every restart or image
+// upgrade silently signed every user out (and, with the offline outbox, stranded
+// queued edits behind a 401). Persist them on the mounted /data volume instead.
+var keysDir = PapyraPaths.DataProtectionKeysDir(builder.Configuration, builder.Environment.ContentRootPath);
+Directory.CreateDirectory(keysDir);
+builder.Services.AddDataProtection()
+    .PersistKeysToFileSystem(new DirectoryInfo(keysDir))
+    // Pin the discriminator: it otherwise derives from the content root path,
+    // which differs between `dotnet run` and the container image.
+    .SetApplicationName("Papyra");
 
 var authBuilder = builder.Services
     .AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme);
@@ -322,7 +340,22 @@ app.Use(async (context, next) =>
 });
 
 app.UseDefaultFiles();
-app.UseStaticFiles();
+app.UseStaticFiles(new StaticFileOptions
+{
+    OnPrepareResponse = ctx =>
+    {
+        var path = ctx.File.Name;
+        // The service worker and the shell must be revalidated on every load, or
+        // an upgrade never reaches an open tab: without an explicit header the
+        // browser heuristically caches /sw.js and keeps serving the previous
+        // worker, which keeps serving the previous bundle. /assets/* is content-
+        // hashed, so that stays immutable and long-lived.
+        if (path is "sw.js" or "index.html")
+            ctx.Context.Response.Headers.CacheControl = "no-cache";
+        else if (ctx.Context.Request.Path.StartsWithSegments("/assets"))
+            ctx.Context.Response.Headers.CacheControl = "public, max-age=31536000, immutable";
+    },
+});
 
 app.UseAuthentication();
 
@@ -783,6 +816,12 @@ notes.MapPut("/{id}", async (
     ILoggerFactory loggerFactory,
     CancellationToken ct) =>
 {
+    // The id becomes the .md filename. PathGuard stops it escaping the vault, but
+    // a name like `..%2F..%2Fetc%2Fpasswd` still landed as a literal file the API
+    // could never address again — reject it up front instead.
+    if (!PathGuard.IsValidNoteId(id))
+        return Results.BadRequest(new { error = "Invalid note id." });
+
     var uid = Uid(user);
     // Capture the prior revision (if any) so we can diff for webhook events below.
     var priorPath = state.PathFor(uid, id);
@@ -1205,13 +1244,25 @@ gitApi.MapPut("/", async (GitConfigWrite body, AppDbContext db, CancellationToke
     if (body.Token is not null) await Set("git.token", body.Token.Trim());
     await db.SaveChangesAsync(ct);
     return Results.NoContent();
-});
+})
+    .WithSummary("Configure git mirroring (admin, whole instance)")
+    .WithDescription(
+        "Sets the remote for the git mirror. NOTE: the repository is the whole users " +
+        "directory, so a sync pushes EVERY tenant's notes and media to this remote — " +
+        "not only the admin's own vault. On a shared instance, treat the remote as " +
+        "having the same trust level as the server itself. Papyra's own state " +
+        "(.papyra/, .trash/) is gitignored.");
 
 gitApi.MapPost("/sync", async (GitSyncService git, CancellationToken ct) =>
 {
     var result = await git.SyncOnceAsync(ct);
     return Results.Ok(new { result.Status, result.Detail });
-});
+})
+    .WithSummary("Run a git sync now (admin)")
+    .WithDescription(
+        "Stages, commits and pushes every tenant's vault. Returns status 'pushed', " +
+        "'clean', or 'conflict' — a diverged remote is never force-pushed; the " +
+        "conflict flag is raised instead and the remote is left untouched.");
 
 // ── Settings (trash retention) ───────────────────────────────────────────────────
 // Single global key for now: how long trashed notes survive before the sweep
@@ -1375,7 +1426,10 @@ conflicts.MapPost("/{id}/resolve", async (
     MarkdownStorageService storage,
     WriteRing writeRing,
     SearchIndexService search,
+    SnapshotService snapshots,
     VaultObserverOptions vault,
+    IConfiguration config,
+    IHostEnvironment env,
     IHubContext<NotesHub> hub,
     ILoggerFactory loggerFactory,
     CancellationToken ct) =>
@@ -1408,6 +1462,17 @@ conflicts.MapPost("/{id}/resolve", async (
                 : PathGuard.ResolveAndVerify(notesDir, $"{Guid.NewGuid()}.md", logger);
             copy.Id = keep == "right" ? c.ParentId : Path.GetFileNameWithoutExtension(targetPath);
 
+            // "Keep Right" overwrites the parent with the other device's text. Snapshot
+            // the revision being replaced first — otherwise the losing side of a
+            // conflict is gone for good, which is the opposite of what a conflict
+            // resolver is for. (Same guarantee the restore endpoint already gives.)
+            if (keep == "right")
+            {
+                var snapRoot = PapyraPaths.UserSnapshotsDir(config, env.ContentRootPath, uid);
+                var noteSnapDir = PathGuard.ResolveAndVerify(snapRoot, c.ParentId, logger);
+                await snapshots.CaptureAsync(noteSnapDir, targetPath, ct);
+            }
+
             writeRing.Mark(targetPath); // our write — watcher ignores the echo
             await storage.WriteAsync(targetPath, copy, ct);
             state.Upsert(uid, targetPath, copy);
@@ -1416,9 +1481,24 @@ conflicts.MapPost("/{id}/resolve", async (
         }
     }
 
-    // Every resolution deletes the rejected copy.
+    // Every resolution retires the rejected copy — but into the tenant's .trash,
+    // never with a hard delete. It is another device's copy of the user's own
+    // writing, and this is the only irreversible step in the whole flow.
     writeRing.Mark(conflictPath);
-    if (File.Exists(conflictPath)) File.Delete(conflictPath);
+    if (File.Exists(conflictPath))
+    {
+        try
+        {
+            var trashDir = PapyraPaths.UserTrashDir(config, env.ContentRootPath, uid);
+            Directory.CreateDirectory(trashDir);
+            var retired = Path.Combine(trashDir, $"{DateTime.UtcNow.Ticks}-{Path.GetFileName(conflictPath)}");
+            File.Move(conflictPath, retired, overwrite: true);
+        }
+        catch (IOException)
+        {
+            File.Delete(conflictPath); // trash unavailable — resolution still has to complete
+        }
+    }
     conflictState.Remove(uid, id, out _);
 
     await hub.Clients.All.SendAsync("ConflictResolved", new { id, parentId = c.ParentId }, ct);
@@ -1548,6 +1628,7 @@ shares.MapGet("/incoming/{shareId:int}/media/{filename}", async (
 shares.MapPut("/incoming/{shareId:int}", async (
     int shareId, SharedBodyWrite body, ClaimsPrincipal user, AppDbContext db, VaultState state,
     MarkdownStorageService storage, WriteRing writeRing, SearchIndexService search,
+    SnapshotService snapshots, IConfiguration config, IHostEnvironment env,
     IHubContext<NotesHub> hub, VaultObserverOptions vault, ILoggerFactory lf, CancellationToken ct) =>
 {
     var uid = int.Parse(Uid(user));
@@ -1555,7 +1636,7 @@ shares.MapPut("/incoming/{shareId:int}", async (
     if (share is null) return Results.NotFound();
     if (share.Access != "edit") return Results.Forbid();
     return await ApplySharedEdit(share.OwnerId.ToString(), share.NoteId, body.Body ?? string.Empty,
-        state, storage, writeRing, search, hub, vault, lf, ct);
+        state, storage, writeRing, search, snapshots, config, env, hub, vault, lf, ct);
 });
 
 // Public: read a link-shared note (enforces expiry + view cap, counts the view).
@@ -1593,7 +1674,8 @@ app.MapGet("/api/shared/{token}/media/{filename}", async (
 // Public: edit a link-shared note (only when access == edit; doesn't count a view).
 app.MapPut("/api/shared/{token}", async (
     string token, SharedBodyWrite body, AppDbContext db, VaultState state, MarkdownStorageService storage,
-    WriteRing writeRing, SearchIndexService search, IHubContext<NotesHub> hub,
+    WriteRing writeRing, SearchIndexService search, SnapshotService snapshots,
+    IConfiguration config, IHostEnvironment env, IHubContext<NotesHub> hub,
     VaultObserverOptions vault, ILoggerFactory lf, CancellationToken ct) =>
 {
     var share = await db.Shares.FirstOrDefaultAsync(s => s.Token == token && s.Kind == "link", ct);
@@ -1602,7 +1684,7 @@ app.MapPut("/api/shared/{token}", async (
         return Results.Json(new { error = "This link has expired." }, statusCode: StatusCodes.Status410Gone);
     if (share.Access != "edit") return Results.Forbid();
     return await ApplySharedEdit(share.OwnerId.ToString(), share.NoteId, body.Body ?? string.Empty,
-        state, storage, writeRing, search, hub, vault, lf, ct);
+        state, storage, writeRing, search, snapshots, config, env, hub, vault, lf, ct);
 });
 
 // ── Search ────────────────────────────────────────────────────────────────────
@@ -1704,6 +1786,18 @@ app.MapPost("/api/system/rebuild-embeddings", (
 // ── System: nuclear index rebuild ──────────────────────────────────────────────
 // Wipe the disposable caches and rebuild them from the .md files (the authority).
 // Broadcasts SystemRebuilding so clients can show a spinner while it runs.
+// Run the nightly orphan sweep now: unreferenced media moves to the tenant's
+// .trash (never a hard delete). Admin-only because the sweep spans every tenant.
+app.MapPost("/api/system/prune-media", (OrphanPruneService prune) =>
+    Results.Ok(new { moved = prune.PruneNow() }))
+    .RequireAuthorization(p => p.RequireRole("Admin"))
+    .WithTags("System")
+    .WithSummary("Prune unreferenced media now (admin)")
+    .WithDescription(
+        "Moves media files that no live note references into the owning tenant's " +
+        ".trash and reports how many moved. Same sweep the nightly background " +
+        "service runs; nothing is deleted outright.");
+
 app.MapPost("/api/system/rebuild-index", async (
     ClaimsPrincipal user,
     SearchIndexService search,
@@ -1871,10 +1965,18 @@ app.MapPost("/api/import/quick", async (
     const long maxBytes = 2 * 1024 * 1024;
 
     var imported = new List<object>();
+    // Skipping silently left the UI saying "Imported 0 notes" with no reason —
+    // report what was dropped and why so the drop-zone can say so.
+    var skipped = new List<object>();
     foreach (var file in form.Files)
     {
         var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
-        if (ext is not (".md" or ".txt") || file.Length == 0 || file.Length > maxBytes) continue;
+        if (ext is not (".md" or ".txt"))
+        { skipped.Add(new { file = file.FileName, reason = "Only .md and .txt files can be imported." }); continue; }
+        if (file.Length == 0)
+        { skipped.Add(new { file = file.FileName, reason = "File is empty." }); continue; }
+        if (file.Length > maxBytes)
+        { skipped.Add(new { file = file.FileName, reason = $"Larger than the {maxBytes / (1024 * 1024)} MB limit." }); continue; }
 
         string raw;
         using (var reader = new StreamReader(file.OpenReadStream()))
@@ -1898,7 +2000,7 @@ app.MapPost("/api/import/quick", async (
         imported.Add(new { id, note.Title });
     }
 
-    return Results.Ok(new { imported });
+    return Results.Ok(new { imported, skipped });
 })
 .RequireAuthorization()
 .DisableAntiforgery();
@@ -1909,10 +2011,25 @@ app.MapGet("/api/export", (
     IHostEnvironment env) =>
 {
     var notesDir = PapyraPaths.UserNotesDir(config, env.ContentRootPath, Uid(user));
+    var mediaDir = PapyraPaths.UserMediaDir(config, env.ContentRootPath, Uid(user));
     Directory.CreateDirectory(notesDir);
 
     var tmp = Path.Combine(Path.GetTempPath(), $"papyra-export-{Guid.NewGuid():N}.zip");
-    System.IO.Compression.ZipFile.CreateFromDirectory(notesDir, tmp);
+    using (var archive = ZipFile.Open(tmp, ZipArchiveMode.Create))
+    {
+        foreach (var file in Directory.EnumerateFiles(notesDir, "*", SearchOption.AllDirectories))
+            archive.CreateEntryFromFile(file, Path.GetRelativePath(notesDir, file).Replace('\\', '/'));
+
+        // Attachments too. Exporting notes without the images they embed leaves
+        // every ![[file]] dangling the moment the archive is opened somewhere
+        // else — the paths stay relative to `media/`, exactly as on disk.
+        if (Directory.Exists(mediaDir))
+        {
+            foreach (var file in Directory.EnumerateFiles(mediaDir, "*", SearchOption.AllDirectories))
+                archive.CreateEntryFromFile(
+                    file, "media/" + Path.GetRelativePath(mediaDir, file).Replace('\\', '/'));
+        }
+    }
 
     // DeleteOnClose reclaims the temp zip once the response stream finishes.
     var stream = new FileStream(
@@ -2051,6 +2168,14 @@ backups.MapPost("/restore", async (
 
 app.MapHub<NotesHub>("/hubs/notes");
 
+// An unmatched /api route must NOT fall through to the SPA: a client asking for
+// `/api/shared/` (or any typo'd endpoint) was handed 200 text/html, so `res.ok`
+// was true and the JSON parse blew up somewhere far from the cause. Answer in the
+// shape the caller asked for.
+app.MapFallback("/api/{**rest}", (HttpContext http) =>
+    Results.Json(new { error = "No such endpoint.", path = http.Request.Path.Value }, statusCode: StatusCodes.Status404NotFound))
+    .ExcludeFromDescription();
+
 app.MapFallbackToFile("index.html");
 
 app.Run();
@@ -2093,11 +2218,20 @@ static IResult ServeOwnerMedia(
 static async Task<IResult> ApplySharedEdit(
     string ownerUid, string noteId, string newBody,
     VaultState state, MarkdownStorageService storage, WriteRing writeRing, SearchIndexService search,
+    SnapshotService snapshots, IConfiguration config, IHostEnvironment env,
     IHubContext<NotesHub> hub, VaultObserverOptions vault, ILoggerFactory lf, CancellationToken ct)
 {
     var path = OwnerNotePath(state, vault, lf, ownerUid, noteId);
     var note = await storage.ReadAsync(path, ct);
     if (note is null) return Results.NotFound();
+
+    // Someone who is not the owner is about to replace the owner's text. Every
+    // other write path snapshots the prior revision first; this one has to as
+    // well, or a sharee (or an edit-link visitor) can erase the owner's writing
+    // with nothing to recover from.
+    var snapRoot = PapyraPaths.UserSnapshotsDir(config, env.ContentRootPath, ownerUid);
+    var noteSnapDir = PathGuard.ResolveAndVerify(snapRoot, noteId, lf.CreateLogger("PathGuard"));
+    await snapshots.CaptureAsync(noteSnapDir, path, ct);
 
     note.Body = newBody;
     note.Updated = DateTime.UtcNow;

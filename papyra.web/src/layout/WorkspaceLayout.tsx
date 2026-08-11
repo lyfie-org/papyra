@@ -3,12 +3,15 @@ import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   Menu, StickyNote, ListTodo, Tags, Archive, Settings, Trash2,
-  User, Shield, LogOut, Sun, Moon, Share2, Layers, Sparkles,
+  User, Shield, LogOut, Sun, Moon, Share2, Layers, Sparkles, CircleQuestionMark,
 } from 'lucide-react';
 import ChatPanel from '../components/ChatPanel';
+import SearchBar from '../components/SearchBar';
+import HelpSheet from '../components/HelpSheet';
 import { useTheme } from '../hooks/useTheme';
 import { useSignalR } from '../hooks/useSignalR';
 import { useAuth } from '../hooks/useAuth';
+import { useSyncEngine } from '../hooks/useSync';
 import logo from '../assets/papyra_logo.png';
 import './WorkspaceLayout.css';
 
@@ -30,8 +33,30 @@ export default function WorkspaceLayout() {
   const [collapsed, setCollapsed] = useState(false);
   const [menuOpen, setMenuOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
+  const [helpOpen, setHelpOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const serverStatus = useSignalR();
+
+  // Connectivity + outbox telemetry. The dot now answers the question a
+  // local-first app actually has to answer — "is my writing safe?" — not just
+  // whether a socket happens to be up.
+  const sync = useSyncEngine();
+  const offline = serverStatus === 'offline' || !sync.online;
+  const syncTone = sync.syncing
+    ? 'syncing'
+    : sync.pending > 0 ? 'pending' : offline ? 'offline' : 'online';
+  const syncLabel = sync.authRequired && sync.pending > 0
+    ? `Sign in to sync ${sync.pending}`
+    : sync.syncing
+      ? 'Syncing…'
+      : offline
+        ? (sync.pending > 0 ? `Offline · ${sync.pending} to sync` : 'Offline · edits saved here')
+        : sync.pending > 0 ? `${sync.pending} to sync` : 'Server Online';
+  const syncTitle = sync.authRequired
+    ? 'Your session expired while these edits were queued. They are still saved on this device — sign in again and they will upload.'
+    : offline
+    ? 'Papyra is running from this device. Your edits are saved locally and upload automatically when the server is reachable.'
+    : sync.pending > 0 ? `${sync.pending} edit(s) waiting to upload` : 'Connected to your vault';
 
   const isAdmin = user?.role === 'Admin';
   const initial = (user?.name || user?.username || 'P').trim().charAt(0).toUpperCase();
@@ -50,6 +75,9 @@ export default function WorkspaceLayout() {
   async function logout() {
     setMenuOpen(false);
     await fetch('/api/auth/logout', { method: 'POST' });
+    // Drop the service worker's cached API replies so the next person on this
+    // machine can't read the previous session's notes out of the offline cache.
+    navigator.serviceWorker?.controller?.postMessage({ type: 'papyra-clear-data' });
     queryClient.setQueryData(['auth'], { state: 'login', user: null });
     navigate('/login', { replace: true });
   }
@@ -70,7 +98,18 @@ export default function WorkspaceLayout() {
           <img className="workspace__logo" src={logo} alt="" aria-hidden="true" />
           <span className="workspace__wordmark">Papyra</span>
         </div>
+        <SearchBar />
+
         <div className="workspace__nav-actions">
+          <button
+            type="button"
+            className="workspace__theme-toggle"
+            onClick={() => setHelpOpen(true)}
+            aria-label="How Papyra works"
+            title="How Papyra works"
+          >
+            <CircleQuestionMark size={18} />
+          </button>
           <button
             type="button"
             className="workspace__theme-toggle"
@@ -156,13 +195,13 @@ export default function WorkspaceLayout() {
               <span className="workspace__nav-label">Trash</span>
             </NavLink>
 
-            <footer className="workspace__sidebar-footer">
+            <footer className="workspace__sidebar-footer" title={syncTitle}>
               <span
-                className={`workspace__status-dot workspace__status-dot--${serverStatus}`}
+                className={`workspace__status-dot workspace__status-dot--${syncTone}`}
                 aria-hidden="true"
               />
-              <span className="workspace__status-label workspace__nav-label">
-                {serverStatus === 'online' ? 'Server Online' : 'Server Offline'}
+              <span className="workspace__status-label workspace__nav-label" role="status">
+                {syncLabel}
               </span>
             </footer>
           </div>
@@ -174,6 +213,7 @@ export default function WorkspaceLayout() {
       </div>
 
       {chatOpen && <ChatPanel onClose={() => setChatOpen(false)} />}
+      {helpOpen && <HelpSheet onClose={() => setHelpOpen(false)} />}
     </div>
   );
 }

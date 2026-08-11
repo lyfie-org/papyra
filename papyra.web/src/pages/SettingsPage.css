@@ -120,7 +120,7 @@
 .settings__select {
   padding: 0.5rem 0.6rem;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   background: var(--bg);
   color: var(--text-h);
   font-family: var(--sans);
@@ -137,7 +137,7 @@
 .settings__provision-row select {
   padding: 0.5rem 0.6rem;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   background: var(--bg);
   color: var(--text-h);
   font-family: var(--sans);
@@ -147,7 +147,7 @@
 .settings__provision-row button {
   padding: 0.5rem 0.9rem;
   border: 1px solid var(--accent-border);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   background: var(--accent);
   color: var(--accent-fg);
   font-family: var(--sans);
@@ -203,7 +203,7 @@
   align-self: flex-start;
   padding: 0.55rem 0.9rem;
   border: 1px solid var(--danger-border);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   background: var(--danger-bg);
   color: var(--danger);
   font-family: var(--sans);
@@ -219,7 +219,7 @@
   margin: 0 0 0.5rem;
   padding: 0.5rem 0.7rem;
   border: 1px solid var(--danger-border);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   background: var(--danger-bg);
   color: var(--danger);
   font-family: var(--sans);
@@ -256,7 +256,7 @@
   gap: 0.6rem;
   padding: 0.55rem 0.8rem;
   border: none;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   background: transparent;
   color: var(--text);
   font-family: var(--sans);
@@ -278,7 +278,7 @@
   min-width: 0;
   padding: 1.4rem 1.5rem;
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: var(--radius-md);
   background: var(--surface);
   box-shadow: var(--shadow-card);
 }
@@ -294,11 +294,11 @@
   width: 64px;
   height: 64px;
   border: none;
-  border-radius: 50%;
+  border-radius: var(--radius-pill);
   background: var(--accent);
   color: var(--accent-fg);
   font-family: var(--heading);
-  font-size: 28px;
+  font-size: var(--fs-xl);
   cursor: pointer;
   overflow: hidden;
   flex-shrink: 0;
@@ -318,7 +318,7 @@
   justify-content: center;
   width: 22px;
   height: 22px;
-  border-radius: 50%;
+  border-radius: var(--radius-pill);
   background: var(--surface);
   color: var(--text-h);
   box-shadow: var(--shadow-card);
@@ -342,7 +342,7 @@
 .settings__form .settings__field input {
   padding: 0.5rem 0.6rem;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   background: var(--bg);
   color: var(--text-h);
   font-family: var(--sans);
@@ -367,7 +367,7 @@
   align-self: flex-start;
   padding: 0.5rem 0.9rem;
   border: 1px solid var(--accent-border);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   background: var(--accent-bg);
   color: var(--accent-text);
   font-family: var(--sans);
@@ -398,7 +398,7 @@
   gap: 0.3rem;
   padding: 0.3rem;
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   background: var(--bg);
 }
 .settings__segment-btn {
@@ -407,7 +407,7 @@
   gap: 0.45rem;
   padding: 0.5rem 0.9rem;
   border: none;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   background: transparent;
   color: var(--text);
   font-family: var(--sans);
@@ -426,7 +426,7 @@
   gap: 0.6rem;
   padding: 0.7rem 0.9rem;
   border: 1px solid var(--accent-border);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   background: var(--accent-bg);
 }
 .settings__token-value {

@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { Plus } from 'lucide-react';
 import type { Note } from '../types/note';
+import { putNote } from '../lib/notesApi';
 
 // Matches a markdown task line: leading bullet, [ ] or [x], then the label.
 const CHECK = /^(\s*[-*+]\s+)\[([ xX])\]\s?(.*)$/;
@@ -34,15 +35,12 @@ export default function TodoCard({ note }: { note: Note }) {
   const className = `note-card todo-card${note.color ? ' note-card--colored' : ''}`;
 
   async function putBody(body: string) {
-    const res = await fetch(`/api/notes/${encodeURIComponent(note.id)}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        title: note.title, tags: note.tags, color: note.color,
-        pinned: note.pinned, archived: note.archived, kind: 'todo', body,
-      }),
-    });
-    if (!res.ok) throw new Error(`PUT /api/notes/${note.id} failed: ${res.status}`);
+    // Ticking a checkbox is the most likely thing to happen away from a network
+    // (shopping list in a basement supermarket), so it goes through the outbox.
+    await putNote(note.id, {
+      title: note.title, tags: note.tags, color: note.color,
+      pinned: note.pinned, archived: note.archived, kind: 'todo', body,
+    }, note.updated);
     queryClient.invalidateQueries({ queryKey: ['notes'] });
   }
 

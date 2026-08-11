@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import type { Note } from '../types/note';
+import { putNote } from '../lib/notesApi';
 
-export type SaveStatus = 'idle' | 'saving' | 'saved';
+export type SaveStatus = 'idle' | 'saving' | 'saved' | 'queued';
 
 // Draft = the editable surface of a note. Tags/color/pinned ride along unchanged
 // so a body/title save never clobbers frontmatter the editor doesn't touch.
@@ -37,10 +38,11 @@ export function useAutoSave(note: Note, getDraft: () => Draft) {
     }
 
     setStatus('saving');
-    const res = await fetch(`/api/notes/${encodeURIComponent(note.id)}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
+    // putNote parks the write in the offline outbox rather than throwing when
+    // the API is unreachable, so a disconnection never costs the user keystrokes.
+    const outcome = await putNote(
+      note.id,
+      {
         title: draft.title,
         tags: note.tags,
         color: note.color,
@@ -48,17 +50,18 @@ export function useAutoSave(note: Note, getDraft: () => Draft) {
         archived: note.archived,
         kind: note.kind,
         body: draft.body,
-      }),
-    });
-    if (!res.ok) throw new Error(`PUT /api/notes/${note.id} failed: ${res.status}`);
+      },
+      note.updated,
+    );
 
     saved.current = draft;
     setIsDirty(false);
-    setStatus('saved');
+    setStatus(outcome === 'queued' ? 'queued' : 'saved');
     // Our own write is logged in the Write-Ring server-side (no broadcast echo),
-    // so refresh the grid's snapshot ourselves.
+    // so refresh the grid's snapshot ourselves. A queued write refreshes too —
+    // the read path merges the outbox back over the server snapshot.
     queryClient.invalidateQueries({ queryKey: ['notes'] });
-  }, [getDraft, note.id, note.tags, note.color, note.pinned, note.archived, note.kind, queryClient]);
+  }, [getDraft, note.id, note.tags, note.color, note.pinned, note.archived, note.kind, note.updated, queryClient]);
 
   // Mark dirty: reset the debounce window on every keystroke (reset-on-new).
   const bump = useCallback(() => {

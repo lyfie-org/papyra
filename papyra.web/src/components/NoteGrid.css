@@ -5,11 +5,12 @@
 .note-grid__heading {
   margin: 8px 0 16px;
   font-family: var(--mono);
-  font-size: 12px;
+  font-size: var(--fs-xs);
   font-weight: 500;
-  letter-spacing: 2px;
+  letter-spacing: 0.16em;
+  /* Was opacity 0.7 over --text: 3.5:1, under AA for 12.5px. Section labels are
+     quiet by size and tracking, not by fading them below legibility. */
   color: var(--text);
-  opacity: 0.7;
 }
 
 /* react-masonry-css: flex row of columns. */

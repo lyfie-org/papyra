@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { Pin, Palette, History, Archive, Trash2, ListTodo, Rewind, Maximize2 } from 'lucide-react';
 import PalettePicker from './PalettePicker';
 import './NoteToolbar.css';
+import { useSyncState } from '../hooks/useSync';
 
 // Frontmatter-action rail for the open note: Pin/Palette write into YAML, Trash
 // deletes the .md. Fades in on editor hover (see NoteToolbar.css). Presentational
@@ -33,6 +34,7 @@ export default function NoteToolbar({
   onArchive,
   onTrash,
 }: Props) {
+  const { online } = useSyncState();
   const [paletteOpen, setPaletteOpen] = useState(false);
 
   return (
@@ -118,6 +120,9 @@ export default function NoteToolbar({
         type="button"
         className="note-toolbar__btn note-toolbar__btn--danger"
         aria-label="Delete note"
+        // Deleting the .md is a server-side move with no offline equivalent.
+        disabled={!online}
+        title={online ? undefined : 'Needs a connection'}
         onClick={onTrash}
       >
         <Trash2 size={18} />

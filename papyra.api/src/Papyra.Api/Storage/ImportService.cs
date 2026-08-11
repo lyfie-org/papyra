@@ -163,7 +163,12 @@ public sealed class ImportService : BackgroundService
         var title = root.TryGetProperty("title", out var t) ? t.GetString() ?? string.Empty : string.Empty;
 
         string body;
-        if (root.TryGetProperty("listContent", out var list) && list.ValueKind == JsonValueKind.Array)
+        // A Keep checklist is a to-do, not prose — carry that across so it lands on
+        // the To Do page instead of the notes desk with checkboxes nobody sees.
+        var isChecklist = root.TryGetProperty("listContent", out var list)
+            && list.ValueKind == JsonValueKind.Array
+            && list.GetArrayLength() > 0;
+        if (isChecklist)
         {
             body = string.Join('\n', list.EnumerateArray().Select(item =>
             {
@@ -193,6 +198,7 @@ public sealed class ImportService : BackgroundService
             Color = null, // Keep's named colors don't map to our palette tokens
             Pinned = root.TryGetProperty("isPinned", out var p) && p.GetBoolean(),
             Archived = root.TryGetProperty("isArchived", out var a) && a.GetBoolean(),
+            Kind = isChecklist ? "todo" : "note",
             Body = body,
         };
     }

@@ -3,6 +3,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Plus } from 'lucide-react';
 import { useNotes } from '../hooks/useNotes';
 import TodoCard from '../components/TodoCard';
+import { putNote } from '../lib/notesApi';
 import './TodoPage.css';
 
 export default function TodoPage() {
@@ -15,15 +16,10 @@ export default function TodoPage() {
   // Create = PUT a fresh todo note seeded with one empty checkbox, then open it.
   async function createTodo() {
     const id = crypto.randomUUID();
-    const res = await fetch(`/api/notes/${id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        title: '', tags: [], color: null, pinned: false, archived: false,
-        kind: 'todo', body: '- [ ] ',
-      }),
+    await putNote(id, {
+      title: '', tags: [], color: null, pinned: false, archived: false,
+      kind: 'todo', body: '- [ ] ',
     });
-    if (!res.ok) throw new Error(`PUT /api/notes/${id} failed: ${res.status}`);
     await queryClient.invalidateQueries({ queryKey: ['notes'] });
     navigate(`/note/${id}`);
   }

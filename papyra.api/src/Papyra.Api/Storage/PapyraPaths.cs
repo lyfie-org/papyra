@@ -62,4 +62,11 @@ public static class PapyraPaths
     // Disposable Lucene full-text index — rebuilt from the .md files at will.
     public static string LuceneIndexDir(IConfiguration config, string contentRoot)
         => Path.Combine(DotPapyra(config, contentRoot), "lucene-index");
+
+    // ASP.NET Data Protection key ring — what the session cookie is signed with.
+    // NOT disposable: lose it and every signed-in browser is silently logged out.
+    // It has to live on the mounted volume, or a container upgrade (or even a
+    // restart) invalidates every session.
+    public static string DataProtectionKeysDir(IConfiguration config, string contentRoot)
+        => Path.Combine(DotPapyra(config, contentRoot), "keys");
 }

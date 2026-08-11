@@ -1,19 +1,19 @@
-.shared-with { padding: 8px 4px 48px; }
+.shared-with { padding: var(--space-2) var(--space-1) var(--space-12); }
 .shared-with__title { margin: 0 0 1rem; }
 .shared-with__status { margin: 24px 0; color: var(--text); }
 
 .shared-with__grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
-  gap: 14px;
+  gap: var(--space-4);
 }
 .shared-with__card {
   display: flex;
   flex-direction: column;
-  gap: 6px;
-  padding: 16px 18px;
+  gap: var(--space-2);
+  padding: var(--space-4) var(--space-4);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   background: var(--surface);
   box-shadow: var(--shadow-card);
   text-align: left;
@@ -42,9 +42,9 @@
   right: -2px;
   z-index: 2;
   display: inline-flex;
-  padding: 6px;
+  padding: var(--space-2);
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: var(--surface);
   color: var(--text);
   box-shadow: var(--shadow-card);

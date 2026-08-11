@@ -32,4 +32,33 @@ public static class PathGuard
 
         return combined;
     }
+
+    // A note id becomes a filename, so it has to be a *name* — not a path, not a
+    // Windows device, not something with control characters in it. PathGuard
+    // already stops an id from escaping the vault, but without this a request
+    // could still litter the vault with unusable names like
+    // `..%2F..%2Fetc%2Fpasswd.md` (URL-decoded to a literal filename), which the
+    // API then can't address again to delete.
+    public static bool IsValidNoteId(string? id)
+    {
+        if (string.IsNullOrWhiteSpace(id)) return false;
+        if (id.Length > 128) return false;
+        if (id is "." or "..") return false;
+        if (id.Contains("..", StringComparison.Ordinal)) return false;
+        if (id.Contains('/') || id.Contains('\\')) return false;
+        // %2F / %5C survive as literals when a client double-encodes them.
+        if (id.Contains('%')) return false;
+        if (id.Contains(':')) return false; // NTFS alternate data streams
+        foreach (var c in id)
+        {
+            if (char.IsControl(c)) return false;
+            if (Path.GetInvalidFileNameChars().Contains(c)) return false;
+        }
+        // Reserved DOS device names (CON, PRN, AUX, NUL, COM1..9, LPT1..9).
+        var stem = id.Split('.')[0].ToUpperInvariant();
+        if (stem is "CON" or "PRN" or "AUX" or "NUL") return false;
+        if (stem.Length == 4 && (stem.StartsWith("COM", StringComparison.Ordinal) || stem.StartsWith("LPT", StringComparison.Ordinal))
+            && char.IsDigit(stem[3]) && stem[3] != '0') return false;
+        return true;
+    }
 }

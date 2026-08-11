@@ -1,6 +1,6 @@
 .collections__title {
   margin: 0 0 0.25rem;
-  font-family: 'Marcellus', serif;
+  font-family: var(--heading);
   font-size: 1.6rem;
   color: var(--text-h);
 }
@@ -8,13 +8,13 @@
 .collections__hint {
   margin: 0 0 1rem;
   max-width: 42rem;
-  font-family: 'Sora', sans-serif;
+  font-family: var(--sans);
   font-size: 0.85rem;
   color: var(--text);
 }
 
 .collections__status {
-  font-family: 'Sora', sans-serif;
+  font-family: var(--sans);
   font-size: 0.85rem;
   color: var(--text);
 }
@@ -42,7 +42,7 @@
   border-radius: 999px 0 0 999px;
   background: var(--surface);
   color: var(--text-h);
-  font-family: 'Sora', sans-serif;
+  font-family: var(--sans);
   font-size: 0.85rem;
   cursor: pointer;
 }
@@ -74,7 +74,7 @@
 
 .collections__rules {
   margin: 0 0 0.8rem;
-  font-family: 'Roboto Mono', monospace;
+  font-family: var(--mono);
   font-size: 0.75rem;
   color: var(--text);
 }

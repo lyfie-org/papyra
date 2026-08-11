@@ -1,5 +1,5 @@
 .categories {
-  padding: 8px 4px 48px;
+  padding: var(--space-2) var(--space-1) var(--space-12);
 }
 
 .categories__head {
@@ -17,14 +17,14 @@
 .categories__save {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 8px 14px;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
   border: 1px solid var(--accent-border);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   background: var(--accent-bg);
   color: var(--accent-text);
   font-family: var(--sans);
-  font-size: 14px;
+  font-size: var(--fs-sm);
   cursor: pointer;
 }
 .categories__new:hover,
@@ -35,35 +35,35 @@
 .categories__form {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--space-3);
   flex-wrap: wrap;
   margin: 16px 0;
-  padding: 14px 16px;
+  padding: var(--space-4) var(--space-4);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   background: var(--surface);
 }
 .categories__input {
   flex: 1;
   min-width: 180px;
-  padding: 8px 12px;
+  padding: var(--space-2) var(--space-3);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   background: var(--bg);
   color: var(--text-h);
   font-family: var(--sans);
-  font-size: 14px;
+  font-size: var(--fs-sm);
 }
 
 .categories__swatches {
   display: flex;
-  gap: 6px;
+  gap: var(--space-2);
 }
 .categories__swatch {
   width: 22px;
   height: 22px;
   border: 2px solid transparent;
-  border-radius: 50%;
+  border-radius: var(--radius-pill);
   cursor: pointer;
 }
 .categories__swatch.is-active {
@@ -78,7 +78,7 @@
 .categories__grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
-  gap: 14px;
+  gap: var(--space-4);
   margin: 20px 0;
 }
 
@@ -87,15 +87,15 @@
   position: relative;
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 14px 16px;
+  gap: var(--space-3);
+  padding: var(--space-4) var(--space-4);
   border: 1px solid var(--border);
   border-left: 4px solid var(--cat-tint);
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   background: var(--surface);
   box-shadow: var(--shadow-card);
   cursor: pointer;
-  transition: box-shadow 0.15s ease, transform 0.15s ease, border-color 0.15s ease;
+  transition: box-shadow var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
 }
 .category-card:hover {
   box-shadow: var(--shadow-card-hover);
@@ -113,7 +113,7 @@
 .category-card__name {
   flex: 1;
   font-family: var(--sans);
-  font-size: 15px;
+  font-size: var(--fs-sm);
   color: var(--text-h);
   overflow: hidden;
   text-overflow: ellipsis;
@@ -121,9 +121,9 @@
 }
 .category-card__count {
   font-family: var(--mono);
-  font-size: 12px;
-  padding: 2px 8px;
-  border-radius: 999px;
+  font-size: var(--fs-xs);
+  padding: var(--space-1) var(--space-2);
+  border-radius: var(--radius-pill);
   background: var(--accent-bg);
   color: var(--accent-text);
 }
@@ -134,12 +134,12 @@
   width: 26px;
   height: 26px;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: transparent;
   color: var(--text);
   cursor: pointer;
   opacity: 0;
-  transition: opacity 0.12s ease;
+  transition: opacity var(--dur-fast) var(--ease);
 }
 .category-card:hover .category-card__del,
 .category-card__del:focus-visible {
@@ -162,19 +162,19 @@
 }
 .categories__results-title {
   margin: 0;
-  font-size: 20px;
+  font-size: var(--fs-lg);
 }
 .categories__clear {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 6px 12px;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-3);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   background: transparent;
   color: var(--text);
   font-family: var(--sans);
-  font-size: 13px;
+  font-size: var(--fs-xs);
   cursor: pointer;
 }
 .categories__clear:hover {

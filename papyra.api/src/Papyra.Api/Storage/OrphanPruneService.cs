@@ -36,6 +36,9 @@ public sealed class OrphanPruneService : BackgroundService
         }
     }
 
+    // On-demand sweep for the housekeeping endpoint. Same work as the nightly run.
+    public int PruneNow() => PruneOnce();
+
     // Sweep every tracked tenant's media dir. Returns the total count moved.
     internal int PruneOnce()
     {

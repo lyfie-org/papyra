@@ -7,11 +7,14 @@
   display: flex;
   align-items: flex-start;
   justify-content: center;
-  padding: 4vh 1rem;
+  padding: 4vh var(--space-4);
   overflow-y: auto;
-  background: rgba(0, 0, 0, 0.45);
-  backdrop-filter: blur(2px);
+  background: color-mix(in srgb, var(--scrim) 55%, transparent);
+  backdrop-filter: blur(6px);
+  animation: note-modal-fade var(--dur) var(--ease);
 }
+
+@keyframes note-modal-fade { from { opacity: 0; } to { opacity: 1; } }
 
 .note-editor {
   position: relative; /* offsetParent for the TOC's heading offset measurements */
@@ -20,19 +23,46 @@
   margin: 0 auto;
   max-height: 92vh;
   overflow-y: auto;
-  padding: 1.5rem;
-  border-radius: 12px;
+  padding: var(--space-6);
+  border-radius: var(--radius-lg);
   background: var(--surface);
   color: var(--text);
-  font-family: 'Sora', sans-serif;
-  box-shadow: var(--shadow-card-hover);
+  font-family: var(--sans);
+  box-shadow: var(--shadow);
+  animation: note-editor-rise var(--dur-slow) var(--ease);
+}
+
+@keyframes note-editor-rise {
+  from { opacity: 0; transform: translateY(14px) scale(0.99); }
+  to   { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .note-modal, .note-editor { animation: none; }
 }
 
 .note-editor__bar {
   display: flex;
   align-items: baseline;
-  gap: 1rem;
-  margin-bottom: 1rem;
+  flex-wrap: wrap;
+  gap: var(--space-3) var(--space-4);
+  margin-bottom: var(--space-4);
+}
+
+/* On a phone the title takes the row and the toolbar drops beneath it, rather
+   than the toolbar being pushed past the right edge of the sheet. */
+@media (max-width: 620px) {
+  .note-editor { padding: var(--space-4); }
+  .note-editor__bar { gap: var(--space-2); }
+  .note-editor__title { flex: 1 1 100%; font-size: var(--fs-lg); }
+  .note-toolbar { flex: 1 1 100%; justify-content: flex-start; }
+  /* Touch: there is no hover, so the toolbar has to be visible by default. */
+  .note-toolbar { opacity: 1; }
+}
+
+@media (hover: none) {
+  .note-toolbar { opacity: 1; }
+  .note-card__actions, .note-card__pin { opacity: 1; transform: none; }
 }
 
 .note-editor__title {
@@ -40,44 +70,47 @@
   border: none;
   background: transparent;
   color: var(--text-h);
-  font-family: 'Marcellus', serif;
-  font-size: 1.75rem;
+  font-family: var(--heading);
+  font-size: var(--fs-xl);
   line-height: 1.2;
+  letter-spacing: -0.01em;
 }
 
 .note-editor__title:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 4px;
-  border-radius: 4px;
+  border-radius: var(--radius-sm);
 }
 
 .note-editor__status {
   flex-shrink: 0;
   color: var(--text);
-  font-family: 'Roboto Mono', monospace;
-  font-size: 0.75rem;
-  opacity: 0.75;
+  font-family: var(--mono);
+  font-size: var(--fs-2xs);
+  opacity: 0.8;
+  /* The label changes as a save lands; fade it rather than snapping. */
+  transition: opacity var(--dur) var(--ease);
 }
 
 /* Pastel YAML colors are always light → keep dark ink for contrast in both
    themes (mirrors the NoteCard convention). The luthor body is forced to its
    light theme when coloured, so its own text stays dark too. */
 .note-editor--colored {
-  color: #5c4636;
+  color: var(--tint-ink-muted);
 }
 .note-editor--colored .note-editor__title {
-  color: #3d2c1e;
+  color: var(--tint-ink);
 }
 .note-editor--colored .note-editor__status,
 .note-editor--colored .note-toolbar__btn {
-  color: #5c4636;
+  color: var(--tint-ink-muted);
 }
 .note-editor--colored .note-toolbar__btn:hover {
-  color: #3d2c1e;
+  color: var(--tint-ink);
 }
 
 .note-editor__canvas {
-  font-family: 'Sora', sans-serif;
+  font-family: var(--sans);
 }
 
 /* ── Focus (distraction-free) mode ─────────────────────────────────────────────
@@ -94,7 +127,7 @@
   max-height: 100vh;
   min-height: 100vh;
   border-radius: 0;
-  padding: 3.5rem clamp(1rem, 6vw, 4rem) 6rem;
+  padding: var(--space-12) clamp(var(--space-4), 6vw, var(--space-12)) 6rem;
   box-shadow: none;
 }
 
@@ -126,11 +159,11 @@
   width: 2rem;
   height: 2rem;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   background: color-mix(in srgb, var(--surface) 85%, transparent);
   color: var(--text);
   cursor: pointer;
-  transition: color 0.15s ease, border-color 0.15s ease;
+  transition: color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
 }
 .note-editor__focusbtn:hover { color: var(--text-h); border-color: var(--accent); }
 .note-editor__focusbtn[aria-pressed='true'] { color: var(--accent); border-color: var(--accent); }
@@ -141,10 +174,10 @@
   gap: 0.35rem;
   padding: 0.35rem 0.7rem;
   border: 1px solid var(--accent);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: color-mix(in srgb, var(--accent) 22%, transparent);
   color: var(--text-h);
-  font-family: 'Sora', sans-serif;
+  font-family: var(--sans);
   font-size: 0.78rem;
   cursor: pointer;
 }
@@ -159,19 +192,19 @@
   display: flex;
   flex-wrap: wrap;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-2);
   margin-bottom: 1rem;
 }
 .note-cats__chip {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  padding: 2px 4px 2px 10px;
-  border-radius: 999px;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-1) var(--space-1) var(--space-3);
+  border-radius: var(--radius-pill);
   background: var(--accent-bg);
   color: var(--accent-text);
   font-family: var(--mono);
-  font-size: 12px;
+  font-size: var(--fs-xs);
 }
 .note-cats__chip button {
   display: inline-flex;
@@ -180,7 +213,7 @@
   width: 18px;
   height: 18px;
   border: none;
-  border-radius: 50%;
+  border-radius: var(--radius-pill);
   background: transparent;
   color: inherit;
   cursor: pointer;
@@ -190,16 +223,16 @@
 }
 .note-cats__input {
   min-width: 140px;
-  padding: 4px 8px;
+  padding: var(--space-1) var(--space-2);
   border: 1px dashed var(--border);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: transparent;
   color: var(--text-h);
   font-family: var(--sans);
-  font-size: 12px;
+  font-size: var(--fs-xs);
 }
 .note-editor--colored .note-cats__input {
-  color: #3d2c1e;
+  color: var(--tint-ink);
 }
 
 .note-editor__conflict {
@@ -211,7 +244,7 @@
   margin-bottom: 1rem;
   padding: 0.75rem 1rem;
   border: 1px solid var(--accent);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   background: var(--bg);
   color: var(--text-h);
   font-size: 0.85rem;
@@ -225,11 +258,11 @@
 
 .note-editor__conflict-actions button {
   border: 1px solid var(--accent);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   padding: 0.35rem 0.75rem;
   background: var(--accent);
   color: var(--accent-fg);
-  font-family: 'Sora', sans-serif;
+  font-family: var(--sans);
   font-size: 0.8rem;
   cursor: pointer;
 }

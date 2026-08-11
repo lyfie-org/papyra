@@ -6,6 +6,12 @@ services:
     image: papyra:latest
     ports:
       - "8080:8080"
+    # The image declares VOLUME ["/data"], so without this every `up --build`
+    # recreated the container against a FRESH anonymous volume — silently
+    # discarding the vault, the SQLite cache and the user accounts on each
+    # rebuild. Name it so notes survive image upgrades.
+    volumes:
+      - papyra-data:/data
     environment:
       Cors__AllowedOrigins__0: "http://localhost:8080"
     stop_grace_period: 30s
@@ -16,3 +22,6 @@ services:
       timeout: 5s
       start_period: 20s
       retries: 3
+
+volumes:
+  papyra-data:

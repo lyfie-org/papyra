@@ -5,8 +5,10 @@ import { Plus, UploadCloud, X } from 'lucide-react';
 import DraggableNoteGrid from '../components/DraggableNoteGrid';
 import KnowledgeHeatmap from '../components/KnowledgeHeatmap';
 import ConflictResolver from '../components/ConflictResolver';
+import FirstRun from '../components/FirstRun';
 import { useNotes } from '../hooks/useNotes';
 import { useConflicts, type Conflict } from '../hooks/useConflicts';
+import { putNote } from '../lib/notesApi';
 import './NotesPage.css';
 
 export default function NotesPage() {
@@ -25,6 +27,10 @@ export default function NotesPage() {
     [notes, dayFilter],
   );
 
+  // A genuinely empty vault (not just an empty day filter or an all-archived one)
+  // gets the first-run explainer instead of the grid.
+  const isFirstRun = !dayFilter && (notes ?? []).length === 0;
+
   // Quick-import: drop .md/.txt onto the grid → new notes (native DnD, no lib).
   async function importFiles(fileList: FileList) {
     const files = [...fileList].filter((f) => /\.(md|txt)$/i.test(f.name));
@@ -32,14 +38,27 @@ export default function NotesPage() {
     setImportMsg('Importing…');
     const form = new FormData();
     files.forEach((f) => form.append('files', f));
-    const res = await fetch('/api/import/quick', { method: 'POST', body: form });
-    const data = await res.json().catch(() => null);
-    if (res.ok) {
-      await queryClient.invalidateQueries({ queryKey: ['notes'] });
-      setImportMsg(`Imported ${data?.imported?.length ?? 0} note${data?.imported?.length === 1 ? '' : 's'}.`);
-    } else {
-      setImportMsg('Import failed.');
+    let res: Response;
+    try {
+      res = await fetch('/api/import/quick', { method: 'POST', body: form });
+    } catch {
+      // Import needs the server: the files are on the user's disk already, and
+      // queueing a multipart upload in the outbox would be a different feature.
+      setImportMsg('Can’t import while offline — reconnect and drop them again.');
+      return;
     }
+    const data = await res.json().catch(() => null);
+    if (!res.ok) { setImportMsg('Import failed.'); return; }
+
+    await queryClient.invalidateQueries({ queryKey: ['notes'] });
+    const n = data?.imported?.length ?? 0;
+    // The server also reports what it refused (wrong type, empty, over the size
+    // cap) — saying "Imported 0 notes" and nothing else just looks broken.
+    const skipped: Array<{ file: string; reason: string }> = data?.skipped ?? [];
+    const head = `Imported ${n} note${n === 1 ? '' : 's'}.`;
+    setImportMsg(skipped.length
+      ? `${head} Skipped ${skipped.length}: ${skipped[0].reason}`
+      : head);
   }
 
   // Group conflicts under the note they shadow so each card can flag its own.
@@ -57,12 +76,9 @@ export default function NotesPage() {
   // minted client-side; the .md becomes the source of truth on first write.
   async function createNote() {
     const id = crypto.randomUUID();
-    const res = await fetch(`/api/notes/${id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ title: '', tags: [], color: null, pinned: false, archived: false, body: '' }),
+    await putNote(id, {
+      title: '', tags: [], color: null, pinned: false, archived: false, kind: 'note', body: '',
     });
-    if (!res.ok) throw new Error(`PUT /api/notes/${id} failed: ${res.status}`);
     await queryClient.invalidateQueries({ queryKey: ['notes'] });
     navigate(`/note/${id}`);
   }
@@ -106,7 +122,9 @@ export default function NotesPage() {
 
       {isLoading && <p className="notes-page__status">Loading notes…</p>}
       {isError && <p className="notes-page__status">Couldn’t reach the server.</p>}
-      {!isLoading && !isError && (
+      {/* A brand-new vault gets an explanation, not the word "empty". */}
+      {!isLoading && !isError && isFirstRun && <FirstRun onCreate={() => void createNote()} />}
+      {!isLoading && !isError && !isFirstRun && (
         <DraggableNoteGrid
           notes={visibleNotes}
           conflictsByParent={conflictsByParent}

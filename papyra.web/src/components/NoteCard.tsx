@@ -6,7 +6,9 @@ import {
   MoreHorizontal, Copy, Link2,
 } from 'lucide-react';
 import type { Note } from '../types/note';
+import { putNote } from '../lib/notesApi';
 import { useSettings } from '../hooks/useSettings';
+import { useSyncState } from '../hooks/useSync';
 import ShareDialog from './ShareDialog';
 import './NoteCard.css';
 
@@ -65,6 +67,11 @@ function stop(e: React.MouseEvent) {
 export default function NoteCard({ note, variant = 'active', conflictId, conflictCount, onResolveConflict }: Props) {
   const queryClient = useQueryClient();
   const { data: settings } = useSettings();
+  // Trash/restore/delete are server-side moves with no offline equivalent — the
+  // outbox only carries note writes. Rather than firing a fetch that rejects
+  // into a void, the controls say plainly that they need a connection.
+  const { online } = useSyncState();
+  const offlineHint = online ? undefined : 'Needs a connection';
   const [menuOpen, setMenuOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
@@ -88,16 +95,11 @@ export default function NoteCard({ note, variant = 'active', conflictId, conflic
 
   // Persist a frontmatter patch, preserving every field the card isn't changing.
   async function patchNote(patch: Partial<Note>) {
-    const res = await fetch(`/api/notes/${encodeURIComponent(note.id)}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        title: note.title, tags: note.tags, color: note.color,
-        pinned: note.pinned, archived: note.archived, kind: note.kind, body: note.body,
-        ...patch,
-      }),
-    });
-    if (!res.ok) throw new Error(`PUT /api/notes/${note.id} failed: ${res.status}`);
+    await putNote(note.id, {
+      title: note.title, tags: note.tags, color: note.color,
+      pinned: note.pinned, archived: note.archived, kind: note.kind, body: note.body,
+      ...patch,
+    }, note.updated);
     invalidate();
   }
 
@@ -125,15 +127,10 @@ export default function NoteCard({ note, variant = 'active', conflictId, conflic
 
   async function duplicate() {
     const id = crypto.randomUUID();
-    const res = await fetch(`/api/notes/${id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        title: title === 'Untitled' ? '' : `${note.title} copy`,
-        tags: note.tags, color: note.color, pinned: false, archived: false, kind: note.kind, body: note.body,
-      }),
+    await putNote(id, {
+      title: title === 'Untitled' ? '' : `${note.title} copy`,
+      tags: note.tags, color: note.color, pinned: false, archived: false, kind: note.kind, body: note.body,
     });
-    if (!res.ok) throw new Error(`duplicate failed: ${res.status}`);
     invalidate();
   }
 
@@ -193,12 +190,14 @@ export default function NoteCard({ note, variant = 'active', conflictId, conflic
           <>
             <button
               type="button" className="note-card__action" aria-label="Restore note"
+              disabled={!online} title={offlineHint}
               onClick={(e) => { stop(e); void action('/untrash'); }}
             >
               <RotateCcw size={16} />
             </button>
             <button
               type="button" className="note-card__action note-card__action--danger" aria-label="Delete forever"
+              disabled={!online} title={offlineHint}
               onClick={(e) => { stop(e); void deleteForever(); }}
             >
               <Trash2 size={16} />
@@ -223,12 +222,14 @@ export default function NoteCard({ note, variant = 'active', conflictId, conflic
             )}
             <button
               type="button" className="note-card__action" aria-label="Share note"
+              disabled={!online} title={offlineHint}
               onClick={(e) => { stop(e); setMenuOpen(false); setShareOpen(true); }}
             >
               <Share2 size={16} />
             </button>
             <button
               type="button" className="note-card__action note-card__action--danger" aria-label="Delete note"
+              disabled={!online} title={offlineHint}
               onClick={(e) => { stop(e); void trash(); }}
             >
               <Trash2 size={16} />

@@ -8,18 +8,27 @@
   position: relative;
   display: flex;
   flex-direction: column;
-  gap: 8px;
-  padding: 16px 18px;
+  gap: var(--space-2);
+  padding: var(--space-4);
   background: var(--surface);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   box-shadow: var(--shadow-card);
   cursor: pointer;
-  transition: box-shadow 0.15s ease, transform 0.15s ease;
+  transition:
+    box-shadow var(--dur) var(--ease),
+    transform var(--dur) var(--ease),
+    border-color var(--dur) var(--ease);
 }
 .note-card:hover {
   box-shadow: var(--shadow-card-hover);
-  transform: translateY(-1px);
+  border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
+  transform: translateY(-2px);
+}
+.note-card:active { transform: translateY(0); }
+
+@media (prefers-reduced-motion: reduce) {
+  .note-card, .note-card:hover, .note-card:active { transform: none; }
 }
 
 /* Light mode: pastel tint at full strength with dark ink. */
@@ -27,14 +36,14 @@
   background: var(--note-tint);
 }
 .note-card--colored .note-card__title {
-  color: #3d2c1e;
+  color: var(--tint-ink);
 }
 .note-card--colored .note-card__snippet {
-  color: #5c4636;
+  color: var(--tint-ink-muted);
 }
 .note-card--colored .note-card__tag {
-  background: rgba(61, 44, 30, 0.1);
-  color: #3d2c1e;
+  background: var(--tint-scrim);
+  color: var(--tint-ink);
 }
 
 /* Dark mode: keep the tint a bright pastel and pin dark ink for contrast (the
@@ -43,29 +52,30 @@
   background: color-mix(in srgb, var(--note-tint) 78%, var(--surface));
 }
 [data-theme='dark'] .note-card--colored .note-card__title {
-  color: #3d2c1e;
+  color: var(--tint-ink);
 }
 [data-theme='dark'] .note-card--colored .note-card__snippet {
-  color: #4a3526;
+  color: var(--tint-ink-soft);
 }
 [data-theme='dark'] .note-card--colored .note-card__tag {
-  background: rgba(61, 44, 30, 0.1);
-  color: #3d2c1e;
+  background: var(--tint-scrim);
+  color: var(--tint-ink);
 }
 
 .note-card__conflict {
   display: inline-flex;
   align-items: center;
-  gap: 0.4rem;
+  gap: var(--space-1);
   align-self: flex-start;
-  padding: 4px 10px;
-  border: 1px solid var(--danger);
-  border-radius: 999px;
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--danger-border);
+  border-radius: var(--radius-pill);
   background: var(--danger-bg);
   color: var(--danger);
-  font-family: var(--sans);
-  font-size: 11px;
+  font-size: var(--fs-2xs);
+  font-weight: 500;
   cursor: pointer;
+  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
 }
 .note-card__conflict:hover {
   background: var(--danger);
@@ -79,16 +89,17 @@
 .note-card__title {
   margin: 0;
   font-family: var(--heading);
-  font-size: 19px;
+  font-size: var(--fs-lg);
   line-height: 1.25;
+  letter-spacing: -0.005em;
   color: var(--text-h);
 }
 
 .note-card__snippet {
   margin: 0;
   font-family: var(--sans);
-  font-size: 14px;
-  line-height: 1.5;
+  font-size: var(--fs-sm);
+  line-height: 1.55;
   color: var(--text);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
@@ -103,16 +114,17 @@
 .note-card__tags {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
-  margin: 4px 0 0;
+  gap: var(--space-2);
+  margin: var(--space-1) 0 0;
   padding: 0;
   list-style: none;
 }
 .note-card__tag {
   font-family: var(--mono);
-  font-size: 11px;
-  padding: 2px 8px;
-  border-radius: 999px;
+  font-size: var(--fs-2xs);
+  line-height: 1.6;
+  padding: 2px var(--space-2);
+  border-radius: var(--radius-pill);
   background: var(--accent-bg);
   color: var(--accent-text);
 }
@@ -129,17 +141,23 @@
   width: 30px;
   height: 30px;
   border: 1px solid var(--border);
-  border-radius: 50%;
+  border-radius: var(--radius-pill);
   background: var(--surface);
   color: var(--text);
   box-shadow: var(--shadow-card);
   cursor: pointer;
   opacity: 0;
-  transition: opacity 0.12s ease, color 0.12s ease, background 0.12s ease;
+  transform: scale(0.9);
+  transition:
+    opacity var(--dur-fast) var(--ease),
+    transform var(--dur-fast) var(--ease),
+    color var(--dur-fast) var(--ease),
+    background var(--dur-fast) var(--ease);
 }
 .note-card:hover .note-card__pin,
 .note-card__pin:focus-visible {
   opacity: 1;
+  transform: none;
 }
 .note-card__pin:hover {
   color: var(--accent-text);
@@ -148,6 +166,7 @@
 /* Pinned: always shown, filled + accented so the state reads at a glance. */
 .note-card__pin--active {
   opacity: 1;
+  transform: none;
   background: var(--accent);
   border-color: var(--accent);
   color: var(--accent-fg);
@@ -156,20 +175,23 @@
 /* ---- Hover action rail ---- */
 .note-card__actions {
   position: absolute;
-  bottom: 8px;
-  right: 8px;
+  bottom: var(--space-2);
+  right: var(--space-2);
   display: flex;
-  gap: 2px;
-  padding: 2px;
-  border-radius: 8px;
-  background: var(--surface);
+  gap: var(--space-1);
+  padding: var(--space-1);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--surface) 86%, transparent);
+  backdrop-filter: blur(8px);
   box-shadow: var(--shadow-card);
   opacity: 0;
-  transition: opacity 0.12s ease;
+  transform: translateY(4px);
+  transition: opacity var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease);
 }
 .note-card:hover .note-card__actions,
 .note-card__actions:focus-within {
   opacity: 1;
+  transform: none;
 }
 .note-card--colored .note-card__actions {
   background: rgba(255, 255, 255, 0.65);
@@ -178,7 +200,7 @@
   background: rgba(255, 255, 255, 0.72);
 }
 [data-theme='dark'] .note-card--colored .note-card__action {
-  color: #5c4636;
+  color: var(--tint-ink-muted);
 }
 
 .note-card__action {
@@ -188,15 +210,26 @@
   width: 28px;
   height: 28px;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: transparent;
   color: var(--text);
   cursor: pointer;
+  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
 }
 .note-card__action:hover {
   background: var(--accent-bg);
   color: var(--accent-text);
 }
+/* Offline: server-only actions are visibly unavailable, not silently inert. */
+.note-card__action:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.note-card__action:disabled:hover {
+  background: transparent;
+  color: var(--text);
+}
+
 .note-card__action--danger:hover {
   background: var(--danger-bg);
   color: var(--danger);
@@ -208,31 +241,31 @@
 }
 .note-card__menu {
   position: absolute;
-  bottom: calc(100% + 4px);
+  bottom: calc(100% + var(--space-1));
   right: 0;
   z-index: 3;
   display: flex;
   flex-direction: column;
   min-width: 9rem;
-  padding: 4px;
+  padding: var(--space-1);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: var(--surface);
-  box-shadow: var(--shadow-card-hover);
+  box-shadow: var(--shadow);
 }
 .note-card__menu-item {
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 7px 10px;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: transparent;
   color: var(--text-h);
-  font-family: var(--sans);
-  font-size: 13px;
+  font-size: var(--fs-xs);
   text-align: left;
   cursor: pointer;
+  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
 }
 .note-card__menu-item:hover {
   background: var(--accent-bg);

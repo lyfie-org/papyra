@@ -4,9 +4,9 @@
   align-items: center;
   justify-content: center;
   min-height: 100vh;
-  padding: 24px;
+  padding: var(--space-6);
   text-align: center;
-  gap: 8px;
+  gap: var(--space-2);
 }
 
 .home-page__logo {
@@ -21,20 +21,20 @@
 
 .home-page__tagline {
   color: var(--text);
-  font-size: 18px;
+  font-size: var(--fs-md);
   max-width: 36ch;
 }
 
 .home-page__theme-toggle {
   margin-top: 32px;
-  padding: 10px 24px;
+  padding: var(--space-3) var(--space-6);
   border: 1px solid var(--border);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--surface);
   color: var(--text-h);
   font: inherit;
   cursor: pointer;
-  transition: background-color 0.2s ease, border-color 0.2s ease;
+  transition: background-color var(--dur) var(--ease), border-color var(--dur) var(--ease);
 }
 
 .home-page__theme-toggle:hover {

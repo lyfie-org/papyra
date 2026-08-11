@@ -7,6 +7,7 @@ import type { Note } from '../types/note';
 import { useAutoSave, type Draft } from '../hooks/useAutoSave';
 import { useTheme } from '../hooks/useTheme';
 import { createPapyraEditorAdapter } from '../lib/papyraEditorAdapter';
+import { putNote } from '../lib/notesApi';
 import NoteToolbar from './NoteToolbar';
 import SnapshotPanel from './SnapshotPanel';
 import CategoryEditor from './CategoryEditor';
@@ -16,13 +17,19 @@ import NoteToc from './NoteToc';
 import SecureNoteGate from './SecureNoteGate';
 import { Minimize2, RefreshCw, Volume2, VolumeX } from 'lucide-react';
 import { useFocus } from '../hooks/useFocus';
+import { useDialogFocus } from '../hooks/useDialogFocus';
 import { useAmbient } from '../hooks/useAmbient';
 import './NoteEditor.css';
+
+// How long Lexical is given to finish reconciling (and re-normalising) the
+// markdown it was mounted with before edit detection goes live.
+const EDITOR_SETTLE_MS = 400;
 
 const STATUS_LABEL = {
   idle: '',
   saving: 'Saving…',
   saved: 'Saved to local disk',
+  queued: 'Saved on this device — will sync',
 } as const;
 
 // The editing canvas for a single note. Luthor's markdown preset owns the body
@@ -33,6 +40,10 @@ export default function NoteEditor({ note }: { note: Note }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const editorRef = useRef<PapyraEditorRef | null>(null);
+  // The wrapper around Luthor's contenteditable — edit detection is attached here.
+  const canvasRef = useRef<HTMLDivElement | null>(null);
+  // False until Lexical has finished mounting the note; see EDITOR_SETTLE_MS.
+  const editorReady = useRef(false);
   // The scrolling editor panel — the ghost TOC measures heading offsets against it.
   const editorScrollRef = useRef<HTMLElement>(null);
   // Distraction-free focus mode (shared with the SignalR bridge, which buffers
@@ -70,6 +81,8 @@ export default function NoteEditor({ note }: { note: Note }) {
   }), []);
 
   const { status, isDirty, bump, reset, flush, savedRef } = useAutoSave(note, getDraft);
+  // Keyboard users land inside the editor instead of at the top of the page.
+  useDialogFocus(editorScrollRef);
 
   // Time-machine scrub bar. While open, autosave is hard-disabled (suppressSave)
   // so previewing a historical revision never overwrites the live file — only an
@@ -137,14 +150,53 @@ export default function NoteEditor({ note }: { note: Note }) {
       shown.current = { id: note.id, ...incoming };
       return;
     }
-    if (!isDirty) { applyRemote(incoming); return; }
+    // Ask the editor itself whether it is holding unsaved text, rather than
+    // trusting the isDirty flag alone. The flag is React state set from an
+    // event handler, so a remote revision that lands in the same tick as the
+    // keystroke can be processed while it still reads false — and adopting then
+    // wipes the user's unsaved words with no warning. The draft comparison is a
+    // ref read, always current.
+    const draft = getDraft();
+    const holdingUnsaved = isDirty
+      || draft.title !== savedRef.current.title
+      || draft.body !== savedRef.current.body;
+    if (!holdingUnsaved) { applyRemote(incoming); return; }
     // Dirty: protect the caret, surface the conflict for the user to resolve.
     shown.current = { id: note.id, ...incoming };
     setPending(incoming);
-  }, [note, isDirty, applyRemote, savedRef]);
+  }, [note, isDirty, applyRemote, savedRef, getDraft]);
 
   // Keep my local edits and let the next save overwrite the remote revision.
   const keepLocal = useCallback(() => { setPending(null); bump(); }, [bump]);
+
+  // Edit detection. Lexical calls stopPropagation on the contenteditable's `input`
+  // event, so React's synthetic onInput (delegated at the root) never fired and
+  // typing was silently never saved. Listen in the CAPTURE phase instead — that
+  // runs before Lexical can stop it — and back it with a MutationObserver so
+  // edits that don't emit an input event at all (toolbar formatting, slash
+  // commands, undo, drag-drop) still mark the draft dirty. Both paths diff the
+  // markdown against the last known text, so a re-render or a programmatic
+  // setMarkdown can't masquerade as a user edit.
+  useEffect(() => {
+    const el = canvasRef.current;
+    if (!el || isLocked) return;
+    const onEdit = () => {
+      // Suppressed while scrubbing history — a preview is not an edit, and must
+      // never schedule a save of an old revision over the live file.
+      if (suppressSave.current || !editorReady.current) return;
+      const md = editorRef.current?.getMarkdown();
+      if (md == null || md === latestBody.current) return;
+      latestBody.current = md;
+      bump();
+    };
+    el.addEventListener('input', onEdit, true);
+    const observer = new MutationObserver(onEdit);
+    observer.observe(el, { subtree: true, childList: true, characterData: true });
+    return () => {
+      el.removeEventListener('input', onEdit, true);
+      observer.disconnect();
+    };
+  }, [bump, isLocked, editorKey, note.id]);
 
   // Escape closes the modal — but let an open sub-panel (recovery) or the conflict
   // banner claim the key first so it doesn't yank the user out unexpectedly.
@@ -168,20 +220,17 @@ export default function NoteEditor({ note }: { note: Note }) {
     // destroy the note's real content, so frontmatter edits wait for the unlock.
     if (isLocked) return;
     const draft = getDraft();
-    const res = await fetch(`/api/notes/${encodeURIComponent(note.id)}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        title: draft.title,
-        tags: patch.tags !== undefined ? patch.tags : note.tags,
-        color: patch.color !== undefined ? patch.color : note.color,
-        pinned: patch.pinned !== undefined ? patch.pinned : note.pinned,
-        archived: patch.archived !== undefined ? patch.archived : note.archived,
-        kind: patch.kind !== undefined ? patch.kind : note.kind,
-        body: draft.body,
-      }),
-    });
-    if (!res.ok) throw new Error(`PUT /api/notes/${note.id} failed: ${res.status}`);
+    // Same offline-safe seam as the autosave path: parks in the outbox when the
+    // API is unreachable instead of throwing away the toggle.
+    await putNote(note.id, {
+      title: draft.title,
+      tags: patch.tags !== undefined ? patch.tags : note.tags,
+      color: patch.color !== undefined ? patch.color : note.color,
+      pinned: patch.pinned !== undefined ? patch.pinned : note.pinned,
+      archived: patch.archived !== undefined ? patch.archived : note.archived,
+      kind: patch.kind !== undefined ? patch.kind : note.kind,
+      body: draft.body,
+    }, note.updated);
     reset(draft);
     // A color flip remounts the editor (theme swap, see key/style below); seed the
     // fresh mount with the live text so unsaved edits survive the remount.
@@ -254,6 +303,7 @@ export default function NoteEditor({ note }: { note: Note }) {
       style={style}
       role="dialog"
       aria-modal="true"
+      aria-label={`Note editor: ${title.trim() || 'Untitled'}`}
       onMouseDown={(e) => e.stopPropagation()}
     >
       {focus && (
@@ -349,19 +399,10 @@ export default function NoteEditor({ note }: { note: Note }) {
         />
       )}
 
-      {/* contenteditable input events bubble here → mirror the markdown + mark dirty. */}
+      {/* Edits are detected natively (see the observer effect) — Lexical swallows
+          the bubbling `input` event, so a React onInput here would never fire. */}
       {!isLocked && (
-      <div
-        className="note-editor__canvas"
-        onInput={() => {
-          // Suppressed while scrubbing history — a preview is not an edit, and
-          // must never schedule a save of an old revision over the live file.
-          if (suppressSave.current) return;
-          const md = editorRef.current?.getMarkdown();
-          if (md != null) latestBody.current = md;
-          bump();
-        }}
-      >
+      <div className="note-editor__canvas" ref={canvasRef}>
         <PapyraEditor
           key={`${note.id}-${editorKey}-${editorTheme}-${note.color ?? 'none'}`}
           initialTheme={theme}
@@ -374,7 +415,16 @@ export default function NoteEditor({ note }: { note: Note }) {
             editorRef.current = methods;
             // defaultContent loads as plain text, so parse the markdown into the
             // visual surface explicitly — otherwise the body renders as raw source.
+            editorReady.current = false;
             methods.setMarkdown(body);
+            // Lexical keeps reconciling for a few frames after setMarkdown, and it
+            // re-normalises the markdown it round-trips. Adopt that normalised text
+            // as the baseline once it settles, so mounting a note is never mistaken
+            // for an edit (which would autosave every note the moment it opened).
+            window.setTimeout(() => {
+              latestBody.current = methods.getMarkdown();
+              editorReady.current = true;
+            }, EDITOR_SETTLE_MS);
           }}
         />
       </div>
