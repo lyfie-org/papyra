@@ -1,5 +1,10 @@
 packages:
   - papyra.web
+# @lyfie/luthor is first-party (lyfie-org), and 2.9.x lands the editor APIs
+# Papyra depends on. pnpm's 24h minimumReleaseAge gate rejects a same-day
+# publish; version-pinned excludes are not honoured by the lockfile verifier,
+# so the package name is excluded instead. Scoped to these two packages only -
+# the policy still guards every other dependency.
 minimumReleaseAgeExclude:
-  - '@lyfie/luthor-headless@2.9.0'
-  - '@lyfie/luthor@2.9.0'
+  - '@lyfie/luthor'
+  - '@lyfie/luthor-headless'

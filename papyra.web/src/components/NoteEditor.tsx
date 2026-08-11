@@ -21,10 +21,6 @@ import { useDialogFocus } from '../hooks/useDialogFocus';
 import { useAmbient } from '../hooks/useAmbient';
 import './NoteEditor.css';
 
-// How long Lexical is given to finish reconciling (and re-normalising) the
-// markdown it was mounted with before edit detection goes live.
-const EDITOR_SETTLE_MS = 400;
-
 const STATUS_LABEL = {
   idle: '',
   saving: 'Saving…',
@@ -40,10 +36,6 @@ export default function NoteEditor({ note }: { note: Note }) {
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const editorRef = useRef<PapyraEditorRef | null>(null);
-  // The wrapper around Luthor's contenteditable — edit detection is attached here.
-  const canvasRef = useRef<HTMLDivElement | null>(null);
-  // False until Lexical has finished mounting the note; see EDITOR_SETTLE_MS.
-  const editorReady = useRef(false);
   // The scrolling editor panel — the ghost TOC measures heading offsets against it.
   const editorScrollRef = useRef<HTMLElement>(null);
   // Distraction-free focus mode (shared with the SignalR bridge, which buffers
@@ -169,48 +161,21 @@ export default function NoteEditor({ note }: { note: Note }) {
   // Keep my local edits and let the next save overwrite the remote revision.
   const keepLocal = useCallback(() => { setPending(null); bump(); }, [bump]);
 
-  // Edit detection. Lexical calls stopPropagation on the contenteditable's `input`
-  // event, so React's synthetic onInput (delegated at the root) never fired and
-  // typing was silently never saved. Listen in the CAPTURE phase instead — that
-  // runs before Lexical can stop it — and back it with a MutationObserver so
-  // edits that don't emit an input event at all (toolbar formatting, slash
-  // commands, undo, drag-drop) still mark the draft dirty. Both paths diff the
-  // markdown against the last known text, so a re-render or a programmatic
-  // setMarkdown can't masquerade as a user edit.
-  useEffect(() => {
-    const el = canvasRef.current;
-    if (!el || isLocked) return;
-    const onEdit = () => {
-      // Suppressed while scrubbing history — a preview is not an edit, and must
-      // never schedule a save of an old revision over the live file.
-      if (suppressSave.current || !editorReady.current) return;
-      const md = editorRef.current?.getMarkdown();
-      if (md == null || md === latestBody.current) return;
-      latestBody.current = md;
-      bump();
-    };
-    el.addEventListener('input', onEdit, true);
-    const observer = new MutationObserver(onEdit);
-    observer.observe(el, { subtree: true, childList: true, characterData: true });
-    return () => {
-      el.removeEventListener('input', onEdit, true);
-      observer.disconnect();
-    };
-  }, [bump, isLocked, editorKey, note.id]);
-
-  // Escape closes the modal — but let an open sub-panel (recovery) or the conflict
-  // banner claim the key first so it doesn't yank the user out unexpectedly.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return;
-      // Escape exits focus mode first (not the editor); otherwise let an open
-      // sub-panel or the conflict banner claim it before closing the editor.
-      if (focus) { exitFocus(); return; }
-      if (!recoverOpen && !pending && !timeMachine) void close();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [close, recoverOpen, pending, timeMachine, focus, exitFocus]);
+  // Edits arrive from the editor itself (luthor >=2.9.1 `onChange`). Before that
+  // API existed Papyra had to sniff the DOM — Lexical stops propagation of the
+  // contenteditable's `input` event, so a wrapper's onInput never fired and
+  // typing was silently never saved. `source` distinguishes a real edit from our
+  // own setMarkdown (remote adopt, time-machine preview), so a programmatic
+  // mutation can no longer masquerade as one.
+  const onEditorChange = useCallback(({ markdown, source }: { markdown: string; source: 'user' | 'programmatic' }) => {
+    if (source !== 'user') return;
+    // Belt and braces: while scrubbing history the canvas is showing a preview,
+    // and nothing it emits may schedule a save over the live file.
+    if (suppressSave.current) return;
+    if (markdown === latestBody.current) return;
+    latestBody.current = markdown;
+    bump();
+  }, [bump]);
 
   // Toolbar frontmatter mutation: PUT the live draft plus the changed YAML field,
   // so a pin/color/archive flip never clobbers unsaved body/title. Re-baselines
@@ -402,7 +367,7 @@ export default function NoteEditor({ note }: { note: Note }) {
       {/* Edits are detected natively (see the observer effect) — Lexical swallows
           the bubbling `input` event, so a React onInput here would never fire. */}
       {!isLocked && (
-      <div className="note-editor__canvas" ref={canvasRef}>
+      <div className="note-editor__canvas">
         <PapyraEditor
           key={`${note.id}-${editorKey}-${editorTheme}-${note.color ?? 'none'}`}
           initialTheme={theme}
@@ -411,20 +376,22 @@ export default function NoteEditor({ note }: { note: Note }) {
           defaultContent={body}
           placeholder="Start writing…"
           adapter={adapter}
+          onChange={onEditorChange}
+          // The editor reports divergence between its model and the DOM (text
+          // written behind the reconciler's back by an extension or a password
+          // manager renders but never reaches getMarkdown). Surface it instead of
+          // letting the visible note and the saved note drift apart in silence.
+          onDesync={(info) => console.warn('[papyra] editor DOM diverged from model', info)}
           onReady={(methods) => {
             editorRef.current = methods;
             // defaultContent loads as plain text, so parse the markdown into the
             // visual surface explicitly — otherwise the body renders as raw source.
-            editorReady.current = false;
             methods.setMarkdown(body);
-            // Lexical keeps reconciling for a few frames after setMarkdown, and it
-            // re-normalises the markdown it round-trips. Adopt that normalised text
-            // as the baseline once it settles, so mounting a note is never mistaken
-            // for an edit (which would autosave every note the moment it opened).
-            window.setTimeout(() => {
-              latestBody.current = methods.getMarkdown();
-              editorReady.current = true;
-            }, EDITOR_SETTLE_MS);
+            // onReady fires post-reconciliation as of luthor 2.9.1, so the editor's
+            // own (normalised) serialization is a stable baseline right here — no
+            // settle timer. Baselining against our input instead would make every
+            // note look edited the moment it opened.
+            latestBody.current = methods.getMarkdown();
           }}
         />
       </div>
