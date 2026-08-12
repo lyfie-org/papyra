@@ -4,8 +4,9 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   User as UserIcon, Palette, Database, Shield, Info, Camera,
   Sun, Moon, Monitor, Upload, Download, RefreshCw, KeyRound, Copy, Trash2, Lock, ShieldAlert,
-  Fingerprint, CheckCircle2,
+  Fingerprint, CheckCircle2, GitBranch, AlertTriangle,
 } from 'lucide-react';
+import { useGitConfig, useSaveGitConfig, useRunGitSync } from '../hooks/useGitSync';
 import { useWebAuthnDevices } from '../hooks/useWebAuthnDevices';
 import { hasPlatformAuthenticator, isWebAuthnAvailable } from '../lib/webauthn';
 import { useAuth, type AuthUser } from '../hooks/useAuth';
@@ -17,7 +18,7 @@ import './SettingsPage.css';
 
 const APP_VERSION = '0.0.1';
 
-type Tab = 'profile' | 'appearance' | 'security' | 'data' | 'keys' | 'admin' | 'about';
+type Tab = 'profile' | 'appearance' | 'security' | 'data' | 'keys' | 'sync' | 'admin' | 'about';
 
 const NAV: { id: Tab; label: string; icon: typeof UserIcon; adminOnly?: boolean }[] = [
   { id: 'profile', label: 'Profile', icon: UserIcon },
@@ -25,6 +26,7 @@ const NAV: { id: Tab; label: string; icon: typeof UserIcon; adminOnly?: boolean 
   { id: 'security', label: 'Security', icon: Fingerprint },
   { id: 'data', label: 'Data & Storage', icon: Database },
   { id: 'keys', label: 'API Keys', icon: KeyRound },
+  { id: 'sync', label: 'Git Sync', icon: GitBranch, adminOnly: true },
   { id: 'admin', label: 'Administration', icon: Shield, adminOnly: true },
   { id: 'about', label: 'About', icon: Info },
 ];
@@ -62,6 +64,7 @@ export default function SettingsPage() {
           {tab === 'security' && <SecurityTab />}
           {tab === 'data' && <DataTab />}
           {tab === 'keys' && <KeysTab />}
+          {tab === 'sync' && isAdmin && <SyncTab />}
           {tab === 'admin' && isAdmin && <AdminTab />}
           {tab === 'about' && <AboutTab />}
         </div>
@@ -624,6 +627,130 @@ function AboutTab() {
         <div><dt>Version</dt><dd>{APP_VERSION}</dd></div>
         <div><dt>Storage</dt><dd>Markdown + YAML frontmatter</dd></div>
         <div><dt>License</dt><dd>Open source</dd></div>
+      </dl>
+    </div>
+  );
+}
+
+// ── Git Sync ─────────────────────────────────────────────────────────────────────
+// Admin-only. The panel leads with the blast radius because the setting reads
+// like a personal backup and is not one: the mirrored repo is the whole users/
+// directory, so a sync publishes every tenant's vault to whatever remote is
+// typed here. That warning previously existed only in the API docs, which is
+// not where an admin is standing when they paste a URL.
+function SyncTab() {
+  const { data, isLoading, isError } = useGitConfig();
+  const save = useSaveGitConfig();
+  const run = useRunGitSync();
+
+  // null means "not edited yet", so the field shows whatever the server holds
+  // without an effect copying it into state (which would cascade a render on
+  // every refetch). The token is never returned by the API, so it starts empty.
+  const [remoteUrlEdit, setRemoteUrl] = useState<string | null>(null);
+  const [branchEdit, setBranch] = useState<string | null>(null);
+  const [token, setToken] = useState('');
+  const [saved, setSaved] = useState(false);
+
+  const remoteUrl = remoteUrlEdit ?? data?.remoteUrl ?? '';
+  const branch = branchEdit ?? data?.branch ?? '';
+
+  function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setSaved(false);
+    save.mutate(
+      { remoteUrl, branch, token: token.trim() === '' ? undefined : token },
+      { onSuccess: () => { setToken(''); setSaved(true); } },
+    );
+  }
+
+  if (isLoading) return <div className="settings__panel"><p className="settings__hint">Loading…</p></div>;
+  if (isError) return <div className="settings__panel"><p className="settings__error">Couldn’t load the git configuration.</p></div>;
+
+  return (
+    <div className="settings__panel">
+      <h2 className="settings__subhead">Git mirroring</h2>
+
+      <div className="settings__callout" role="note">
+        <AlertTriangle size={18} aria-hidden="true" />
+        <div>
+          <strong>This pushes every account’s notes, not just yours.</strong>
+          <p>
+            The mirrored repository is the whole vault directory, so a sync publishes
+            all notes and media belonging to <em>every</em> user on this instance to the
+            remote below. On a shared instance, treat that remote as having the same
+            trust level as the server itself — anyone who can read it can read
+            everyone’s notes.
+          </p>
+          <p>Papyra’s own state (<code>.papyra/</code>, <code>.trash/</code>) is excluded.</p>
+        </div>
+      </div>
+
+      <form className="settings__form" onSubmit={submit}>
+        <label className="settings__field">Remote URL
+          <input
+            type="url"
+            value={remoteUrl}
+            placeholder="https://github.com/you/papyra-vault.git"
+            onChange={e => setRemoteUrl(e.target.value)}
+          />
+        </label>
+        <label className="settings__field">Branch
+          <input
+            type="text"
+            value={branch}
+            placeholder="main"
+            onChange={e => setBranch(e.target.value)}
+          />
+        </label>
+        <label className="settings__field">
+          Access token {data?.hasToken && <span className="settings__hint">(one is stored — leave blank to keep it)</span>}
+          <input
+            type="password"
+            value={token}
+            autoComplete="new-password"
+            placeholder={data?.hasToken ? '••••••••' : 'Personal access token'}
+            onChange={e => setToken(e.target.value)}
+          />
+        </label>
+
+        <div className="settings__form-actions">
+          <button type="submit" className="settings__btn" disabled={save.isPending}>
+            {save.isPending ? 'Saving…' : 'Save configuration'}
+          </button>
+          {saved && <span className="settings__msg"><CheckCircle2 size={15} /> Saved</span>}
+          {save.isError && <span className="settings__error">Couldn’t save.</span>}
+        </div>
+      </form>
+
+      <h2 className="settings__subhead">Run a sync</h2>
+      <p className="settings__hint">
+        Stages, commits and pushes every tenant’s vault. A diverged remote is never
+        force-pushed — the sync stops and flags a conflict instead.
+      </p>
+      <div className="settings__row">
+        <button
+          type="button"
+          className="settings__btn"
+          disabled={run.isPending || !data?.remoteUrl}
+          onClick={() => run.mutate()}
+        >
+          <RefreshCw size={16} /> {run.isPending ? 'Syncing…' : 'Sync now'}
+        </button>
+        {!data?.remoteUrl && <span className="settings__hint">Set a remote URL first.</span>}
+        {run.data && (
+          <span className="settings__msg">
+            <CheckCircle2 size={15} /> {run.data.status}{run.data.detail ? ` — ${run.data.detail}` : ''}
+          </span>
+        )}
+        {run.isError && <span className="settings__error">The sync failed to run.</span>}
+      </div>
+
+      <dl className="settings__details">
+        <div><dt>Last sync</dt>
+          <dd>{data?.lastSyncUtc ? new Date(data.lastSyncUtc).toLocaleString() : 'Never'}</dd></div>
+        <div><dt>Status</dt>
+          <dd>{data?.conflict ? 'Conflict — the remote has diverged' : 'OK'}</dd></div>
+        {data?.lastError && <div><dt>Last error</dt><dd>{data.lastError}</dd></div>}
       </dl>
     </div>
   );

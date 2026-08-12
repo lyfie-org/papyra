@@ -17,7 +17,13 @@ const DEBOUNCE_MS = 1500;
 // Tracks isDirty and debounces a PUT 1.5s after the last edit. No Save button —
 // the disk is the source of truth, so a save just flushes the draft through the
 // atomic markdown engine and re-validates the notes cache.
-export function useAutoSave(note: Note, getDraft: () => Draft) {
+/**
+ * `getDraft` reads the draft without touching the document — it runs on every
+ * remote-update check, so it must stay side-effect free. `getSaveDraft` is the
+ * write path's version and MAY mutate (Papyra stamps block anchors there), so it
+ * is called only when a revision is actually being persisted.
+ */
+export function useAutoSave(note: Note, getDraft: () => Draft, getSaveDraft?: () => Draft) {
   const [status, setStatus] = useState<SaveStatus>('idle');
   // isDirty drives caret protection: a remote update may only overwrite the
   // editor while the local draft is clean (see Sprint 5.2 conflict handling).
@@ -31,7 +37,7 @@ export function useAutoSave(note: Note, getDraft: () => Draft) {
   const saved = useRef<Draft>({ title: note.title, body: note.body });
 
   const flush = useCallback(async () => {
-    const draft = getDraft();
+    const draft = (getSaveDraft ?? getDraft)();
     if (draft.title === saved.current.title && draft.body === saved.current.body) {
       setIsDirty(false);
       return; // nothing actually changed
@@ -61,7 +67,7 @@ export function useAutoSave(note: Note, getDraft: () => Draft) {
     // so refresh the grid's snapshot ourselves. A queued write refreshes too —
     // the read path merges the outbox back over the server snapshot.
     queryClient.invalidateQueries({ queryKey: ['notes'] });
-  }, [getDraft, note.id, note.tags, note.color, note.pinned, note.archived, note.kind, note.updated, queryClient]);
+  }, [getDraft, getSaveDraft, note.id, note.tags, note.color, note.pinned, note.archived, note.kind, note.updated, queryClient]);
 
   // Mark dirty: reset the debounce window on every keystroke (reset-on-new).
   const bump = useCallback(() => {

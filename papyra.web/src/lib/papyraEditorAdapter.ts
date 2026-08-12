@@ -15,8 +15,9 @@ interface AdapterDeps {
 // Build the host seam PapyraEditor reads its embeds through. This is the only
 // data path out of the editor; every method points at Papyra's own API/router.
 // Server-side PathGuard/401 is the real boundary — these resolvers just route to
-// it. resolveBlock (transclusion) and onMentions (inbox) are deferred to Sprint
-// 2.3, so they are omitted and the preset degrades them gracefully.
+// it. onMentions is deliberately omitted: mention delivery is detected on the
+// server at save time, because the notes PUT is also reachable from API keys,
+// sharee edits and the public edit-link route, none of which run the editor.
 export function createPapyraEditorAdapter({ noteId, navigate, queryClient }: AdapterDeps): PapyraEditorAdapter {
   return {
     // ![[file.ext]] → a URL the browser can GET. Media is flat per-user, so the
@@ -40,6 +41,24 @@ export function createPapyraEditorAdapter({ noteId, navigate, queryClient }: Ada
     openNote: (ref) => {
       const id = ref.id ?? findByTitle(queryClient, ref.title)?.id;
       if (id) navigate(`/note/${id}`);
+    },
+
+    // ![[Note#^id]] → the text of that one block. The server serves the anchored
+    // line and nothing else, refuses for a `secure: true` note, and 404s a note
+    // the caller can't read — so an unresolvable reference is normal, not an
+    // error, and returning null lets the preset render its unresolved chip.
+    resolveBlock: async ({ note, blockId }) => {
+      const id = findByTitle(queryClient, note)?.id ?? note;
+      try {
+        const res = await fetch(
+          `/api/notes/${encodeURIComponent(id)}/blocks/${encodeURIComponent(blockId)}`,
+        );
+        if (!res.ok) return null;
+        const data = (await res.json()) as { text?: string };
+        return data.text ?? null;
+      } catch {
+        return null; // offline: the chip stays unresolved rather than throwing
+      }
     },
 
     // [[ typeahead → title substring match over the cached vault snapshot.

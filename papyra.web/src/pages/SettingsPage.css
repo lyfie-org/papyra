@@ -108,6 +108,57 @@
   color: var(--accent);
 }
 
+/* Standing warning attached to a setting whose blast radius is wider than it
+   looks (git mirroring publishes every tenant's vault). Louder than a hint and
+   always visible — not a toast that can be missed. */
+.settings__callout {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  max-width: 38rem;
+  margin: 0 0 1.2rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--accent-border);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius-sm);
+  background: var(--accent-bg);
+  color: var(--text-h);
+  font-size: 0.85rem;
+}
+
+.settings__callout svg {
+  flex: none;
+  margin-top: 0.1rem;
+  color: var(--accent);
+}
+
+.settings__callout strong {
+  display: block;
+  margin-bottom: 0.35rem;
+  color: var(--text-h);
+}
+
+/* --text-h, not --text: the accent tint lightens the backdrop enough that the
+   muted body colour measures 4.25:1 in dark mode, under the AA floor. A standing
+   warning is also the last place to use de-emphasised text. */
+.settings__callout p {
+  margin: 0 0 0.5rem;
+  color: var(--text-h);
+  line-height: 1.5;
+}
+
+.settings__callout p:last-child {
+  margin-bottom: 0;
+}
+
+.settings__callout code {
+  padding: 0.05rem 0.25rem;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  font-family: var(--mono);
+  font-size: 0.8rem;
+}
+
 .settings__field {
   display: flex;
   flex-direction: column;

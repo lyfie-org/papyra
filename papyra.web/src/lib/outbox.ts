@@ -14,7 +14,7 @@ export interface NoteWritePayload {
   color: string | null;
   pinned: boolean;
   archived: boolean;
-  kind: 'note' | 'todo';
+  kind: 'note' | 'todo' | 'inbox';
   body: string;
 }
 

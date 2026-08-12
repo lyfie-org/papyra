@@ -72,7 +72,31 @@ export default function NoteEditor({ note }: { note: Note }) {
     body: editorRef.current?.getMarkdown() ?? latestBody.current,
   }), []);
 
-  const { status, isDirty, bump, reset, flush, savedRef } = useAutoSave(note, getDraft);
+  // A `secure: true` note arrives with an empty body — the API withholds it until a
+  // biometric unlock. Until then the canvas is replaced by the gate, so the editor
+  // can never autosave an empty body over the real (locked) content on disk.
+  const [unlocked, setUnlocked] = useState(false);
+  const isLocked = !!note.secure && !unlocked;
+
+  // The write path's draft. `ensureBlockAnchors()` stamps a hidden `^id` onto
+  // every un-anchored block and returns the stamped markdown, so anchors reach
+  // disk only when a revision is actually saved — not on every commit, which
+  // would rewrite the .md constantly and give Syncthing/git-sync churn to fight
+  // over. Mirroring the result into latestBody in the same tick is what stops the
+  // stamp's own onChange from looking like a user edit and re-triggering a save.
+  //
+  // Never call this from the remote-update check: stamping a note the user has
+  // not touched would make it look dirty and block a legitimate remote adopt.
+  const getSaveDraft = useCallback((): Draft => {
+    // A to-do body is a checklist (lists are not stampable) and a locked note's
+    // body is withheld — neither should be stamped.
+    if (note.kind === 'todo' || isLocked) return getDraft();
+    const md = editorRef.current?.ensureBlockAnchors() ?? latestBody.current;
+    latestBody.current = md;
+    return { title: titleRef.current, body: md };
+  }, [getDraft, note.kind, isLocked]);
+
+  const { status, isDirty, bump, reset, flush, savedRef } = useAutoSave(note, getDraft, getSaveDraft);
   // Keyboard users land inside the editor instead of at the top of the page.
   useDialogFocus(editorScrollRef);
 
@@ -81,11 +105,6 @@ export default function NoteEditor({ note }: { note: Note }) {
   // explicit "Restore this version" writes to disk.
   const [timeMachine, setTimeMachine] = useState(false);
   const suppressSave = useRef(false);
-  // A `secure: true` note arrives with an empty body — the API withholds it until a
-  // biometric unlock. Until then the canvas is replaced by the gate, so the editor
-  // can never autosave an empty body over the real (locked) content on disk.
-  const [unlocked, setUnlocked] = useState(false);
-  const isLocked = !!note.secure && !unlocked;
 
   // Close the editor modal: persist the draft first so closing never loses edits,
   // then return to the grid. Backdrop click and Escape both route here.
@@ -373,6 +392,8 @@ export default function NoteEditor({ note }: { note: Note }) {
           initialTheme={theme}
           colored={colored}
           defaultEditorView="visual"
+          // Anchors are assigned by getSaveDraft at save time, never on commit.
+          blockAnchors="on-demand"
           defaultContent={body}
           placeholder="Start writing…"
           adapter={adapter}

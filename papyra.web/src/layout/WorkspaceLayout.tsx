@@ -3,7 +3,7 @@ import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   Menu, StickyNote, ListTodo, Tags, Archive, Settings, Trash2,
-  User, Shield, LogOut, Sun, Moon, Share2, Layers, Sparkles, CircleQuestionMark,
+  User, Shield, LogOut, Sun, Moon, Share2, Layers, Sparkles, CircleQuestionMark, Inbox,
 } from 'lucide-react';
 import ChatPanel from '../components/ChatPanel';
 import SearchBar from '../components/SearchBar';
@@ -18,6 +18,7 @@ import './WorkspaceLayout.css';
 const NAV_ITEMS = [
   { to: '/', label: 'Notes', icon: StickyNote, end: true },
   { to: '/todo', label: 'To Do', icon: ListTodo, end: false },
+  { to: '/inbox', label: 'Inbox', icon: Inbox, end: false },
   { to: '/categories', label: 'Categories', icon: Tags, end: false },
   { to: '/collections', label: 'Collections', icon: Layers, end: false },
   { to: '/shared-with-me', label: 'Shared', icon: Share2, end: false },

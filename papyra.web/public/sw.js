@@ -21,6 +21,7 @@ const CACHEABLE_API = [
   '/api/auth/me',
   '/api/notes',
   '/api/notes/order',
+  '/api/inbox',
   '/api/categories',
   '/api/settings',
 ];

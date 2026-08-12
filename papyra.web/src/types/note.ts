@@ -7,9 +7,10 @@ export interface Note {
   color: string | null;
   pinned: boolean;
   archived: boolean;
-  // "note" (default) or "todo". Todo notes hold a markdown checklist body and
-  // live in the To Do tab instead of the notes desk.
-  kind: 'note' | 'todo';
+  // "note" (default), "todo", or "inbox". Todo notes hold a markdown checklist
+  // body and live in the To Do tab; the single "inbox" note per user collects
+  // blocks other people have @mentioned them in, and is rendered by /inbox.
+  kind: 'note' | 'todo' | 'inbox';
   trashed: boolean;
   trashedAt?: string | null;
   // YAML `secure: true`. The API withholds the body of a secure note until a

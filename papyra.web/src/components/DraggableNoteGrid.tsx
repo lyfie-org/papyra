@@ -103,7 +103,9 @@ export default function DraggableNoteGrid({ notes, conflictsByParent, onResolveC
   // Where the dragged card would land: which section + index. Drives make-room.
   const [drop, setDrop] = useState<{ section: Section; index: number } | null>(null);
 
-  const active = notes.filter(n => !n.archived && !n.trashed && n.kind !== 'todo');
+  // 'todo' lives on the To Do page and 'inbox' on /inbox — neither belongs on
+  // the notes desk, which is for notes the user wrote here.
+  const active = notes.filter(n => !n.archived && !n.trashed && n.kind !== 'todo' && n.kind !== 'inbox');
   const pinned = useMemo(() => sortNotes(active.filter(n => n.pinned), order), [active, order]);
   const others = useMemo(() => sortNotes(active.filter(n => !n.pinned), order), [active, order]);
   const byId = useMemo(() => new Map(active.map(n => [n.id, n])), [active]);

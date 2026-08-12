@@ -276,3 +276,37 @@
   outline: 2px solid var(--accent);
   outline-offset: 2px;
 }
+
+/* ── Block transclusion (Phase 15.1) ──────────────────────────────────────────
+   `![[Note#^id]]` renders one block of another note. It gets the same visual
+   language as Ghost Cards — translucent surface, dashed edge — so borrowed text
+   never reads as if it were written here. */
+.luthor-transclusion {
+  margin: var(--space-4) 0;
+  padding: var(--space-3) var(--space-4);
+  border: 1px dashed var(--accent-border);
+  border-left-width: 3px;
+  border-left-style: solid;
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+  font-size: var(--fs-sm);
+  line-height: 1.6;
+  color: var(--text-h);
+}
+
+.luthor-transclusion--unresolved {
+  border-color: var(--border);
+  border-left-color: var(--warn);
+  background: var(--warn-bg);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: var(--fs-xs);
+}
+
+/* A tinted note light-locks its ink, so the borrowed block follows suit. */
+.note-editor--colored .luthor-transclusion {
+  background: color-mix(in srgb, #fff 45%, transparent);
+  border-color: var(--tint-scrim);
+  border-left-color: var(--tint-ink-muted);
+  color: var(--tint-ink);
+}

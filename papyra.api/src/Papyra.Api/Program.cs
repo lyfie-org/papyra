@@ -2,16 +2,19 @@ using System.IO.Compression;
 using System.Security;
 using System.Security.Claims;
 using System.Text.Json;
+using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http;
+using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.EntityFrameworkCore;
 using Papyra.Api.Data;
 using Papyra.Api.Hubs;
 using Papyra.Api.Models;
+using Papyra.Api.Security;
 using Papyra.Api.Storage;
 using Scalar.AspNetCore;
 
@@ -115,6 +118,9 @@ builder.Services.AddHostedService<TrashPurgeService>();
 // Hard-deletes expired / view-exhausted share links (burn-after-reading cleanup).
 builder.Services.AddHostedService<ShareCleanupService>();
 
+// Phase 15.2 housekeeping: drop block grants whose source note or anchor is gone.
+builder.Services.AddHostedService<GrantCleanupService>();
+
 // Offline audio transcription (local Whisper). No-ops unless a model is configured.
 builder.Services.AddHostedService<AudioTranscriptionService>();
 
@@ -131,6 +137,10 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<WebArchiverService
 // enqueues onto the same instance the dispatcher worker drains.
 builder.Services.AddSingleton<WebhookDispatcherService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<WebhookDispatcherService>());
+
+// Phase 15.2: @mention → a block reference in the mentioned user's inbox.
+builder.Services.AddSingleton<MentionDeliveryService>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<MentionDeliveryService>());
 
 // Native git sync of the notes vault. Singleton so the manual-trigger endpoint runs
 // the same instance as the background loop. Idle until a remote is configured.
@@ -286,6 +296,71 @@ if (oidcEnabled)
 
 builder.Services.AddAuthorization();
 
+builder.Services.AddSingleton<LoginThrottle>();
+
+const string UserSearchRateLimit = "user-search";
+const string AuthRateLimit = "auth";
+
+// The mention typeahead is the one endpoint on which any tenant can ask about
+// accounts other than their own, so it gets a per-account budget: comfortably
+// more than a person types, far less than a cheap walk of the user table. Keyed
+// on the caller's user id (falling back to the remote address for an unauthenticated
+// request, which 401s anyway) so one noisy account can't spend everyone's budget.
+builder.Services.AddRateLimiter(options =>
+{
+    options.RejectionStatusCode = StatusCodes.Status429TooManyRequests;
+    options.AddPolicy(UserSearchRateLimit, ctx =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            ctx.User.FindFirstValue(ClaimTypes.NameIdentifier)
+                ?? ctx.Connection.RemoteIpAddress?.ToString()
+                ?? "anonymous",
+            _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 30,
+                Window = TimeSpan.FromSeconds(10),
+                QueueLimit = 0, // shed instead of queueing: a stale suggestion is useless
+            }));
+
+    // Credential endpoints, keyed on the caller's address — the blunt half of the
+    // brute-force defence, and the half a reverse proxy weakens: without
+    // Papyra:TrustedProxies every request arrives from the proxy's address and
+    // shares one bucket, as do all users behind a single NAT.
+    //
+    // That shared bucket is why this ceiling is loose. LoginThrottle is the
+    // control that actually caps guessing (10 per account per 15 min) and it is
+    // immune to network shape; this only exists to blunt a naive flood. Tuned
+    // down to 20/min it was measurably harmful — one attacker spent the budget
+    // and a bystander on the same address was refused a correct password until
+    // the window rolled over.
+    options.AddPolicy(AuthRateLimit, ctx =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 60,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0,
+            }));
+});
+
+// Behind a reverse proxy every request otherwise arrives from the proxy's address,
+// which collapses the IP-keyed limiter into one shared bucket and puts the proxy
+// in the access logs instead of the client. Opt-in only: trusting X-Forwarded-For
+// from an untrusted network would let a caller forge its own address, so this
+// stays off until a self-hoster names the proxies.
+var trustedProxies = builder.Configuration.GetSection("Papyra:TrustedProxies").Get<string[]>() ?? [];
+if (trustedProxies.Length > 0)
+{
+    builder.Services.Configure<ForwardedHeadersOptions>(options =>
+    {
+        options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+        options.KnownProxies.Clear();
+        options.KnownNetworks.Clear();
+        foreach (var proxy in trustedProxies)
+            if (System.Net.IPAddress.TryParse(proxy, out var ip)) options.KnownProxies.Add(ip);
+    });
+}
+
 // CORS is a dev affordance: in prod the SPA is served same-origin from wwwroot,
 // so cross-origin requests never happen. Enable it only in Development, or in prod
 // when a self-hoster explicitly lists origins (split reverse-proxy deploy). Never a
@@ -312,6 +387,46 @@ using (var scope = app.Services.CreateScope())
 {
     scope.ServiceProvider.GetRequiredService<AppDbContext>().Database.Migrate();
 }
+
+// First in the pipeline so everything downstream — the rate limiter's partition
+// key, the access log, the HTTPS check below — sees the real client rather than
+// the proxy. No-op unless Papyra:TrustedProxies named one.
+if (trustedProxies.Length > 0) app.UseForwardedHeaders();
+
+// ── Response hardening ────────────────────────────────────────────────────────
+// Papyra serves its own SPA, so these apply to the whole origin. The CSP's
+// script-src carries the hash of whatever inline script actually shipped in
+// wwwroot/index.html (the anti-flash theme bootstrap), read once at startup.
+var indexHtmlPath = Path.Combine(app.Environment.WebRootPath ?? "wwwroot", "index.html");
+var appCsp = SecurityHeaders.AppPolicy(
+    File.Exists(indexHtmlPath)
+        ? SecurityHeaders.InlineScriptHashes(File.ReadAllText(indexHtmlPath))
+        : []);
+var docsCsp = SecurityHeaders.DocsPolicy();
+
+app.Use(async (context, next) =>
+{
+    var headers = context.Response.Headers;
+    headers["X-Content-Type-Options"] = "nosniff";
+    headers["X-Frame-Options"] = "DENY";              // legacy peer of frame-ancestors
+    headers["Referrer-Policy"] = "no-referrer";
+    headers["Cross-Origin-Opener-Policy"] = "same-origin";
+    // Recording audio for transcription is a first-party feature; nothing else is.
+    headers["Permissions-Policy"] = "camera=(), geolocation=(), microphone=(self)";
+
+    // Only meaningful over TLS, and only outside Development, where a stray HSTS
+    // header would pin localhost to https for months.
+    if (context.Request.IsHttps && !app.Environment.IsDevelopment())
+        headers["Strict-Transport-Security"] = "max-age=31536000; includeSubDomains";
+
+    headers["Content-Security-Policy"] =
+        context.Request.Path.StartsWithSegments("/docs")
+        || context.Request.Path.StartsWithSegments("/openapi")
+            ? docsCsp
+            : appCsp;
+
+    await next();
+});
 
 if (enableCors) app.UseCors("AllowedOrigins");
 
@@ -405,6 +520,10 @@ app.Use(async (context, next) =>
 
 app.UseAuthorization();
 
+// After authentication, so a limiter partition can key on the caller's id rather
+// than on a shared proxy address. Only endpoints that opt in are affected.
+app.UseRateLimiter();
+
 // ── Path-jail backstop ────────────────────────────────────────────────────────
 // Any filename that escapes a tenant's vault throws SecurityException from
 // PathGuard; translate it to a flat 403 (the breach is already logged at source).
@@ -447,6 +566,10 @@ app.MapGet("/health", () => Results.Ok(new { status = "Healthy", app = "Papyra A
 // account is always the admin. Login/logout + cookie sessions land in Sprint 6.2.
 var auth = app.MapGroup("/api/auth").WithTags("Auth");
 
+// A BCrypt hash no password will ever match, used to spend the same work on a
+// login for an account that doesn't exist as on one that does. Computed once.
+var DummyPasswordHash = BCrypt.Net.BCrypt.HashPassword(Guid.NewGuid().ToString("N"));
+
 auth.MapPost("/setup", async (SetupRequest body, HttpContext http, AppDbContext db, VaultObserver observer, CancellationToken ct) =>
 {
     if (await db.Users.AnyAsync(ct))
@@ -454,6 +577,9 @@ auth.MapPost("/setup", async (SetupRequest body, HttpContext http, AppDbContext 
 
     if (string.IsNullOrWhiteSpace(body.Username) || string.IsNullOrWhiteSpace(body.Password))
         return Results.BadRequest(new { error = "Username and password are required." });
+
+    if (PasswordPolicy.Validate(body.Password) is { } setupWeak)
+        return Results.BadRequest(new { error = setupWeak });
 
     var user = new User
     {
@@ -474,18 +600,43 @@ auth.MapPost("/setup", async (SetupRequest body, HttpContext http, AppDbContext 
 
 // Validate credentials against the BCrypt hash and mint the session cookie. Same
 // generic 401 for unknown user and bad password so we don't leak which one failed.
-auth.MapPost("/login", async (LoginRequest body, HttpContext http, AppDbContext db, CancellationToken ct) =>
+auth.MapPost("/login", async (LoginRequest body, HttpContext http, AppDbContext db, LoginThrottle throttle, CancellationToken ct) =>
 {
     if (string.IsNullOrWhiteSpace(body.Username) || string.IsNullOrWhiteSpace(body.Password))
         return Results.BadRequest(new { error = "Username and password are required." });
 
-    var user = await db.Users.FirstOrDefaultAsync(u => u.Username == body.Username.Trim(), ct);
-    if (user is null || !BCrypt.Net.BCrypt.Verify(body.Password, user.PasswordHash))
-        return Results.Json(new { error = "Invalid credentials." }, statusCode: StatusCodes.Status401Unauthorized);
+    if (throttle.IsLockedOut(body.Username))
+        return Results.Json(
+            new { error = "Too many failed attempts. Try again later." },
+            statusCode: StatusCodes.Status429TooManyRequests);
 
-    await SignInAsync(http, user);
-    return Results.Ok(new { user.Id, user.Username, user.Name, user.Email, user.Role });
-});
+    var user = await db.Users.FirstOrDefaultAsync(u => u.Username == body.Username.Trim(), ct);
+
+    // Verify against a throwaway hash when the account doesn't exist, so a miss
+    // costs the same BCrypt work as a wrong password. Skipping it would make
+    // "no such user" measurably faster than "wrong password" and turn this
+    // endpoint into a username oracle.
+    bool ok;
+    if (user is null)
+    {
+        BCrypt.Net.BCrypt.Verify(body.Password, DummyPasswordHash);
+        ok = false;
+    }
+    else
+    {
+        ok = BCrypt.Net.BCrypt.Verify(body.Password, user.PasswordHash);
+    }
+
+    if (!ok)
+    {
+        throttle.RecordFailure(body.Username);
+        return Results.Json(new { error = "Invalid credentials." }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    throttle.Reset(body.Username);
+    await SignInAsync(http, user!);
+    return Results.Ok(new { user!.Id, user.Username, user.Name, user.Email, user.Role });
+}).RequireRateLimiting(AuthRateLimit);
 
 auth.MapPost("/logout", async (HttpContext http) =>
 {
@@ -618,8 +769,8 @@ auth.MapPut("/profile", async (ProfileRequest body, ClaimsPrincipal principal, A
 
 auth.MapPost("/password", async (PasswordRequest body, ClaimsPrincipal principal, AppDbContext db, CancellationToken ct) =>
 {
-    if (string.IsNullOrWhiteSpace(body.Next))
-        return Results.BadRequest(new { error = "New password is required." });
+    if (PasswordPolicy.Validate(body.Next) is { } weak)
+        return Results.BadRequest(new { error = weak });
 
     var id = int.Parse(Uid(principal));
     var user = await db.Users.FindAsync([id], ct);
@@ -682,6 +833,9 @@ admin.MapPost("/", async (ProvisionRequest body, AppDbContext db, VaultObserver 
     if (string.IsNullOrWhiteSpace(body.Username) || string.IsNullOrWhiteSpace(body.Password))
         return Results.BadRequest(new { error = "Username and password are required." });
 
+    if (PasswordPolicy.Validate(body.Password) is { } weak)
+        return Results.BadRequest(new { error = weak });
+
     var username = body.Username.Trim();
     if (await db.Users.AnyAsync(u => u.Username == username, ct))
         return Results.Conflict(new { error = "Username already taken." });
@@ -703,8 +857,8 @@ admin.MapPost("/", async (ProvisionRequest body, AppDbContext db, VaultObserver 
 
 admin.MapPost("/{id:int}/reset", async (int id, ResetRequest body, AppDbContext db, CancellationToken ct) =>
 {
-    if (string.IsNullOrWhiteSpace(body.Password))
-        return Results.BadRequest(new { error = "Password is required." });
+    if (PasswordPolicy.Validate(body.Password) is { } weak)
+        return Results.BadRequest(new { error = weak });
 
     var user = await db.Users.FindAsync([id], ct);
     if (user is null) return Results.NotFound();
@@ -735,6 +889,43 @@ admin.MapDelete("/{id:int}", async (int id, ClaimsPrincipal me, AppDbContext db,
     await db.SaveChangesAsync(ct);
     return Results.NoContent();
 });
+
+// ── User directory (mention typeahead) ────────────────────────────────────────
+// Typing `@` needs to resolve a name to a real account, but /api/auth/users is
+// admin-only and handing the full roster to every tenant on a shared instance is
+// too much to trade for autocomplete. This is the narrow version: prefix-only,
+// two characters minimum, at most eight rows, and username + display name are the
+// only fields that leave — no id, no email, no role. A determined caller can still
+// enumerate by walking prefixes, which is inherent to any typeahead; the rate limit
+// makes that slow and visible rather than free.
+var directory = app.MapGroup("/api/users").RequireAuthorization().WithTags("Directory");
+
+directory.MapGet("/search", async (string? q, ClaimsPrincipal me, AppDbContext db, CancellationToken ct) =>
+{
+    var query = (q ?? string.Empty).Trim();
+    // A username is [A-Za-z0-9._-], so anything else is not a prefix any account
+    // could have — reject it here rather than spending a query on it.
+    // This also keeps LIKE metacharacters out of the pattern. EF already escapes
+    // them (the translation is `LIKE @p ESCAPE '\'`, so a `%` is matched
+    // literally), but a bare `%` matching the entire roster is the one failure
+    // this endpoint must never have, and that guarantee is worth more than a
+    // dependency on a provider translation detail.
+    if (query.Length < 2 || query.Length > 64 || !query.All(IsUsernameChar))
+        return Results.Ok(Array.Empty<UserSuggestion>());
+
+    var meId = int.Parse(Uid(me));
+    var prefix = query.ToLowerInvariant();
+    var matches = await db.Users
+        // Self is excluded: a self-mention is dropped at delivery, so offering it
+        // would only invite a ping that silently goes nowhere.
+        .Where(u => u.Id != meId && u.Username.ToLower().StartsWith(prefix))
+        .OrderBy(u => u.Username)
+        .Take(8)
+        .Select(u => new UserSuggestion(u.Username, u.Name))
+        .ToListAsync(ct);
+
+    return Results.Ok(matches);
+}).RequireRateLimiting(UserSearchRateLimit);
 
 // ── Notes CRUD ───────────────────────────────────────────────────────────────
 // Reads serve the in-memory vault (no disk hit); writes go through the atomic
@@ -809,6 +1000,7 @@ notes.MapPut("/{id}", async (
     SnapshotService snapshots,
     WebArchiverService archiver,
     WebhookDispatcherService webhooks,
+    MentionDeliveryService mentions,
     EmbeddingService embeddings,
     VaultObserverOptions vault,
     IConfiguration config,
@@ -863,6 +1055,12 @@ notes.MapPut("/{id}", async (
     // Re-embed for semantic search — but never a secure note: its chunks would sit
     // in the vector cache as plaintext, outside the unlock gate.
     if (!note.Secure) embeddings.Enqueue(uid, id, note.Body);
+
+    // Deliver any NEWLY added @mention to that user's inbox. Never from a secure
+    // note: its body is withheld everywhere else, and a mention would carry a
+    // block of it out to another account.
+    if (!note.Secure)
+        mentions.Enqueue(uid, user.Identity?.Name ?? uid, id, note.Body, prior?.Body);
 
     // Fire webhook events off the diff against the prior revision.
     if (prior is null)
@@ -948,6 +1146,123 @@ notes.MapPost("/{id}/untrash", async (
 // the in-memory vault (the authority) by literal substring — Lucene's analyzer
 // strips the `[[ ]]` brackets, so an exact wikilink match isn't reliable there; the
 // highlighter still builds the ~150-char snippet around the title mention.
+// ── Inbox (Phase 15.2) ────────────────────────────────────────────────────────
+// Blocks other people have pinged the caller with. Entries are resolved
+// server-side so the client never fans out one request per reference, and each
+// resolution re-checks the grant.
+var inbox = app.MapGroup("/api/inbox").RequireAuthorization().WithTags("Inbox");
+
+inbox.MapGet("/", async (ClaimsPrincipal user, VaultState state, AppDbContext db, CancellationToken ct) =>
+{
+    if (!int.TryParse(Uid(user), out var callerId)) return Results.Unauthorized();
+
+    var grants = await db.BlockGrants
+        .Where(g => g.GranteeUserId == callerId && g.DismissedUtc == null)
+        .OrderByDescending(g => g.CreatedUtc)
+        .ToListAsync(ct);
+
+    var entries = grants.Select(g =>
+    {
+        var ownerUid = g.SourceOwnerId.ToString();
+        var ownerPath = state.PathFor(ownerUid, g.SourceNoteId);
+        Note? source = null;
+        if (ownerPath is not null) state.TryGet(ownerUid, ownerPath, out source);
+        // A deleted source, or one that has since been locked, resolves to null —
+        // the UI shows a "no longer available" chip rather than an error.
+        var text = source is null || source.Secure ? null : BlockResolver.Resolve(source.Body, g.BlockId);
+        return new
+        {
+            g.Id,
+            noteId = g.SourceNoteId,
+            g.BlockId,
+            from = g.SourceUsername,
+            receivedUtc = g.CreatedUtc,
+            title = source?.Title,
+            text,
+        };
+    });
+
+    return Results.Ok(entries);
+})
+    .WithSummary("List inbox entries")
+    .WithDescription("Each entry is one anchored block another user pinged you with, already resolved.");
+
+inbox.MapDelete("/{id:int}", async (int id, ClaimsPrincipal user, AppDbContext db, CancellationToken ct) =>
+{
+    if (!int.TryParse(Uid(user), out var callerId)) return Results.Unauthorized();
+    // Dismissal is the recipient's own act; it never touches the sender's note.
+    var grant = await db.BlockGrants.FirstOrDefaultAsync(
+        g => g.Id == id && g.GranteeUserId == callerId, ct);
+    if (grant is null) return Results.NotFound();
+    grant.DismissedUtc = DateTime.UtcNow;
+    await db.SaveChangesAsync(ct);
+    return Results.NoContent();
+})
+    .WithSummary("Dismiss an inbox entry");
+
+// ── Block transclusion (Phase 15.1) ───────────────────────────────────────────
+// The editor stamps a hidden `^id` anchor onto each block at save time; these
+// routes serve ONE anchored block so a note can embed a fragment of another
+// (`![[Note#^id]]`) without the reader gaining access to the rest of it.
+notes.MapGet("/{id}/blocks", (string id, ClaimsPrincipal user, VaultState state) =>
+{
+    if (!PathGuard.IsValidNoteId(id)) return Results.NotFound();
+    var uid = Uid(user);
+    var path = state.PathFor(uid, id);
+    if (path is null || !state.TryGet(uid, path, out var note) || note is null) return Results.NotFound();
+    // A secure note's body is withheld until a WebAuthn unlock; its anchors are
+    // part of that body, so listing them here would leak the note's structure.
+    if (note.Secure) return Results.Forbid();
+
+    return Results.Ok(BlockResolver.Anchors(note.Body)
+        .Select(a => new { blockId = a.BlockId, text = a.Text, line = a.Line }));
+})
+    .WithSummary("List a note's block anchors")
+    .WithDescription("Every `^id` anchor in the note, in document order, for building a block reference.");
+
+notes.MapGet("/{id}/blocks/{blockId}", async (
+    string id, string blockId, ClaimsPrincipal user, VaultState state, AppDbContext db, CancellationToken ct) =>
+{
+    if (!PathGuard.IsValidNoteId(id) || !BlockResolver.IsValidBlockId(blockId)) return Results.NotFound();
+    var uid = Uid(user);
+    var path = state.PathFor(uid, id);
+
+    // Not in the caller's own vault: the only other way in is a BlockGrant, which
+    // an @mention created for exactly this block. It authorises this block and
+    // nothing else — not the note, not its neighbours.
+    if (path is null && int.TryParse(uid, out var callerId))
+    {
+        var grant = await db.BlockGrants.FirstOrDefaultAsync(
+            g => g.GranteeUserId == callerId && g.SourceNoteId == id
+                 && g.BlockId == blockId && g.DismissedUtc == null, ct);
+        if (grant is not null)
+        {
+            var ownerUid = grant.SourceOwnerId.ToString();
+            var ownerPath = state.PathFor(ownerUid, id);
+            if (ownerPath is null || !state.TryGet(ownerUid, ownerPath, out var owned) || owned is null)
+                return Results.NotFound();
+            if (owned.Secure) return Results.Forbid();
+            var granted = BlockResolver.Resolve(owned.Body, blockId);
+            if (granted is null) return Results.NotFound();
+            return Results.Ok(new { noteId = id, blockId, text = granted, title = owned.Title, via = "grant" });
+        }
+    }
+
+    // 404 rather than 403 for a missing note: a distinct status would confirm
+    // that some other tenant owns that id.
+    if (path is null || !state.TryGet(uid, path, out var note) || note is null) return Results.NotFound();
+    // Transclusion must not become a bypass of the secure-note gate (17.2):
+    // resolving a block IS a body read.
+    if (note.Secure) return Results.Forbid();
+
+    var text = BlockResolver.Resolve(note.Body, blockId);
+    if (text is null) return Results.NotFound();
+
+    return Results.Ok(new { noteId = id, blockId, text, title = note.Title });
+})
+    .WithSummary("Resolve one anchored block")
+    .WithDescription("Returns only the anchored block's text — never the surrounding note body.");
+
 notes.MapGet("/{id}/backlinks", (string id, ClaimsPrincipal user, VaultState state, SearchIndexService search) =>
 {
     var uid = Uid(user);
@@ -2186,6 +2501,12 @@ static string Uid(ClaimsPrincipal user) =>
     user.FindFirstValue(ClaimTypes.NameIdentifier)
     ?? throw new SecurityException("Authenticated principal carries no user id.");
 
+// The character set a username is allowed to draw on, and therefore the only
+// characters a typeahead prefix can meaningfully contain. Mirrors the mention
+// token class in MentionDeliveryService.
+static bool IsUsernameChar(char c) =>
+    char.IsAsciiLetterOrDigit(c) || c is '.' or '_' or '-';
+
 // Hex SHA-256 — the at-rest form of an API token (lookup key on each request).
 static string Sha256Hex(string input) =>
     Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
@@ -2373,6 +2694,10 @@ public sealed record ProfileRequest(string? Name, string? Email);
 
 // Self-service password change: verify Current, set Next.
 public sealed record PasswordRequest(string? Current, string? Next);
+
+// One mention-typeahead row. Deliberately just these two fields: the handle you
+// have to type to ping someone, and enough to tell two similar handles apart.
+public sealed record UserSuggestion(string Username, string Name);
 
 // API key creation payload (just a human label).
 public sealed record ApiKeyWrite(string? Name);

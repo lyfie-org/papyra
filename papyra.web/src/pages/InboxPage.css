@@ -1,0 +1,129 @@
+.inbox {
+  max-width: 760px;
+}
+
+.inbox__head {
+  margin-bottom: var(--space-6);
+}
+
+.inbox__title {
+  margin: 0 0 var(--space-2);
+  font: 400 var(--fs-xl) / 1.2 var(--heading);
+  letter-spacing: -0.01em;
+  color: var(--text-h);
+}
+
+.inbox__lede {
+  max-width: 60ch;
+  font: 400 var(--fs-sm) / 1.6 var(--sans);
+  color: var(--text);
+}
+
+.inbox__status {
+  font: 400 var(--fs-sm) / 1.5 var(--sans);
+  color: var(--text);
+}
+
+.inbox__empty {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-3);
+  padding: var(--space-5);
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  font: 400 var(--fs-sm) / 1.6 var(--sans);
+  color: var(--text);
+}
+
+.inbox__empty svg { flex: 0 0 auto; color: var(--accent); margin-top: 2px; }
+.inbox__empty code {
+  padding: 1px 5px;
+  font-size: var(--fs-xs);
+  background: var(--code-bg);
+}
+
+.inbox__list {
+  display: grid;
+  gap: var(--space-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.inbox__entry {
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-card);
+}
+
+.inbox__meta {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+
+.inbox__from {
+  font: 500 var(--fs-sm) / 1.2 var(--sans);
+  color: var(--accent-text);
+}
+
+.inbox__time {
+  flex: 1 1 auto;
+  font: 400 var(--fs-2xs) / 1.2 var(--mono);
+  color: var(--text);
+}
+
+.inbox__dismiss {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+
+.inbox__dismiss:hover { background: var(--danger-bg); color: var(--danger); }
+
+/* Borrowed text, marked as borrowed — same language as a transclusion chip. */
+.inbox__block {
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  border-left: 3px solid var(--accent-border);
+  border-radius: var(--radius-sm);
+  background: color-mix(in srgb, var(--accent) 6%, transparent);
+  font: 400 var(--fs-sm) / 1.6 var(--sans);
+  color: var(--text-h);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.inbox__gone {
+  margin: 0;
+  padding: var(--space-3) var(--space-4);
+  border-left: 3px solid var(--warn);
+  border-radius: var(--radius-sm);
+  background: var(--warn-bg);
+  font: 400 var(--fs-xs) / 1.6 var(--sans);
+  color: var(--text);
+}
+
+.inbox__source {
+  display: inline-block;
+  margin-top: var(--space-3);
+  font: 400 var(--fs-xs) / 1.4 var(--sans);
+  color: var(--text);
+  text-decoration: none;
+  border-bottom: 1px dashed var(--border);
+}
+
+.inbox__source:hover { color: var(--accent-text); border-bottom-color: var(--accent); }

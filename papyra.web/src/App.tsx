@@ -15,6 +15,7 @@ import SetupPage from './pages/SetupPage';
 import { useAuth } from './hooks/useAuth';
 import { FocusProvider } from './hooks/FocusProvider';
 import './App.css';
+import InboxPage from './pages/InboxPage';
 
 // Gate the workspace behind a live session. The /me probe decides where an
 // unauthenticated visitor lands: /setup before any admin exists, else /login.
@@ -45,6 +46,7 @@ export default function App() {
           <Route path="note/:id" element={<NoteEditorPage />} />
         </Route>
         <Route path="todo" element={<TodoPage />} />
+        <Route path="inbox" element={<InboxPage />} />
         <Route path="categories" element={<CategoriesPage />} />
         <Route path="collections" element={<CollectionsPage />} />
         <Route path="shared-with-me" element={<SharedWithMePage />} />

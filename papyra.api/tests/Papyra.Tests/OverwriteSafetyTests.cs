@@ -30,7 +30,7 @@ public sealed class OverwriteSafetyTests
     private static async Task<string> SeedAdminAsync(HttpClient client)
     {
         var res = await client.PostAsJsonAsync("/api/auth/setup", new SetupRequest(
-            Username: "admin", Name: "Admin", Email: "a@b.c", Password: "hunter2"));
+            Username: "admin", Name: "Admin", Email: "a@b.c", Password: "hunter2!"));
         Assert.Equal(HttpStatusCode.OK, res.StatusCode);
         var doc = await res.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
         return doc.GetProperty("id").GetInt32().ToString();
@@ -114,7 +114,7 @@ public sealed class OverwriteSafetyTests
                 Body: "the owner's words"));
 
             var provision = await owner.PostAsJsonAsync("/api/auth/users", new ProvisionRequest(
-                Username: "guest", Name: "Guest", Email: "g@b.c", Password: "hunter2", Role: "User"));
+                Username: "guest", Name: "Guest", Email: "g@b.c", Password: "hunter2!", Role: "User"));
             Assert.Equal(HttpStatusCode.OK, provision.StatusCode);
 
             var shareRes = await owner.PostAsJsonAsync("/api/notes/s2/shares", new ShareWrite(
@@ -124,7 +124,7 @@ public sealed class OverwriteSafetyTests
 
             // A second client so the grantee carries their own session cookie.
             var guest = factory.CreateClient();
-            var login = await guest.PostAsJsonAsync("/api/auth/login", new LoginRequest("guest", "hunter2"));
+            var login = await guest.PostAsJsonAsync("/api/auth/login", new LoginRequest("guest", "hunter2!"));
             Assert.Equal(HttpStatusCode.OK, login.StatusCode);
 
             var edit = await guest.PutAsJsonAsync(

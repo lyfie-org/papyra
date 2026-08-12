@@ -15,6 +15,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<SmartCollection> SmartCollections => Set<SmartCollection>();
     public DbSet<WebAuthnCredential> WebAuthnCredentials => Set<WebAuthnCredential>();
     public DbSet<NoteEmbedding> NoteEmbeddings => Set<NoteEmbedding>();
+    public DbSet<BlockGrant> BlockGrants => Set<BlockGrant>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -34,5 +35,11 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         modelBuilder.Entity<WebAuthnCredential>().HasIndex(c => c.CredentialId).IsUnique();
         modelBuilder.Entity<WebAuthnCredential>().HasIndex(c => c.UserId);
         modelBuilder.Entity<NoteEmbedding>().HasIndex(e => new { e.UserId, e.NoteId });
+        // One grant per (block, recipient): re-saving a note that still mentions
+        // the same person must not stack duplicate inbox entries.
+        modelBuilder.Entity<BlockGrant>()
+            .HasIndex(g => new { g.SourceOwnerId, g.SourceNoteId, g.BlockId, g.GranteeUserId })
+            .IsUnique();
+        modelBuilder.Entity<BlockGrant>().HasIndex(g => g.GranteeUserId);
     }
 }
