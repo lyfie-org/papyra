@@ -412,7 +412,19 @@ export default function NoteEditor({ note }: { note: Note }) {
             // own (normalised) serialization is a stable baseline right here — no
             // settle timer. Baselining against our input instead would make every
             // note look edited the moment it opened.
-            latestBody.current = methods.getMarkdown();
+            const normalised = methods.getMarkdown();
+            latestBody.current = normalised;
+            // Re-baseline the *save* baseline too, not just the mirror. It starts
+            // life as the raw bytes from disk, and markdown that Papyra didn't
+            // author round-trips through Lexical with cosmetic differences (a
+            // blank line after `## Heading`, list bullet style). Every note that
+            // arrived from Obsidian, an import, git-sync or the API therefore read
+            // as dirty before a single keystroke — which the caret guard then
+            // honoured by refusing remote updates and showing "This note was
+            // modified externally / Overwrite with Local" on a note the user had
+            // never touched. The draft is clean by definition here: the editor was
+            // just built from this body and nothing has been typed.
+            reset({ title: titleRef.current, body: normalised });
           }}
         />
       </div>
