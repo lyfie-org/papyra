@@ -23,6 +23,7 @@ function stripMarkdown(md: string): string {
     .replace(/```[\s\S]*?```/g, ' ')                    // fenced code blocks
     .replace(/`([^`]+)`/g, '$1')                        // inline code
     .replace(/!\[\[[^\]]*\]\]/g, ' ')                   // media embeds ![[file]]
+    .replace(/(?<=^|[ \t])\^[A-Za-z0-9][A-Za-z0-9_-]*(?=[ \t]|$)/gm, '') // block anchors
     .replace(/\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g, '$1')   // wikilinks [[a|b]] → a
     .replace(/!\[[^\]]*\]\([^)]*\)/g, ' ')              // images ![alt](url)
     .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')            // links [text](url) → text

@@ -58,7 +58,7 @@ public sealed class SearchIndexServiceTests
         try
         {
             svc.IndexNote(Uid, new Note { Id = "n1", Title = "Keep", Body = "uniquetoken here" });
-            svc.RemoveNote("n1");
+            svc.RemoveNote(Uid, "n1");
 
             Assert.Empty(svc.Search(Uid, "uniquetoken"));
         }

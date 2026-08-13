@@ -70,6 +70,20 @@ export function createPapyraEditorAdapter({ noteId, navigate, queryClient }: Ada
         .slice(0, 8)
         .map((n) => ({ id: n.id, title: n.title, color: n.color ?? undefined }));
     },
+
+    // @ typeahead → GET /api/users/search?q=, a thin pass-through. The server
+    // owns every real rule (2+ chars, prefix-only, self excluded, capped at 8,
+    // rate-limited) — this just forwards the query and degrades to no
+    // suggestions rather than throwing, same as resolveBlock does offline.
+    searchUsers: async (query) => {
+      try {
+        const res = await fetch(`/api/users/search?q=${encodeURIComponent(query)}`);
+        if (!res.ok) return [];
+        return (await res.json()) as { username: string; name: string }[];
+      } catch {
+        return [];
+      }
+    },
   };
 }
 

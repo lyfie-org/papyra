@@ -20,7 +20,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<AppSetting>().HasKey(s => s.Key);
-        modelBuilder.Entity<NoteCache>().HasKey(n => n.Id);
+        // Composite: a note id is unique per vault, not per instance. See NoteCache.
+        modelBuilder.Entity<NoteCache>().HasKey(n => new { n.UserId, n.Id });
         modelBuilder.Entity<User>().HasIndex(u => u.Username).IsUnique();
         // Unique per IdP subject; SQLite treats NULLs as distinct, so local
         // (non-SSO) accounts with a null ExternalId don't collide.

@@ -72,7 +72,7 @@ public sealed class TrashPurgeService : BackgroundService
                 _writeRing.Mark(path);
                 if (File.Exists(path)) File.Delete(path);
                 _state.Remove(userId, path);
-                _search.RemoveNote(note.Id);
+                _search.RemoveNote(userId, note.Id);
                 purged++;
             }
         }

@@ -50,7 +50,7 @@ public sealed class SearchIndexService : IDisposable
     {
         if (string.IsNullOrEmpty(note.Id)) return;
 
-        _writer.UpdateDocument(new Term("id", note.Id), ToDocument(userId, note));
+        _writer.UpdateDocument(new Term("key", DocKey(userId, note.Id)), ToDocument(userId, note));
         _writer.Commit();
     }
 
@@ -68,10 +68,21 @@ public sealed class SearchIndexService : IDisposable
         _writer.Commit();
     }
 
+    /// <summary>
+    /// The per-tenant identity of a note document. A note id is unique only
+    /// *within* a vault — every user who has ever been @mentioned owns a note
+    /// with id "Inbox" — so keying documents on the bare id made one tenant's
+    /// note silently replace another's in the index. `:` is a safe separator:
+    /// <see cref="PathGuard.IsValidNoteId"/> rejects it in note ids.
+    /// </summary>
+    private static string DocKey(string userId, string noteId) => $"{userId}:{noteId}";
+
     // Title is boosted; body is indexed but not stored (the .md file holds the
-    // body — the index only needs it searchable). userId fences tenant results.
+    // body — the index only needs it searchable). userId fences tenant results;
+    // `key` is what identifies the document for update/delete.
     private static Document ToDocument(string userId, Note note) => new()
     {
+        new StringField("key", DocKey(userId, note.Id), Field.Store.NO),
         new StringField("id", note.Id, Field.Store.YES),
         new StringField("userId", userId, Field.Store.YES),
         new TextField("title", note.Title ?? string.Empty, Field.Store.YES) { Boost = 2f },
@@ -79,10 +90,12 @@ public sealed class SearchIndexService : IDisposable
         new TextField("body", note.Body ?? string.Empty, Field.Store.NO),
     };
 
-    public void RemoveNote(string id)
+    // Scoped to the owning tenant: deleting by the bare id would also drop every
+    // other tenant's note that happens to share it (e.g. "Inbox").
+    public void RemoveNote(string userId, string id)
     {
         if (string.IsNullOrEmpty(id)) return;
-        _writer.DeleteDocuments(new Term("id", id));
+        _writer.DeleteDocuments(new Term("key", DocKey(userId, id)));
         _writer.Commit();
     }
 

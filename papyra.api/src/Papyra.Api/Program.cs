@@ -1092,7 +1092,7 @@ notes.MapDelete("/{id}", async (
     writeRing.Mark(path); // watcher ignores the delete echo
     if (File.Exists(path)) File.Delete(path);
     state.Remove(uid, path);
-    search.RemoveNote(id); // watcher skips the echo, so drop from the index here
+    search.RemoveNote(uid, id); // watcher skips the echo, so drop from the index here
     await embeddings.RemoveNoteAsync(uid, id, ct); // and drop its vectors
 
     return Results.NoContent();
@@ -1116,7 +1116,7 @@ notes.MapPost("/{id}/trash", async (
     writeRing.Mark(path);
     await storage.WriteAsync(path, note, ct);
     state.Upsert(uid, path, note);
-    search.RemoveNote(id); // hidden from search while trashed
+    search.RemoveNote(uid, id); // hidden from search while trashed
     await embeddings.RemoveNoteAsync(uid, id, ct); // and from semantic search + RAG
     return Results.NoContent();
 });
@@ -2140,11 +2140,15 @@ app.MapPost("/api/system/rebuild-index", async (
 
     search.RebuildUser(uid, scanned.Select(s => s.Note)); // drop only this tenant's docs
 
-    // Refresh the caller's cache rows (disposable mirror; keyed by note id).
+    // Refresh the caller's cache rows (disposable mirror, keyed by tenant + note
+    // id). The UserId filter is load-bearing, not decorative: without it a
+    // rebuild deleted every tenant's row for any id this vault happened to share
+    // — and "Inbox" is shared by every user who has ever been @mentioned.
     var ids = scanned.Select(s => s.Note.Id).ToHashSet(StringComparer.Ordinal);
-    db.NoteCache.RemoveRange(db.NoteCache.Where(r => ids.Contains(r.Id)));
+    db.NoteCache.RemoveRange(db.NoteCache.Where(r => r.UserId == uid && ids.Contains(r.Id)));
     db.NoteCache.AddRange(scanned.Select(s => new NoteCache
     {
+        UserId = uid,
         Id = s.Note.Id,
         Title = s.Note.Title,
         Tags = string.Join(' ', s.Note.Tags),

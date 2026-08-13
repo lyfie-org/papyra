@@ -37,11 +37,19 @@ export function useAutoSave(note: Note, getDraft: () => Draft, getSaveDraft?: ()
   const saved = useRef<Draft>({ title: note.title, body: note.body });
 
   const flush = useCallback(async () => {
-    const draft = (getSaveDraft ?? getDraft)();
-    if (draft.title === saved.current.title && draft.body === saved.current.body) {
+    // Check the RAW (unstamped) draft first. getSaveDraft() may stamp block
+    // anchors onto every un-anchored block, and a never-anchored note's stamped
+    // text always differs from its on-disk (unstamped) baseline — so checking
+    // the stamped draft here would call a genuine no-op edit "dirty" purely
+    // because flush() ran (e.g. on close, or opening the time machine), and
+    // silently rewrite + re-date a note the user never touched.
+    const raw = getDraft();
+    if (raw.title === saved.current.title && raw.body === saved.current.body) {
       setIsDirty(false);
       return; // nothing actually changed
     }
+
+    const draft = (getSaveDraft ?? getDraft)();
 
     setStatus('saving');
     // putNote parks the write in the offline outbox rather than throwing when
