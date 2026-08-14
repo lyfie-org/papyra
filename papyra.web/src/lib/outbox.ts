@@ -86,3 +86,20 @@ export async function countWrites(): Promise<number> {
     return 0; // IndexedDB unavailable (private mode, disabled) — degrade to online-only
   }
 }
+
+/**
+ * Drop every queued write.
+ *
+ * Entries are keyed by note id alone, with no owner recorded — which is exactly
+ * why this exists. If one person signs out with unsent edits and another signs
+ * in on the same browser, the replay would post those edits into the *new*
+ * user's vault. Sign-out must therefore discard the queue, even though that
+ * means losing edits that never reached the server.
+ */
+export async function clearWrites(): Promise<void> {
+  try {
+    await tx('readwrite', (s) => s.clear() as IDBRequest<undefined>);
+  } catch {
+    /* IndexedDB unavailable — nothing was queued to begin with */
+  }
+}

@@ -444,6 +444,47 @@ using (var scope = app.Services.CreateScope())
     }
 }
 
+// One-time move of git sync from an instance-wide setting to a per-account one.
+//
+// The old config initialised a single repository over the *users* directory, so
+// whoever set a remote was pushing every tenant's notes to it. Git sync is now
+// per account and scoped to that account's own vault. The existing settings are
+// handed to the first admin — the person who almost certainly entered them — so
+// their backup keeps running, and the legacy keys are removed so the old
+// instance-wide path can never be revived by a stale row.
+using (var scope = app.Services.CreateScope())
+{
+    var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+    var legacy = await db.Settings.Where(s => GitKeys.LegacyKeys.Contains(s.Key)).ToListAsync();
+    if (legacy.Count > 0)
+    {
+        var owner = await db.Users
+            .Where(u => u.Role == "Admin")
+            .OrderBy(u => u.Id)
+            .Select(u => u.Id)
+            .FirstOrDefaultAsync();
+
+        if (owner != 0)
+        {
+            var uid = owner.ToString();
+            foreach (var row in legacy)
+            {
+                var suffix = row.Key["git.".Length..];
+                var moved = GitKeys.Prefix(uid) + suffix;
+                if (await db.Settings.FindAsync(moved) is null && !string.IsNullOrWhiteSpace(row.Value))
+                    db.Settings.Add(new AppSetting { Key = moved, Value = row.Value });
+            }
+            app.Logger.LogWarning(
+                "Git sync was instance-wide and pushed every user's notes. Moved that configuration "
+                + "to admin user {User}; it now backs up only their own vault. Other users can set "
+                + "up their own backup in Settings.", uid);
+        }
+
+        db.Settings.RemoveRange(legacy);
+        await db.SaveChangesAsync();
+    }
+}
+
 // First in the pipeline so everything downstream — the rate limiter's partition
 // key, the access log, the HTTPS check below — sees the real client rather than
 // the proxy. No-op unless Papyra:TrustedProxies named one.
@@ -1999,31 +2040,41 @@ webhooksApi.MapDelete("/{id:int}", async (int id, ClaimsPrincipal user, AppDbCon
     return Results.NoContent();
 });
 
-// ── Git sync (admin) ──────────────────────────────────────────────────────────────
-// Configure + trigger native git backup of the notes vault. Admin-only. The token is
-// stored in the clear (git auth needs the raw PAT) and never returned; the read shows
-// only whether one is set, plus the last-sync/conflict status.
-var gitApi = app.MapGroup("/api/git").RequireAuthorization(p => p.RequireRole("Admin")).WithTags("Git");
+// ── Git sync (per user) ───────────────────────────────────────────────
+// Back up your own vault to your own git remote. Not an admin setting: where a
+// person's notes are mirrored, and which credentials do it, is their decision
+// about their own data. Every route below is scoped to the caller, so there is
+// no path through Papyra for one account to read or configure another's.
+// The token is stored in the clear (git auth needs the raw PAT) and never
+// returned; the read shows only whether one is set, plus last-sync status.
+var gitApi = app.MapGroup("/api/git").RequireAuthorization().WithTags("Git");
 
-gitApi.MapGet("/", async (AppDbContext db, CancellationToken ct) =>
+gitApi.MapGet("/", async (ClaimsPrincipal user, AppDbContext db, CancellationToken ct) =>
 {
+    var uid = Uid(user);
+    var prefix = GitKeys.Prefix(uid);
     var settings = await db.Settings
-        .Where(s => s.Key.StartsWith("git."))
+        .Where(s => s.Key.StartsWith(prefix))
         .ToDictionaryAsync(s => s.Key, s => s.Value, ct);
     string? Get(string k) => settings.GetValueOrDefault(k);
     return Results.Ok(new
     {
-        remoteUrl = Get("git.remoteUrl") ?? string.Empty,
-        branch = string.IsNullOrWhiteSpace(Get("git.branch")) ? "main" : Get("git.branch"),
-        hasToken = !string.IsNullOrEmpty(Get("git.token")),
-        conflict = Get("git.conflict") == "true",
-        lastSyncUtc = string.IsNullOrEmpty(Get("git.lastSyncUtc")) ? null : Get("git.lastSyncUtc"),
-        lastError = string.IsNullOrEmpty(Get("git.lastError")) ? null : Get("git.lastError"),
+        remoteUrl = Get(GitKeys.RemoteUrl(uid)) ?? string.Empty,
+        branch = string.IsNullOrWhiteSpace(Get(GitKeys.Branch(uid))) ? "main" : Get(GitKeys.Branch(uid)),
+        hasToken = !string.IsNullOrEmpty(Get(GitKeys.Token(uid))),
+        conflict = Get(GitKeys.Conflict(uid)) == "true",
+        lastSyncUtc = string.IsNullOrEmpty(Get(GitKeys.LastSyncUtc(uid))) ? null : Get(GitKeys.LastSyncUtc(uid)),
+        lastError = string.IsNullOrEmpty(Get(GitKeys.LastError(uid))) ? null : Get(GitKeys.LastError(uid)),
     });
 });
 
-gitApi.MapPut("/", async (GitConfigWrite body, AppDbContext db, CancellationToken ct) =>
+gitApi.MapPut("/", async (GitConfigWrite body, ClaimsPrincipal user, AppDbContext db, CancellationToken ct) =>
 {
+    var uid = Uid(user);
+    var remote = body.RemoteUrl?.Trim() ?? string.Empty;
+    if (remote.Length > 0 && !Uri.TryCreate(remote, UriKind.Absolute, out _))
+        return Results.BadRequest(new { error = "The remote must be a full URL, for example https://github.com/you/notes.git" });
+
     async Task Set(string key, string value)
     {
         var row = await db.Settings.FindAsync([key], ct);
@@ -2031,31 +2082,29 @@ gitApi.MapPut("/", async (GitConfigWrite body, AppDbContext db, CancellationToke
         else row.Value = value;
     }
 
-    await Set("git.remoteUrl", body.RemoteUrl?.Trim() ?? string.Empty);
-    await Set("git.branch", string.IsNullOrWhiteSpace(body.Branch) ? "main" : body.Branch.Trim());
+    await Set(GitKeys.RemoteUrl(uid), remote);
+    await Set(GitKeys.Branch(uid), string.IsNullOrWhiteSpace(body.Branch) ? "main" : body.Branch.Trim());
     // Only overwrite the token when one is supplied, so saving config doesn't wipe it.
-    if (body.Token is not null) await Set("git.token", body.Token.Trim());
+    if (body.Token is not null) await Set(GitKeys.Token(uid), body.Token.Trim());
     await db.SaveChangesAsync(ct);
     return Results.NoContent();
 })
-    .WithSummary("Configure git mirroring (admin, whole instance)")
+    .WithSummary("Configure git backup of your own vault")
     .WithDescription(
-        "Sets the remote for the git mirror. NOTE: the repository is the whole users " +
-        "directory, so a sync pushes EVERY tenant's notes and media to this remote — " +
-        "not only the admin's own vault. On a shared instance, treat the remote as " +
-        "having the same trust level as the server itself. Papyra's own state " +
-        "(.papyra/, .trash/) is gitignored.");
+        "Sets the remote for a mirror of the caller's vault only. Papyra's own state "
+        + "(.papyra/, .trash/) is gitignored. Each account has its own repository and "
+        + "its own credentials; no account can configure or trigger another's.");
 
-gitApi.MapPost("/sync", async (GitSyncService git, CancellationToken ct) =>
+gitApi.MapPost("/sync", async (ClaimsPrincipal user, GitSyncService git, CancellationToken ct) =>
 {
-    var result = await git.SyncOnceAsync(ct);
+    var result = await git.SyncOnceAsync(Uid(user), ct);
     return Results.Ok(new { result.Status, result.Detail });
 })
-    .WithSummary("Run a git sync now (admin)")
+    .WithSummary("Back up your vault now")
     .WithDescription(
-        "Stages, commits and pushes every tenant's vault. Returns status 'pushed', " +
-        "'clean', or 'conflict' — a diverged remote is never force-pushed; the " +
-        "conflict flag is raised instead and the remote is left untouched.");
+        "Stages, commits and pushes the caller's vault. Returns status 'pushed', "
+        + "'clean', or 'conflict' — a diverged remote is never force-pushed; the "
+        + "conflict flag is raised instead and the remote is left untouched.");
 
 // ── Settings (trash retention) ───────────────────────────────────────────────────
 // Single global key for now: how long trashed notes survive before the sweep

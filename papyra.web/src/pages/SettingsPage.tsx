@@ -22,6 +22,7 @@ import { useAuth, type AuthUser } from '../hooks/useAuth';
 import { useNotes } from '../hooks/useNotes';
 import { useCategories } from '../hooks/useCategories';
 import { useTheme, type ThemePreference } from '../hooks/useTheme';
+import { clearSessionData } from '../lib/session';
 import { useSettings, useUpdateSettings, RETENTION_OPTIONS } from '../hooks/useSettings';
 import './SettingsPage.css';
 
@@ -36,7 +37,7 @@ const NAV: { id: Tab; label: string; icon: typeof UserIcon; adminOnly?: boolean 
   { id: 'security', label: 'Security', icon: Fingerprint },
   { id: 'data', label: 'Data & Storage', icon: Database },
   { id: 'keys', label: 'API Keys', icon: KeyRound },
-  { id: 'sync', label: 'Git Sync', icon: GitBranch, adminOnly: true },
+  { id: 'sync', label: 'Backup', icon: GitBranch },
   { id: 'sso', label: 'SSO', icon: KeySquare, adminOnly: true },
   { id: 'email', label: 'Email', icon: Mail, adminOnly: true },
   { id: 'ai', label: 'AI', icon: Sparkles, adminOnly: true },
@@ -78,7 +79,7 @@ export default function SettingsPage() {
           {tab === 'security' && <SecurityTab />}
           {tab === 'data' && <DataTab />}
           {tab === 'keys' && <KeysTab />}
-          {tab === 'sync' && isAdmin && <SyncTab />}
+          {tab === 'sync' && <SyncTab />}
           {tab === 'sso' && isAdmin && <SsoTab />}
           {tab === 'email' && isAdmin && <EmailTab />}
           {tab === 'ai' && isAdmin && <AiTab />}
@@ -151,7 +152,8 @@ function ProfileTab({ user }: { user: AuthUser | null }) {
 
   async function logout() {
     await fetch('/api/auth/logout', { method: 'POST' });
-    await queryClient.invalidateQueries({ queryKey: ['auth'] });
+    await clearSessionData(queryClient);
+    queryClient.setQueryData(['auth'], { state: 'login', user: null });
     navigate('/login', { replace: true });
   }
 
@@ -685,20 +687,23 @@ function SyncTab() {
 
   return (
     <div className="settings__panel">
-      <h2 className="settings__subhead">Git mirroring</h2>
+      <h2 className="settings__subhead">Back up to a git repository</h2>
+
+      <p className="settings__hint">
+        Keeps a copy of your notes in a git repository you control, so you have a
+        second copy off this server and a history of every change. This backs up
+        your notes only — nobody else’s, and no one else can see or configure it.
+      </p>
 
       <div className="settings__callout" role="note">
         <AlertTriangle size={18} aria-hidden="true" />
         <div>
-          <strong>This pushes every account’s notes, not just yours.</strong>
+          <strong>Anyone who can read the repository can read your notes.</strong>
           <p>
-            The mirrored repository is the whole vault directory, so a sync publishes
-            all notes and media belonging to <em>every</em> user on this instance to the
-            remote below. On a shared instance, treat that remote as having the same
-            trust level as the server itself — anyone who can read it can read
-            everyone’s notes.
+            Your notes are copied there as plain text. Use a private repository, and
+            treat access to it as access to everything you have written.
           </p>
-          <p>Papyra’s own state (<code>.papyra/</code>, <code>.trash/</code>) is excluded.</p>
+          <p>Papyra’s own files (<code>.papyra/</code>, <code>.trash/</code>) are left out.</p>
         </div>
       </div>
 

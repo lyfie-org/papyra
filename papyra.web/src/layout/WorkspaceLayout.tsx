@@ -9,6 +9,7 @@ import ChatPanel from '../components/ChatPanel';
 import SearchBar from '../components/SearchBar';
 import HelpSheet from '../components/HelpSheet';
 import { useTheme } from '../hooks/useTheme';
+import { clearSessionData } from '../lib/session';
 import { useSignalR } from '../hooks/useSignalR';
 import { useAuth } from '../hooks/useAuth';
 import { useSyncEngine } from '../hooks/useSync';
@@ -83,9 +84,9 @@ export default function WorkspaceLayout() {
   async function logout() {
     setMenuOpen(false);
     await fetch('/api/auth/logout', { method: 'POST' });
-    // Drop the service worker's cached API replies so the next person on this
-    // machine can't read the previous session's notes out of the offline cache.
-    navigator.serviceWorker?.controller?.postMessage({ type: 'papyra-clear-data' });
+    // Every client-side store the last user touched — query cache, offline
+    // cache, pending writes. See clearSessionData for why each one matters.
+    await clearSessionData(queryClient);
     queryClient.setQueryData(['auth'], { state: 'login', user: null });
     navigate('/login', { replace: true });
   }

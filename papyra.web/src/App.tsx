@@ -1,4 +1,6 @@
+import { useEffect, useRef } from 'react';
 import { Routes, Route, Navigate } from 'react-router-dom';
+import { useQueryClient } from '@tanstack/react-query';
 import WorkspaceLayout from './layout/WorkspaceLayout';
 import NotesPage from './pages/NotesPage';
 import NoteEditorPage from './pages/NoteEditorPage';
@@ -15,6 +17,7 @@ import SharedNotePage from './pages/SharedNotePage';
 import LoginPage from './pages/LoginPage';
 import SetupPage from './pages/SetupPage';
 import { useAuth } from './hooks/useAuth';
+import { clearSessionData } from './lib/session';
 import { FocusProvider } from './hooks/FocusProvider';
 import './App.css';
 import InboxPage from './pages/InboxPage';
@@ -23,6 +26,21 @@ import InboxPage from './pages/InboxPage';
 // unauthenticated visitor lands: /setup before any admin exists, else /login.
 function RequireAuth() {
   const { state } = useAuth();
+  const queryClient = useQueryClient();
+  const wasAuthed = useRef(false);
+
+  // A session can end without anyone pressing Sign out — it expires, or an admin
+  // deletes the account, and the next request 401s. That drops us here with the
+  // previous user's notes still sitting in the caches, so treat it exactly like
+  // an explicit sign-out.
+  useEffect(() => {
+    if (state === 'authed') { wasAuthed.current = true; return; }
+    if (state === 'login' && wasAuthed.current) {
+      wasAuthed.current = false;
+      void clearSessionData(queryClient);
+    }
+  }, [state, queryClient]);
+
   if (state === 'loading') return <div className="app-bootstrap">Loading…</div>;
   if (state === 'setup') return <Navigate to="/setup" replace />;
   if (state === 'login') return <Navigate to="/login" replace />;
