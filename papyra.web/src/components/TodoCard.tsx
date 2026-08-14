@@ -1,5 +1,6 @@
 import { useState, type CSSProperties } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
+import { originState } from '../lib/noteLink';
 import { useQueryClient } from '@tanstack/react-query';
 import { Plus } from 'lucide-react';
 import type { Note } from '../types/note';
@@ -25,6 +26,7 @@ function stop(e: React.MouseEvent) { e.preventDefault(); e.stopPropagation(); }
 // A todo note rendered as an interactive checklist. Toggling an item rewrites the
 // `- [ ]`/`- [x]` marker in the body and PUTs the whole note (kind preserved).
 export default function TodoCard({ note }: { note: Note }) {
+  const location = useLocation();
   const queryClient = useQueryClient();
   const [draft, setDraft] = useState('');
   const { lines, items } = parse(note.body);
@@ -62,7 +64,7 @@ export default function TodoCard({ note }: { note: Note }) {
 
   return (
     <article className={className} style={style}>
-      <Link to={`/note/${encodeURIComponent(note.id)}`} className="todo-card__title-link">
+      <Link to={`/note/${encodeURIComponent(note.id)}`} state={originState(location)} className="todo-card__title-link">
         <h3 className="note-card__title">{title}</h3>
       </Link>
 

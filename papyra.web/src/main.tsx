@@ -13,6 +13,8 @@ import { BrowserRouter } from 'react-router-dom';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { queryClient } from './lib/queryClient.ts';
 import { ThemeProvider } from './hooks/ThemeProvider.tsx';
+import { ToastProvider } from './components/ToastProvider.tsx';
+import { ConfirmProvider } from './components/ConfirmProvider.tsx';
 import './index.css';
 import App from './App.tsx';
 
@@ -40,9 +42,13 @@ createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
-        <BrowserRouter>
-          <App />
-        </BrowserRouter>
+        <ToastProvider>
+          <ConfirmProvider>
+            <BrowserRouter>
+              <App />
+            </BrowserRouter>
+          </ConfirmProvider>
+        </ToastProvider>
       </ThemeProvider>
     </QueryClientProvider>
   </StrictMode>,

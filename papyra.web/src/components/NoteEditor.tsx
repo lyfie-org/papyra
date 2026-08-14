@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { PapyraEditor, type PapyraEditorRef } from '@lyfie/luthor/presets/papyra';
 import '@lyfie/luthor/styles.css';
@@ -8,6 +8,8 @@ import { useAutoSave, type Draft } from '../hooks/useAutoSave';
 import { useTheme } from '../hooks/useTheme';
 import { createPapyraEditorAdapter } from '../lib/papyraEditorAdapter';
 import { putNote } from '../lib/notesApi';
+import { closeTarget } from '../lib/noteLink';
+import { useToast } from '../lib/toastContext';
 import NoteToolbar from './NoteToolbar';
 import SnapshotPanel from './SnapshotPanel';
 import CategoryEditor from './CategoryEditor';
@@ -34,6 +36,11 @@ const STATUS_LABEL = {
 export default function NoteEditor({ note }: { note: Note }) {
   const { theme } = useTheme();
   const navigate = useNavigate();
+  const location = useLocation();
+  const { toast } = useToast();
+  // The list the note was opened from, so closing returns there rather than
+  // always dropping the user on Notes.
+  const closeTo = closeTarget(location);
   const queryClient = useQueryClient();
   const editorRef = useRef<PapyraEditorRef | null>(null);
   // The scrolling editor panel — the ghost TOC measures heading offsets against it.
@@ -120,8 +127,8 @@ export default function NoteEditor({ note }: { note: Note }) {
     // A still-locked note holds an empty body (withheld server-side) — flushing
     // would write that emptiness over the real content on disk.
     if (!isLocked) await flush();
-    navigate('/');
-  }, [flush, navigate, timeMachine, isLocked]);
+    navigate(closeTo);
+  }, [flush, navigate, timeMachine, isLocked, closeTo]);
 
   // What the editor currently displays — the yardstick for detecting that the
   // server snapshot (refreshed by SignalR invalidation) carries a new revision.
@@ -199,7 +206,7 @@ export default function NoteEditor({ note }: { note: Note }) {
   // Toolbar frontmatter mutation: PUT the live draft plus the changed YAML field,
   // so a pin/color/archive flip never clobbers unsaved body/title. Re-baselines
   // the save state so the write doesn't immediately echo back as a dirty change.
-  const saveFrontmatter = useCallback(async (patch: Partial<Pick<Note, 'color' | 'pinned' | 'archived' | 'tags' | 'kind'>>) => {
+  const saveFrontmatter = useCallback(async (patch: Partial<Pick<Note, 'color' | 'pinned' | 'archived' | 'tags' | 'kind' | 'secure'>>) => {
     // While locked the draft body is the withheld (empty) one — writing it would
     // destroy the note's real content, so frontmatter edits wait for the unlock.
     if (isLocked) return;
@@ -214,6 +221,9 @@ export default function NoteEditor({ note }: { note: Note }) {
       archived: patch.archived !== undefined ? patch.archived : note.archived,
       kind: patch.kind !== undefined ? patch.kind : note.kind,
       body: draft.body,
+      // Only sent when the toggle was the thing that changed; the API reads an
+      // absent value as "leave the lock alone".
+      ...(patch.secure !== undefined ? { secure: patch.secure } : {}),
     }, note.updated);
     reset(draft);
     // A color flip remounts the editor (theme swap, see key/style below); seed the
@@ -261,11 +271,14 @@ export default function NoteEditor({ note }: { note: Note }) {
 
   // Trash: hard-delete the .md (irreversible) then leave the editor.
   const trash = useCallback(async () => {
-    const res = await fetch(`/api/notes/${encodeURIComponent(note.id)}`, { method: 'DELETE' });
-    if (!res.ok && res.status !== 404) throw new Error(`DELETE /api/notes/${note.id} failed: ${res.status}`);
+    // Soft-delete: the note goes to Trash and stays restorable for the retention
+    // period, so this needs no confirmation — just tell the user where it went.
+    const res = await fetch(`/api/notes/${encodeURIComponent(note.id)}/trash`, { method: 'POST' });
+    if (!res.ok && res.status !== 404) throw new Error(`POST /api/notes/${note.id}/trash failed: ${res.status}`);
     queryClient.invalidateQueries({ queryKey: ['notes'] });
-    navigate('/');
-  }, [note.id, queryClient, navigate]);
+    navigate(closeTo);
+    toast(`${note.kind === 'todo' ? 'List' : 'Note'} moved to Trash.`);
+  }, [note.id, note.kind, queryClient, navigate, closeTo, toast]);
 
   // YAML `color` tints the canvas; fonts come from the design tokens. The palette
   // tints are always light, so a coloured note forces a light editor (dark ink)
@@ -338,9 +351,18 @@ export default function NoteEditor({ note }: { note: Note }) {
               onRecover={() => setRecoverOpen(true)}
               onTimeMachine={() => void openTimeMachine()}
               onFocus={enterFocus}
-              onArchive={() => { void saveFrontmatter({ archived: true }); navigate('/'); }}
+              secure={note.secure ?? false}
+              canToggleSecure={!isLocked}
+              onToggleSecure={() => {
+                const next = !(note.secure ?? false);
+                void saveFrontmatter({ secure: next });
+                toast(next
+                  ? 'Note locked and moved to the Vault.'
+                  : 'Note unlocked — it is back with your other notes.');
+              }}
+              onArchive={() => { void saveFrontmatter({ archived: true }); navigate(closeTo); }}
               onTrash={() => {
-                if (confirm('Delete this note? It moves to Trash, and is erased for good once the Trash period in Settings runs out.')) void trash();
+                void trash();
               }}
             />
           </>

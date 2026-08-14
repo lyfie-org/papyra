@@ -23,6 +23,8 @@ import { useNotes } from '../hooks/useNotes';
 import { useCategories } from '../hooks/useCategories';
 import { useTheme, type ThemePreference } from '../hooks/useTheme';
 import { clearSessionData } from '../lib/session';
+import { useConfirm } from '../lib/confirmContext';
+import { useToast } from '../lib/toastContext';
 import { useSettings, useUpdateSettings, RETENTION_OPTIONS } from '../hooks/useSettings';
 import './SettingsPage.css';
 
@@ -254,6 +256,7 @@ function AppearanceTab() {
 // Enrol a platform authenticator so `secure: true` notes can be unlocked. The
 // private key never leaves the device; Papyra only stores the public key.
 function SecurityTab() {
+  const confirm = useConfirm();
   const { devices, enroll, revoke, enrolling, error, setError } = useWebAuthnDevices();
   const [name, setName] = useState('');
   const [justEnrolled, setJustEnrolled] = useState(false);
@@ -277,7 +280,12 @@ function SecurityTab() {
   }
 
   async function remove(device: { id: number; name: string }) {
-    if (!confirm(`Remove “${device.name}”? You won’t be able to unlock secure notes with it any more.`)) return;
+    if (!(await confirm({
+      title: 'Remove this device?',
+      body: `“${device.name}” will no longer be able to unlock your locked notes. You can register it again later.`,
+      confirmLabel: 'Remove',
+      destructive: true,
+    }))) return;
     await revoke(device.id);
   }
 
@@ -431,6 +439,7 @@ function DataTab() {
 // AES-GCM vault export/restore, gated by the account password. Restore replaces
 // the signed-in user's notes + media with the backup's contents.
 function EncryptedBackupSection() {
+  const confirm = useConfirm();
   const queryClient = useQueryClient();
   const restoreRef = useRef<HTMLInputElement | null>(null);
 
@@ -473,7 +482,12 @@ function EncryptedBackupSection() {
 
   async function restore(file: File) {
     if (!restorePw) { setRestoreMsg('Enter your account password first.'); return; }
-    if (!confirm('Restore this backup? It replaces all your current notes and media with the backup’s contents. This can’t be undone.')) return;
+    if (!(await confirm({
+      title: 'Restore this backup?',
+      body: 'Every note and file you have now is replaced by the contents of the backup. Anything not in the backup is lost, and this cannot be undone.',
+      confirmLabel: 'Replace everything',
+      destructive: true,
+    }))) return;
     setRestoreMsg('Restoring…');
     setRestoreBusy(true);
     try {
@@ -540,6 +554,7 @@ function EncryptedBackupSection() {
 interface ApiKeyRow { id: number; name: string; prefix: string; createdUtc: string; lastUsedUtc: string | null }
 
 function KeysTab() {
+  const confirm = useConfirm();
   const queryClient = useQueryClient();
   const { data: keys, isLoading } = useQuery<ApiKeyRow[]>({
     queryKey: ['apiKeys'],
@@ -570,7 +585,12 @@ function KeysTab() {
   }
 
   async function revoke(id: number) {
-    if (!confirm('Revoke this key? Any integration using it will stop working.')) return;
+    if (!(await confirm({
+      title: 'Revoke this key?',
+      body: 'Anything signed in with this key stops working straight away. You cannot un-revoke it — you would need to issue a new one.',
+      confirmLabel: 'Revoke',
+      destructive: true,
+    }))) return;
     await fetch(`/api/keys/${id}`, { method: 'DELETE' });
     await queryClient.invalidateQueries({ queryKey: ['apiKeys'] });
   }
@@ -1386,6 +1406,8 @@ const AI_DEFAULTS: AiConfig = {
 interface ManagedUser { id: number; username: string; name: string; email: string; role: string }
 
 function AdminTab() {
+  const confirm = useConfirm();
+  const { toast } = useToast();
   const queryClient = useQueryClient();
   const { data: users, isLoading, isError } = useQuery<ManagedUser[]>({
     queryKey: ['users'],
@@ -1436,16 +1458,21 @@ function AdminTab() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ password: nextPw }),
     });
-    if (!res.ok) window.alert('Password reset failed.');
+    if (!res.ok) toast('Couldn’t reset that password.');
   }
 
   async function remove(id: number, label: string) {
-    if (!confirm(`Delete user “${label}”? Their account, API keys and shares are removed. Their note files stay on disk.`)) return;
+    if (!(await confirm({
+      title: `Delete ${label}?`,
+      body: 'Their account, API keys and shares are removed and they can no longer sign in. Their note files stay on the server’s disk.',
+      confirmLabel: 'Delete user',
+      destructive: true,
+    }))) return;
     const res = await fetch(`/api/auth/users/${id}`, { method: 'DELETE' });
     if (res.ok) await queryClient.invalidateQueries({ queryKey: ['users'] });
     else {
       const data = await res.json().catch(() => null);
-      window.alert(data?.error ?? 'Delete failed.');
+      toast(data?.error ?? 'Couldn’t delete that user.');
     }
   }
 

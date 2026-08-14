@@ -1,4 +1,5 @@
-.inbox {
+.inbox__head,
+.inbox__list {
   max-width: 760px;
 }
 
@@ -17,24 +18,7 @@
   color: var(--text);
 }
 
-.inbox__empty {
-  display: flex;
-  align-items: flex-start;
-  gap: var(--space-3);
-  padding: var(--space-5);
-  border: 1px dashed var(--border);
-  border-radius: var(--radius-lg);
-  background: var(--surface);
-  font: 400 var(--fs-sm) / 1.6 var(--sans);
-  color: var(--text);
-}
 
-.inbox__empty svg { flex: 0 0 auto; color: var(--accent); margin-top: 2px; }
-.inbox__empty code {
-  padding: 1px 5px;
-  font-size: var(--fs-xs);
-  background: var(--code-bg);
-}
 
 .inbox__list {
   display: grid;

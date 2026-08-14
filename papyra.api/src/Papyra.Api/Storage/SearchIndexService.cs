@@ -165,6 +165,11 @@ public sealed class SearchIndexService : IDisposable
     public string BuildSnippet(string queryText, string body, int maxChars = 150)
     {
         if (string.IsNullOrWhiteSpace(body)) return string.Empty;
+        // Highlight the prose, not the raw markdown: the body carries the editor's
+        // block anchors (`^p5fozaot`), which used to surface mid-snippet as
+        // meaningless strings.
+        body = PlainText.Flatten(body);
+        if (body.Length == 0) return string.Empty;
         try
         {
             var highlighter = new Highlighter(

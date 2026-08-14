@@ -3,6 +3,7 @@ import { useNavigate } from 'react-router-dom';
 import { Search, X } from 'lucide-react';
 import { useNotes } from '../hooks/useNotes';
 import { useSyncState } from '../hooks/useSync';
+import { flattenMarkdown, normaliseLines } from '../lib/plainText';
 import type { Note } from '../types/note';
 import './SearchBar.css';
 
@@ -25,15 +26,17 @@ function searchLocally(notes: Note[], query: string): Hit[] {
   for (const n of notes) {
     if (n.trashed) continue;
     const inTitle = n.title.toLowerCase().includes(q);
-    // A secure note's body is withheld by the API, so only its title is matchable.
-    const at = n.secure ? -1 : n.body.toLowerCase().indexOf(q);
+    // Search the prose, not the markdown: matching the raw body could hit an
+    // editor block anchor and show it back as the snippet.
+    const body = n.secure ? '' : normaliseLines(flattenMarkdown(n.body));
+    const at = n.secure ? -1 : body.toLowerCase().indexOf(q);
     if (!inTitle && at < 0) continue;
     const from = Math.max(0, at - 30);
     ranked.push({
       id: n.id,
       title: n.title || 'Untitled',
       secure: n.secure,
-      snippet: at < 0 ? '' : `${from > 0 ? '…' : ''}${n.body.slice(from, from + OFFLINE_SNIPPET).trim()}…`,
+      snippet: at < 0 ? '' : `${from > 0 ? '…' : ''}${body.slice(from, from + OFFLINE_SNIPPET).trim()}…`,
       rank: inTitle ? 0 : 1, // title matches first, then body matches
     });
   }

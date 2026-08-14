@@ -16,6 +16,8 @@ export interface NoteWritePayload {
   archived: boolean;
   kind: 'note' | 'todo' | 'inbox';
   body: string;
+  /** Omitted leaves the note's lock state alone, matching the API. */
+  secure?: boolean;
 }
 
 export interface OutboxEntry {

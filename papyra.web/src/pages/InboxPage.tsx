@@ -1,6 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useQueryClient, useMutation } from '@tanstack/react-query';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
+import { originState } from '../lib/noteLink';
 import { Inbox as InboxIcon, X } from 'lucide-react';
 import EmptyState from '../components/EmptyState';
 import { useInbox, useMarkInboxRead, INBOX_KEY } from '../hooks/useInbox';
@@ -12,6 +13,7 @@ import './InboxPage.css';
  * it stays in your list.
  */
 export default function InboxPage() {
+  const location = useLocation();
   const { data: entries, isLoading, isError } = useInbox();
   const queryClient = useQueryClient();
   const markRead = useMarkInboxRead();
@@ -83,7 +85,7 @@ export default function InboxPage() {
             {entry.title && (
               // The link may 403 — a block grant is not access to the note. That
               // is correct, and the destination says so.
-              <Link className="inbox__source" to={`/note/${encodeURIComponent(entry.noteId)}`}>
+              <Link className="inbox__source" to={`/note/${encodeURIComponent(entry.noteId)}`} state={originState(location)}>
                 in “{entry.title}”
               </Link>
             )}

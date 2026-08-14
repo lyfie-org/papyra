@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Pin, Palette, History, Archive, Trash2, Rewind, Maximize2 } from 'lucide-react';
+import { Pin, Palette, History, Archive, Trash2, Rewind, Maximize2, Lock, LockOpen } from 'lucide-react';
 import PalettePicker from './PalettePicker';
 import './NoteToolbar.css';
 import { useSyncState } from '../hooks/useSync';
@@ -17,6 +17,15 @@ interface Props {
   onFocus: () => void;
   onArchive: () => void;
   onTrash: () => void;
+  /** Whether this note is locked into the vault. */
+  secure: boolean;
+  /**
+   * False while the note is locked and not yet unlocked on this device. Clearing
+   * the flag has to go through the same unlock as reading the body, or the lock
+   * could simply be switched off by anyone at the keyboard.
+   */
+  canToggleSecure: boolean;
+  onToggleSecure: () => void;
 }
 
 export default function NoteToolbar({
@@ -29,6 +38,9 @@ export default function NoteToolbar({
   onFocus,
   onArchive,
   onTrash,
+  secure,
+  canToggleSecure,
+  onToggleSecure,
 }: Props) {
   const { online } = useSyncState();
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -106,6 +118,24 @@ export default function NoteToolbar({
         onClick={onArchive}
       >
         <Archive size={18} />
+      </button>
+
+      {/* Locking is the only way into the Vault, and there was no control for it
+          anywhere in the UI — the note had to be edited on disk. */}
+      <button
+        type="button"
+        className={`note-toolbar__btn${secure ? ' is-active' : ''}`}
+        aria-pressed={secure}
+        aria-label={secure ? 'Unlock this note' : 'Lock this note'}
+        disabled={!canToggleSecure}
+        title={!canToggleSecure
+          ? 'Unlock the note with your device first'
+          : secure
+            ? 'Unlock — the note leaves the Vault and becomes searchable again'
+            : 'Lock — moves the note to the Vault, hidden until you unlock it'}
+        onClick={onToggleSecure}
+      >
+        {secure ? <Lock size={18} /> : <LockOpen size={18} />}
       </button>
 
       <button

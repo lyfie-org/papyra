@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   AlertTriangle, Pin, Archive, ArchiveRestore, Share2, Trash2, RotateCcw,
@@ -10,44 +10,14 @@ import { putNote } from '../lib/notesApi';
 import { useSettings } from '../hooks/useSettings';
 import { useSyncState } from '../hooks/useSync';
 import ShareDialog from './ShareDialog';
+import ConfirmDialog from './ConfirmDialog';
+import { useToast } from '../lib/toastContext';
+import { snippet } from '../lib/plainText';
+import { originState } from '../lib/noteLink';
 import './NoteCard.css';
 
-const SNIPPET_LEN = 220;
 
 export type CardVariant = 'active' | 'archived' | 'trashed';
-
-// Cards are plain-text previews (Keep-style), so flatten the markdown to readable
-// prose instead of leaking raw syntax (#, **, ![[…]]) into the snippet.
-function stripMarkdown(md: string): string {
-  return md
-    .replace(/```[\s\S]*?```/g, ' ')                    // fenced code blocks
-    .replace(/`([^`]+)`/g, '$1')                        // inline code
-    .replace(/!\[\[[^\]]*\]\]/g, ' ')                   // media embeds ![[file]]
-    .replace(/(?<=^|[ \t])\^[A-Za-z0-9][A-Za-z0-9_-]*(?=[ \t]|$)/gm, '') // block anchors
-    .replace(/\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g, '$1')   // wikilinks [[a|b]] → a
-    .replace(/!\[[^\]]*\]\([^)]*\)/g, ' ')              // images ![alt](url)
-    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')            // links [text](url) → text
-    .replace(/^\s{0,3}#{1,6}\s+/gm, '')                 // headings
-    .replace(/^\s{0,3}>\s?/gm, '')                      // blockquotes
-    .replace(/^\s{0,3}[-*+]\s+\[[ xX]\]\s+/gm, '')      // task list markers
-    .replace(/^\s{0,3}[-*+]\s+/gm, '')                  // bullet list markers
-    .replace(/^\s{0,3}\d+\.\s+/gm, '')                  // ordered list markers
-    .replace(/^\s{0,3}(?:[-*_]\s*){3,}$/gm, ' ')        // horizontal rules
-    .replace(/(\*\*|__)(.*?)\1/g, '$2')                 // bold
-    .replace(/(\*|_)(.*?)\1/g, '$2')                    // italic
-    .replace(/~~(.*?)~~/g, '$2');                       // strikethrough
-}
-
-function snippet(body: string): string {
-  // Keep line breaks so a multi-line note renders as stacked lines (the card CSS
-  // has white-space: pre-wrap + line-clamp). Only collapse intra-line whitespace.
-  const text = stripMarkdown(body)
-    .replace(/[ \t]+/g, ' ')           // collapse runs of spaces/tabs
-    .replace(/[ \t]*\n[ \t]*/g, '\n')  // trim space around newlines
-    .replace(/\n{3,}/g, '\n\n')        // cap blank-line runs
-    .trim();
-  return text.length > SNIPPET_LEN ? `${text.slice(0, SNIPPET_LEN)}…` : text;
-}
 
 interface Props {
   note: Note;
@@ -66,6 +36,10 @@ function stop(e: React.MouseEvent) {
 }
 
 export default function NoteCard({ note, variant = 'active', conflictId, conflictCount, onResolveConflict }: Props) {
+  const location = useLocation();
+  const { toast } = useToast();
+  // Only unrecoverable deletes ask. Everything else is done and reported.
+  const [confirming, setConfirming] = useState<'immediate' | 'forever' | null>(null);
   const queryClient = useQueryClient();
   const { data: settings } = useSettings();
   // Trash/restore/delete are server-side moves with no offline equivalent — the
@@ -113,17 +87,22 @@ export default function NoteCard({ note, variant = 'active', conflictId, conflic
   // Soft-delete → trash. When retention is "immediate" (0), trashing can't be
   // recovered, so warn and hard-delete instead.
   async function trash() {
-    if (settings?.trashRetentionDays === 0) {
-      if (!confirm('Delete this note? Trash auto-delete is set to immediate — it cannot be recovered.')) return;
-      await action('', 'DELETE');
-      return;
-    }
+    // With retention at "immediate" there is no Trash to fall back on, so this
+    // one really is a delete and has to ask.
+    if (settings?.trashRetentionDays === 0) { setConfirming('immediate'); return; }
     await action('/trash');
+    toast(
+      `${note.kind === 'todo' ? 'List' : 'Note'} moved to Trash.`,
+      { label: 'Undo', onClick: () => void action('/untrash') },
+    );
   }
 
-  async function deleteForever() {
-    if (!confirm('Permanently delete this note? This cannot be recovered.')) return;
+  function deleteForever() { setConfirming('forever'); }
+
+  async function reallyDelete() {
+    setConfirming(null);
     await action('', 'DELETE');
+    toast('Note deleted for good.');
   }
 
   async function duplicate() {
@@ -270,7 +249,20 @@ export default function NoteCard({ note, variant = 'active', conflictId, conflic
     <>
       {variant === 'trashed'
         ? <div className="note-card__link">{card}</div>
-        : <Link to={`/note/${encodeURIComponent(note.id)}`} className="note-card__link">{card}</Link>}
+        : <Link to={`/note/${encodeURIComponent(note.id)}`} state={originState(location)} className="note-card__link">{card}</Link>}
+      {confirming && (
+        <ConfirmDialog
+          destructive
+          title={confirming === 'immediate' ? 'Delete this note?' : 'Delete for good?'}
+          body={confirming === 'immediate'
+            ? 'Trash is set to remove notes immediately, so there is nothing to restore from. This cannot be undone.'
+            : 'This removes the note from Trash permanently. It cannot be recovered.'}
+          confirmLabel="Delete"
+          onConfirm={() => void reallyDelete()}
+          onCancel={() => setConfirming(null)}
+        />
+      )}
+
       {shareOpen && <ShareDialog note={note} onClose={() => setShareOpen(false)} />}
     </>
   );
