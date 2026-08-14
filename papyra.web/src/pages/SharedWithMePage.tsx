@@ -1,7 +1,8 @@
 import { useState } from 'react';
-import { X } from 'lucide-react';
+import { X, Users } from 'lucide-react';
 import { useIncomingShares } from '../hooks/useShares';
 import SharedNoteView, { type SharedNote } from '../components/SharedNoteView';
+import EmptyState from '../components/EmptyState';
 import './SharedWithMePage.css';
 
 export default function SharedWithMePage() {
@@ -31,7 +32,12 @@ export default function SharedWithMePage() {
       <h1 className="page-title shared-with__title">Shared with me</h1>
       {isLoading && <p className="shared-with__status">Loading…</p>}
       {!isLoading && (incoming?.length ?? 0) === 0 && (
-        <p className="shared-with__status">No notes have been shared with you yet.</p>
+        <EmptyState
+          icon={Users}
+          title="Nothing shared with you yet"
+          body="When someone on this server shares a note with you, it appears here. Depending on what they chose, you will either be able to read it or edit it alongside them."
+          hint="Only the notes they picked are shared — nobody can see the rest of your notes, and you cannot see the rest of theirs."
+        />
       )}
 
       <div className="shared-with__grid">

@@ -1,5 +1,6 @@
-import { ShieldCheck } from 'lucide-react';
+import { Lock } from 'lucide-react';
 import NoteGrid from '../components/NoteGrid';
+import EmptyState from '../components/EmptyState';
 import { useNotes } from '../hooks/useNotes';
 import './NotesPage.css';
 
@@ -27,20 +28,25 @@ export default function VaultPage() {
       </header>
 
       <p className="notes-page__lede">
-        Notes marked <code>secure: true</code>. Their contents stay on the server until you
-        unlock them with a registered device — Papyra never sends the body to this page.
+        Locked notes. Their contents stay on the server until you unlock them with a
+        registered device — nothing is sent to this page before then.
       </p>
 
       {isLoading && <p className="notes-page__status">Loading…</p>}
       {isError && <p className="notes-page__status">Couldn’t reach the server.</p>}
-      {!isLoading && !isError && secure.length === 0 && (
-        <p className="notes-page__status">
-          <ShieldCheck size={16} aria-hidden="true" /> No locked notes yet. Add{' '}
-          <code>secure: true</code> to a note’s frontmatter to keep it here.
-        </p>
-      )}
-      {!isLoading && !isError && secure.length > 0 && (
-        <NoteGrid notes={secure} variant="active" emptyLabel="No locked notes." />
+      {!isLoading && !isError && (
+        <NoteGrid
+          notes={secure}
+          variant="active"
+          empty={
+            <EmptyState
+              icon={Lock}
+              title="No locked notes"
+              body="Locking a note keeps its contents hidden until you unlock it. Locked notes stay out of search results and are never sent to the assistant, so nothing can quote them back at you."
+              hint="To lock a note, open it and choose Lock in the toolbar above it."
+            />
+          }
+        />
       )}
     </section>
   );

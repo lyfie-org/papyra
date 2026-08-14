@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Trash2, Layers } from 'lucide-react';
 import NoteGrid from '../components/NoteGrid';
+import EmptyState from '../components/EmptyState';
 import RuleBuilder from '../components/RuleBuilder';
 import { useCollections, useCollectionNotes, useDeleteCollection, type SmartRules } from '../hooks/useCollections';
 import './CollectionsPage.css';
@@ -60,7 +61,12 @@ export default function CollectionsPage() {
         </ul>
       )}
       {collections && collections.length === 0 && (
-        <p className="collections__status">No collections yet — build one above.</p>
+        <EmptyState
+          icon={Layers}
+          title="No collections yet"
+          body="A collection is a saved search. Set the rules once — a category, a date range, a word — and it keeps itself up to date as you write, so you never have to run that search again."
+          hint="Build your first one using the form above."
+        />
       )}
 
       {active && (

@@ -21,8 +21,8 @@ export default function FirstRun({ onCreate }: { onCreate: () => void }) {
           <FilePlus2 className="firstrun__icon" size={20} aria-hidden="true" />
           <h3 className="firstrun__card-title">Write one</h3>
           <p className="firstrun__card-text">
-            A blank note, saved as you type. No save button — the indicator above the
-            note tells you when it has hit the disk.
+            A blank note, saved as you type. There is no save button — the label above
+            the note tells you the moment it is safely stored.
           </p>
           <button type="button" className="firstrun__action" onClick={onCreate}>
             New note
@@ -33,8 +33,8 @@ export default function FirstRun({ onCreate }: { onCreate: () => void }) {
           <FolderInput className="firstrun__icon" size={20} aria-hidden="true" />
           <h3 className="firstrun__card-title">Bring notes with you</h3>
           <p className="firstrun__card-text">
-            Drag <code>.md</code> or <code>.txt</code> files straight onto this page, or
-            import a whole Obsidian or Google&nbsp;Keep export.
+            Drag text files straight onto this page, or import everything at once from
+            Obsidian or Google&nbsp;Keep.
           </p>
           <Link className="firstrun__action firstrun__action--quiet" to="/settings?tab=data">
             Open import

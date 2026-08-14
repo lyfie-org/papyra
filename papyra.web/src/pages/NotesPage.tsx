@@ -56,7 +56,7 @@ export default function NotesPage() {
   // A genuinely empty vault (not just an empty filter or an all-archived one)
   // gets the first-run explainer instead of the grid.
   const isFirstRun = !dayFilter && scope === 'all' && selectedTags.length === 0
-    && (notes ?? []).length === 0;
+    && (notes ?? []).every(n => n.trashed);
 
   // Quick-import: drop .md/.txt onto the grid → new notes (native DnD, no lib).
   async function importFiles(fileList: FileList) {

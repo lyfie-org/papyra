@@ -2,6 +2,7 @@ import { useEffect, useRef } from 'react';
 import { useQueryClient, useMutation } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { Inbox as InboxIcon, X } from 'lucide-react';
+import EmptyState from '../components/EmptyState';
 import { useInbox, useMarkInboxRead, INBOX_KEY } from '../hooks/useInbox';
 import './InboxPage.css';
 
@@ -49,10 +50,12 @@ export default function InboxPage() {
       {isError && <p className="inbox__status">Couldn’t reach the server.</p>}
 
       {!isLoading && !isError && (entries ?? []).length === 0 && (
-        <div className="inbox__empty">
-          <InboxIcon size={20} aria-hidden="true" />
-          <p>Nothing here yet. When someone writes <code>@you</code> in a note, that block lands here.</p>
-        </div>
+        <EmptyState
+          icon={InboxIcon}
+          title="Nothing here yet"
+          body="When someone else on this server types your name after an @ in one of their notes, the paragraph they wrote it in shows up here."
+          hint="You only ever see that one paragraph — never the rest of their note. The same is true in reverse when you mention someone."
+        />
       )}
 
       <ul className="inbox__list">

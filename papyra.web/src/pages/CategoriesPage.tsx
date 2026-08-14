@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
-import { Plus, Tag, X, Trash2 } from 'lucide-react';
+import { Plus, Tag, Tags, X, Trash2 } from 'lucide-react';
 import { useNotes } from '../hooks/useNotes';
+import EmptyState from '../components/EmptyState';
 import { useCategories, useCreateCategory, useDeleteCategory } from '../hooks/useCategories';
 import NoteGrid from '../components/NoteGrid';
 import './CategoriesPage.css';
@@ -80,7 +81,12 @@ export default function CategoriesPage() {
 
       {isLoading && <p className="categories__status">Loading categories…</p>}
       {!isLoading && (categories?.length ?? 0) === 0 && (
-        <p className="categories__status">No categories yet. Create one, or tag a note.</p>
+        <EmptyState
+          icon={Tags}
+          title="No categories yet"
+          body="Categories group related notes together and give each group a colour, so you can pull up everything on one subject without searching for it."
+          hint="Add one above, or type a tag into any note and it will appear here."
+        />
       )}
 
       <div className="categories__grid">

@@ -1,4 +1,6 @@
+import { Trash2 } from 'lucide-react';
 import NoteGrid from '../components/NoteGrid';
+import EmptyState from '../components/EmptyState';
 import { useNotes } from '../hooks/useNotes';
 import { useSettings, RETENTION_OPTIONS } from '../hooks/useSettings';
 import './NotesPage.css';
@@ -22,7 +24,19 @@ export default function TrashPage() {
       {isLoading && <p className="notes-page__status">Loading…</p>}
       {isError && <p className="notes-page__status">Couldn’t reach the server.</p>}
       {!isLoading && !isError && (
-        <NoteGrid notes={notes ?? []} variant="trashed" emptyLabel="Trash is empty." />
+        <NoteGrid
+          notes={notes ?? []}
+          variant="trashed"
+          empty={
+            <EmptyState
+              icon={Trash2}
+              title="Trash is empty"
+              body="Deleted notes wait here so you can change your mind. Once the time limit set in Settings runs out, they are erased for good and cannot be recovered."
+              hint="Restore anything here before that time is up to keep it."
+              action={{ label: 'Change how long Trash keeps notes', to: '/settings?tab=data' }}
+            />
+          }
+        />
       )}
     </section>
   );
