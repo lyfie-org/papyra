@@ -107,14 +107,21 @@ public sealed record PullProgress(string Status, long Completed, long Total, str
 /// </summary>
 public sealed class AiClient
 {
-    // Curated download tiers for an instance with no local model. Sizes are the
-    // published quantised download sizes, shown so the user can pick knowing what
-    // it costs them in disk and RAM.
+    // The three models a user may install, spanning a Raspberry Pi to a
+    // workstation. Deliberately three and no more: this is a one-time choice made
+    // by someone who has no interest in researching language models, so each is
+    // described as size / memory / what it's good at, with no jargon and no
+    // fourth option to agonise over.
     public static readonly IReadOnlyList<AiModelChoice> ChatModelChoices =
     [
-        new("llama3.2:1b", "Smallest", "~1.3 GB", "Runs on almost anything, including a Raspberry Pi. Answers are short and can be shaky on longer notes."),
-        new("llama3.1:8b", "Medium", "~4.7 GB", "The balanced pick. Comfortable on a modern laptop with 8 GB of free RAM."),
-        new("mistral-nemo:12b", "Good", "~7.1 GB", "Best answers of the three, and Papyra's default. Wants ~12 GB of free RAM."),
+        // Measured, not guessed: this one reliably finds the right note but often
+        // won't answer from it, so the card says so rather than overselling.
+        new("llama3.2:1b", "Small", "1.3 GB", "2 GB",
+            "Runs on almost anything, including a Raspberry Pi. Good at finding the right note; often can’t answer detailed questions about it."),
+        new("llama3.1:8b", "Balanced", "4.7 GB", "8 GB",
+            "The one most people want. Comfortable on any recent laptop or desktop."),
+        new("mistral-nemo:12b", "Best", "7.1 GB", "12 GB",
+            "The most accurate answers, and the slowest. Wants a powerful machine or a graphics card."),
     ];
 
     /// <summary>Embeddings model pulled alongside a chat model so semantic search works.</summary>
@@ -226,10 +233,12 @@ public sealed class AiClient
                 (false, "No OpenAI API key is configured. An admin can add one in Settings → AI."),
             AiProviderKind.Anthropic when string.IsNullOrWhiteSpace(s.AnthropicKey) =>
                 (false, "No Anthropic API key is configured. An admin can add one in Settings → AI."),
+            // Deliberately no model identifiers or URLs in these sentences — they
+            // are read by someone deciding what to click, not debugging a service.
             AiProviderKind.Ollama when !ollamaUp =>
-                (false, $"No local model is running. Papyra looked for Ollama at {s.OllamaBaseUrl} and got no answer."),
+                (false, "The assistant isn’t set up yet — the part that runs models on this machine isn’t responding."),
             AiProviderKind.Ollama when !HasModel(installed, s.OllamaChatModel) =>
-                (false, $"Ollama is running but the model “{s.OllamaChatModel}” isn’t installed yet."),
+                (false, "No model is installed yet. Choose one below to switch the assistant on."),
             _ => (true, (string?)null),
         };
 
@@ -673,5 +682,10 @@ public sealed class AiClient
     }
 }
 
-/// <summary>A model offered on the "no local model" download prompt.</summary>
-public sealed record AiModelChoice(string Model, string Tier, string Size, string Blurb);
+/// <summary>
+/// A model the user can install, described the way a shopper would want it:
+/// what it's called in plain words, what it costs in disk and memory, and what
+/// it's good at. <paramref name="Model"/> is the only technical value, and the
+/// UI never shows it.
+/// </summary>
+public sealed record AiModelChoice(string Model, string Tier, string Size, string Memory, string Blurb);

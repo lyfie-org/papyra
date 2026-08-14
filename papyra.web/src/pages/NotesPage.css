@@ -139,13 +139,6 @@
   margin-bottom: 1rem;
 }
 
-.notes-page__title {
-  margin: 0;
-  font-family: var(--heading);
-  font-size: 1.6rem;
-  color: var(--text-h);
-}
-
 .notes-page__hint {
   color: var(--text);
   font-family: var(--mono);

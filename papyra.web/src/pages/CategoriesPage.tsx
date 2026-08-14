@@ -45,7 +45,7 @@ export default function CategoriesPage() {
   return (
     <section className="categories">
       <header className="categories__head">
-        <h1 className="categories__title">Categories</h1>
+        <h1 className="page-title categories__title">Categories</h1>
         <button type="button" className="categories__new" onClick={() => setAdding(a => !a)}>
           <Plus size={18} /> New category
         </button>

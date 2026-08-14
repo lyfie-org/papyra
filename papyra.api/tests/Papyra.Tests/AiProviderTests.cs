@@ -62,10 +62,11 @@ public sealed class AiProviderTests
             Assert.False(body.GetProperty("canPull").GetBoolean());
             Assert.False(body.GetProperty("semanticSearchReady").GetBoolean());
 
-            // The point of the whole feature: a sentence the user can act on.
+            // The point of the whole feature: a sentence the user can act on,
+            // written for someone who has never heard of any of the machinery.
             var reason = body.GetProperty("reason").GetString();
             Assert.False(string.IsNullOrWhiteSpace(reason));
-            Assert.Contains("no local model", reason!, StringComparison.OrdinalIgnoreCase);
+            AssertReadableByAnyone(reason!);
         }
         finally { Cleanup(factory, dir); }
     }
@@ -90,7 +91,7 @@ public sealed class AiProviderTests
             Assert.False(string.IsNullOrWhiteSpace(error));
             // Regression guard: the old message was a flat "The local model is
             // unavailable.", which told the user nothing about what to do.
-            Assert.Contains("Ollama", error!, StringComparison.OrdinalIgnoreCase);
+            AssertReadableByAnyone(error!);
         }
         finally { Cleanup(factory, dir); }
     }
@@ -247,6 +248,35 @@ public sealed class AiProviderTests
     }
 
     [Fact]
+    public async Task AFailedDownload_DoesNotActivateTheModel()
+    {
+        var (factory, dir) = NewApp();
+        try
+        {
+            var admin = await AdminAsync(factory);
+
+            // Ollama is unreachable in this fixture, so the download can't succeed.
+            var res = await admin.PostAsJsonAsync("/api/ai/pull", new { model = "llama3.2:1b" });
+            Assert.Equal(HttpStatusCode.OK, res.StatusCode); // NDJSON stream, errors ride inside
+
+            var frames = (await res.Content.ReadAsStringAsync())
+                .Split('\n', StringSplitOptions.RemoveEmptyEntries)
+                .Select(l => JsonDocument.Parse(l).RootElement)
+                .ToList();
+
+            Assert.Contains(frames, f => f.GetProperty("error").ValueKind != JsonValueKind.Null);
+            // Crucially: no "ready" frame, and the model was never switched on —
+            // a half-finished download must not leave the assistant pointing at a
+            // model that isn't actually there.
+            Assert.DoesNotContain(frames, f => f.GetProperty("phase").GetString() == "ready");
+
+            var cfg = await (await admin.GetAsync("/api/ai/config")).Content.ReadFromJsonAsync<JsonElement>();
+            Assert.NotEqual("llama3.2:1b", cfg.GetProperty("ollamaChatModel").GetString());
+        }
+        finally { Cleanup(factory, dir); }
+    }
+
+    [Fact]
     public async Task PullingAnUnofferedModel_IsRefused()
     {
         var (factory, dir) = NewApp();
@@ -260,6 +290,37 @@ public sealed class AiProviderTests
             Assert.Equal(HttpStatusCode.BadRequest, res.StatusCode);
         }
         finally { Cleanup(factory, dir); }
+    }
+
+    // Text shown to a user must not name the machinery. These strings are read by
+    // someone deciding what to click, not by someone debugging a service — a
+    // sentence mentioning Ollama or a port number has failed that reader, even
+    // though it would read fine to us.
+    private static void AssertReadableByAnyone(string text)
+    {
+        string[] jargon = ["ollama", "http://", "https://", "localhost", ":11434", "embedding", "endpoint", "daemon", "api key"];
+        foreach (var term in jargon)
+            Assert.DoesNotContain(term, text, StringComparison.OrdinalIgnoreCase);
+
+        // A bare model tag ("llama3.2:1b") means nothing to the reader either.
+        Assert.DoesNotContain(AiClient.ChatModelChoices, c => text.Contains(c.Model, StringComparison.OrdinalIgnoreCase));
+    }
+
+    [Fact]
+    public void EveryModelChoice_IsDescribedWithoutJargon()
+    {
+        foreach (var c in AiClient.ChatModelChoices)
+        {
+            // The card shows tier / size / memory / blurb — never the model tag.
+            AssertReadableByAnyone(c.Tier);
+            AssertReadableByAnyone(c.Blurb);
+            Assert.Matches(@"^\d+(\.\d+)? GB$", c.Size);
+            Assert.Matches(@"^\d+(\.\d+)? GB$", c.Memory);
+        }
+
+        // Three, ordered smallest first, so the list reads as a ladder.
+        Assert.Equal(3, AiClient.ChatModelChoices.Count);
+        Assert.Equal(["Small", "Balanced", "Best"], AiClient.ChatModelChoices.Select(c => c.Tier));
     }
 
     // ── pure helpers ─────────────────────────────────────────────────────────

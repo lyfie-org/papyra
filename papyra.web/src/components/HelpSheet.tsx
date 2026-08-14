@@ -7,13 +7,13 @@ const SHORTCUTS: Array<[string, string]> = [
   ['⌘K / Ctrl+K', 'Search every note'],
   ['Esc', 'Close the note, a panel, or focus mode'],
   ['Enter', 'Add the category / to-do item you just typed'],
-  ['Drag a .md onto the grid', 'Import it as a note'],
+  ['Drag a text file onto the grid', 'Import it as a note'],
 ];
 
 const CONCEPTS: Array<[string, string]> = [
   [
-    'Your notes are files',
-    'Every note is a Markdown file with YAML frontmatter on the server’s disk. Papyra reads and writes those files — nothing is trapped in a database, and anything that edits the folder (Syncthing, Obsidian, a text editor) works alongside it.',
+    'Your notes are ordinary files',
+    'Each note is a plain text file in a folder on your server — the same kind of file any text editor can open. Nothing is locked inside Papyra, so you can copy the folder, back it up, or open it with another app, and Papyra will pick up whatever changed.',
   ],
   [
     'There is no save button',
@@ -28,8 +28,12 @@ const CONCEPTS: Array<[string, string]> = [
     'Type [[ in the editor to link another note. Every note shows its “Linked mentions” underneath, so you can walk backwards through your own references.',
   ],
   [
-    'Nothing is really deleted',
-    'Trash holds deleted notes for the retention window in Settings, and every note keeps timestamped snapshots — “File recovery” and “Time machine” in the note toolbar bring old text back.',
+    'Deleting gives you time to change your mind',
+    'A deleted note goes to Trash and stays there for the period you choose in Settings — 30 days by default. Until then you can put it back. Once that period is up the note is erased for good, and no one can recover it. To keep something forever, restore it from Trash before the time runs out.',
+  ],
+  [
+    'Older versions are kept too',
+    'Every note quietly saves earlier versions as you work. “File recovery” and “Time machine” in the note toolbar bring back text you overwrote — separate from Trash, and useful when the note still exists but you want yesterday’s wording.',
   ],
 ];
 

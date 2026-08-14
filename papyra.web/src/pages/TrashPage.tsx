@@ -15,7 +15,7 @@ export default function TrashPage() {
   return (
     <section className="notes-page">
       <header className="notes-page__bar">
-        <h1 className="notes-page__title">Trash</h1>
+        <h1 className="page-title notes-page__title">Trash</h1>
         {hint && <span className="notes-page__hint">{hint}</span>}
       </header>
 

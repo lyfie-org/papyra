@@ -8,7 +8,7 @@ export default function ArchivePage() {
   return (
     <section className="notes-page">
       <header className="notes-page__bar">
-        <h1 className="notes-page__title">Archive</h1>
+        <h1 className="page-title notes-page__title">Archive</h1>
       </header>
 
       {isLoading && <p className="notes-page__status">Loading…</p>}

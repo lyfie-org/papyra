@@ -12,7 +12,7 @@ export default function FirstRun({ onCreate }: { onCreate: () => void }) {
     <section className="firstrun" aria-labelledby="firstrun-title">
       <h2 className="firstrun__title" id="firstrun-title">Your vault is empty</h2>
       <p className="firstrun__lede">
-        Papyra keeps every note as a Markdown file on your own server — plain text you
+        Papyra keeps every note as a plain text file on your own server — text you
         can read, back up, and edit with anything else. Start it however you like.
       </p>
 

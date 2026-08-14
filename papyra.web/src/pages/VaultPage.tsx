@@ -23,7 +23,7 @@ export default function VaultPage() {
   return (
     <section className="notes-page">
       <header className="notes-page__bar">
-        <h1 className="notes-page__title">Vault</h1>
+        <h1 className="page-title notes-page__title">Vault</h1>
       </header>
 
       <p className="notes-page__lede">

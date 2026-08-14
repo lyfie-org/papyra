@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import { Link } from 'react-router-dom';
 import { X, Sparkles, CornerDownLeft, Download, AlertTriangle } from 'lucide-react';
-import { useAiStatus, useAiModels, usePullModel, type PullProgress } from '../hooks/useAi';
+import { useAiStatus } from '../hooks/useAi';
 import { useAuth } from '../hooks/useAuth';
 import './ChatPanel.css';
 
@@ -30,23 +30,7 @@ export default function ChatPanel({ onClose }: { onClose: () => void }) {
 
   const { user } = useAuth();
   const isAdmin = user?.role === 'Admin';
-  const { data: status, isLoading: statusLoading, refetch: refetchStatus } = useAiStatus();
-  const offerDownload = status !== undefined && !status.ready && status.canPull;
-  const { data: choices } = useAiModels(offerDownload && isAdmin);
-
-  const [pulling, setPulling] = useState<string | null>(null);
-  const [progress, setProgress] = useState<PullProgress | null>(null);
-  const pull = usePullModel(setProgress);
-
-  function startPull(model: string) {
-    setPulling(model);
-    setProgress(null);
-    setError(null);
-    pull.mutate(model, {
-      onError: (e) => setError((e as Error).message),
-      onSettled: () => { setPulling(null); setProgress(null); void refetchStatus(); },
-    });
-  }
+  const { data: status, isLoading: statusLoading } = useAiStatus();
 
   async function ask(e: React.FormEvent) {
     e.preventDefault();
@@ -112,48 +96,16 @@ export default function ChatPanel({ onClose }: { onClose: () => void }) {
             <div>
               <p>{status.reason}</p>
 
-              {offerDownload && isAdmin && choices && (
-                <>
-                  <p className="chat-panel__notice-lead">Download a model to switch it on:</p>
-                  <ul className="chat-panel__models">
-                    {choices.map(c => (
-                      <li key={c.model}>
-                        <button
-                          type="button" className="chat-panel__model"
-                          disabled={pulling !== null}
-                          onClick={() => startPull(c.model)}
-                        >
-                          <Download size={14} aria-hidden="true" />
-                          <span className="chat-panel__model-tier">{c.tier}</span>
-                          <span className="chat-panel__model-size">{c.size}</span>
-                          <span className="chat-panel__model-blurb">{c.blurb}</span>
-                        </button>
-                      </li>
-                    ))}
-                  </ul>
-                  {pulling && (
-                    <p className="chat-panel__progress">
-                      Downloading {pulling}
-                      {progress && progress.total > 0
-                        ? ` — ${Math.round((progress.completed / progress.total) * 100)}%`
-                        : '…'}
-                      <br />
-                      <span className="chat-panel__progress-note">
-                        This can take a while. You can keep working; leaving this panel won’t stop it.
-                      </span>
-                    </p>
-                  )}
-                </>
-              )}
-
-              {offerDownload && !isAdmin && (
-                <p className="chat-panel__notice-lead">Ask an administrator to install a model.</p>
-              )}
-
-              {isAdmin && !status.canPull && (
+              {/* The picker lives in Settings, once. Duplicating it here would mean
+                  two download flows to keep in step for no real gain. */}
+              {isAdmin ? (
                 <p className="chat-panel__notice-lead">
-                  <Link to="/settings?tab=ai" onClick={onClose}>Configure the assistant in Settings → AI</Link>
+                  <Link to="/settings?tab=ai" onClick={onClose}>
+                    <Download size={13} aria-hidden="true" /> Set up the assistant
+                  </Link>
                 </p>
+              ) : (
+                <p className="chat-panel__notice-lead">Ask an administrator to set this up.</p>
               )}
             </div>
           </div>

@@ -210,6 +210,18 @@ h1 {
     margin: 20px 0;
   }
 }
+
+/* The heading at the top of a workspace page (Notes, Inbox, Categories…).
+   The bare h1 above is the splash/marketing size; inside the app every page
+   must read at one size. Pages used to set this themselves and had drifted to
+   three different values, so it lives here instead — add the class to a new
+   page's h1 and it matches by construction. */
+.page-title {
+  margin: 0;
+  font: 400 var(--fs-xl) / 1.2 var(--heading);
+  letter-spacing: -0.01em;
+  color: var(--text-h);
+}
 h2 {
   font-size: 24px;
   line-height: 118%;

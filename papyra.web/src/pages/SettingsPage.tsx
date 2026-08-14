@@ -55,7 +55,7 @@ export default function SettingsPage() {
 
   return (
     <section className="settings">
-      <h1 className="settings__title">Settings</h1>
+      <h1 className="page-title settings__title">Settings</h1>
       <div className="settings__shell">
         <nav className="settings__rail" aria-label="Settings sections">
           {NAV.filter(n => !n.adminOnly || isAdmin).map(({ id, label, icon: Icon }) => (
@@ -392,7 +392,7 @@ function DataTab() {
       {importMsg && <p className="settings__msg">{importMsg}</p>}
 
       <h2 className="settings__subhead">Export</h2>
-      <p className="settings__hint">Download every note as a zip of plain markdown files.</p>
+      <p className="settings__hint">Download every note as a zip of plain text files you can open anywhere.</p>
       <a className="settings__btn" href="/api/export">
         <Download size={16} /> Export all notes
       </a>
@@ -400,9 +400,9 @@ function DataTab() {
       <EncryptedBackupSection />
 
       <h2 className="settings__subhead">Maintenance</h2>
-      <p className="settings__hint">Rebuild the search index from the markdown files (the source of truth).</p>
+      <p className="settings__hint">If search is missing notes it should be finding, rebuild it from your files. Safe to run any time — it only rewrites what search uses, never your notes.</p>
       <button type="button" className="settings__btn" onClick={() => void rebuild()}>
-        <RefreshCw size={16} /> Rebuild search index
+        <RefreshCw size={16} /> Rebuild search
       </button>
       {rebuildMsg && <p className="settings__msg">{rebuildMsg}</p>}
 
@@ -639,10 +639,10 @@ function AboutTab() {
   return (
     <div className="settings__panel settings__about">
       <h2 className="settings__subhead">Papyra</h2>
-      <p className="settings__hint">A self-hosted, file-first note-taking app. Your notes are plain markdown on disk.</p>
+      <p className="settings__hint">A note-taking app you run yourself. Your notes stay as plain text files on your own server.</p>
       <dl className="settings__details">
         <div><dt>Version</dt><dd>{APP_VERSION}</dd></div>
-        <div><dt>Storage</dt><dd>Markdown + YAML frontmatter</dd></div>
+        <div><dt>Notes stored as</dt><dd>Plain text files</dd></div>
         <div><dt>License</dt><dd>Open source</dd></div>
       </dl>
     </div>
@@ -1108,10 +1108,11 @@ const SMTP_DEFAULTS: SmtpForm = {
   username: '', fromAddress: '', fromName: '', publicUrl: '',
 };
 
-// ── AI provider (admin) ──────────────────────────────────────────────────────────
-// Papyra answers from your notes using a local Ollama model by default. An admin
-// may point the instance at OpenAI or Anthropic instead — which sends the retrieved
-// note excerpts off the machine, so the panel says so rather than burying it.
+// ── AI assistant (admin) ─────────────────────────────────────────────────────────
+// Two audiences share this panel, so it's ordered for the common one. Almost
+// everybody wants a model on their own machine and nothing else: that's the top
+// half, three cards, one click, no jargon and no model names. The small minority
+// who want to spend money at OpenAI or Anthropic get the bottom half, folded away.
 //
 // Keys are write-only: blank means "keep the stored one", same as SSO and Email.
 function AiTab() {
@@ -1124,8 +1125,10 @@ function AiTab() {
   const [openAiKey, setOpenAiKey] = useState('');
   const [anthropicKey, setAnthropicKey] = useState('');
   const [saved, setSaved] = useState(false);
+  const [showCloud, setShowCloud] = useState(false);
   const [pulling, setPulling] = useState<string | null>(null);
   const [progress, setProgress] = useState<PullProgress | null>(null);
+  const [pullError, setPullError] = useState<string | null>(null);
 
   const pull = usePullModel(setProgress);
 
@@ -1156,166 +1159,210 @@ function AiTab() {
     });
   }
 
-  function startPull(model: string) {
+  function install(model: string) {
     setPulling(model);
     setProgress(null);
+    setPullError(null);
     pull.mutate(model, {
+      onError: (e) => setPullError((e as Error).message),
       onSettled: () => { setPulling(null); setProgress(null); void refetchStatus(); },
     });
   }
 
   if (isLoading) return <div className="settings__panel"><p className="settings__hint">Loading…</p></div>;
-  if (isError) return <div className="settings__panel"><p className="settings__error">Couldn’t load the AI configuration.</p></div>;
+  if (isError) return <div className="settings__panel"><p className="settings__error">Couldn’t load the assistant settings.</p></div>;
 
-  const chatProvider = v('chatProvider');
-  const embedProvider = v('embedProvider');
-  const cloudChat = chatProvider !== 'ollama';
+  const usingCloud = v('chatProvider') !== 'ollama';
+  const installed = status?.installedModels ?? [];
+  const activeModel = status?.chatModel;
+  // Ollama reports "llama3.1:8b"; a bare name means the default tag.
+  const isInstalled = (m: string) =>
+    installed.some(i => i === m || i === `${m}:latest` || i.split(':')[0] === m.split(':')[0]);
 
   return (
     <div className="settings__panel">
       <h2 className="settings__subhead">Assistant</h2>
       <p className="settings__hint">
-        “Ask your notes” retrieves the most relevant excerpts from your vault and has a
-        language model answer from them. Notes marked secure are never indexed, so they
-        can never be retrieved into an answer on any provider.
+        Ask questions about your own notes and get an answer that cites them. Notes you’ve
+        locked are never included.
       </p>
 
       <dl className="settings__details">
         <div>
           <dt>Status</dt>
-          <dd>{status?.ready
-            ? `Ready — answering with ${status.chatModel}`
-            : (status?.reason ?? 'Not ready')}</dd>
-        </div>
-        <div>
-          <dt>Semantic search</dt>
-          <dd>{status?.semanticSearchReady
-            ? `Ready — indexing with ${status.embedModel}`
-            : 'Not available; search falls back to keywords'}</dd>
+          <dd>{status?.ready ? 'Ready' : (status?.reason ?? 'Not set up yet')}</dd>
         </div>
       </dl>
 
-      {/* The heart of the "no local model" case: offer the fix, with sizes, rather
-          than leaving the user to discover Ollama on their own. */}
-      {status?.canPull && !status.ready && choices && (
+      {/* ── On this machine ──────────────────────────────────────────────── */}
+      <h3 className="settings__subhead">On this machine</h3>
+      <p className="settings__hint">
+        Download one of these and the assistant runs entirely on your own server — your
+        notes never leave it, and there’s nothing to pay for. Pick the largest one your
+        machine can handle; you can change it later.
+      </p>
+
+      {status && !status.canPull && (
         <div className="settings__callout" role="note">
           <AlertTriangle size={18} aria-hidden="true" />
           <div>
-            <strong>Ollama is running, but no model is installed.</strong>
-            <p>Download one to switch the assistant on. Bigger models answer better and need more disk and memory.</p>
-            <div className="settings__models">
-              {choices.map(c => (
-                <button
-                  key={c.model} type="button" className="settings__btn settings__btn--ghost"
-                  disabled={pulling !== null}
-                  onClick={() => startPull(c.model)}
-                >
-                  <span className="settings__model-tier">{c.tier} · {c.size}</span>
-                  <span className="settings__model-name">{c.model}</span>
-                  <span className="settings__model-blurb">{c.blurb}</span>
-                </button>
-              ))}
-            </div>
-            {pulling && (
-              <p className="settings__hint" role="status">
-                Downloading {pulling}
-                {progress && progress.total > 0
-                  ? ` — ${Math.round((progress.completed / progress.total) * 100)}%`
-                  : '…'}
-              </p>
-            )}
-            {pull.isError && <p className="settings__error">{(pull.error as Error).message}</p>}
+            <strong>The model engine isn’t running.</strong>
+            <p>
+              Papyra couldn’t reach it, so downloads are unavailable right now. If you
+              started Papyra with Docker, run <code>docker compose up -d</code> again to
+              bring it up.
+            </p>
           </div>
         </div>
       )}
 
-      <form className="settings__form" onSubmit={submit}>
-        <label className="settings__field">Answer with
-          <select value={chatProvider} onChange={e => set('chatProvider', e.target.value)}>
-            <option value="ollama">A local model (Ollama) — nothing leaves this machine</option>
-            <option value="openai">OpenAI</option>
-            <option value="anthropic">Anthropic</option>
-          </select>
-        </label>
+      <ul className="settings__models">
+        {(choices ?? []).map(c => {
+          const here = isInstalled(c.model);
+          const active = here && activeModel === c.model;
+          const busy = pulling === c.model;
+          return (
+            <li key={c.model} className={`settings__model${active ? ' is-active' : ''}`}>
+              <div className="settings__model-head">
+                <span className="settings__model-tier">{c.tier}</span>
+                {active
+                  ? <span className="settings__model-badge">In use</span>
+                  : here && <span className="settings__model-badge">Downloaded</span>}
+              </div>
+              <p className="settings__model-blurb">{c.blurb}</p>
+              <dl className="settings__model-specs">
+                <div><dt>Size</dt><dd>{c.size}</dd></div>
+                <div><dt>Memory needed</dt><dd>{c.memory}</dd></div>
+              </dl>
+              <button
+                type="button"
+                className="settings__btn"
+                disabled={active || pulling !== null || !status?.canPull}
+                onClick={() => install(c.model)}
+              >
+                {active ? 'In use'
+                  : busy ? 'Downloading…'
+                  : here ? 'Use this one'
+                  : 'Download'}
+              </button>
 
-        <label className="settings__field">Build the search index with
-          <select value={embedProvider} onChange={e => set('embedProvider', e.target.value)}>
-            <option value="ollama">A local model (Ollama)</option>
-            <option value="openai">OpenAI</option>
-          </select>
-          <span className="settings__hint">
-            Anthropic doesn’t offer embeddings, so semantic search always runs on Ollama or OpenAI.
-          </span>
-        </label>
+              {busy && (
+                <div className="settings__model-progress" role="status">
+                  <div
+                    className="settings__model-bar"
+                    style={{ '--pct': `${progress && progress.total > 0
+                      ? Math.round((progress.completed / progress.total) * 100) : 0}%` } as React.CSSProperties}
+                  />
+                  <span>
+                    {progress?.phase === 'search'
+                      ? 'Setting up search…'
+                      : progress && progress.total > 0
+                        ? `${Math.round((progress.completed / progress.total) * 100)}% downloaded`
+                        : 'Starting…'}
+                  </span>
+                </div>
+              )}
+            </li>
+          );
+        })}
+      </ul>
 
-        {cloudChat && (
-          <div className="settings__callout" role="note">
-            <AlertTriangle size={18} aria-hidden="true" />
-            <div>
-              <strong>Note excerpts will leave this machine.</strong>
-              <p>
-                Answering with {chatProvider === 'openai' ? 'OpenAI' : 'Anthropic'} sends the
-                retrieved excerpts to their API. Choose a local model to keep everything here.
-              </p>
+      {pullError && <p className="settings__error">{pullError}</p>}
+      {pulling && (
+        <p className="settings__hint">
+          This can take a while on a slow connection. You can leave this page — the
+          download keeps going.
+        </p>
+      )}
+
+      {/* ── Or use a paid service ────────────────────────────────────────── */}
+      <h3 className="settings__subhead">Or use a paid service</h3>
+      <p className="settings__hint">
+        Faster and more accurate, but the parts of your notes needed to answer each
+        question are sent to that company, and they charge you for it.
+      </p>
+
+      {!showCloud && !usingCloud ? (
+        <button type="button" className="settings__btn settings__btn--ghost" onClick={() => setShowCloud(true)}>
+          Set up OpenAI or Anthropic
+        </button>
+      ) : (
+        <form className="settings__form" onSubmit={submit}>
+          <label className="settings__field">Answer with
+            <select value={v('chatProvider')} onChange={e => set('chatProvider', e.target.value)}>
+              <option value="ollama">The model on this machine</option>
+              <option value="openai">OpenAI</option>
+              <option value="anthropic">Anthropic</option>
+            </select>
+          </label>
+
+          {usingCloud && (
+            <div className="settings__callout" role="note">
+              <AlertTriangle size={18} aria-hidden="true" />
+              <div>
+                <strong>Your notes will leave this machine.</strong>
+                <p>
+                  To answer a question, Papyra sends the relevant parts of your notes to{' '}
+                  {v('chatProvider') === 'openai' ? 'OpenAI' : 'Anthropic'}. Switch back to
+                  the model on this machine to keep everything local.
+                </p>
+              </div>
             </div>
+          )}
+
+          <label className="settings__field">
+            OpenAI key {data?.hasOpenAiKey && <span className="settings__hint">(saved — leave blank to keep it)</span>}
+            <input type="password" value={openAiKey} autoComplete="new-password"
+              placeholder={data?.hasOpenAiKey ? '••••••••' : 'Paste your key'}
+              onChange={e => setOpenAiKey(e.target.value)} />
+          </label>
+          <label className="settings__field">OpenAI model
+            <input type="text" value={v('openAiChatModel')} placeholder="gpt-4o"
+              onChange={e => set('openAiChatModel', e.target.value)} />
+          </label>
+
+          <label className="settings__field">
+            Anthropic key {data?.hasAnthropicKey && <span className="settings__hint">(saved — leave blank to keep it)</span>}
+            <input type="password" value={anthropicKey} autoComplete="new-password"
+              placeholder={data?.hasAnthropicKey ? '••••••••' : 'Paste your key'}
+              onChange={e => setAnthropicKey(e.target.value)} />
+          </label>
+          <label className="settings__field">Anthropic model
+            <input type="text" value={v('anthropicChatModel')} placeholder="claude-opus-5"
+              onChange={e => set('anthropicChatModel', e.target.value)} />
+          </label>
+
+          <details className="settings__advanced">
+            <summary>Advanced</summary>
+            <label className="settings__field">Search index built by
+              <select value={v('embedProvider')} onChange={e => set('embedProvider', e.target.value)}>
+                <option value="ollama">The model on this machine</option>
+                <option value="openai">OpenAI</option>
+              </select>
+              <span className="settings__hint">
+                Anthropic can’t do this part, so search always uses one of the other two.
+              </span>
+            </label>
+            <label className="settings__field">Model engine address
+              <input type="url" value={v('ollamaBaseUrl')} placeholder="http://localhost:11434"
+                onChange={e => set('ollamaBaseUrl', e.target.value)} />
+            </label>
+            <label className="settings__field">OpenAI address
+              <input type="url" value={v('openAiBaseUrl')} placeholder="https://api.openai.com/v1"
+                onChange={e => set('openAiBaseUrl', e.target.value)} />
+              <span className="settings__hint">Change this to use a compatible service.</span>
+            </label>
+          </details>
+
+          <div className="settings__form-actions">
+            <button type="submit" className="settings__btn" disabled={save.isPending}>
+              {save.isPending ? 'Saving…' : 'Save'}
+            </button>
+            {saved && <span className="settings__msg"><CheckCircle2 size={15} /> Saved</span>}
+            {save.isError && <span className="settings__error">{(save.error as Error).message}</span>}
           </div>
-        )}
-
-        <h3 className="settings__subhead">Local (Ollama)</h3>
-        <label className="settings__field">Server address
-          <input type="url" value={v('ollamaBaseUrl')} placeholder="http://localhost:11434"
-            onChange={e => set('ollamaBaseUrl', e.target.value)} />
-        </label>
-        <label className="settings__field">Chat model
-          <input type="text" value={v('ollamaChatModel')} placeholder="mistral-nemo:12b"
-            onChange={e => set('ollamaChatModel', e.target.value)} />
-        </label>
-        <label className="settings__field">Embedding model
-          <input type="text" value={v('ollamaEmbedModel')} placeholder="nomic-embed-text"
-            onChange={e => set('ollamaEmbedModel', e.target.value)} />
-        </label>
-
-        <h3 className="settings__subhead">OpenAI</h3>
-        <label className="settings__field">
-          API key {data?.hasOpenAiKey && <span className="settings__hint">(stored — leave blank to keep it)</span>}
-          <input type="password" value={openAiKey} autoComplete="new-password"
-            placeholder={data?.hasOpenAiKey ? '••••••••' : 'sk-…'}
-            onChange={e => setOpenAiKey(e.target.value)} />
-        </label>
-        <label className="settings__field">Chat model
-          <input type="text" value={v('openAiChatModel')} placeholder="gpt-4o"
-            onChange={e => set('openAiChatModel', e.target.value)} />
-        </label>
-        <label className="settings__field">Embedding model
-          <input type="text" value={v('openAiEmbedModel')} placeholder="text-embedding-3-small"
-            onChange={e => set('openAiEmbedModel', e.target.value)} />
-        </label>
-        <label className="settings__field">API base URL
-          <input type="url" value={v('openAiBaseUrl')} placeholder="https://api.openai.com/v1"
-            onChange={e => set('openAiBaseUrl', e.target.value)} />
-          <span className="settings__hint">Change this to use an OpenAI-compatible service.</span>
-        </label>
-
-        <h3 className="settings__subhead">Anthropic</h3>
-        <label className="settings__field">
-          API key {data?.hasAnthropicKey && <span className="settings__hint">(stored — leave blank to keep it)</span>}
-          <input type="password" value={anthropicKey} autoComplete="new-password"
-            placeholder={data?.hasAnthropicKey ? '••••••••' : 'sk-ant-…'}
-            onChange={e => setAnthropicKey(e.target.value)} />
-        </label>
-        <label className="settings__field">Model
-          <input type="text" value={v('anthropicChatModel')} placeholder="claude-opus-5"
-            onChange={e => set('anthropicChatModel', e.target.value)} />
-        </label>
-
-        <div className="settings__form-actions">
-          <button type="submit" className="settings__btn" disabled={save.isPending}>
-            {save.isPending ? 'Saving…' : 'Save AI settings'}
-          </button>
-          {saved && <span className="settings__msg"><CheckCircle2 size={15} /> Saved — active immediately</span>}
-          {save.isError && <span className="settings__error">{(save.error as Error).message}</span>}
-        </div>
-      </form>
+        </form>
+      )}
     </div>
   );
 }

@@ -2670,7 +2670,7 @@ aiAdmin.MapPut("/", async (AiConfigWrite body, InstanceConfigStore config, Cance
 // Download a model into Ollama, streaming progress as NDJSON so the UI can show a
 // real bar. Admin-only: it writes gigabytes to the host's disk.
 app.MapPost("/api/ai/pull", async (
-    AiPullRequest body, AiClient ai, HttpContext http, CancellationToken ct) =>
+    AiPullRequest body, AiClient ai, InstanceConfigStore config, HttpContext http, CancellationToken ct) =>
 {
     var model = body.Model?.Trim();
     if (string.IsNullOrWhiteSpace(model))
@@ -2683,16 +2683,46 @@ app.MapPost("/api/ai/pull", async (
 
     http.Response.ContentType = "application/x-ndjson";
     var writer = new StreamWriter(http.Response.Body);
-    await foreach (var frame in ai.PullModelAsync(model, ct))
+
+    async Task<bool> PullAsync(string target, string phase)
     {
+        await foreach (var frame in ai.PullModelAsync(target, ct))
+        {
+            await writer.WriteLineAsync(JsonSerializer.Serialize(new
+            {
+                phase,
+                status = frame.Status,
+                completed = frame.Completed,
+                total = frame.Total,
+                error = frame.Error,
+            }));
+            await writer.FlushAsync(ct); // flush per frame so the bar actually moves
+            if (frame.Error is not null) return false;
+        }
+        return true;
+    }
+
+    // One click has to leave the user with a working assistant, not a downloaded
+    // file they then have to go and switch on. So: fetch the model, fetch the
+    // embedding model that search needs, then make it the active one.
+    var ok = await PullAsync(model, "answering");
+    if (ok) ok = await PullAsync(AiClient.DefaultEmbedModel, "search");
+
+    if (ok)
+    {
+        await config.SetAsync(new Dictionary<string, string?>
+        {
+            [AiKeys.ChatProvider] = AiClient.ProviderName(AiProviderKind.Ollama),
+            [AiKeys.EmbedProvider] = AiClient.ProviderName(AiProviderKind.Ollama),
+            [AiKeys.OllamaChatModel] = model,
+            [AiKeys.OllamaEmbedModel] = AiClient.DefaultEmbedModel,
+        }, ct);
+
         await writer.WriteLineAsync(JsonSerializer.Serialize(new
         {
-            status = frame.Status,
-            completed = frame.Completed,
-            total = frame.Total,
-            error = frame.Error,
+            phase = "ready", status = "ready", completed = 0L, total = 0L, error = (string?)null,
         }));
-        await writer.FlushAsync(ct); // flush per frame so the bar actually moves
+        await writer.FlushAsync(ct);
     }
     return Results.Empty;
 })

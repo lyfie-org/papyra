@@ -340,7 +340,7 @@ export default function NoteEditor({ note }: { note: Note }) {
               onFocus={enterFocus}
               onArchive={() => { void saveFrontmatter({ archived: true }); navigate('/'); }}
               onTrash={() => {
-                if (confirm('Delete this note? This permanently removes the .md file.')) void trash();
+                if (confirm('Delete this note? It moves to Trash, and is erased for good once the Trash period in Settings runs out.')) void trash();
               }}
             />
           </>

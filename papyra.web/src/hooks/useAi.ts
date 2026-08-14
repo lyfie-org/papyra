@@ -26,9 +26,14 @@ export interface AiStatus {
 }
 
 export interface AiModelChoice {
+  /** The engine's own identifier. Never shown in the UI. */
   model: string;
+  /** Plain-language name: Small / Balanced / Best. */
   tier: string;
+  /** Download size, e.g. "4.7 GB". */
   size: string;
+  /** Memory the machine needs, e.g. "8 GB". */
+  memory: string;
   blurb: string;
 }
 
@@ -53,8 +58,13 @@ export interface AiConfigWrite extends Omit<AiConfig, 'hasOpenAiKey' | 'hasAnthr
   anthropicKey?: string;
 }
 
-/** One frame of a model download. */
+/**
+ * One frame of a model install. Installing runs in stages — the answering model,
+ * then the search model, then activation — so `phase` says which one the bar is
+ * currently reporting.
+ */
 export interface PullProgress {
+  phase: 'answering' | 'search' | 'ready';
   status: string;
   completed: number;
   total: number;

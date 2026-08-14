@@ -27,7 +27,7 @@ export default function TodoPage() {
   return (
     <section className="todo-page">
       <header className="todo-page__head">
-        <h1 className="todo-page__title">To Do</h1>
+        <h1 className="page-title todo-page__title">To Do</h1>
         <button type="button" className="todo-page__new" onClick={() => void createTodo()}>
           <Plus size={18} /> New list
         </button>

@@ -38,7 +38,7 @@ export default function InboxPage() {
   return (
     <section className="inbox">
       <header className="inbox__head">
-        <h1 className="inbox__title">Inbox</h1>
+        <h1 className="page-title inbox__title">Inbox</h1>
         <p className="inbox__lede">
           Blocks other people have mentioned you in. You see only the block that
           named you — never the rest of their note.

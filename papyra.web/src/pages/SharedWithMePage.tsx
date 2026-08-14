@@ -28,7 +28,7 @@ export default function SharedWithMePage() {
 
   return (
     <section className="shared-with">
-      <h1 className="shared-with__title">Shared with me</h1>
+      <h1 className="page-title shared-with__title">Shared with me</h1>
       {isLoading && <p className="shared-with__status">Loading…</p>}
       {!isLoading && (incoming?.length ?? 0) === 0 && (
         <p className="shared-with__status">No notes have been shared with you yet.</p>

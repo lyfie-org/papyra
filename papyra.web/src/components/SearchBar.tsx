@@ -141,7 +141,7 @@ export default function SearchBar() {
   const showPanel = open && query.trim().length > 0;
 
   return (
-    <div className="search" ref={wrapRef}>
+    <div className={`search${showPanel ? ' search--open' : ''}`} ref={wrapRef}>
       <div className="search__field">
         <Search className="search__icon" size={16} aria-hidden="true" />
         <input
@@ -209,7 +209,7 @@ export default function SearchBar() {
             <li className="search__note">Searching this device — full-text search resumes when the server is back.</li>
           )}
           {!offlineResults && partial && hits.length > 0 && (
-            <li className="search__note">Partial matches — the index has no exact hit for this word.</li>
+            <li className="search__note">Close matches — nothing contains that word exactly.</li>
           )}
         </ul>
       )}

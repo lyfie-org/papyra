@@ -2,11 +2,6 @@
   max-width: 62rem;
 }
 
-.settings__title {
-  font-family: var(--heading);
-  color: var(--text-h);
-}
-
 .settings__tabs {
   display: flex;
   gap: 0.5rem;
@@ -490,29 +485,132 @@
   font-size: 0.8rem;
 }
 
-/* Model download choices on the AI panel. Each button carries its tier, size and
-   a one-line trade-off, so the pick is informed rather than a guess. */
+/* ── Assistant: model choices ────────────────────────────────────────────────
+   Three cards, read like a product shelf: plain name, what it's good at, what it
+   costs in disk and memory, one button. The engine's model identifier is
+   deliberately never rendered — it means nothing to the person choosing. */
 .settings__models {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+  gap: var(--space-3);
+  max-width: 46rem;
+  margin: 0 0 1.2rem;
+  padding: 0;
+  list-style: none;
+}
+
+.settings__model {
   display: flex;
   flex-direction: column;
-  gap: 0.45rem;
-  margin-top: 0.7rem;
-}
-
-.settings__models .settings__btn--ghost {
-  display: grid;
-  gap: 0.15rem;
-  width: 100%;
-  padding: 0.55rem 0.7rem;
+  gap: 0.55rem;
+  padding: 0.9rem 1rem;
   border: 1px solid var(--border);
+  border-radius: var(--radius-md);
   background: var(--surface);
-  color: var(--text-h);
-  text-align: left;
 }
 
-.settings__models .settings__btn--ghost:hover:not(:disabled) { border-color: var(--accent); }
-.settings__models .settings__btn--ghost:disabled { opacity: 0.55; cursor: default; }
+.settings__model.is-active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
 
-.settings__model-tier { font-weight: 600; font-size: 0.82rem; }
-.settings__model-name { font-family: var(--mono); font-size: 0.74rem; color: var(--text); }
-.settings__model-blurb { font-size: 0.78rem; line-height: 1.45; color: var(--text); }
+.settings__model-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.settings__model-tier {
+  font-family: var(--heading);
+  font-size: var(--fs-lg);
+  color: var(--text-h);
+}
+
+.settings__model-badge {
+  padding: 0.15rem 0.5rem;
+  border-radius: var(--radius-pill);
+  background: var(--accent-bg);
+  /* --text-h, not --text: the accent tint lifts the backdrop enough that the
+     muted body colour drops under AA in dark mode. */
+  color: var(--text-h);
+  font-size: var(--fs-2xs);
+  letter-spacing: 0.02em;
+}
+
+.settings__model-blurb {
+  flex: 1;
+  margin: 0;
+  font-size: var(--fs-sm);
+  line-height: 1.5;
+  color: var(--text);
+}
+
+.settings__model-specs {
+  display: flex;
+  gap: 1.2rem;
+  margin: 0;
+  padding: 0.55rem 0;
+  border-top: 1px solid var(--border);
+}
+
+.settings__model-specs div { display: flex; flex-direction: column; gap: 0.1rem; }
+.settings__model-specs dt { font-size: var(--fs-2xs); color: var(--text); }
+.settings__model-specs dd {
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--text-h);
+}
+
+.settings__model .settings__btn { width: 100%; justify-content: center; }
+
+.settings__model-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: var(--fs-2xs);
+  color: var(--text);
+}
+
+/* Width comes from --pct, set inline as the download reports bytes. */
+.settings__model-bar {
+  height: 4px;
+  border-radius: var(--radius-pill);
+  background: var(--border);
+  overflow: hidden;
+}
+
+.settings__model-bar::after {
+  content: '';
+  display: block;
+  width: var(--pct, 0%);
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  transition: width var(--dur) var(--ease);
+}
+
+.settings__advanced {
+  max-width: 38rem;
+  margin: 0.5rem 0 1rem;
+  font-size: var(--fs-sm);
+}
+
+.settings__advanced summary {
+  cursor: pointer;
+  color: var(--text);
+  padding: 0.3rem 0;
+}
+
+.settings__advanced summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* Secondary action: same shape as the primary button, no fill. Used where the
+   action is optional (setting up a paid provider) and shouldn't compete with
+   the recommended path above it. */
+.settings__btn--ghost {
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-h);
+}
+
+.settings__btn--ghost:hover { border-color: var(--accent); background: var(--accent-bg); }

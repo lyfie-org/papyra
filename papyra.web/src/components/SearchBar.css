@@ -5,7 +5,16 @@
   min-width: 0;
 }
 
+/* The whole control — field included — has to clear the scrim. Only the results
+   used to be lifted, which left the user typing behind a blurred sheet with no
+   idea what they'd written. Lifting the container keeps field and results on one
+   plane, so they read as a single surface rather than two stacked ones. */
+.search--open {
+  z-index: 60;
+}
+
 .search__field {
+  position: relative;
   display: flex;
   align-items: center;
   gap: var(--space-2);
@@ -14,7 +23,18 @@
   border: 1px solid var(--border);
   border-radius: var(--radius-pill);
   background: var(--bg);
-  transition: border-color var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease);
+  transition:
+    border-color var(--dur-fast) var(--ease),
+    box-shadow var(--dur) var(--ease);
+}
+
+/* Opaque + raised while open: the field is now sitting over blurred content, so
+   it needs its own ground to stay readable. */
+.search--open .search__field {
+  z-index: 1;
+  background: var(--surface);
+  border-color: var(--accent-border);
+  box-shadow: var(--shadow);
 }
 
 .search__field:focus-within {
@@ -70,19 +90,27 @@
 .search__clear:hover { background: var(--code-bg); color: var(--text-h); }
 
 /* Same scrim recipe as the open-note modal (NoteEditor.css) so the two modal
-   surfaces read as one system. Sits under the results, over everything else. */
+   surfaces read as one system.
+
+   z-index 0, not 55: `.search--open` raises the whole control to 60, which makes
+   it a stacking context — so the scrim is ranked against its *siblings* (the
+   field and the results), not against the page. It still covers everything
+   outside the control, because the control as a whole sits at 60. Ranking it
+   above 0 here is what used to bury the input the user was typing into. */
 .search__scrim {
   position: fixed;
   inset: 0;
-  z-index: 55;
+  z-index: 0;
   background: color-mix(in srgb, var(--scrim) 55%, transparent);
   -webkit-backdrop-filter: blur(6px);
   backdrop-filter: blur(6px);
 }
 
+/* Hangs directly under the field, same width, so the two form one column —
+   the field is the header of the panel rather than a separate widget. */
 .search__results {
   position: absolute;
-  z-index: 60;
+  z-index: 1;
   top: calc(100% + var(--space-2));
   left: 0;
   right: 0;
@@ -95,16 +123,27 @@
   border-radius: var(--radius-md);
   background: var(--surface);
   box-shadow: var(--shadow);
+  transform-origin: top center;
   animation: search-in var(--dur) var(--ease);
 }
 
+/* Grows down out of the field rather than fading in on top of it. */
 @keyframes search-in {
-  from { opacity: 0; transform: translateY(-4px); }
+  from { opacity: 0; transform: translateY(-6px) scale(0.98); }
   to   { opacity: 1; transform: none; }
 }
 
+.search__scrim { animation: search-scrim-in var(--dur) var(--ease); }
+
+@keyframes search-scrim-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
 @media (prefers-reduced-motion: reduce) {
-  .search__results { animation: none; }
+  .search__field { transition: none; }
+  .search__results,
+  .search__scrim { animation: none; }
 }
 
 .search__hit {

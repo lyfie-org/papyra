@@ -27,7 +27,7 @@ export default function CollectionsPage() {
 
   return (
     <section className="collections">
-      <h1 className="collections__title">Smart Collections</h1>
+      <h1 className="page-title collections__title">Smart Collections</h1>
       <p className="collections__hint">
         Saved searches over your notes. A collection is a view — matching notes stay on the main feed.
       </p>
