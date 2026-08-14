@@ -3,6 +3,8 @@ import { Outlet, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { Plus, UploadCloud, X } from 'lucide-react';
 import DraggableNoteGrid from '../components/DraggableNoteGrid';
+import NotesFilterBar, { type NotesScope } from '../components/NotesFilterBar';
+import SharedRail from '../components/SharedRail';
 import KnowledgeHeatmap from '../components/KnowledgeHeatmap';
 import ConflictResolver from '../components/ConflictResolver';
 import FirstRun from '../components/FirstRun';
@@ -21,15 +23,40 @@ export default function NotesPage() {
   const [importMsg, setImportMsg] = useState<string | null>(null);
   // Heatmap cell → filter the grid to notes last modified that day (YYYY-MM-DD).
   const [dayFilter, setDayFilter] = useState<string | null>(null);
+  // Desk filters (see NotesFilterBar). Kept here rather than in the URL: they are
+  // a transient way to look at the desk, and putting them in the query string
+  // would fight the `/note/:id` child route the editor opens over this page.
+  const [scope, setScope] = useState<NotesScope>('all');
+  const [selectedTags, setSelectedTags] = useState<string[]>([]);
 
-  const visibleNotes = useMemo(
-    () => (dayFilter ? (notes ?? []).filter((n) => n.updated.slice(0, 10) === dayFilter) : notes ?? []),
-    [notes, dayFilter],
-  );
+  // Every tag in the vault, for the category dropdown. Built from the notes the
+  // desk can actually show, so a tag that only exists on an archived or trashed
+  // note never offers a filter that yields nothing.
+  const allTags = useMemo(() => {
+    const seen = new Set<string>();
+    for (const n of notes ?? []) {
+      if (n.trashed || n.archived || n.kind === 'todo' || n.kind === 'inbox') continue;
+      for (const t of n.tags ?? []) seen.add(t);
+    }
+    return [...seen].sort((a, b) => a.localeCompare(b));
+  }, [notes]);
 
-  // A genuinely empty vault (not just an empty day filter or an all-archived one)
+  const visibleNotes = useMemo(() => {
+    let list = notes ?? [];
+    if (dayFilter) list = list.filter((n) => n.updated.slice(0, 10) === dayFilter);
+    if (scope === 'pinned') list = list.filter((n) => n.pinned);
+    // Any selected tag matches — intersecting them would empty the grid almost
+    // every time, since notes rarely carry several tags at once.
+    if (selectedTags.length > 0) {
+      list = list.filter((n) => (n.tags ?? []).some((t) => selectedTags.includes(t)));
+    }
+    return list;
+  }, [notes, dayFilter, scope, selectedTags]);
+
+  // A genuinely empty vault (not just an empty filter or an all-archived one)
   // gets the first-run explainer instead of the grid.
-  const isFirstRun = !dayFilter && (notes ?? []).length === 0;
+  const isFirstRun = !dayFilter && scope === 'all' && selectedTags.length === 0
+    && (notes ?? []).length === 0;
 
   // Quick-import: drop .md/.txt onto the grid → new notes (native DnD, no lib).
   async function importFiles(fileList: FileList) {
@@ -120,16 +147,31 @@ export default function NotesPage() {
         </div>
       )}
 
+      {!isLoading && !isError && !isFirstRun && (
+        <NotesFilterBar
+          scope={scope}
+          onScopeChange={setScope}
+          allTags={allTags}
+          selectedTags={selectedTags}
+          onSelectedTagsChange={setSelectedTags}
+        />
+      )}
+
       {isLoading && <p className="notes-page__status">Loading notes…</p>}
       {isError && <p className="notes-page__status">Couldn’t reach the server.</p>}
       {/* A brand-new vault gets an explanation, not the word "empty". */}
       {!isLoading && !isError && isFirstRun && <FirstRun onCreate={() => void createNote()} />}
       {!isLoading && !isError && !isFirstRun && (
-        <DraggableNoteGrid
-          notes={visibleNotes}
-          conflictsByParent={conflictsByParent}
-          onResolveConflict={setResolving}
-        />
+        <div className="notes-page__body">
+          <div className="notes-page__main">
+            <DraggableNoteGrid
+              notes={visibleNotes}
+              conflictsByParent={conflictsByParent}
+              onResolveConflict={setResolving}
+            />
+          </div>
+          <SharedRail />
+        </div>
       )}
 
       {resolving && (

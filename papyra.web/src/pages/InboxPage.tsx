@@ -1,7 +1,8 @@
+import { useEffect, useRef } from 'react';
 import { useQueryClient, useMutation } from '@tanstack/react-query';
 import { Link } from 'react-router-dom';
 import { Inbox as InboxIcon, X } from 'lucide-react';
-import { useInbox, INBOX_KEY } from '../hooks/useInbox';
+import { useInbox, useMarkInboxRead, INBOX_KEY } from '../hooks/useInbox';
 import './InboxPage.css';
 
 /**
@@ -12,6 +13,19 @@ import './InboxPage.css';
 export default function InboxPage() {
   const { data: entries, isLoading, isError } = useInbox();
   const queryClient = useQueryClient();
+  const markRead = useMarkInboxRead();
+
+  // Clear the sidebar badge once the list is actually on screen. Fired once per
+  // visit (the ref guards React's double-invoked effects in StrictMode and any
+  // refetch), and only when something is genuinely unread — otherwise every
+  // visit would POST for nothing.
+  const marked = useRef(false);
+  const hasUnread = (entries ?? []).some((e) => !e.readUtc);
+  useEffect(() => {
+    if (marked.current || !hasUnread) return;
+    marked.current = true;
+    markRead.mutate();
+  }, [hasUnread, markRead]);
 
   const dismiss = useMutation({
     mutationFn: async (id: number) => {

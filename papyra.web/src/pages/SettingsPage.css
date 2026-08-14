@@ -489,3 +489,30 @@
   color: var(--text-h);
   font-size: 0.8rem;
 }
+
+/* Model download choices on the AI panel. Each button carries its tier, size and
+   a one-line trade-off, so the pick is informed rather than a guess. */
+.settings__models {
+  display: flex;
+  flex-direction: column;
+  gap: 0.45rem;
+  margin-top: 0.7rem;
+}
+
+.settings__models .settings__btn--ghost {
+  display: grid;
+  gap: 0.15rem;
+  width: 100%;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  color: var(--text-h);
+  text-align: left;
+}
+
+.settings__models .settings__btn--ghost:hover:not(:disabled) { border-color: var(--accent); }
+.settings__models .settings__btn--ghost:disabled { opacity: 0.55; cursor: default; }
+
+.settings__model-tier { font-weight: 600; font-size: 0.82rem; }
+.settings__model-name { font-family: var(--mono); font-size: 0.74rem; color: var(--text); }
+.settings__model-blurb { font-size: 0.78rem; line-height: 1.45; color: var(--text); }

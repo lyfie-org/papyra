@@ -243,15 +243,65 @@
   gap: var(--space-1);
 }
 
+/* Column, so the running version sits UNDER the connection status rather than
+   competing with it on the same line. */
 .workspace__sidebar-footer {
   display: flex;
-  align-items: center;
-  gap: var(--space-2);
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
   padding: var(--space-3) var(--space-3) var(--space-1);
   font-family: var(--mono);
   font-size: var(--fs-2xs);
   color: var(--text);
   white-space: nowrap;
+}
+
+.workspace__status-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* Quieter than the status line — reference information, not a live signal. */
+.workspace__version {
+  padding-left: calc(9px + var(--space-2));
+  opacity: 0.75;
+}
+
+.workspace--collapsed .workspace__version {
+  display: none;
+}
+
+/* Unread count on a sidebar entry (currently only the Inbox). Pushed to the
+   trailing edge so it never shifts the label. */
+.workspace__nav-badge {
+  margin-left: auto;
+  min-width: 18px;
+  padding: 0 5px;
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+  color: var(--accent-fg);
+  font-family: var(--mono);
+  font-size: var(--fs-2xs);
+  line-height: 18px;
+  text-align: center;
+}
+
+/* Collapsed rail has no room for a count; keep a dot so the signal survives. */
+.workspace--collapsed .workspace__nav-badge {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  min-width: 8px;
+  height: 8px;
+  padding: 0;
+  font-size: 0;
+  line-height: 0;
+}
+
+.workspace--collapsed .workspace__nav-link {
+  position: relative;
 }
 
 .workspace__status-dot {

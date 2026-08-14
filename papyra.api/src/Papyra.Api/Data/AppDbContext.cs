@@ -16,6 +16,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<WebAuthnCredential> WebAuthnCredentials => Set<WebAuthnCredential>();
     public DbSet<NoteEmbedding> NoteEmbeddings => Set<NoteEmbedding>();
     public DbSet<BlockGrant> BlockGrants => Set<BlockGrant>();
+    public DbSet<AuthToken> AuthTokens => Set<AuthToken>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -27,6 +28,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         // (non-SSO) accounts with a null ExternalId don't collide.
         modelBuilder.Entity<User>().HasIndex(u => u.ExternalId).IsUnique();
         modelBuilder.Entity<ApiKey>().HasIndex(k => k.TokenHash).IsUnique();
+        // Reset/invite tokens are looked up by hash on redemption.
+        modelBuilder.Entity<AuthToken>().HasIndex(t => t.TokenHash).IsUnique();
         modelBuilder.Entity<ApiKey>().HasIndex(k => k.UserId);
         modelBuilder.Entity<Share>().HasIndex(s => s.Token);
         modelBuilder.Entity<Share>().HasIndex(s => s.NoteId);

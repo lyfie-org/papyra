@@ -173,6 +173,18 @@ export default function SearchBar() {
         )}
       </div>
 
+      {/* Results ride above a blurred scrim, the same way an open note does, so
+          searching reads as a modal surface rather than a dropdown hanging off
+          the header. The scrim is a sibling (not a parent) of the list so the
+          backdrop filter never applies to the results themselves. */}
+      {showPanel && (
+        <div
+          className="search__scrim"
+          aria-hidden="true"
+          onMouseDown={() => { close(); }}
+        />
+      )}
+
       {showPanel && (
         <ul className="search__results" id="search-results" role="listbox">
           {hits.length === 0 && <li className="search__empty">No matches.</li>}

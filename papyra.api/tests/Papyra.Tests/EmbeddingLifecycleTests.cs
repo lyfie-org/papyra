@@ -86,9 +86,25 @@ public sealed class EmbeddingLifecycleTests
 
     private static EmbeddingService NewService(VaultState state) => new(
         new ServiceCollection().BuildServiceProvider().GetRequiredService<IServiceScopeFactory>(),
-        new ConfigurationBuilder().Build(),
+        NewAiClient(),
         state,
         NullLogger<EmbeddingService>.Instance);
+
+    // A client pointed at nothing: these tests exercise the vector table's
+    // lifecycle, not the model, so every embed call must cleanly return null.
+    private static AiClient NewAiClient()
+    {
+        var services = new ServiceCollection();
+        services.AddHttpClient();
+        var provider = services.BuildServiceProvider();
+        return new AiClient(
+            new InstanceConfigStore(
+                provider.GetRequiredService<IServiceScopeFactory>(),
+                NullLogger<InstanceConfigStore>.Instance),
+            new ConfigurationBuilder().Build(),
+            provider.GetRequiredService<IHttpClientFactory>(),
+            NullLogger<AiClient>.Instance);
+    }
 
     // The note write kicks off a background re-embed that deletes existing rows for
     // the note before inserting its own, so a naive seed can be wiped from under us.

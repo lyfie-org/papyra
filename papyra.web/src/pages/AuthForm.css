@@ -131,3 +131,31 @@
   font-family: var(--sans);
   font-size: 0.85rem;
 }
+
+/* Inline "forgot password" affordance. A quiet text button, not a second
+   primary action competing with Sign in. */
+.auth__link {
+  align-self: center;
+  margin-top: var(--space-2);
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: var(--fs-xs);
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.auth__link:hover {
+  color: var(--text-h);
+}
+
+.auth__forgot {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  margin-top: var(--space-3);
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+}

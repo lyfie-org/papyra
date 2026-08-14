@@ -94,6 +94,43 @@
   color: var(--text);
 }
 
+/* Desk + shared rail. The grid must be free to shrink (min-width:0) or the
+   absolutely-positioned card canvas keeps its measured width and pushes the
+   rail off-screen. */
+.notes-page__body {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-4);
+}
+
+.notes-page__main {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+@media (max-width: 900px) {
+  .notes-page__body {
+    flex-direction: column;
+  }
+}
+
+/* Explanatory line under a page title (the Vault's "these stay locked" note). */
+.notes-page__lede {
+  max-width: 46rem;
+  margin: 0 0 var(--space-4);
+  color: var(--text);
+  font-size: var(--fs-sm);
+  line-height: 1.55;
+}
+
+.notes-page__lede code {
+  padding: 0.05rem 0.3rem;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  font-family: var(--mono);
+  font-size: 0.85em;
+}
+
 .notes-page__bar {
   display: flex;
   align-items: center;

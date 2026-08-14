@@ -4,9 +4,18 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   User as UserIcon, Palette, Database, Shield, Info, Camera,
   Sun, Moon, Monitor, Upload, Download, RefreshCw, KeyRound, Copy, Trash2, Lock, ShieldAlert,
-  Fingerprint, CheckCircle2, GitBranch, AlertTriangle,
+  Fingerprint, CheckCircle2, GitBranch, AlertTriangle, Bell, Mail, KeySquare, Send, UserPlus,
+  Sparkles,
 } from 'lucide-react';
 import { useGitConfig, useSaveGitConfig, useRunGitSync } from '../hooks/useGitSync';
+import {
+  useOidcConfig, useSaveOidcConfig, useSmtpConfig, useSaveSmtpConfig,
+  useSendTestEmail, useInviteUser, useNotificationPrefs, useSaveNotificationPrefs,
+} from '../hooks/useInstanceConfig';
+import {
+  useAiConfig, useSaveAiConfig, useAiStatus, useAiModels, usePullModel,
+  type AiConfig, type PullProgress,
+} from '../hooks/useAi';
 import { useWebAuthnDevices } from '../hooks/useWebAuthnDevices';
 import { hasPlatformAuthenticator, isWebAuthnAvailable } from '../lib/webauthn';
 import { useAuth, type AuthUser } from '../hooks/useAuth';
@@ -18,15 +27,19 @@ import './SettingsPage.css';
 
 const APP_VERSION = '0.0.1';
 
-type Tab = 'profile' | 'appearance' | 'security' | 'data' | 'keys' | 'sync' | 'admin' | 'about';
+type Tab = 'profile' | 'appearance' | 'notifications' | 'security' | 'data' | 'keys' | 'sync' | 'sso' | 'email' | 'ai' | 'admin' | 'about';
 
 const NAV: { id: Tab; label: string; icon: typeof UserIcon; adminOnly?: boolean }[] = [
   { id: 'profile', label: 'Profile', icon: UserIcon },
   { id: 'appearance', label: 'Appearance', icon: Palette },
+  { id: 'notifications', label: 'Notifications', icon: Bell },
   { id: 'security', label: 'Security', icon: Fingerprint },
   { id: 'data', label: 'Data & Storage', icon: Database },
   { id: 'keys', label: 'API Keys', icon: KeyRound },
   { id: 'sync', label: 'Git Sync', icon: GitBranch, adminOnly: true },
+  { id: 'sso', label: 'SSO', icon: KeySquare, adminOnly: true },
+  { id: 'email', label: 'Email', icon: Mail, adminOnly: true },
+  { id: 'ai', label: 'AI', icon: Sparkles, adminOnly: true },
   { id: 'admin', label: 'Administration', icon: Shield, adminOnly: true },
   { id: 'about', label: 'About', icon: Info },
 ];
@@ -61,10 +74,14 @@ export default function SettingsPage() {
         <div className="settings__content">
           {tab === 'profile' && <ProfileTab user={user} />}
           {tab === 'appearance' && <AppearanceTab />}
+          {tab === 'notifications' && <NotificationsTab />}
           {tab === 'security' && <SecurityTab />}
           {tab === 'data' && <DataTab />}
           {tab === 'keys' && <KeysTab />}
           {tab === 'sync' && isAdmin && <SyncTab />}
+          {tab === 'sso' && isAdmin && <SsoTab />}
+          {tab === 'email' && isAdmin && <EmailTab />}
+          {tab === 'ai' && isAdmin && <AiTab />}
           {tab === 'admin' && isAdmin && <AdminTab />}
           {tab === 'about' && <AboutTab />}
         </div>
@@ -755,6 +772,563 @@ function SyncTab() {
     </div>
   );
 }
+
+// ── Notifications (per user) ─────────────────────────────────────────────────────
+// Opt-out switches for courtesy email. The in-app inbox is never affected: turning
+// mention mail off stops the email, not the delivery — so the copy says so rather
+// than letting someone think they'll stop being mentioned.
+function NotificationsTab() {
+  const { data, isLoading } = useNotificationPrefs();
+  const save = useSaveNotificationPrefs();
+
+  if (isLoading) return <div className="settings__panel"><p className="settings__hint">Loading…</p></div>;
+
+  return (
+    <div className="settings__panel">
+      <h2 className="settings__subhead">Email notifications</h2>
+      <p className="settings__hint">
+        Papyra emails you when something needs your attention. These are courtesy copies —
+        your in-app Inbox always receives everything regardless of what you choose here.
+      </p>
+
+      {!data?.emailConfigured && (
+        <div className="settings__callout" role="note">
+          <AlertTriangle size={18} aria-hidden="true" />
+          <div>
+            <strong>Email isn’t set up on this instance.</strong>
+            <p>
+              These preferences are saved, but nothing will be sent until an administrator
+              configures an SMTP server under Settings → Email.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {data?.emailConfigured && !data.hasAddress && (
+        <div className="settings__callout" role="note">
+          <AlertTriangle size={18} aria-hidden="true" />
+          <div>
+            <strong>Your account has no email address.</strong>
+            <p>Add one on the Profile tab to receive notifications.</p>
+          </div>
+        </div>
+      )}
+
+      <label className="settings__field settings__field--inline">
+        <input
+          type="checkbox"
+          checked={data?.mention ?? true}
+          onChange={e => save.mutate({ mention: e.target.checked })}
+        />
+        Someone @mentions me in a note
+      </label>
+
+      <label className="settings__field settings__field--inline">
+        <input
+          type="checkbox"
+          checked={data?.share ?? true}
+          onChange={e => save.mutate({ share: e.target.checked })}
+        />
+        Someone shares a note with me
+      </label>
+
+      <p className="settings__hint">
+        Security email — a password reset, or confirmation that your password changed — is
+        always sent and can’t be switched off.
+      </p>
+      {save.isError && <p className="settings__error">Couldn’t save that preference.</p>}
+    </div>
+  );
+}
+
+// ── SSO (admin) ──────────────────────────────────────────────────────────────────
+// OIDC used to be configurable only through appsettings.json, which a self-hoster
+// running the published container can't reach. Saving here takes effect immediately:
+// the server evicts the cached auth options rather than waiting for a restart.
+function SsoTab() {
+  const { data, isLoading, isError } = useOidcConfig();
+  const save = useSaveOidcConfig();
+
+  const [enabledEdit, setEnabled] = useState<boolean | null>(null);
+  const [authorityEdit, setAuthority] = useState<string | null>(null);
+  const [clientIdEdit, setClientId] = useState<string | null>(null);
+  const [displayNameEdit, setDisplayName] = useState<string | null>(null);
+  const [secret, setSecret] = useState('');
+  const [saved, setSaved] = useState(false);
+
+  // null means "not edited yet", so the field shows the server's value without an
+  // effect copying it into state on every refetch.
+  const enabled = enabledEdit ?? data?.enabled ?? false;
+  const authority = authorityEdit ?? data?.authority ?? '';
+  const clientId = clientIdEdit ?? data?.clientId ?? '';
+  const displayName = displayNameEdit ?? data?.displayName ?? '';
+
+  function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setSaved(false);
+    save.mutate(
+      { enabled, authority, clientId, displayName, clientSecret: secret.trim() === '' ? undefined : secret },
+      { onSuccess: () => { setSecret(''); setSaved(true); } },
+    );
+  }
+
+  if (isLoading) return <div className="settings__panel"><p className="settings__hint">Loading…</p></div>;
+  if (isError) return <div className="settings__panel"><p className="settings__error">Couldn’t load the SSO configuration.</p></div>;
+
+  return (
+    <div className="settings__panel">
+      <h2 className="settings__subhead">Single sign-on (OIDC)</h2>
+      <p className="settings__hint">
+        Let people sign in with an existing identity provider. Papyra exchanges the provider’s
+        identity for its own session, creating the account and its vault on first sign-in.
+      </p>
+
+      <div className="settings__callout" role="note">
+        <AlertTriangle size={18} aria-hidden="true" />
+        <div>
+          <strong>Add this redirect URI to your provider.</strong>
+          <p>
+            Your provider must allow <code>{data?.redirectUri}</code> on this instance’s public
+            address. A mismatch here is the most common cause of a failed SSO login.
+          </p>
+        </div>
+      </div>
+
+      <form className="settings__form" onSubmit={submit}>
+        <label className="settings__field settings__field--inline">
+          <input type="checkbox" checked={enabled} onChange={e => setEnabled(e.target.checked)} />
+          Enable SSO on the sign-in screen
+        </label>
+
+        <label className="settings__field">Authority (issuer URL)
+          <input
+            type="url" value={authority} placeholder="https://login.example.com"
+            onChange={e => setAuthority(e.target.value)}
+          />
+        </label>
+        <label className="settings__field">Client ID
+          <input type="text" value={clientId} onChange={e => setClientId(e.target.value)} />
+        </label>
+        <label className="settings__field">
+          Client secret {data?.hasClientSecret && <span className="settings__hint">(stored — leave blank to keep it)</span>}
+          <input
+            type="password" value={secret} autoComplete="new-password"
+            placeholder={data?.hasClientSecret ? '••••••••' : 'Client secret'}
+            onChange={e => setSecret(e.target.value)}
+          />
+        </label>
+        <label className="settings__field">Button label
+          <input
+            type="text" value={displayName} placeholder="SSO"
+            onChange={e => setDisplayName(e.target.value)}
+          />
+        </label>
+
+        <div className="settings__form-actions">
+          <button type="submit" className="settings__btn" disabled={save.isPending}>
+            {save.isPending ? 'Saving…' : 'Save SSO settings'}
+          </button>
+          {saved && <span className="settings__msg"><CheckCircle2 size={15} /> Saved — active immediately</span>}
+          {save.isError && <span className="settings__error">{(save.error as Error).message}</span>}
+        </div>
+      </form>
+
+      <dl className="settings__details">
+        <div><dt>Status</dt><dd>{data?.ready ? 'Ready — the sign-in screen offers SSO' : 'Not active'}</dd></div>
+      </dl>
+    </div>
+  );
+}
+
+// ── Email / SMTP (admin) ─────────────────────────────────────────────────────────
+function EmailTab() {
+  const { data, isLoading, isError } = useSmtpConfig();
+  const save = useSaveSmtpConfig();
+  const test = useSendTestEmail();
+  const invite = useInviteUser();
+
+  const [edits, setEdits] = useState<Partial<SmtpForm>>({});
+  const [password, setPassword] = useState('');
+  const [saved, setSaved] = useState(false);
+  const [testTo, setTestTo] = useState('');
+  const [inviteUser, setInviteUser] = useState('');
+  const [inviteEmail, setInviteEmail] = useState('');
+  const [inviteRole, setInviteRole] = useState('User');
+  const [inviteMsg, setInviteMsg] = useState<string | null>(null);
+
+  const v = <K extends keyof SmtpForm>(key: K): SmtpForm[K] =>
+    (edits[key] ?? (data as SmtpForm | undefined)?.[key] ?? SMTP_DEFAULTS[key]) as SmtpForm[K];
+  const set = <K extends keyof SmtpForm>(key: K, value: SmtpForm[K]) =>
+    setEdits(prev => ({ ...prev, [key]: value }));
+
+  function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setSaved(false);
+    save.mutate(
+      {
+        enabled: v('enabled'), host: v('host'), port: v('port'), useSsl: v('useSsl'),
+        username: v('username'), fromAddress: v('fromAddress'), fromName: v('fromName'),
+        publicUrl: v('publicUrl'),
+        password: password.trim() === '' ? undefined : password,
+      },
+      { onSuccess: () => { setPassword(''); setSaved(true); } },
+    );
+  }
+
+  function sendInvite(e: React.FormEvent) {
+    e.preventDefault();
+    setInviteMsg(null);
+    invite.mutate(
+      { username: inviteUser.trim(), email: inviteEmail.trim(), role: inviteRole },
+      {
+        onSuccess: () => { setInviteUser(''); setInviteEmail(''); setInviteMsg('Invitation sent.'); },
+        onError: (err) => setInviteMsg((err as Error).message),
+      },
+    );
+  }
+
+  if (isLoading) return <div className="settings__panel"><p className="settings__hint">Loading…</p></div>;
+  if (isError) return <div className="settings__panel"><p className="settings__error">Couldn’t load the email configuration.</p></div>;
+
+  return (
+    <div className="settings__panel">
+      <h2 className="settings__subhead">Outbound email (SMTP)</h2>
+      <p className="settings__hint">
+        Used for password resets, invitations, and the notifications each person chooses on
+        their own Notifications tab. Papyra sends plain-text messages only.
+      </p>
+
+      <form className="settings__form" onSubmit={submit}>
+        <label className="settings__field settings__field--inline">
+          <input type="checkbox" checked={v('enabled')} onChange={e => set('enabled', e.target.checked)} />
+          Enable outbound email
+        </label>
+
+        <label className="settings__field">SMTP host
+          <input type="text" value={v('host')} placeholder="smtp.example.com"
+            onChange={e => set('host', e.target.value)} />
+        </label>
+        <label className="settings__field">Port
+          <input type="number" min={1} max={65535} value={v('port')}
+            onChange={e => set('port', Number(e.target.value))} />
+        </label>
+        <label className="settings__field settings__field--inline">
+          <input type="checkbox" checked={v('useSsl')} onChange={e => set('useSsl', e.target.checked)} />
+          Use TLS/SSL
+        </label>
+        <label className="settings__field">Username <span className="settings__hint">(blank for an unauthenticated relay)</span>
+          <input type="text" value={v('username')} onChange={e => set('username', e.target.value)} />
+        </label>
+        <label className="settings__field">
+          Password {data?.hasPassword && <span className="settings__hint">(stored — leave blank to keep it)</span>}
+          <input type="password" value={password} autoComplete="new-password"
+            placeholder={data?.hasPassword ? '••••••••' : 'SMTP password'}
+            onChange={e => setPassword(e.target.value)} />
+        </label>
+        <label className="settings__field">From address
+          <input type="email" value={v('fromAddress')} placeholder="papyra@example.com"
+            onChange={e => set('fromAddress', e.target.value)} />
+        </label>
+        <label className="settings__field">From name
+          <input type="text" value={v('fromName')} placeholder="Papyra"
+            onChange={e => set('fromName', e.target.value)} />
+        </label>
+        <label className="settings__field">Public URL <span className="settings__hint">(used for links in emails)</span>
+          <input type="url" value={v('publicUrl')} placeholder="https://notes.example.com"
+            onChange={e => set('publicUrl', e.target.value)} />
+        </label>
+
+        <div className="settings__form-actions">
+          <button type="submit" className="settings__btn" disabled={save.isPending}>
+            {save.isPending ? 'Saving…' : 'Save email settings'}
+          </button>
+          {saved && <span className="settings__msg"><CheckCircle2 size={15} /> Saved</span>}
+          {save.isError && <span className="settings__error">{(save.error as Error).message}</span>}
+        </div>
+      </form>
+
+      <h2 className="settings__subhead">Send a test</h2>
+      <p className="settings__hint">
+        Prove the settings work before anyone’s password reset depends on them. Save first —
+        the test uses the stored configuration.
+      </p>
+      <div className="settings__row">
+        <input
+          type="email" className="settings__test-input" value={testTo}
+          placeholder="Leave blank to use your own address"
+          onChange={e => setTestTo(e.target.value)}
+        />
+        <button
+          type="button" className="settings__btn"
+          disabled={test.isPending}
+          onClick={() => test.mutate(testTo)}
+        >
+          <Send size={16} /> {test.isPending ? 'Sending…' : 'Send test email'}
+        </button>
+        {test.isSuccess && <span className="settings__msg"><CheckCircle2 size={15} /> Sent to {test.data}</span>}
+        {test.isError && <span className="settings__error">{(test.error as Error).message}</span>}
+      </div>
+
+      <h2 className="settings__subhead">Invite someone</h2>
+      <p className="settings__hint">
+        Sends a one-time link instead of you choosing a password for them. The account is
+        created only when they set their own; the link expires in 7 days.
+      </p>
+      <form className="settings__form" onSubmit={sendInvite}>
+        <label className="settings__field">Username
+          <input type="text" value={inviteUser} onChange={e => setInviteUser(e.target.value)} />
+        </label>
+        <label className="settings__field">Email address
+          <input type="email" value={inviteEmail} onChange={e => setInviteEmail(e.target.value)} />
+        </label>
+        <label className="settings__field">Role
+          <select className="settings__select" value={inviteRole} onChange={e => setInviteRole(e.target.value)}>
+            <option value="User">User</option>
+            <option value="Admin">Admin</option>
+          </select>
+        </label>
+        <div className="settings__form-actions">
+          <button type="submit" className="settings__btn" disabled={invite.isPending}>
+            <UserPlus size={16} /> {invite.isPending ? 'Sending…' : 'Send invitation'}
+          </button>
+          {inviteMsg && <span className="settings__msg">{inviteMsg}</span>}
+        </div>
+      </form>
+    </div>
+  );
+}
+
+interface SmtpForm {
+  enabled: boolean; host: string; port: number; useSsl: boolean;
+  username: string; fromAddress: string; fromName: string; publicUrl: string;
+}
+
+const SMTP_DEFAULTS: SmtpForm = {
+  enabled: false, host: '', port: 587, useSsl: true,
+  username: '', fromAddress: '', fromName: '', publicUrl: '',
+};
+
+// ── AI provider (admin) ──────────────────────────────────────────────────────────
+// Papyra answers from your notes using a local Ollama model by default. An admin
+// may point the instance at OpenAI or Anthropic instead — which sends the retrieved
+// note excerpts off the machine, so the panel says so rather than burying it.
+//
+// Keys are write-only: blank means "keep the stored one", same as SSO and Email.
+function AiTab() {
+  const { data, isLoading, isError } = useAiConfig();
+  const { data: status, refetch: refetchStatus } = useAiStatus();
+  const { data: choices } = useAiModels();
+  const save = useSaveAiConfig();
+
+  const [edits, setEdits] = useState<Partial<AiConfig>>({});
+  const [openAiKey, setOpenAiKey] = useState('');
+  const [anthropicKey, setAnthropicKey] = useState('');
+  const [saved, setSaved] = useState(false);
+  const [pulling, setPulling] = useState<string | null>(null);
+  const [progress, setProgress] = useState<PullProgress | null>(null);
+
+  const pull = usePullModel(setProgress);
+
+  // null/undefined means "not edited yet", so a field shows the server's value
+  // without an effect copying it into state on every refetch.
+  const v = <K extends keyof AiConfig>(key: K): AiConfig[K] =>
+    (edits[key] ?? data?.[key] ?? AI_DEFAULTS[key]) as AiConfig[K];
+  const set = <K extends keyof AiConfig>(key: K, value: AiConfig[K]) =>
+    setEdits(e => ({ ...e, [key]: value }));
+
+  function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setSaved(false);
+    save.mutate({
+      chatProvider: v('chatProvider'),
+      embedProvider: v('embedProvider'),
+      ollamaBaseUrl: v('ollamaBaseUrl'),
+      ollamaChatModel: v('ollamaChatModel'),
+      ollamaEmbedModel: v('ollamaEmbedModel'),
+      openAiBaseUrl: v('openAiBaseUrl'),
+      openAiChatModel: v('openAiChatModel'),
+      openAiEmbedModel: v('openAiEmbedModel'),
+      anthropicChatModel: v('anthropicChatModel'),
+      openAiKey: openAiKey.trim() === '' ? undefined : openAiKey,
+      anthropicKey: anthropicKey.trim() === '' ? undefined : anthropicKey,
+    }, {
+      onSuccess: () => { setOpenAiKey(''); setAnthropicKey(''); setSaved(true); },
+    });
+  }
+
+  function startPull(model: string) {
+    setPulling(model);
+    setProgress(null);
+    pull.mutate(model, {
+      onSettled: () => { setPulling(null); setProgress(null); void refetchStatus(); },
+    });
+  }
+
+  if (isLoading) return <div className="settings__panel"><p className="settings__hint">Loading…</p></div>;
+  if (isError) return <div className="settings__panel"><p className="settings__error">Couldn’t load the AI configuration.</p></div>;
+
+  const chatProvider = v('chatProvider');
+  const embedProvider = v('embedProvider');
+  const cloudChat = chatProvider !== 'ollama';
+
+  return (
+    <div className="settings__panel">
+      <h2 className="settings__subhead">Assistant</h2>
+      <p className="settings__hint">
+        “Ask your notes” retrieves the most relevant excerpts from your vault and has a
+        language model answer from them. Notes marked secure are never indexed, so they
+        can never be retrieved into an answer on any provider.
+      </p>
+
+      <dl className="settings__details">
+        <div>
+          <dt>Status</dt>
+          <dd>{status?.ready
+            ? `Ready — answering with ${status.chatModel}`
+            : (status?.reason ?? 'Not ready')}</dd>
+        </div>
+        <div>
+          <dt>Semantic search</dt>
+          <dd>{status?.semanticSearchReady
+            ? `Ready — indexing with ${status.embedModel}`
+            : 'Not available; search falls back to keywords'}</dd>
+        </div>
+      </dl>
+
+      {/* The heart of the "no local model" case: offer the fix, with sizes, rather
+          than leaving the user to discover Ollama on their own. */}
+      {status?.canPull && !status.ready && choices && (
+        <div className="settings__callout" role="note">
+          <AlertTriangle size={18} aria-hidden="true" />
+          <div>
+            <strong>Ollama is running, but no model is installed.</strong>
+            <p>Download one to switch the assistant on. Bigger models answer better and need more disk and memory.</p>
+            <div className="settings__models">
+              {choices.map(c => (
+                <button
+                  key={c.model} type="button" className="settings__btn settings__btn--ghost"
+                  disabled={pulling !== null}
+                  onClick={() => startPull(c.model)}
+                >
+                  <span className="settings__model-tier">{c.tier} · {c.size}</span>
+                  <span className="settings__model-name">{c.model}</span>
+                  <span className="settings__model-blurb">{c.blurb}</span>
+                </button>
+              ))}
+            </div>
+            {pulling && (
+              <p className="settings__hint" role="status">
+                Downloading {pulling}
+                {progress && progress.total > 0
+                  ? ` — ${Math.round((progress.completed / progress.total) * 100)}%`
+                  : '…'}
+              </p>
+            )}
+            {pull.isError && <p className="settings__error">{(pull.error as Error).message}</p>}
+          </div>
+        </div>
+      )}
+
+      <form className="settings__form" onSubmit={submit}>
+        <label className="settings__field">Answer with
+          <select value={chatProvider} onChange={e => set('chatProvider', e.target.value)}>
+            <option value="ollama">A local model (Ollama) — nothing leaves this machine</option>
+            <option value="openai">OpenAI</option>
+            <option value="anthropic">Anthropic</option>
+          </select>
+        </label>
+
+        <label className="settings__field">Build the search index with
+          <select value={embedProvider} onChange={e => set('embedProvider', e.target.value)}>
+            <option value="ollama">A local model (Ollama)</option>
+            <option value="openai">OpenAI</option>
+          </select>
+          <span className="settings__hint">
+            Anthropic doesn’t offer embeddings, so semantic search always runs on Ollama or OpenAI.
+          </span>
+        </label>
+
+        {cloudChat && (
+          <div className="settings__callout" role="note">
+            <AlertTriangle size={18} aria-hidden="true" />
+            <div>
+              <strong>Note excerpts will leave this machine.</strong>
+              <p>
+                Answering with {chatProvider === 'openai' ? 'OpenAI' : 'Anthropic'} sends the
+                retrieved excerpts to their API. Choose a local model to keep everything here.
+              </p>
+            </div>
+          </div>
+        )}
+
+        <h3 className="settings__subhead">Local (Ollama)</h3>
+        <label className="settings__field">Server address
+          <input type="url" value={v('ollamaBaseUrl')} placeholder="http://localhost:11434"
+            onChange={e => set('ollamaBaseUrl', e.target.value)} />
+        </label>
+        <label className="settings__field">Chat model
+          <input type="text" value={v('ollamaChatModel')} placeholder="mistral-nemo:12b"
+            onChange={e => set('ollamaChatModel', e.target.value)} />
+        </label>
+        <label className="settings__field">Embedding model
+          <input type="text" value={v('ollamaEmbedModel')} placeholder="nomic-embed-text"
+            onChange={e => set('ollamaEmbedModel', e.target.value)} />
+        </label>
+
+        <h3 className="settings__subhead">OpenAI</h3>
+        <label className="settings__field">
+          API key {data?.hasOpenAiKey && <span className="settings__hint">(stored — leave blank to keep it)</span>}
+          <input type="password" value={openAiKey} autoComplete="new-password"
+            placeholder={data?.hasOpenAiKey ? '••••••••' : 'sk-…'}
+            onChange={e => setOpenAiKey(e.target.value)} />
+        </label>
+        <label className="settings__field">Chat model
+          <input type="text" value={v('openAiChatModel')} placeholder="gpt-4o"
+            onChange={e => set('openAiChatModel', e.target.value)} />
+        </label>
+        <label className="settings__field">Embedding model
+          <input type="text" value={v('openAiEmbedModel')} placeholder="text-embedding-3-small"
+            onChange={e => set('openAiEmbedModel', e.target.value)} />
+        </label>
+        <label className="settings__field">API base URL
+          <input type="url" value={v('openAiBaseUrl')} placeholder="https://api.openai.com/v1"
+            onChange={e => set('openAiBaseUrl', e.target.value)} />
+          <span className="settings__hint">Change this to use an OpenAI-compatible service.</span>
+        </label>
+
+        <h3 className="settings__subhead">Anthropic</h3>
+        <label className="settings__field">
+          API key {data?.hasAnthropicKey && <span className="settings__hint">(stored — leave blank to keep it)</span>}
+          <input type="password" value={anthropicKey} autoComplete="new-password"
+            placeholder={data?.hasAnthropicKey ? '••••••••' : 'sk-ant-…'}
+            onChange={e => setAnthropicKey(e.target.value)} />
+        </label>
+        <label className="settings__field">Model
+          <input type="text" value={v('anthropicChatModel')} placeholder="claude-opus-5"
+            onChange={e => set('anthropicChatModel', e.target.value)} />
+        </label>
+
+        <div className="settings__form-actions">
+          <button type="submit" className="settings__btn" disabled={save.isPending}>
+            {save.isPending ? 'Saving…' : 'Save AI settings'}
+          </button>
+          {saved && <span className="settings__msg"><CheckCircle2 size={15} /> Saved — active immediately</span>}
+          {save.isError && <span className="settings__error">{(save.error as Error).message}</span>}
+        </div>
+      </form>
+    </div>
+  );
+}
+
+const AI_DEFAULTS: AiConfig = {
+  chatProvider: 'ollama', embedProvider: 'ollama',
+  ollamaBaseUrl: 'http://localhost:11434',
+  ollamaChatModel: 'mistral-nemo:12b', ollamaEmbedModel: 'nomic-embed-text',
+  openAiBaseUrl: 'https://api.openai.com/v1',
+  openAiChatModel: 'gpt-4o', openAiEmbedModel: 'text-embedding-3-small',
+  anthropicChatModel: 'claude-opus-5',
+  hasOpenAiKey: false, hasAnthropicKey: false,
+};
 
 // ── Admin ────────────────────────────────────────────────────────────────────────
 interface ManagedUser { id: number; username: string; name: string; email: string; role: string }

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Pin, Palette, History, Archive, Trash2, ListTodo, Rewind, Maximize2 } from 'lucide-react';
+import { Pin, Palette, History, Archive, Trash2, Rewind, Maximize2 } from 'lucide-react';
 import PalettePicker from './PalettePicker';
 import './NoteToolbar.css';
 import { useSyncState } from '../hooks/useSync';
@@ -10,9 +10,7 @@ import { useSyncState } from '../hooks/useSync';
 interface Props {
   pinned: boolean;
   color: string | null;
-  isTodo: boolean;
   onTogglePin: () => void;
-  onToggleTodo: () => void;
   onPickColor: (color: string | null) => void;
   onRecover: () => void;
   onTimeMachine: () => void;
@@ -24,9 +22,7 @@ interface Props {
 export default function NoteToolbar({
   pinned,
   color,
-  isTodo,
   onTogglePin,
-  onToggleTodo,
   onPickColor,
   onRecover,
   onTimeMachine,
@@ -70,15 +66,11 @@ export default function NoteToolbar({
         )}
       </div>
 
-      <button
-        type="button"
-        className={`note-toolbar__btn${isTodo ? ' is-active' : ''}`}
-        aria-pressed={isTodo}
-        aria-label={isTodo ? 'Convert to note' : 'Convert to to-do'}
-        onClick={onToggleTodo}
-      >
-        <ListTodo size={18} />
-      </button>
+      {/* The note ⇄ to-do toggle is deliberately gone. `kind` decides which tab a
+          note lives in, and flipping it on prose produced a "to-do" with no
+          checkboxes that vanished from Notes into the To Do tab — the conversion
+          defeated the point of the split. Notes are created as notes on the Notes
+          tab, to-dos as to-dos on the To Do tab. */}
 
       <button
         type="button"

@@ -107,17 +107,32 @@ public sealed class UserDirectoryEndpointTests
         finally { Cleanup(factory, dir); }
     }
 
-    [Theory]
-    [InlineData("")]        // nothing typed
-    [InlineData("b")]       // one character: too broad to answer
-    [InlineData(" b ")]     // still one character after trimming
-    public async Task Search_SaysNothingForAQueryUnderTwoCharacters(string q)
+    // Typing `@` is precisely when someone wants to see who they can mention, so
+    // a short query answers rather than stonewalling. This endpoint used to
+    // require two characters — the dropdown then stayed empty until the third
+    // keystroke, which reads as "mentions are broken".
+    [Fact]
+    public async Task Search_ListsAccountsForAnEmptyQuery()
     {
         var (factory, dir) = NewApp();
         try
         {
             var client = await SeedAndSignInAsync(factory, "cal", "cal", "bea", "beatrice");
-            Assert.Empty(await SearchAsync(client, q));
+            var hits = await SearchAsync(client, "");
+            Assert.Equal(["admin", "bea", "beatrice"], hits);   // everyone but the caller
+        }
+        finally { Cleanup(factory, dir); }
+    }
+
+    [Fact]
+    public async Task Search_NarrowsFromTheFirstCharacter()
+    {
+        var (factory, dir) = NewApp();
+        try
+        {
+            var client = await SeedAndSignInAsync(factory, "cal", "cal", "bea", "beatrice");
+            Assert.Equal(["bea", "beatrice"], await SearchAsync(client, "b"));
+            Assert.Equal(["bea", "beatrice"], await SearchAsync(client, " b "));  // trimmed
         }
         finally { Cleanup(factory, dir); }
     }

@@ -93,6 +93,7 @@ public sealed partial class MentionDeliveryService : BackgroundService
     private readonly WriteRing _writeRing;
     private readonly VaultState _state;
     private readonly IHubContext<NotesHub> _hub;
+    private readonly EmailSender _email;
     private readonly ILogger<MentionDeliveryService> _logger;
 
     public MentionDeliveryService(
@@ -102,6 +103,7 @@ public sealed partial class MentionDeliveryService : BackgroundService
         WriteRing writeRing,
         VaultState state,
         IHubContext<NotesHub> hub,
+        EmailSender email,
         ILogger<MentionDeliveryService> logger)
     {
         _scopes = scopes;
@@ -110,6 +112,7 @@ public sealed partial class MentionDeliveryService : BackgroundService
         _writeRing = writeRing;
         _state = state;
         _hub = hub;
+        _email = email;
         _logger = logger;
     }
 
@@ -195,7 +198,29 @@ public sealed partial class MentionDeliveryService : BackgroundService
 
             await AppendToInboxAsync(recipient.Id.ToString(), job, blockId, ct);
             await _hub.Clients.All.SendAsync("InboxDelivered", new { recipientId = recipient.Id }, ct);
+            await NotifyByEmailAsync(recipient, job, ct);
         }
+    }
+
+    // Courtesy email telling the recipient they were mentioned. Deliberately
+    // after the inbox write and the SignalR push: the inbox entry is the actual
+    // delivery, and this must never be able to prevent it. Skipped silently when
+    // mail is unconfigured, the account has no address, or the user opted out —
+    // none of which is an error worth failing the job over.
+    private async Task NotifyByEmailAsync(User recipient, Job job, CancellationToken ct)
+    {
+        if (!recipient.NotifyOnMention || string.IsNullOrWhiteSpace(recipient.Email)) return;
+        if (!_email.IsConfigured) return;
+
+        // The body is NOT quoted here. A mention grants access to one block of a
+        // note in someone else's vault, and email is outside that boundary —
+        // copying the text into an inbox would leak it past the grant.
+        await _email.SendAsync(
+            recipient.Email,
+            $"@{job.OwnerUsername} mentioned you in Papyra",
+            $"@{job.OwnerUsername} mentioned you in a note.\n\n"
+            + "Open your Papyra inbox to read the block they tagged you in.",
+            ct);
     }
 
     // Append one reference line to the recipient's Inbox.md, creating it if

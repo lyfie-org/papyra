@@ -1,0 +1,122 @@
+/* Filter pills above the notes grid. Deliberately quiet: the notes are the
+   content, these are chrome, so an inactive pill is a hairline outline and only
+   the active one takes the accent. */
+
+.notes-filters {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-3);
+}
+
+.notes-filters__pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.3rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: var(--fs-xs);
+  line-height: 1.6;
+  cursor: pointer;
+  transition: border-color var(--dur) var(--ease), background var(--dur) var(--ease);
+}
+
+.notes-filters__pill:hover {
+  border-color: var(--accent);
+}
+
+.notes-filters__pill.is-active {
+  border-color: var(--accent-border);
+  background: var(--accent-bg);
+  color: var(--text-h);
+}
+
+.notes-filters__count {
+  min-width: 16px;
+  padding: 0 4px;
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+  color: var(--accent-fg);
+  font-family: var(--mono);
+  font-size: var(--fs-2xs);
+  line-height: 16px;
+  text-align: center;
+}
+
+.notes-filters__dropdown {
+  position: relative;
+}
+
+.notes-filters__menu {
+  position: absolute;
+  z-index: 40;
+  top: calc(100% + 4px);
+  left: 0;
+  min-width: 12rem;
+  max-height: 15rem;
+  overflow-y: auto;
+  padding: var(--space-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.notes-filters__option {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  width: 100%;
+  padding: 0.35rem 0.5rem;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-h);
+  font-family: var(--sans);
+  font-size: var(--fs-xs);
+  text-align: left;
+  cursor: pointer;
+}
+
+.notes-filters__option:hover {
+  background: var(--accent-bg);
+}
+
+/* Fixed-width tick well so labels stay aligned whether or not they're checked. */
+.notes-filters__tick {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 auto;
+  width: 14px;
+  height: 14px;
+  border: 1px solid var(--border);
+  border-radius: 3px;
+  color: var(--accent-fg);
+}
+
+.notes-filters__option.is-on .notes-filters__tick {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+
+.notes-filters__clear {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  border: 0;
+  background: transparent;
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: var(--fs-xs);
+  cursor: pointer;
+}
+
+.notes-filters__clear:hover {
+  color: var(--text-h);
+}

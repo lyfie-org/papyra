@@ -69,6 +69,17 @@
 
 .search__clear:hover { background: var(--code-bg); color: var(--text-h); }
 
+/* Same scrim recipe as the open-note modal (NoteEditor.css) so the two modal
+   surfaces read as one system. Sits under the results, over everything else. */
+.search__scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 55;
+  background: color-mix(in srgb, var(--scrim) 55%, transparent);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+}
+
 .search__results {
   position: absolute;
   z-index: 60;

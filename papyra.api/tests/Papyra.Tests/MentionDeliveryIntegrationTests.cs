@@ -86,6 +86,12 @@ public sealed class MentionDeliveryIntegrationTests : IDisposable
             new WriteRing(new MemoryCache(new MemoryCacheOptions())),
             _state,
             _sp.GetRequiredService<IHubContext<NotesHub>>(),
+            // Unconfigured on purpose: these tests are about the cross-tenant
+            // write, and mail must never be able to affect it.
+            new EmailSender(
+                new InstanceConfigStore(_sp.GetRequiredService<IServiceScopeFactory>(),
+                    NullLogger<InstanceConfigStore>.Instance),
+                NullLogger<EmailSender>.Instance),
             NullLogger<MentionDeliveryService>.Instance);
         _svc.StartAsync(default).GetAwaiter().GetResult();
     }

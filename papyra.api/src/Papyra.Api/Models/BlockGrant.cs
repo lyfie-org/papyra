@@ -26,4 +26,11 @@ public class BlockGrant
     public DateTime CreatedUtc { get; set; }
     /// <summary>Set when the recipient dismisses the entry; resolution then stops.</summary>
     public DateTime? DismissedUtc { get; set; }
+    /// <summary>
+    /// Set the first time the recipient opens their inbox. Null means unread, which
+    /// is what the sidebar badge counts. Distinct from <see cref="DismissedUtc"/>:
+    /// reading an entry only clears the badge, while dismissing it revokes the
+    /// grant and removes the entry.
+    /// </summary>
+    public DateTime? ReadUtc { get; set; }
 }

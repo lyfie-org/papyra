@@ -333,9 +333,7 @@ export default function NoteEditor({ note }: { note: Note }) {
             <NoteToolbar
               pinned={note.pinned}
               color={note.color}
-              isTodo={note.kind === 'todo'}
               onTogglePin={() => void saveFrontmatter({ pinned: !note.pinned })}
-              onToggleTodo={() => void saveFrontmatter({ kind: note.kind === 'todo' ? 'note' : 'todo' })}
               onPickColor={(c) => void saveFrontmatter({ color: c })}
               onRecover={() => setRecoverOpen(true)}
               onTimeMachine={() => void openTimeMachine()}

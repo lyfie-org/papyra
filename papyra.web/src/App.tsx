@@ -6,6 +6,8 @@ import TodoPage from './pages/TodoPage';
 import CategoriesPage from './pages/CategoriesPage';
 import CollectionsPage from './pages/CollectionsPage';
 import ArchivePage from './pages/ArchivePage';
+import VaultPage from './pages/VaultPage';
+import TokenPage from './pages/TokenPage';
 import TrashPage from './pages/TrashPage';
 import SettingsPage from './pages/SettingsPage';
 import SharedWithMePage from './pages/SharedWithMePage';
@@ -37,6 +39,10 @@ export default function App() {
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route path="/setup" element={<SetupPage />} />
+      {/* One-time emailed links. Outside the auth guard: whoever follows a
+          reset link is by definition unable to sign in. */}
+      <Route path="/reset-password" element={<TokenPage mode="reset" />} />
+      <Route path="/accept-invite" element={<TokenPage mode="invite" />} />
       {/* Public tokenised share link — no session required. */}
       <Route path="/shared/:token" element={<SharedNotePage />} />
       <Route element={<RequireAuth />}>
@@ -50,6 +56,7 @@ export default function App() {
         <Route path="categories" element={<CategoriesPage />} />
         <Route path="collections" element={<CollectionsPage />} />
         <Route path="shared-with-me" element={<SharedWithMePage />} />
+        <Route path="vault" element={<VaultPage />} />
         <Route path="archive" element={<ArchivePage />} />
         <Route path="trash" element={<TrashPage />} />
         <Route path="settings" element={<SettingsPage />} />

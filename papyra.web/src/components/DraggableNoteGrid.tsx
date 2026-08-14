@@ -93,6 +93,8 @@ export default function DraggableNoteGrid({ notes, conflictsByParent, onResolveC
   // While dragging, heights are fixed — re-measuring mid-drag would re-pack and
   // jitter. This ref gates that (a ref, so the measure callback sees it live).
   const dragging = useRef(false);
+  // True between a drag ending and the synthetic click it produces.
+  const suppressClick = useRef(false);
 
   const [activeId, setActiveId] = useState<string | null>(null);
   const [origin, setOrigin] = useState<Section | null>(null);
@@ -192,9 +194,21 @@ export default function DraggableNoteGrid({ notes, conflictsByParent, onResolveC
     setActiveId(null); setOrigin(null); setDrop(null); setStartBox(null);
   }
 
+  // Armed the moment a drag ends so the trailing click can be swallowed (see the
+  // grid's onClickCapture). Cleared on a timer as well as on consumption: if the
+  // browser ever declines to emit that click, a stale flag must not eat the
+  // user's next real one.
+  function armClickSuppression() {
+    suppressClick.current = true;
+    setTimeout(() => { suppressClick.current = false; }, 300);
+  }
+
   // Drop handler — dnd-kit passes the event, but the committed position comes from
   // our own hit-testing state (activeId/origin/drop), so the event isn't needed.
   async function onDragEnd() {
+    // Arm first: a drag that ends outside a valid drop target still produced the
+    // pointerup whose click would otherwise open the note.
+    armClickSuppression();
     const id = activeId;
     const o = origin;
     const d = drop;
@@ -253,9 +267,23 @@ export default function DraggableNoteGrid({ notes, conflictsByParent, onResolveC
       onDragStart={onDragStart}
       onDragMove={onDragMove}
       onDragEnd={onDragEnd}
-      onDragCancel={reset}
+      onDragCancel={() => { armClickSuppression(); reset(); }}
     >
-      <div className="note-grid-wrap" ref={wrapRef}>
+      {/* Each card's content is a <Link>, so the pointerup that ends a drag also
+          fires a click and navigated into the note the user was merely
+          rearranging. Swallow exactly that click: the sensor needs 8px of travel
+          before a drag starts, so reaching here guarantees a real drag happened
+          and never a plain click-to-open. */}
+      <div
+        className="note-grid-wrap"
+        ref={wrapRef}
+        onClickCapture={(e) => {
+          if (!suppressClick.current) return;
+          suppressClick.current = false;
+          e.preventDefault();
+          e.stopPropagation();
+        }}
+      >
         {showPinnedHeading && <h2 className="note-grid__heading">PINNED</h2>}
         <div className="dnd-canvas" ref={pinnedRef} style={{ height: pinnedLayout.height }}>
           {pinned.map(n => (

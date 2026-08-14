@@ -10,6 +10,34 @@ export default function LoginPage() {
   const [busy, setBusy] = useState(false);
   // Whether an SSO button belongs on this screen (server tells us if OIDC is on).
   const [sso, setSso] = useState<{ enabled: boolean; name: string } | null>(null);
+
+  // Forgot-password panel, inline rather than a separate route: it is two fields
+  // and one request, and a dead-end page for someone already locked out is worse.
+  const [forgotOpen, setForgotOpen] = useState(false);
+  const [forgotId, setForgotId] = useState('');
+  const [forgotBusy, setForgotBusy] = useState(false);
+  const [forgotMsg, setForgotMsg] = useState<string | null>(null);
+
+  async function requestReset() {
+    setForgotBusy(true);
+    setForgotMsg(null);
+    try {
+      const res = await fetch('/api/auth/forgot-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ usernameOrEmail: forgotId }),
+      });
+      const data = await res.json().catch(() => null);
+      // The server answers identically for a known and an unknown account, and
+      // so must this: anything more specific is an account-existence oracle.
+      setForgotMsg(data?.message
+        ?? 'If that account exists and has an email address, a reset link is on its way.');
+    } catch {
+      setForgotMsg('Couldn’t reach the server. Try again in a moment.');
+    } finally {
+      setForgotBusy(false);
+    }
+  }
   const navigate = useNavigate();
   const queryClient = useQueryClient();
 
@@ -66,6 +94,41 @@ export default function LoginPage() {
         <button className="auth__submit" type="submit" disabled={busy}>
           {busy ? 'Signing in…' : 'Sign in'}
         </button>
+
+        {/* Always offered. Whether a reset can actually be emailed depends on the
+            instance having SMTP configured, and the endpoint answers identically
+            either way — telling people here which instances can send mail would
+            leak configuration to anyone who loads the sign-in page. */}
+        <button
+          type="button"
+          className="auth__link"
+          onClick={() => setForgotOpen(o => !o)}
+        >
+          Forgot your password?
+        </button>
+
+        {forgotOpen && (
+          <div className="auth__forgot">
+            <label className="auth__field">
+              Username or email
+              <input
+                type="text"
+                value={forgotId}
+                onChange={e => setForgotId(e.target.value)}
+                autoComplete="username"
+              />
+            </label>
+            <button
+              type="button"
+              className="auth__submit"
+              disabled={forgotBusy}
+              onClick={() => void requestReset()}
+            >
+              {forgotBusy ? 'Sending…' : 'Email me a reset link'}
+            </button>
+            {forgotMsg && <p className="auth__tagline">{forgotMsg}</p>}
+          </div>
+        )}
 
         {sso?.enabled && (
           <>

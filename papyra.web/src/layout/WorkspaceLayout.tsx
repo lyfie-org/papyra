@@ -2,8 +2,8 @@ import { useEffect, useRef, useState } from 'react';
 import { NavLink, Outlet, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import {
-  Menu, StickyNote, ListTodo, Tags, Archive, Settings, Trash2,
-  User, Shield, LogOut, Sun, Moon, Share2, Layers, Sparkles, CircleQuestionMark, Inbox,
+  Menu, StickyNote, ListTodo, Tags, Archive, Settings, Trash2, ShieldCheck,
+  User, Shield, LogOut, Sun, Moon, Layers, Sparkles, CircleQuestionMark, Inbox,
 } from 'lucide-react';
 import ChatPanel from '../components/ChatPanel';
 import SearchBar from '../components/SearchBar';
@@ -12,23 +12,30 @@ import { useTheme } from '../hooks/useTheme';
 import { useSignalR } from '../hooks/useSignalR';
 import { useAuth } from '../hooks/useAuth';
 import { useSyncEngine } from '../hooks/useSync';
+import { useUnreadInboxCount } from '../hooks/useInbox';
 import logo from '../assets/papyra_logo.png';
 import './WorkspaceLayout.css';
 
+// Settings deliberately lives with Trash at the foot of the rail, not in this
+// list — the top group is "places your notes are", the bottom group is app
+// chrome.
 const NAV_ITEMS = [
   { to: '/', label: 'Notes', icon: StickyNote, end: true },
   { to: '/todo', label: 'To Do', icon: ListTodo, end: false },
   { to: '/inbox', label: 'Inbox', icon: Inbox, end: false },
   { to: '/categories', label: 'Categories', icon: Tags, end: false },
   { to: '/collections', label: 'Collections', icon: Layers, end: false },
-  { to: '/shared-with-me', label: 'Shared', icon: Share2, end: false },
+  { to: '/vault', label: 'Vault', icon: ShieldCheck, end: false },
   { to: '/archive', label: 'Archive', icon: Archive, end: false },
-  { to: '/settings', label: 'Settings', icon: Settings, end: false },
 ] as const;
+
+/** Shown under the connection status so a self-hoster can see what they're running. */
+const APP_VERSION = '0.0.1';
 
 export default function WorkspaceLayout() {
   const { theme, toggleTheme } = useTheme();
   const { user } = useAuth();
+  const unreadInbox = useUnreadInboxCount();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [collapsed, setCollapsed] = useState(false);
@@ -179,6 +186,14 @@ export default function WorkspaceLayout() {
                 >
                   <Icon className="workspace__nav-icon" size={18} />
                   <span className="workspace__nav-label">{label}</span>
+                  {to === '/inbox' && unreadInbox > 0 && (
+                    <span
+                      className="workspace__nav-badge"
+                      aria-label={`${unreadInbox} unread`}
+                    >
+                      {unreadInbox > 99 ? '99+' : unreadInbox}
+                    </span>
+                  )}
                 </NavLink>
               </li>
             ))}
@@ -196,14 +211,28 @@ export default function WorkspaceLayout() {
               <span className="workspace__nav-label">Trash</span>
             </NavLink>
 
+            <NavLink
+              to="/settings"
+              title="Settings"
+              className={({ isActive }) =>
+                `workspace__nav-link${isActive ? ' workspace__nav-link--active' : ''}`
+              }
+            >
+              <Settings className="workspace__nav-icon" size={18} />
+              <span className="workspace__nav-label">Settings</span>
+            </NavLink>
+
             <footer className="workspace__sidebar-footer" title={syncTitle}>
-              <span
-                className={`workspace__status-dot workspace__status-dot--${syncTone}`}
-                aria-hidden="true"
-              />
-              <span className="workspace__status-label workspace__nav-label" role="status">
-                {syncLabel}
+              <span className="workspace__status-row">
+                <span
+                  className={`workspace__status-dot workspace__status-dot--${syncTone}`}
+                  aria-hidden="true"
+                />
+                <span className="workspace__status-label workspace__nav-label" role="status">
+                  {syncLabel}
+                </span>
               </span>
+              <span className="workspace__version workspace__nav-label">v{APP_VERSION}</span>
             </footer>
           </div>
         </nav>

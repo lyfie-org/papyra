@@ -1,0 +1,84 @@
+/* Right-hand column on the notes desk listing incoming shares. Visually a
+   sidebar, not a card grid — these belong to someone else and shouldn't read as
+   peers of the user's own notes. */
+
+.shared-rail {
+  flex: 0 0 15rem;
+  align-self: flex-start;
+  padding-left: var(--space-4);
+  border-left: 1px solid var(--border);
+}
+
+.shared-rail__title {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0 0 var(--space-3);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: var(--fs-2xs);
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.shared-rail__list {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.shared-rail__item {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text-h);
+  text-decoration: none;
+  transition: border-color var(--dur) var(--ease);
+}
+
+.shared-rail__item:hover {
+  border-color: var(--accent);
+}
+
+.shared-rail__item-title {
+  font-family: var(--sans);
+  font-size: var(--fs-sm);
+  line-height: 1.35;
+}
+
+.shared-rail__item-meta {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: var(--fs-2xs);
+}
+
+.shared-rail__badge {
+  padding: 0 0.35rem;
+  border-radius: var(--radius-pill);
+  background: var(--accent-bg);
+  color: var(--accent-text);
+}
+
+/* Below the desk's two-column breakpoint the rail becomes a normal block under
+   the grid rather than a squeezed column. */
+@media (max-width: 900px) {
+  .shared-rail {
+    flex: 1 1 auto;
+    width: 100%;
+    padding-left: 0;
+    padding-top: var(--space-4);
+    border-left: 0;
+    border-top: 1px solid var(--border);
+  }
+}

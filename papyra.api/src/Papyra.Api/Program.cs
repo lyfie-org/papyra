@@ -1,16 +1,19 @@
 using System.IO.Compression;
 using System.Security;
 using System.Security.Claims;
+using System.Net.Mail;
 using System.Text.Json;
 using System.Threading.RateLimiting;
 using Microsoft.AspNetCore.Authentication;
 using Microsoft.AspNetCore.Authentication.Cookies;
+using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Options;
 using Papyra.Api.Data;
 using Papyra.Api.Hubs;
 using Papyra.Api.Models;
@@ -160,12 +163,22 @@ builder.Services.AddFido2(options =>
         ?? ["http://localhost:5173", "http://localhost:5220"];
     options.Origins = origins.ToHashSet();
 });
-// Local semantic index: chunks + embeds notes via Ollama into the SQLite vector
-// cache. Singleton so the note-write endpoint enqueues onto the worker's instance.
+// The one door to every AI backend (Ollama / OpenAI / Anthropic). Timeouts are set
+// per purpose because the jobs differ by orders of magnitude: a status probe must
+// fail fast enough that the settings page never hangs on it, while a model pull is
+// several gigabytes over whatever connection the self-hoster has.
+builder.Services.AddHttpClient("ai-probe").ConfigureHttpClient(c => c.Timeout = TimeSpan.FromSeconds(3));
+builder.Services.AddHttpClient("ai-embed").ConfigureHttpClient(c => c.Timeout = TimeSpan.FromSeconds(60));
+builder.Services.AddHttpClient("ai-chat").ConfigureHttpClient(c => c.Timeout = TimeSpan.FromMinutes(5));
+builder.Services.AddHttpClient("ai-pull").ConfigureHttpClient(c => c.Timeout = Timeout.InfiniteTimeSpan);
+builder.Services.AddSingleton<AiClient>();
+
+// Local semantic index: chunks + embeds notes into the SQLite vector cache.
+// Singleton so the note-write endpoint enqueues onto the worker's instance.
 builder.Services.AddSingleton<EmbeddingService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<EmbeddingService>());
 
-// Retrieval-augmented chat over the vault (local Ollama LLM + the vector cache).
+// Retrieval-augmented chat over the vault (configured LLM + the vector cache).
 builder.Services.AddSingleton<RagChatService>();
 
 // Pending challenges + unlock tokens outlive a request, so they're singletons; the
@@ -191,8 +204,14 @@ builder.Services.AddSignalR();
 // Optional OIDC SSO: enabled only when an Authority + ClientId are configured, so
 // the default password-only deployment needs no IdP. SameSite must relax to Lax for
 // the external redirect callback to carry the correlation cookie back.
-var oidc = builder.Configuration.GetSection("Oidc").Get<OidcSettings>();
-var oidcEnabled = !string.IsNullOrWhiteSpace(oidc?.Authority) && !string.IsNullOrWhiteSpace(oidc?.ClientId);
+// Seed values from appsettings/environment. These are only a *starting point*
+// now: the live configuration lives in the database so an admin can set SSO up
+// from the Settings UI, which is the only route available to someone running the
+// published container. Anything found here is imported once, on first boot.
+var oidcSeed = builder.Configuration.GetSection("Oidc").Get<OidcSettings>();
+
+// Instance configuration (SSO, outbound mail) an admin edits from the UI.
+builder.Services.AddSingleton<InstanceConfigStore>();
 
 // The cookie is only as durable as the key ring that signs it. By default those
 // keys live in the container's ephemeral filesystem, so every restart or image
@@ -215,7 +234,14 @@ authBuilder.AddCookie(options =>
         options.Cookie.HttpOnly = true;
         // OIDC bounces the browser to the IdP and back; a Strict cookie wouldn't ride
         // the cross-site return, so relax to Lax when SSO is on (still not None).
-        options.Cookie.SameSite = oidcEnabled ? SameSiteMode.Lax : SameSiteMode.Strict;
+        // Lax, not Strict. SSO is now configurable at runtime, so the cookie
+        // policy can no longer be decided from startup config: an admin who
+        // enables SSO under a Strict cookie would get a login loop, because the
+        // correlation cookie is not sent on the IdP's top-level redirect back.
+        // Lax still withholds the cookie from cross-site POST/PUT/DELETE, which
+        // is every state-changing route Papyra has; Strict only added protection
+        // for cross-site *navigation*, and Papyra's GETs are reads.
+        options.Cookie.SameSite = SameSiteMode.Lax;
         options.Cookie.SecurePolicy = builder.Environment.IsDevelopment()
             ? CookieSecurePolicy.SameAsRequest
             : CookieSecurePolicy.Always;
@@ -234,13 +260,15 @@ authBuilder.AddCookie(options =>
         };
     });
 
-if (oidcEnabled)
+// Registered unconditionally. Authority/ClientId/ClientSecret come from the
+// database via OidcOptionsConfigurator, so SSO can be configured (and
+// reconfigured) from the admin UI without restarting the container. Whether the
+// scheme is *usable* is a per-request check on the stored config — see
+// `SsoConfigured()` — not a startup decision.
+builder.Services.ConfigureOptions<OidcOptionsConfigurator>();
 {
     authBuilder.AddOpenIdConnect("oidc", options =>
     {
-        options.Authority = oidc!.Authority;
-        options.ClientId = oidc.ClientId;
-        options.ClientSecret = oidc.ClientSecret;
         options.ResponseType = "code";
         // The external identity is exchanged for our own cookie session, so the rest
         // of the app keeps reading the internal UserId claim as before.
@@ -297,6 +325,8 @@ if (oidcEnabled)
 builder.Services.AddAuthorization();
 
 builder.Services.AddSingleton<LoginThrottle>();
+// Outbound mail. Singleton like the config it reads; every send is best-effort.
+builder.Services.AddSingleton<EmailSender>();
 
 const string UserSearchRateLimit = "user-search";
 const string AuthRateLimit = "auth";
@@ -386,6 +416,32 @@ var app = builder.Build();
 using (var scope = app.Services.CreateScope())
 {
     scope.ServiceProvider.GetRequiredService<AppDbContext>().Database.Migrate();
+}
+
+// Warm the instance config before the first request: the OIDC options
+// configurator resolves synchronously inside the auth stack and cannot await.
+{
+    var instanceConfig = app.Services.GetRequiredService<InstanceConfigStore>();
+    await instanceConfig.EnsureLoadedAsync();
+
+    // One-time import of SSO settings that used to live in appsettings/env. An
+    // existing deployment keeps working after upgrading without the admin having
+    // to re-enter anything; from then on the database is the authority, so the
+    // import never overwrites what they later change in the UI.
+    if (!instanceConfig.Has(OidcKeys.Authority)
+        && !string.IsNullOrWhiteSpace(oidcSeed?.Authority)
+        && !string.IsNullOrWhiteSpace(oidcSeed.ClientId))
+    {
+        await instanceConfig.SetAsync(new Dictionary<string, string?>
+        {
+            [OidcKeys.Enabled] = "true",
+            [OidcKeys.Authority] = oidcSeed.Authority,
+            [OidcKeys.ClientId] = oidcSeed.ClientId,
+            [OidcKeys.ClientSecret] = oidcSeed.ClientSecret,
+            [OidcKeys.DisplayName] = oidcSeed.DisplayName ?? string.Empty,
+        });
+        app.Logger.LogInformation("Imported SSO configuration from appsettings into the database");
+    }
 }
 
 // First in the pipeline so everything downstream — the rate limiter's partition
@@ -524,6 +580,43 @@ app.UseAuthorization();
 // than on a shared proxy address. Only endpoints that opt in are affected.
 app.UseRateLimiter();
 
+// ── SSO reachability backstop ─────────────────────────────────────────────────
+// A challenge fetches the IdP's discovery document, so an authority that is
+// wrong, unreachable, or not an OIDC provider throws from inside the handler.
+// An admin now types that URL into a form, which makes misconfiguration an
+// expected failure — and it has to read as one. An unhandled 500 says nothing
+// about what to fix.
+app.Use(async (context, next) =>
+{
+    var isSsoPath = context.Request.Path.StartsWithSegments("/api/auth/login/sso")
+        || context.Request.Path.StartsWithSegments("/signin-oidc");
+    if (!isSsoPath)
+    {
+        await next();
+        return;
+    }
+
+    try
+    {
+        await next();
+    }
+    // The transport failure arrives buried: the handler throws
+    // InvalidOperationException (IDX20803) wrapping an IOException (IDX20804)
+    // wrapping the actual HttpRequestException, so only walking the whole chain
+    // recognises it.
+    catch (Exception ex) when (IsNetworkFailure(ex))
+    {
+        app.Logger.LogWarning(ex, "SSO sign-in failed — the configured authority was unreachable");
+        // Anything already streamed can't be replaced with a clean error.
+        if (context.Response.HasStarted) throw;
+        context.Response.StatusCode = StatusCodes.Status502BadGateway;
+        await context.Response.WriteAsJsonAsync(new
+        {
+            error = "Couldn't reach the identity provider. Check the Authority URL in Settings → SSO.",
+        });
+    }
+});
+
 // ── Path-jail backstop ────────────────────────────────────────────────────────
 // Any filename that escapes a tenant's vault throws SecurityException from
 // PathGuard; translate it to a flat 403 (the breach is already logged at source).
@@ -648,14 +741,151 @@ auth.MapPost("/logout", async (HttpContext http) =>
 // Anonymous. `providers` tells the login screen whether an SSO button belongs
 // there; `login/sso` kicks off the OIDC challenge (→ IdP → /signin-oidc callback →
 // cookie session via OnTokenValidated → back to the app).
-auth.MapGet("/providers", () =>
-    Results.Ok(new { sso = oidcEnabled, ssoName = string.IsNullOrWhiteSpace(oidc?.DisplayName) ? "SSO" : oidc!.DisplayName }));
-
-auth.MapGet("/login/sso", () =>
+auth.MapGet("/providers", async (InstanceConfigStore config, CancellationToken ct) =>
 {
-    if (!oidcEnabled) return Results.NotFound(new { error = "SSO is not configured." });
+    await config.EnsureLoadedAsync(ct);
+    var name = config.GetOrEmpty(OidcKeys.DisplayName);
+    return Results.Ok(new
+    {
+        sso = SsoConfigured(config),
+        ssoName = string.IsNullOrWhiteSpace(name) ? "SSO" : name,
+    });
+});
+
+auth.MapGet("/login/sso", async (InstanceConfigStore config, CancellationToken ct) =>
+{
+    await config.EnsureLoadedAsync(ct);
+    if (!SsoConfigured(config)) return Results.NotFound(new { error = "SSO is not configured." });
     return Results.Challenge(new AuthenticationProperties { RedirectUri = "/" }, ["oidc"]);
 });
+
+
+// ── Password reset + invitation redemption (anonymous) ────────────────────────
+// Rate-limited with the other credential routes. Three rules hold throughout:
+//   • the response never reveals whether an account exists (no enumeration),
+//   • only the SHA-256 of a token is stored, so a database read cannot mint one,
+//   • redemption is single-use and marks the row before the password changes.
+auth.MapPost("/forgot-password", async (
+    ForgotPasswordRequest body, AppDbContext db, EmailSender email,
+    HttpContext http, CancellationToken ct) =>
+{
+    var identifier = body.UsernameOrEmail?.Trim() ?? string.Empty;
+
+    // Always the same answer, whatever happens next. "No such account" here is a
+    // free membership oracle for anyone with a list of addresses.
+    var vague = Results.Ok(new
+    {
+        message = "If that account exists and has an email address, a reset link is on its way.",
+    });
+    if (identifier.Length == 0 || !email.IsConfigured) return vague;
+
+    var user = await db.Users.FirstOrDefaultAsync(
+        u => u.Username == identifier || u.Email == identifier, ct);
+    if (user is null || string.IsNullOrWhiteSpace(user.Email)) return vague;
+
+    var (token, hash) = NewAuthToken();
+    db.AuthTokens.Add(new AuthToken
+    {
+        TokenHash = hash,
+        Kind = "reset",
+        UserId = user.Id,
+        Email = user.Email,
+        Username = user.Username,
+        // Short window: a reset link sitting in an inbox is a standing key to
+        // the account.
+        ExpiresUtc = DateTime.UtcNow.AddHours(1),
+    });
+    await db.SaveChangesAsync(ct);
+
+    var link = $"{email.PublicUrl($"{http.Request.Scheme}://{http.Request.Host}")}/reset-password?token={token}";
+    await email.SendAsync(
+        user.Email,
+        "Reset your Papyra password",
+        $"Someone asked to reset the password for \"{user.Username}\".\n\n"
+        + $"Set a new one here:\n{link}\n\n"
+        + "This link expires in 1 hour and can be used once. "
+        + "If this wasn't you, ignore this email — nothing has changed.",
+        ct);
+
+    return vague;
+})
+    .RequireRateLimiting(AuthRateLimit)
+    .WithSummary("Request a password reset link");
+
+// Shared by both flows: report what a token is for without consuming it, so the
+// SPA can render the right form (or a clean "link expired" page).
+auth.MapGet("/token/{token}", async (string token, AppDbContext db, CancellationToken ct) =>
+{
+    var row = await FindLiveToken(db, token, ct);
+    return row is null
+        ? Results.NotFound(new { error = "This link is invalid or has expired." })
+        : Results.Ok(new { kind = row.Kind, username = row.Username, email = row.Email });
+})
+    .RequireRateLimiting(AuthRateLimit);
+
+auth.MapPost("/reset-password", async (
+    ResetPasswordRequest body, AppDbContext db, EmailSender email, CancellationToken ct) =>
+{
+    if (PasswordPolicy.Validate(body.Password) is { } weak)
+        return Results.BadRequest(new { error = weak });
+
+    var row = await FindLiveToken(db, body.Token ?? string.Empty, ct);
+    if (row is null || row.Kind != "reset" || row.UserId is null)
+        return Results.BadRequest(new { error = "This link is invalid or has expired." });
+
+    var user = await db.Users.FindAsync([row.UserId.Value], ct);
+    if (user is null) return Results.BadRequest(new { error = "This link is invalid or has expired." });
+
+    user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(body.Password!);
+    row.UsedUtc = DateTime.UtcNow;   // burn it in the same transaction as the change
+    await db.SaveChangesAsync(ct);
+
+    // Security mail, sent regardless of notification preferences: being told your
+    // password changed is how you find out it wasn't you who changed it.
+    await email.SendAsync(
+        user.Email,
+        "Your Papyra password was changed",
+        $"The password for \"{user.Username}\" was just reset.\n\n"
+        + "If that wasn't you, contact your Papyra administrator immediately.",
+        ct);
+
+    return Results.NoContent();
+})
+    .RequireRateLimiting(AuthRateLimit)
+    .WithSummary("Set a new password from a reset link");
+
+auth.MapPost("/accept-invite", async (
+    ResetPasswordRequest body, AppDbContext db, VaultObserver observer, CancellationToken ct) =>
+{
+    if (PasswordPolicy.Validate(body.Password) is { } weak)
+        return Results.BadRequest(new { error = weak });
+
+    var row = await FindLiveToken(db, body.Token ?? string.Empty, ct);
+    if (row is null || row.Kind != "invite")
+        return Results.BadRequest(new { error = "This invitation is invalid or has expired." });
+
+    // The username was reserved when the invite was sent, not taken — someone
+    // else may have claimed it in the meantime.
+    if (await db.Users.AnyAsync(u => u.Username == row.Username, ct))
+        return Results.Conflict(new { error = "That username has been taken since the invitation was sent." });
+
+    var user = new User
+    {
+        Username = row.Username,
+        Name = row.Username,
+        Email = row.Email,
+        PasswordHash = BCrypt.Net.BCrypt.HashPassword(body.Password!),
+        Role = row.Role == "Admin" ? "Admin" : "User",
+    };
+    db.Users.Add(user);
+    row.UsedUtc = DateTime.UtcNow;
+    await db.SaveChangesAsync(ct);
+
+    observer.WatchUser(user.Id.ToString()); // create + watch the new tenant's vault
+    return Results.Ok(new { user.Username });
+})
+    .RequireRateLimiting(AuthRateLimit)
+    .WithSummary("Redeem an invitation and create the account");
 
 // Current-session probe the SPA auth guard polls: 428 before any user exists
 // (route to /setup), 401 when unauthenticated (route to /login), else the user.
@@ -910,15 +1140,24 @@ directory.MapGet("/search", async (string? q, ClaimsPrincipal me, AppDbContext d
     // literally), but a bare `%` matching the entire roster is the one failure
     // this endpoint must never have, and that guarantee is worth more than a
     // dependency on a provider translation detail.
-    if (query.Length < 2 || query.Length > 64 || !query.All(IsUsernameChar))
+    if (query.Length > 64 || !query.All(IsUsernameChar))
         return Results.Ok(Array.Empty<UserSuggestion>());
 
     var meId = int.Parse(Uid(me));
     var prefix = query.ToLowerInvariant();
+    // An empty query lists the first page of accounts rather than nothing. This
+    // endpoint originally required two characters, on the theory that it made the
+    // roster harder to enumerate — but the only caller is the `@` typeahead, and
+    // typing `@` is exactly when a person expects to see who they can mention.
+    // The old rule meant the dropdown stayed empty until the third keystroke,
+    // which reads as "mentions are broken". The privacy it bought was thin
+    // anyway: an authenticated user on a self-hosted vault can page through
+    // prefixes, and the cap plus the per-account rate limit are what actually
+    // bound the exposure.
     var matches = await db.Users
         // Self is excluded: a self-mention is dropped at delivery, so offering it
         // would only invite a ping that silently goes nowhere.
-        .Where(u => u.Id != meId && u.Username.ToLower().StartsWith(prefix))
+        .Where(u => u.Id != meId && (prefix.Length == 0 || u.Username.ToLower().StartsWith(prefix)))
         .OrderBy(u => u.Username)
         .Take(8)
         .Select(u => new UserSuggestion(u.Username, u.Name))
@@ -926,6 +1165,230 @@ directory.MapGet("/search", async (string? q, ClaimsPrincipal me, AppDbContext d
 
     return Results.Ok(matches);
 }).RequireRateLimiting(UserSearchRateLimit);
+
+// ── Per-user email notification preferences ───────────────────────────────────
+// Opt-out switches for the courtesy emails. The in-app inbox is never affected:
+// turning mention mail off stops the email, not the delivery.
+auth.MapGet("/notifications", async (ClaimsPrincipal me, AppDbContext db, EmailSender email, CancellationToken ct) =>
+{
+    var user = await db.Users.FindAsync([int.Parse(Uid(me))], ct);
+    if (user is null) return Results.NotFound();
+    return Results.Ok(new
+    {
+        mention = user.NotifyOnMention,
+        share = user.NotifyOnShare,
+        // The UI explains why the switches do nothing on an instance with no
+        // mail configured, rather than silently pretending they work.
+        emailConfigured = email.IsConfigured,
+        hasAddress = !string.IsNullOrWhiteSpace(user.Email),
+    });
+}).RequireAuthorization();
+
+auth.MapPut("/notifications", async (
+    NotificationPrefsWrite body, ClaimsPrincipal me, AppDbContext db, CancellationToken ct) =>
+{
+    var user = await db.Users.FindAsync([int.Parse(Uid(me))], ct);
+    if (user is null) return Results.NotFound();
+    if (body.Mention is { } m) user.NotifyOnMention = m;
+    if (body.Share is { } s) user.NotifyOnShare = s;
+    await db.SaveChangesAsync(ct);
+    return Results.NoContent();
+}).RequireAuthorization();
+
+// ── Admin: SSO (OIDC) configuration ───────────────────────────────────────────
+// Admin-only. The client secret is never returned — only whether one is stored —
+// so opening the settings page cannot leak it to a shoulder-surfer or a browser
+// extension, and saving the form without retyping it keeps the stored value.
+var oidcAdmin = auth.MapGroup("/oidc").RequireAuthorization(p => p.RequireRole("Admin")).WithTags("Admin");
+
+oidcAdmin.MapGet("/", async (InstanceConfigStore config, CancellationToken ct) =>
+{
+    await config.EnsureLoadedAsync(ct);
+    return Results.Ok(new
+    {
+        enabled = config.GetBool(OidcKeys.Enabled),
+        authority = config.GetOrEmpty(OidcKeys.Authority),
+        clientId = config.GetOrEmpty(OidcKeys.ClientId),
+        hasClientSecret = config.Has(OidcKeys.ClientSecret),
+        displayName = config.GetOrEmpty(OidcKeys.DisplayName),
+        // The exact URI the IdP must whitelist. Getting this wrong is the most
+        // common OIDC setup failure, so hand it to the admin rather than making
+        // them infer it.
+        redirectUri = "/signin-oidc",
+        ready = SsoConfigured(config),
+    });
+});
+
+oidcAdmin.MapPut("/", async (
+    OidcConfigWrite body, InstanceConfigStore config,
+    IOptionsMonitorCache<OpenIdConnectOptions> optionsCache, CancellationToken ct) =>
+{
+    var enabled = body.Enabled == true;
+    var authority = body.Authority?.Trim() ?? string.Empty;
+    var clientId = body.ClientId?.Trim() ?? string.Empty;
+
+    // Refuse to switch on a configuration that cannot work — otherwise the login
+    // screen advertises an SSO button that dead-ends at the IdP.
+    if (enabled && (authority.Length == 0 || clientId.Length == 0))
+        return Results.BadRequest(new { error = "Authority and Client ID are required to enable SSO." });
+    if (authority.Length > 0)
+    {
+        if (!Uri.TryCreate(authority, UriKind.Absolute, out var authorityUri))
+            return Results.BadRequest(new { error = "Authority must be an absolute URL." });
+        // Tokens and the client secret cross this connection, so plaintext HTTP
+        // is refused outright. Loopback stays allowed for local IdP testing.
+        if (authorityUri.Scheme != Uri.UriSchemeHttps && !authorityUri.IsLoopback)
+            return Results.BadRequest(new { error = "Authority must use HTTPS (or be a loopback address for testing)." });
+    }
+
+    var values = new Dictionary<string, string?>
+    {
+        [OidcKeys.Enabled] = enabled ? "true" : "false",
+        [OidcKeys.Authority] = authority,
+        [OidcKeys.ClientId] = clientId,
+        [OidcKeys.DisplayName] = body.DisplayName?.Trim() ?? string.Empty,
+    };
+    // Only overwrite the secret when one was supplied, so saving the form with
+    // the field left blank keeps the existing value.
+    if (body.ClientSecret is not null) values[OidcKeys.ClientSecret] = body.ClientSecret.Trim();
+
+    await config.SetAsync(values, ct);
+
+    // The auth stack caches resolved options per scheme; without this eviction
+    // the handler would keep using the previous IdP until the process restarted,
+    // which is the entire problem this feature exists to solve.
+    optionsCache.TryRemove("oidc");
+
+    return Results.NoContent();
+})
+    .WithSummary("Configure SSO (admin)")
+    .WithDescription(
+        "Stores the OIDC authority, client id and secret. Takes effect immediately — " +
+        "the cached authentication options for the `oidc` scheme are evicted on save.");
+
+// ── Admin: outbound mail (SMTP) ───────────────────────────────────────────────
+// Admin-only, same shape as the SSO panel: the password is write-only, and a
+// test send proves the settings before anyone depends on them for a reset link.
+var smtpAdmin = auth.MapGroup("/smtp").RequireAuthorization(p => p.RequireRole("Admin")).WithTags("Admin");
+
+smtpAdmin.MapGet("/", async (InstanceConfigStore config, CancellationToken ct) =>
+{
+    await config.EnsureLoadedAsync(ct);
+    return Results.Ok(new
+    {
+        enabled = config.GetBool(SmtpKeys.Enabled),
+        host = config.GetOrEmpty(SmtpKeys.Host),
+        port = config.GetInt(SmtpKeys.Port, 587),
+        useSsl = config.GetBool(SmtpKeys.UseSsl),
+        username = config.GetOrEmpty(SmtpKeys.Username),
+        hasPassword = config.Has(SmtpKeys.Password),
+        fromAddress = config.GetOrEmpty(SmtpKeys.FromAddress),
+        fromName = config.GetOrEmpty(SmtpKeys.FromName),
+        publicUrl = config.GetOrEmpty(SmtpKeys.PublicUrl),
+    });
+});
+
+smtpAdmin.MapPut("/", async (SmtpConfigWrite body, InstanceConfigStore config, CancellationToken ct) =>
+{
+    var enabled = body.Enabled == true;
+    var host = body.Host?.Trim() ?? string.Empty;
+    var from = body.FromAddress?.Trim() ?? string.Empty;
+
+    if (enabled && (host.Length == 0 || from.Length == 0))
+        return Results.BadRequest(new { error = "Host and From address are required to enable email." });
+    if (from.Length > 0 && !MailAddress.TryCreate(from, out _))
+        return Results.BadRequest(new { error = "From address is not a valid email address." });
+    var port = body.Port ?? 587;
+    if (port is < 1 or > 65535)
+        return Results.BadRequest(new { error = "Port must be between 1 and 65535." });
+    if (body.PublicUrl is { Length: > 0 } url && !Uri.TryCreate(url, UriKind.Absolute, out _))
+        return Results.BadRequest(new { error = "Public URL must be an absolute URL." });
+
+    var values = new Dictionary<string, string?>
+    {
+        [SmtpKeys.Enabled] = enabled ? "true" : "false",
+        [SmtpKeys.Host] = host,
+        [SmtpKeys.Port] = port.ToString(),
+        [SmtpKeys.UseSsl] = body.UseSsl == true ? "true" : "false",
+        [SmtpKeys.Username] = body.Username?.Trim() ?? string.Empty,
+        [SmtpKeys.FromAddress] = from,
+        [SmtpKeys.FromName] = body.FromName?.Trim() ?? string.Empty,
+        [SmtpKeys.PublicUrl] = body.PublicUrl?.Trim() ?? string.Empty,
+    };
+    if (body.Password is not null) values[SmtpKeys.Password] = body.Password;
+
+    await config.SetAsync(values, ct);
+    return Results.NoContent();
+})
+    .WithSummary("Configure outbound email (admin)");
+
+// Prove the settings work before anyone's password reset depends on them.
+smtpAdmin.MapPost("/test", async (
+    SmtpTestRequest body, ClaimsPrincipal me, AppDbContext db, EmailSender email, CancellationToken ct) =>
+{
+    var uid = int.Parse(Uid(me));
+    var self = await db.Users.FindAsync([uid], ct);
+    var to = string.IsNullOrWhiteSpace(body.To) ? self?.Email : body.To.Trim();
+    if (string.IsNullOrWhiteSpace(to))
+        return Results.BadRequest(new { error = "No address to send to — set one on your profile or type one here." });
+
+    var result = await email.SendAsync(
+        to,
+        "Papyra test email",
+        "This is a test message from your Papyra instance.\n\n"
+        + "If you're reading this, outbound email is working.",
+        ct);
+
+    return result.Sent
+        ? Results.Ok(new { sent = true, to })
+        : Results.BadRequest(new { sent = false, error = result.Error });
+})
+    .WithSummary("Send a test email (admin)");
+
+// ── Admin: invitations ────────────────────────────────────────────────────────
+// Invite by email instead of handing out a password. The token is single-use and
+// short-lived; the account is created only when the invitee sets their password,
+// so an unaccepted invite leaves nothing behind but an expiring row.
+smtpAdmin.MapPost("/invite", async (
+    InviteRequest body, AppDbContext db, EmailSender email, HttpContext http, CancellationToken ct) =>
+{
+    var username = body.Username?.Trim() ?? string.Empty;
+    var address = body.Email?.Trim() ?? string.Empty;
+    if (username.Length == 0 || address.Length == 0)
+        return Results.BadRequest(new { error = "Username and email are required." });
+    if (!MailAddress.TryCreate(address, out _))
+        return Results.BadRequest(new { error = "That is not a valid email address." });
+    if (await db.Users.AnyAsync(u => u.Username == username, ct))
+        return Results.Conflict(new { error = "Username already taken." });
+    if (!email.IsConfigured)
+        return Results.BadRequest(new { error = "Configure outbound email before sending invitations." });
+
+    var (token, hash) = NewAuthToken();
+    db.AuthTokens.Add(new AuthToken
+    {
+        TokenHash = hash,
+        Kind = "invite",
+        Email = address,
+        Username = username,
+        Role = body.Role == "Admin" ? "Admin" : "User",
+        ExpiresUtc = DateTime.UtcNow.AddDays(7),
+    });
+    await db.SaveChangesAsync(ct);
+
+    var link = $"{email.PublicUrl($"{http.Request.Scheme}://{http.Request.Host}")}/accept-invite?token={token}";
+    var result = await email.SendAsync(
+        address,
+        "You've been invited to Papyra",
+        $"You've been invited to join a Papyra vault as \"{username}\".\n\n"
+        + $"Set your password to finish signing up:\n{link}\n\n"
+        + "This link expires in 7 days. If you weren't expecting it, ignore this email.",
+        ct);
+
+    return result.Sent
+        ? Results.Ok(new { sent = true })
+        : Results.BadRequest(new { sent = false, error = result.Error });
+})
+    .WithSummary("Invite a user by email (admin)");
 
 // ── Notes CRUD ───────────────────────────────────────────────────────────────
 // Reads serve the in-memory vault (no disk hit); writes go through the atomic
@@ -1179,6 +1642,7 @@ inbox.MapGet("/", async (ClaimsPrincipal user, VaultState state, AppDbContext db
             receivedUtc = g.CreatedUtc,
             title = source?.Title,
             text,
+            readUtc = g.ReadUtc,
         };
     });
 
@@ -1199,6 +1663,20 @@ inbox.MapDelete("/{id:int}", async (int id, ClaimsPrincipal user, AppDbContext d
     return Results.NoContent();
 })
     .WithSummary("Dismiss an inbox entry");
+
+// Mark every outstanding entry read. Called when the recipient opens /inbox —
+// the badge counts unread entries, and having looked at the list is what "read"
+// means here. Scoped to the caller's own grants; reading never revokes anything.
+inbox.MapPost("/read", async (ClaimsPrincipal user, AppDbContext db, CancellationToken ct) =>
+{
+    if (!int.TryParse(Uid(user), out var callerId)) return Results.Unauthorized();
+    var now = DateTime.UtcNow;
+    var marked = await db.BlockGrants
+        .Where(g => g.GranteeUserId == callerId && g.DismissedUtc == null && g.ReadUtc == null)
+        .ExecuteUpdateAsync(s => s.SetProperty(g => g.ReadUtc, now), ct);
+    return Results.Ok(new { marked });
+})
+    .WithSummary("Mark all inbox entries read");
 
 // ── Block transclusion (Phase 15.1) ───────────────────────────────────────────
 // The editor stamps a hidden `^id` anchor onto each block at save time; these
@@ -2049,7 +2527,8 @@ app.MapGet("/api/search/semantic", async (
 //   {"type":"citations", ...} → {"type":"token", ...}* → {"type":"done"}
 // Secure notes are never embedded, so they can never be retrieved into an answer.
 app.MapPost("/api/ai/chat", async (
-    AiChatRequest body, ClaimsPrincipal user, RagChatService rag, HttpContext http, CancellationToken ct) =>
+    AiChatRequest body, ClaimsPrincipal user, RagChatService rag, AiClient ai,
+    HttpContext http, CancellationToken ct) =>
 {
     var question = body.Question?.Trim();
     if (string.IsNullOrWhiteSpace(question))
@@ -2075,14 +2554,151 @@ app.MapPost("/api/ai/chat", async (
         await writer.FlushAsync(ct); // flush per token so the UI streams
     }
 
-    // No tokens at all means the local model wasn't reachable — say so plainly
-    // rather than leaving the client with an empty answer.
-    await writer.WriteLineAsync(JsonSerializer.Serialize(
-        any ? new { type = "done", error = (string?)null }
-            : new { type = "done", error = (string?)"The local model is unavailable." }));
+    // No tokens at all means the backend wasn't reachable. Ask it *why* and pass
+    // that on — "no model is installed" and "your API key was rejected" need
+    // different things from the user, and a bare "unavailable" tells them neither.
+    string? failure = null;
+    if (!any)
+    {
+        var status = await ai.ProbeAsync(ct);
+        // A configured-looking provider that still returns nothing is almost
+        // always a rejected key or a model name that doesn't exist — neither of
+        // which the probe can see without spending a request.
+        failure = status.Reason
+            ?? $"The {status.ChatProvider} backend accepted the request but returned nothing. "
+             + "Check the API key and the model name in Settings → AI.";
+    }
+
+    await writer.WriteLineAsync(JsonSerializer.Serialize(new { type = "done", error = failure }));
     await writer.FlushAsync(ct);
     return Results.Empty;
 }).RequireAuthorization();
+
+// ── AI: status, configuration and model download ──────────────────────────────
+// The status probe is what lets the assistant explain itself instead of silently
+// returning nothing: it reports whether the configured backend can actually answer
+// and, when it can't, a sentence the user can act on.
+app.MapGet("/api/ai/status", async (AiClient ai, CancellationToken ct) =>
+    Results.Ok(await ai.ProbeAsync(ct)))
+    .RequireAuthorization()
+    .WithTags("AI")
+    .WithSummary("Whether the assistant can answer, and why not");
+
+// The models a user may download when no local model is present. Static metadata,
+// so any signed-in user can read it to render the picker; pulling is admin-only.
+app.MapGet("/api/ai/models", () => Results.Ok(AiClient.ChatModelChoices))
+    .RequireAuthorization()
+    .WithTags("AI")
+    .WithSummary("Downloadable local models");
+
+// Admin AI configuration. API keys are write-only over this API — the server says
+// whether one is stored, never what it is — the same contract as SSO and SMTP.
+var aiAdmin = app.MapGroup("/api/ai/config").RequireAuthorization(p => p.RequireRole("Admin")).WithTags("Admin");
+
+aiAdmin.MapGet("/", async (AiClient ai, CancellationToken ct) =>
+{
+    var s = await ai.SettingsAsync(ct);
+    return Results.Ok(new
+    {
+        chatProvider = AiClient.ProviderName(s.ChatProvider),
+        embedProvider = AiClient.ProviderName(s.EmbedProvider),
+        ollamaBaseUrl = s.OllamaBaseUrl,
+        ollamaChatModel = s.OllamaChatModel,
+        ollamaEmbedModel = s.OllamaEmbedModel,
+        openAiBaseUrl = s.OpenAiBaseUrl,
+        openAiChatModel = s.OpenAiChatModel,
+        openAiEmbedModel = s.OpenAiEmbedModel,
+        anthropicChatModel = s.AnthropicChatModel,
+        hasOpenAiKey = !string.IsNullOrWhiteSpace(s.OpenAiKey),
+        hasAnthropicKey = !string.IsNullOrWhiteSpace(s.AnthropicKey),
+    });
+});
+
+aiAdmin.MapPut("/", async (AiConfigWrite body, InstanceConfigStore config, CancellationToken ct) =>
+{
+    var chat = AiClient.ParseProvider(body.ChatProvider, AiProviderKind.Ollama);
+    var embed = AiClient.ParseProvider(body.EmbedProvider, AiProviderKind.Ollama);
+
+    // Anthropic publishes no embeddings endpoint, so it can never serve semantic
+    // search. Refuse rather than accept a setting that would quietly stop indexing.
+    if (embed == AiProviderKind.Anthropic)
+        return Results.BadRequest(new { error = "Anthropic does not offer embeddings. Choose Ollama or OpenAI for semantic search." });
+
+    // Refuse to switch to a provider that cannot work — otherwise the assistant
+    // advertises itself as ready and dead-ends on the first question.
+    var keyingOpenAi = body.OpenAiKey is { Length: > 0 };
+    var keyingAnthropic = body.AnthropicKey is { Length: > 0 };
+    if (chat == AiProviderKind.OpenAi && !keyingOpenAi && !config.Has(AiKeys.OpenAiKey))
+        return Results.BadRequest(new { error = "An OpenAI API key is required to use OpenAI." });
+    if (chat == AiProviderKind.Anthropic && !keyingAnthropic && !config.Has(AiKeys.AnthropicKey))
+        return Results.BadRequest(new { error = "An Anthropic API key is required to use Anthropic." });
+    if (embed == AiProviderKind.OpenAi && !keyingOpenAi && !config.Has(AiKeys.OpenAiKey))
+        return Results.BadRequest(new { error = "An OpenAI API key is required to use OpenAI embeddings." });
+
+    var ollamaUrl = body.OllamaBaseUrl?.Trim() ?? string.Empty;
+    if (ollamaUrl.Length > 0 && !Uri.TryCreate(ollamaUrl, UriKind.Absolute, out _))
+        return Results.BadRequest(new { error = "Ollama base URL must be an absolute URL." });
+    var openAiUrl = body.OpenAiBaseUrl?.Trim() ?? string.Empty;
+    if (openAiUrl.Length > 0 && !Uri.TryCreate(openAiUrl, UriKind.Absolute, out _))
+        return Results.BadRequest(new { error = "OpenAI base URL must be an absolute URL." });
+
+    var values = new Dictionary<string, string?>
+    {
+        [AiKeys.ChatProvider] = AiClient.ProviderName(chat),
+        [AiKeys.EmbedProvider] = AiClient.ProviderName(embed),
+        [AiKeys.OllamaBaseUrl] = ollamaUrl,
+        [AiKeys.OllamaChatModel] = body.OllamaChatModel?.Trim() ?? string.Empty,
+        [AiKeys.OllamaEmbedModel] = body.OllamaEmbedModel?.Trim() ?? string.Empty,
+        [AiKeys.OpenAiBaseUrl] = openAiUrl,
+        [AiKeys.OpenAiChatModel] = body.OpenAiChatModel?.Trim() ?? string.Empty,
+        [AiKeys.OpenAiEmbedModel] = body.OpenAiEmbedModel?.Trim() ?? string.Empty,
+        [AiKeys.AnthropicChatModel] = body.AnthropicChatModel?.Trim() ?? string.Empty,
+    };
+    // Only overwrite a key when one was supplied, so saving the form with the
+    // field left blank keeps the stored value.
+    if (body.OpenAiKey is not null) values[AiKeys.OpenAiKey] = body.OpenAiKey.Trim();
+    if (body.AnthropicKey is not null) values[AiKeys.AnthropicKey] = body.AnthropicKey.Trim();
+
+    await config.SetAsync(values, ct);
+    return Results.NoContent();
+})
+    .WithSummary("Configure the AI provider (admin)")
+    .WithDescription(
+        "Selects the chat and embedding backends and stores their API keys. Takes " +
+        "effect immediately — AiClient re-reads its settings when the config version bumps.");
+
+// Download a model into Ollama, streaming progress as NDJSON so the UI can show a
+// real bar. Admin-only: it writes gigabytes to the host's disk.
+app.MapPost("/api/ai/pull", async (
+    AiPullRequest body, AiClient ai, HttpContext http, CancellationToken ct) =>
+{
+    var model = body.Model?.Trim();
+    if (string.IsNullOrWhiteSpace(model))
+        return Results.BadRequest(new { error = "A model name is required." });
+
+    // Only the curated choices may be pulled: the model name reaches a local
+    // daemon that will fetch and execute whatever it is told to.
+    if (!AiClient.ChatModelChoices.Any(c => c.Model == model) && model != AiClient.DefaultEmbedModel)
+        return Results.BadRequest(new { error = "That model isn't one of the offered downloads." });
+
+    http.Response.ContentType = "application/x-ndjson";
+    var writer = new StreamWriter(http.Response.Body);
+    await foreach (var frame in ai.PullModelAsync(model, ct))
+    {
+        await writer.WriteLineAsync(JsonSerializer.Serialize(new
+        {
+            status = frame.Status,
+            completed = frame.Completed,
+            total = frame.Total,
+            error = frame.Error,
+        }));
+        await writer.FlushAsync(ct); // flush per frame so the bar actually moves
+    }
+    return Results.Empty;
+})
+    .RequireAuthorization(p => p.RequireRole("Admin"))
+    .WithTags("Admin")
+    .WithSummary("Download a local model (admin)");
 
 // Rebuild the whole semantic index from the vault (vectors are a disposable cache).
 app.MapPost("/api/system/rebuild-embeddings", (
@@ -2499,6 +3115,26 @@ app.MapFallbackToFile("index.html");
 
 app.Run();
 
+// True when anything in the exception chain is a network/transport failure.
+// Scoped to the SSO paths by its only caller, so a genuine bug elsewhere is
+// never swallowed as "the IdP was unreachable".
+static bool IsNetworkFailure(Exception? ex)
+{
+    for (var e = ex; e is not null; e = e.InnerException)
+    {
+        if (e is HttpRequestException or IOException or System.Net.Sockets.SocketException) return true;
+    }
+    return false;
+}
+
+// SSO is usable only when an admin has switched it on AND supplied the two
+// fields the protocol cannot work without. Checked per request against the live
+// store, never cached from startup, so enabling SSO takes effect immediately.
+static bool SsoConfigured(InstanceConfigStore config) =>
+    config.GetBool(OidcKeys.Enabled)
+    && config.Has(OidcKeys.Authority)
+    && config.Has(OidcKeys.ClientId);
+
 // The authenticated tenant id, lifted from the NameIdentifier claim minted at
 // sign-in. Every per-user storage path keys off this.
 static string Uid(ClaimsPrincipal user) =>
@@ -2510,6 +3146,27 @@ static string Uid(ClaimsPrincipal user) =>
 // token class in MentionDeliveryService.
 static bool IsUsernameChar(char c) =>
     char.IsAsciiLetterOrDigit(c) || c is '.' or '_' or '-';
+
+// Mint a reset/invite token: a URL-safe random string for the email, and the
+// SHA-256 that is all the database ever holds. A stolen database backup
+// therefore yields no usable links.
+static (string Token, string Hash) NewAuthToken()
+{
+    var bytes = System.Security.Cryptography.RandomNumberGenerator.GetBytes(32);
+    var token = Convert.ToBase64String(bytes)
+        .Replace('+', '-').Replace('/', '_').TrimEnd('=');
+    return (token, Sha256Hex(token));
+}
+
+// Look up a token that is still redeemable: right hash, unused, unexpired.
+static async Task<AuthToken?> FindLiveToken(AppDbContext db, string token, CancellationToken ct)
+{
+    if (string.IsNullOrWhiteSpace(token)) return null;
+    var hash = Sha256Hex(token);
+    var now = DateTime.UtcNow;
+    return await db.AuthTokens.FirstOrDefaultAsync(
+        t => t.TokenHash == hash && t.UsedUtc == null && t.ExpiresUtc > now, ct);
+}
 
 // Hex SHA-256 — the at-rest form of an API token (lookup key on each request).
 static string Sha256Hex(string input) =>
@@ -2698,6 +3355,42 @@ public sealed record ProfileRequest(string? Name, string? Email);
 
 // Self-service password change: verify Current, set Next.
 public sealed record PasswordRequest(string? Current, string? Next);
+
+// Admin SSO configuration payload. ClientSecret is null when the admin left the
+// field blank, which means "keep whatever is stored".
+public sealed record OidcConfigWrite(
+    bool? Enabled, string? Authority, string? ClientId, string? ClientSecret, string? DisplayName);
+
+// Admin SMTP configuration. Password is null when left blank (keep the stored one).
+public sealed record SmtpConfigWrite(
+    bool? Enabled, string? Host, int? Port, bool? UseSsl, string? Username, string? Password,
+    string? FromAddress, string? FromName, string? PublicUrl);
+
+// Optional override for the test-send recipient; defaults to the admin's own address.
+public sealed record SmtpTestRequest(string? To);
+
+// Admin AI configuration. A null key means "leave the stored one alone"; an empty
+// string clears it. Same write-only contract as the SSO and SMTP secrets.
+public sealed record AiConfigWrite(
+    string? ChatProvider, string? EmbedProvider,
+    string? OllamaBaseUrl, string? OllamaChatModel, string? OllamaEmbedModel,
+    string? OpenAiBaseUrl, string? OpenAiChatModel, string? OpenAiEmbedModel, string? OpenAiKey,
+    string? AnthropicChatModel, string? AnthropicKey);
+
+// Which model to pull into Ollama. Validated against the curated download list.
+public sealed record AiPullRequest(string? Model);
+
+// Admin invitation: reserve a username for an address until the invitee sets a password.
+public sealed record InviteRequest(string? Username, string? Email, string? Role);
+
+// "I forgot my password" — accepts either the username or the email address.
+public sealed record ForgotPasswordRequest(string? UsernameOrEmail);
+
+// Redeem a reset or invite token by setting a password.
+public sealed record ResetPasswordRequest(string? Token, string? Password);
+
+// Which courtesy emails a user wants. Security mail is not listed: it is not optional.
+public sealed record NotificationPrefsWrite(bool? Mention, bool? Share);
 
 // One mention-typeahead row. Deliberately just these two fields: the handle you
 // have to type to ping someone, and enough to tell two similar handles apart.

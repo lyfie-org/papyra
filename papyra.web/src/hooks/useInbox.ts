@@ -1,4 +1,4 @@
-import { useQuery } from '@tanstack/react-query';
+import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
 // One block another user pinged you with. `text` is null when the source note
 // has since been deleted or locked — the grant is block-scoped, so there is
@@ -11,6 +11,8 @@ export interface InboxEntry {
   receivedUtc: string;
   title: string | null;
   text: string | null;
+  /** Null until the recipient has opened their inbox. Drives the sidebar badge. */
+  readUtc: string | null;
 }
 
 export const INBOX_KEY = ['inbox'] as const;
@@ -23,4 +25,27 @@ async function fetchInbox(): Promise<InboxEntry[]> {
 
 export function useInbox() {
   return useQuery({ queryKey: INBOX_KEY, queryFn: fetchInbox });
+}
+
+/** Count of entries the recipient hasn't looked at yet — the sidebar badge. */
+export function useUnreadInboxCount(): number {
+  const { data } = useInbox();
+  return (data ?? []).filter((e) => !e.readUtc).length;
+}
+
+/**
+ * Mark everything read. Called when the inbox page mounts: having the list on
+ * screen is what "read" means here, so the badge clears on view rather than
+ * requiring the user to click each entry. Dismissal stays a separate, explicit
+ * act — it revokes the grant, this only silences the badge.
+ */
+export function useMarkInboxRead() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async () => {
+      const res = await fetch('/api/inbox/read', { method: 'POST' });
+      if (!res.ok) throw new Error(`POST /api/inbox/read failed: ${res.status}`);
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: INBOX_KEY }),
+  });
 }
