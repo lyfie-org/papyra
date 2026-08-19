@@ -4,6 +4,7 @@ import { Link, useLocation } from 'react-router-dom';
 import { originState } from '../lib/noteLink';
 import { Inbox as InboxIcon, X } from 'lucide-react';
 import EmptyState from '../components/EmptyState';
+import Avatar from '../components/Avatar';
 import { useInbox, useMarkInboxRead, INBOX_KEY } from '../hooks/useInbox';
 import './InboxPage.css';
 
@@ -70,7 +71,10 @@ export default function InboxPage() {
         {(entries ?? []).map((entry) => (
           <li key={entry.id} className="inbox__entry">
             <div className="inbox__meta">
-              <span className="inbox__from">@{entry.from}</span>
+              <span className="inbox__from">
+                <Avatar username={entry.from} name={entry.from} size={22} />
+                @{entry.from}
+              </span>
               <time className="inbox__time" dateTime={entry.receivedUtc}>
                 {new Date(entry.receivedUtc).toLocaleString()}
               </time>

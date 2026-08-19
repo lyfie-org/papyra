@@ -46,6 +46,9 @@
 .inbox__from {
   font: 500 var(--fs-sm) / 1.2 var(--sans);
   color: var(--accent-text);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
 }
 
 .inbox__time {

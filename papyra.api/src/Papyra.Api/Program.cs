@@ -1152,37 +1152,58 @@ auth.MapPost("/password", async (PasswordRequest body, ClaimsPrincipal principal
     return Results.NoContent();
 }).RequireAuthorization();
 
+// Largest profile picture accepted. The browser sends a 512px square PNG, which
+// is tens of kilobytes; this is headroom, not a target.
+const long MaxAvatarBytes = 4L * 1024 * 1024;
+
+// Upload a profile picture. The browser crops it to a square and re-encodes it
+// as PNG before it gets here (see components/AvatarCropper.tsx), so this is the
+// gate rather than the resizer: it takes the bytes only if they really are one
+// of three raster formats, and stores them under an extension it chose itself.
+//
+// The old version trusted `file.FileName` for the extension and had no size cap,
+// so an "avatar.svg" was stored and later served as image/svg+xml from the app's
+// own origin — an SVG carries script, and navigating to that URL would run it.
 auth.MapPost("/avatar", async (
     IFormFile file, ClaimsPrincipal principal, IConfiguration config, IHostEnvironment env, CancellationToken ct) =>
 {
     if (file is null || file.Length == 0) return Results.BadRequest(new { error = "No file." });
+    if (file.Length > MaxAvatarBytes)
+        return Results.BadRequest(new { error = "That picture is too large. 4 MB is the limit." });
+
+    // Read it once, decide from the bytes.
+    using var buffer = new MemoryStream();
+    await file.CopyToAsync(buffer, ct);
+    var bytes = buffer.ToArray();
+    if (SniffImage(bytes) is not { } image)
+        return Results.BadRequest(new { error = "That file isn't a PNG, JPEG or WebP image." });
 
     var dir = PapyraPaths.UserDotPapyra(config, env.ContentRootPath, Uid(principal));
     Directory.CreateDirectory(dir);
     // One avatar per user: clear any prior file, then write avatar.<ext> atomically.
     foreach (var old in Directory.EnumerateFiles(dir, "avatar.*")) File.Delete(old);
 
-    var ext = Path.GetExtension(file.FileName);
-    if (string.IsNullOrEmpty(ext) || ext.Length > 5) ext = ".png";
-    var dest = Path.Combine(dir, $"avatar{ext}");
+    var dest = Path.Combine(dir, $"avatar{image.Extension}");
     var tmp = Path.Combine(dir, $"{Guid.NewGuid():N}.tmp");
-    await using (var fs = new FileStream(tmp, FileMode.CreateNew, FileAccess.Write, FileShare.None))
-    {
-        await file.CopyToAsync(fs, ct);
-        await fs.FlushAsync(ct);
-    }
+    await File.WriteAllBytesAsync(tmp, bytes, ct);
     File.Move(tmp, dest, overwrite: true);
     return Results.Ok(new { ok = true });
 }).RequireAuthorization().DisableAntiforgery();
 
 auth.MapGet("/avatar", (ClaimsPrincipal principal, IConfiguration config, IHostEnvironment env) =>
+    AvatarFile(Uid(principal), config, env)).RequireAuthorization();
+
+// Somebody else's picture, by username. A face next to a name is the point of
+// having one, and these appear wherever a person does: the inbox, a shared note,
+// the roster. Nothing leaks that the directory typeahead doesn't already give
+// any signed-in user — an unknown name and a user with no picture answer the
+// same 404.
+auth.MapGet("/avatar/{username}", async (
+    string username, AppDbContext db, IConfiguration config, IHostEnvironment env, CancellationToken ct) =>
 {
-    var dir = PapyraPaths.UserDotPapyra(config, env.ContentRootPath, Uid(principal));
-    var file = Directory.Exists(dir) ? Directory.EnumerateFiles(dir, "avatar.*").FirstOrDefault() : null;
-    if (file is null) return Results.NotFound();
-    if (!new FileExtensionContentTypeProvider().TryGetContentType(file, out var contentType))
-        contentType = "application/octet-stream";
-    return Results.File(file, contentType);
+    var name = username.Trim();
+    var id = await db.Users.Where(u => u.Username == name).Select(u => (int?)u.Id).FirstOrDefaultAsync(ct);
+    return id is null ? Results.NotFound() : AvatarFile(id.Value.ToString(), config, env);
 }).RequireAuthorization();
 
 // ── Admin user management ──────────────────────────────────────────────────────
@@ -3546,6 +3567,42 @@ static string Sha256Hex(string input) =>
 static string OwnerNotePath(VaultState state, VaultObserverOptions vault, ILoggerFactory lf, string ownerUid, string noteId) =>
     state.PathFor(ownerUid, noteId)
     ?? PathGuard.ResolveAndVerify(vault.UserNotesDir(ownerUid), $"{noteId}.md", lf.CreateLogger("PathGuard"));
+
+// Identify an image by its magic bytes rather than by what the upload claims to
+// be. Only these three: each is a raster format that cannot carry script, which
+// is the whole reason for the check.
+static (string Extension, string ContentType)? SniffImage(ReadOnlySpan<byte> bytes)
+{
+    if (bytes.Length >= 8 && bytes[0] == 0x89 && bytes[1] == 0x50 && bytes[2] == 0x4E && bytes[3] == 0x47
+        && bytes[4] == 0x0D && bytes[5] == 0x0A && bytes[6] == 0x1A && bytes[7] == 0x0A)
+        return (".png", "image/png");
+    if (bytes.Length >= 3 && bytes[0] == 0xFF && bytes[1] == 0xD8 && bytes[2] == 0xFF)
+        return (".jpg", "image/jpeg");
+    if (bytes.Length >= 12 && bytes[0] == 'R' && bytes[1] == 'I' && bytes[2] == 'F' && bytes[3] == 'F'
+        && bytes[8] == 'W' && bytes[9] == 'E' && bytes[10] == 'B' && bytes[11] == 'P')
+        return (".webp", "image/webp");
+    return null;
+}
+
+// Serve a stored avatar. The content type comes from the extension the upload
+// path chose, never from anything a caller supplied, and the response says
+// nosniff so a browser cannot decide it is something more exciting.
+static IResult AvatarFile(string uid, IConfiguration config, IHostEnvironment env)
+{
+    var dir = PapyraPaths.UserDotPapyra(config, env.ContentRootPath, uid);
+    var file = Directory.Exists(dir) ? Directory.EnumerateFiles(dir, "avatar.*").FirstOrDefault() : null;
+    if (file is null) return Results.NotFound();
+    var contentType = Path.GetExtension(file) switch
+    {
+        ".png" => "image/png",
+        ".jpg" or ".jpeg" => "image/jpeg",
+        ".webp" => "image/webp",
+        // Written before the upload path validated anything. Refuse rather than
+        // guess: whatever it is, it is not something this endpoint promised.
+        _ => null,
+    };
+    return contentType is null ? Results.NotFound() : Results.File(file, contentType);
+}
 
 // Serve a media file from an arbitrary owner's vault (for shared notes). The
 // caller's authorisation is established before this is reached (a valid link token

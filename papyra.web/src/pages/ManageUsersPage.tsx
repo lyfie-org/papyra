@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { UserPlus, KeyRound, Link2, Trash2, Copy, ShieldAlert } from 'lucide-react';
 import EmptyState from '../components/EmptyState';
+import Avatar from '../components/Avatar';
 import { useAuth } from '../hooks/useAuth';
 import { useConfirm } from '../lib/confirmContext';
 import { useToast } from '../lib/toastContext';
@@ -130,7 +131,12 @@ export default function ManageUsersPage() {
           <tbody>
             {users.map(u => (
               <tr key={u.id}>
-                <td>{u.username}{u.id === me?.id && <span className="users-table__you"> (you)</span>}</td>
+                <td>
+                  <span className="users-table__who">
+                    <Avatar username={u.username} name={u.name} size={26} />
+                    {u.username}{u.id === me?.id && <span className="users-table__you"> (you)</span>}
+                  </span>
+                </td>
                 <td>{u.name}</td>
                 <td>{u.email || '—'}</td>
                 <td>{u.role}</td>

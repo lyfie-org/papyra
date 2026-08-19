@@ -24,6 +24,8 @@ import { useCategories } from '../hooks/useCategories';
 import { useTheme, type ThemePreference } from '../hooks/useTheme';
 import { clearSessionData } from '../lib/session';
 import { useConfirm } from '../lib/confirmContext';
+import AvatarCropper from '../components/AvatarCropper';
+import Avatar from '../components/Avatar';
 import { useSettings, useUpdateSettings, RETENTION_OPTIONS } from '../hooks/useSettings';
 import './SettingsPage.css';
 
@@ -141,7 +143,9 @@ function ProfileTab({ user }: { user: AuthUser | null }) {
   const [email, setEmail] = useState(user?.email ?? '');
   const [savedMsg, setSavedMsg] = useState<string | null>(null);
   const [avatarV, setAvatarV] = useState(0); // cache-bust after upload
-  const [avatarOk, setAvatarOk] = useState(true);
+  // The file the user picked, held while they frame it. Nothing is uploaded
+  // until they say the crop is right.
+  const [picking, setPicking] = useState<File | null>(null);
 
   const [cur, setCur] = useState('');
   const [next, setNext] = useState('');
@@ -150,7 +154,6 @@ function ProfileTab({ user }: { user: AuthUser | null }) {
   const noteCount = notes?.filter(n => !n.trashed).length ?? 0;
   const tagCount = new Set((notes ?? []).flatMap(n => n.tags ?? [])).size;
   const catCount = categories?.length ?? 0;
-  const initial = (user?.name || user?.username || 'P').trim().charAt(0).toUpperCase();
 
   async function saveProfile(e: React.FormEvent) {
     e.preventDefault();
@@ -166,11 +169,15 @@ function ProfileTab({ user }: { user: AuthUser | null }) {
     } else setSavedMsg('Couldn’t save profile.');
   }
 
-  async function uploadAvatar(file: File) {
+  // The cropper hands back a square PNG; the file the user picked never leaves
+  // the browser as-is, so what is stored is what they framed.
+  async function uploadAvatar(square: Blob) {
     const form = new FormData();
-    form.append('file', file);
+    form.append('file', square, 'avatar.png');
     const res = await fetch('/api/auth/avatar', { method: 'POST', body: form });
-    if (res.ok) { setAvatarOk(true); setAvatarV(v => v + 1); }
+    setPicking(null);
+    if (res.ok) setAvatarV(v => v + 1);
+    else setSavedMsg('Couldn’t save that picture.');
   }
 
   async function changePassword(e: React.FormEvent) {
@@ -204,15 +211,28 @@ function ProfileTab({ user }: { user: AuthUser | null }) {
           onClick={() => fileRef.current?.click()}
           aria-label="Change profile picture"
         >
-          {avatarOk
-            ? <img src={`/api/auth/avatar?v=${avatarV}`} alt="" onError={() => setAvatarOk(false)} />
-            : <span>{initial}</span>}
+          <Avatar name={name || user?.username} size={64} version={avatarV} />
           <span className="settings__avatar-edit"><Camera size={14} /></span>
         </button>
         <input
-          ref={fileRef} type="file" accept="image/*" hidden
-          onChange={e => { const f = e.target.files?.[0]; if (f) void uploadAvatar(f); }}
+          ref={fileRef}
+          type="file"
+          accept="image/png,image/jpeg,image/webp"
+          hidden
+          onChange={e => {
+            const f = e.target.files?.[0];
+            if (f) setPicking(f);
+            // Clear it, or choosing the same file twice fires no change event.
+            e.target.value = '';
+          }}
         />
+        {picking && (
+          <AvatarCropper
+            file={picking}
+            onCancel={() => setPicking(null)}
+            onCropped={square => uploadAvatar(square)}
+          />
+        )}
         <div>
           <div className="settings__profile-name">{user?.name || user?.username}</div>
           <div className="settings__profile-sub">@{user?.username} · {user?.role}</div>

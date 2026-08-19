@@ -1,4 +1,5 @@
 import { Link2, Users } from 'lucide-react';
+import Avatar from './Avatar';
 import './ShareBadge.css';
 
 export interface ShareSummary {
@@ -59,7 +60,7 @@ export default function ShareBadge({ summary }: { summary: ShareSummary }) {
 export function SharedByBadge({ owner, access }: { owner: string; access: 'view' | 'edit' }) {
   return (
     <span className="share-badge share-badge--incoming">
-      <Users size={12} aria-hidden="true" />
+      <Avatar username={owner} name={owner} size={16} />
       <span className="share-badge__count">
         Shared by @{owner} · {access === 'edit' ? 'you can edit' : 'read only'}
       </span>

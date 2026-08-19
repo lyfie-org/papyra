@@ -63,6 +63,12 @@
   letter-spacing: 0.06em;
 }
 
+.users-table__who {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
 .users-table__you { color: var(--text); }
 
 /* The warning colour carries the icon, not the words: --warn on --bg measures

@@ -15,6 +15,7 @@ import { useAuth } from '../hooks/useAuth';
 import { useSyncEngine } from '../hooks/useSync';
 import { useUnreadInboxCount } from '../hooks/useInbox';
 import logo from '../assets/papyra_logo.png';
+import Avatar from '../components/Avatar';
 import './WorkspaceLayout.css';
 
 // Settings deliberately lives with Trash at the foot of the rail, not in this
@@ -68,7 +69,6 @@ export default function WorkspaceLayout() {
     : sync.pending > 0 ? `${sync.pending} edit(s) waiting to upload` : 'Connected to your vault';
 
   const isAdmin = user?.role === 'Admin';
-  const initial = (user?.name || user?.username || 'P').trim().charAt(0).toUpperCase();
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -147,7 +147,7 @@ export default function WorkspaceLayout() {
               aria-expanded={menuOpen}
               onClick={() => setMenuOpen(o => !o)}
             >
-              <span aria-hidden="true">{initial}</span>
+              <Avatar name={user?.name || user?.username} size={30} />
             </button>
             {menuOpen && (
               <div className="workspace__avatar-menu" role="menu">
