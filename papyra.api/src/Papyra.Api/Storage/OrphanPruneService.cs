@@ -5,9 +5,9 @@ namespace Papyra.Api.Storage;
 // moved to their .trash — never hard-deleted, so a mistaken prune is always
 // recoverable. Drives off VaultState, the in-memory mirror of the vault. Registered
 // as a hosted service.
-public sealed class OrphanPruneService : BackgroundService
+public sealed class OrphanPruneService : PeriodicJob
 {
-    private static readonly TimeSpan Interval = TimeSpan.FromHours(24);
+    private static readonly TimeSpan PruneInterval = TimeSpan.FromHours(24);
 
     private readonly VaultState _state;
     private readonly IConfiguration _config;
@@ -18,7 +18,9 @@ public sealed class OrphanPruneService : BackgroundService
         VaultState state,
         IConfiguration config,
         IHostEnvironment env,
+        JobRegistry registry,
         ILogger<OrphanPruneService> logger)
+        : base(registry)
     {
         _state = state;
         _config = config;
@@ -26,14 +28,18 @@ public sealed class OrphanPruneService : BackgroundService
         _logger = logger;
     }
 
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    protected override string JobId => "orphan-prune";
+    protected override string JobName => "Move unused pictures to Trash";
+    protected override string JobDescription =>
+        "Looks for images and files in your vault that no note refers to any more and moves them "
+        + "to Trash. Nothing is deleted outright, so a mistake is always recoverable.";
+    protected override TimeSpan Interval => PruneInterval;
+
+    protected override Task<string?> RunOnceAsync(CancellationToken ct)
     {
-        using var timer = new PeriodicTimer(Interval);
-        while (await timer.WaitForNextTickAsync(stoppingToken))
-        {
-            try { PruneOnce(); }
-            catch (Exception ex) { _logger.LogWarning(ex, "Orphan prune sweep failed"); }
-        }
+        var moved = PruneOnce();
+        return Task.FromResult<string?>(
+            moved == 0 ? null : $"{moved} unused file{(moved == 1 ? "" : "s")} moved to Trash");
     }
 
     // On-demand sweep for the housekeeping endpoint. Same work as the nightly run.

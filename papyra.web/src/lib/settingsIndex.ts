@@ -87,6 +87,10 @@ export const SETTINGS_INDEX: SettingsEntry[] = [
     keywords: ['admin', 'administration', 'accounts', 'people', 'create user', 'add user', 'new account', 'roles', 'reset password', 'recovery link'],
   },
 
+  { tab: 'jobs', tabLabel: 'Jobs', adminOnly: true, keywords: ['background', 'housekeeping', 'maintenance', 'tasks'] },
+  { tab: 'jobs', tabLabel: 'Jobs', section: 'scheduled-jobs', sectionLabel: 'Housekeeping', adminOnly: true, keywords: ['empty trash', 'cleanup', 'sweep', 'run now', 'schedule'] },
+  { tab: 'jobs', tabLabel: 'Jobs', section: 'always-on-jobs', sectionLabel: 'Always running', adminOnly: true, keywords: ['watcher', 'mentions', 'webhooks', 'search index'] },
+
   { tab: 'about', tabLabel: 'About', keywords: ['version', 'licence', 'license'] },
   { tab: 'about', tabLabel: 'About', section: 'about-papyra', sectionLabel: 'Papyra', keywords: ['version', 'build'] },
 ];

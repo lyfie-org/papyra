@@ -18,37 +18,36 @@ namespace Papyra.Api.Storage;
 // instance the first time it ran. So a tenant is only ever swept when their
 // vault is demonstrably populated; a genuinely empty vault is skipped, which
 // leaves a few dead rows rather than risking live ones.
-public sealed class GrantCleanupService : BackgroundService
+public sealed class GrantCleanupService : PeriodicJob
 {
-    private static readonly TimeSpan Interval = TimeSpan.FromHours(6);
-    private static readonly TimeSpan StartupDelay = TimeSpan.FromMinutes(2);
+    private static readonly TimeSpan SweepInterval = TimeSpan.FromHours(6);
 
     private readonly IServiceScopeFactory _scopes;
     private readonly VaultState _state;
     private readonly ILogger<GrantCleanupService> _logger;
 
     public GrantCleanupService(
-        IServiceScopeFactory scopes, VaultState state, ILogger<GrantCleanupService> logger)
+        IServiceScopeFactory scopes, VaultState state, JobRegistry registry,
+        ILogger<GrantCleanupService> logger)
+        : base(registry)
     {
         _scopes = scopes;
         _state = state;
         _logger = logger;
     }
 
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
-    {
-        // Long enough for the cold-boot diff to have mirrored the vaults, so the
-        // first sweep judges against a populated VaultState.
-        try { await Task.Delay(StartupDelay, stoppingToken); }
-        catch (OperationCanceledException) { return; }
+    protected override string JobId => "grant-cleanup";
+    protected override string JobName => "Tidy up mentions of deleted notes";
+    protected override string JobDescription =>
+        "When a note is deleted, the inbox entries pointing into it stop working. "
+        + "This clears those dead entries so nobody's inbox fills with them.";
+    protected override TimeSpan Interval => SweepInterval;
+    protected override TimeSpan StartupDelay => TimeSpan.FromMinutes(2);
 
-        using var timer = new PeriodicTimer(Interval);
-        do
-        {
-            try { await CleanupOnceAsync(stoppingToken); }
-            catch (Exception ex) { _logger.LogWarning(ex, "Grant cleanup sweep failed"); }
-        }
-        while (await timer.WaitForNextTickAsync(stoppingToken));
+    protected override async Task<string?> RunOnceAsync(CancellationToken ct)
+    {
+        var removed = await CleanupOnceAsync(ct);
+        return removed == 0 ? null : $"{removed} dead inbox entr{(removed == 1 ? "y" : "ies")} cleared";
     }
 
     // Remove grants whose source note is gone, or which no longer carry the

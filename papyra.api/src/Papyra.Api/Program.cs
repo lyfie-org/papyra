@@ -108,6 +108,10 @@ builder.Services.AddSingleton<ConflictState>();
 // The observer is a singleton too so the setup/provision flow can call WatchUser
 // when a new tenant's vault is created.
 builder.Services.AddSingleton<VaultObserver>();
+// Every background job reports here, so "what is Papyra doing when nobody is
+// looking" has an answer that is not the server log.
+builder.Services.AddSingleton<JobRegistry>();
+
 builder.Services.AddHostedService<ColdBootDiffService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<VaultObserver>());
 // Registered as a singleton as well as a hosted service so the housekeeping
@@ -569,6 +573,22 @@ app.UseStaticFiles(new StaticFileOptions
             ctx.Context.Response.Headers.CacheControl = "public, max-age=31536000, immutable";
     },
 });
+
+// The services that are simply always on. They have no timer and nothing to
+// trigger, but leaving them off the Jobs screen would suggest Papyra does less
+// in the background than it does.
+{
+    var jobs = app.Services.GetRequiredService<JobRegistry>();
+    jobs.RegisterContinuous("vault-watcher", "Watch your notes folder",
+        "Notices when a note changes on disk — edited by another app, restored from a backup, "
+        + "or synced in — and brings it into Papyra without you doing anything.");
+    jobs.RegisterContinuous("mention-delivery", "Deliver mentions",
+        "When someone names you in a note, this puts that paragraph in your inbox and emails you if you asked it to.");
+    jobs.RegisterContinuous("search-index", "Keep search up to date",
+        "Re-reads a note the moment it changes so searching finds what you wrote a second ago.");
+    jobs.RegisterContinuous("webhooks", "Send webhooks",
+        "Passes changes on to anything you have connected to Papyra, retrying if it can't be reached.");
+}
 
 app.UseAuthentication();
 
@@ -1205,6 +1225,53 @@ auth.MapGet("/avatar/{username}", async (
     var id = await db.Users.Where(u => u.Username == name).Select(u => (int?)u.Id).FirstOrDefaultAsync(ct);
     return id is null ? Results.NotFound() : AvatarFile(id.Value.ToString(), config, env);
 }).RequireAuthorization();
+
+// ── Background jobs ───────────────────────────────────────────────────────────
+// Admin-only, because these describe the whole instance rather than one vault,
+// and running one affects everybody's notes.
+var jobsApi = app.MapGroup("/api/jobs").RequireAuthorization(p => p.RequireRole("Admin")).WithTags("Admin");
+
+jobsApi.MapGet("/", (JobRegistry jobs) => Results.Ok(jobs.Snapshot().Select(j => new
+{
+    j.Id,
+    j.Name,
+    j.Description,
+    kind = j.Kind.ToString().ToLowerInvariant(),
+    intervalSeconds = j.Interval?.TotalSeconds,
+    j.Running,
+    // A job that can be asked to run now is exactly one that has a timer — the
+    // always-on ones have nothing to start.
+    canTrigger = j.Kind == JobKind.Periodic,
+    lastRun = j.LastRun is null ? null : new
+    {
+        startedUtc = j.LastRun.StartedUtc,
+        finishedUtc = j.LastRun.FinishedUtc,
+        j.LastRun.Ok,
+        j.LastRun.Summary,
+        j.LastRun.Error,
+        durationMs = Math.Round(j.LastRun.DurationMs),
+    },
+})));
+
+jobsApi.MapPost("/{id}/run", async (string id, JobRegistry jobs, CancellationToken ct) =>
+{
+    if (!jobs.Knows(id)) return Results.NotFound(new { error = "No such job." });
+
+    var run = await jobs.RunAsync(id, ct);
+    if (run is null)
+        return Results.BadRequest(new { error = "That job runs by itself and can't be started by hand." });
+
+    // A job that failed is still a completed request: the caller asked for it to
+    // run, it ran, and the answer is what happened.
+    return Results.Ok(new
+    {
+        run.Ok,
+        run.Summary,
+        run.Error,
+        durationMs = Math.Round(run.DurationMs),
+        finishedUtc = run.FinishedUtc,
+    });
+});
 
 // ── Admin user management ──────────────────────────────────────────────────────
 // Role-gated provisioning for the settings Admin tab. Provisioned users get their

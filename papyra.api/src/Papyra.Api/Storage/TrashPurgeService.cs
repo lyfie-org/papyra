@@ -6,9 +6,9 @@ namespace Papyra.Api.Storage;
 // (see TrashRetention). Runs shortly after boot, then every few hours. The .md is
 // the authority, so a purge hard-deletes the file and drops the cache/index rows.
 // Registered as a hosted service.
-public sealed class TrashPurgeService : BackgroundService
+public sealed class TrashPurgeService : PeriodicJob
 {
-    private static readonly TimeSpan Interval = TimeSpan.FromHours(6);
+    private static readonly TimeSpan PurgeInterval = TimeSpan.FromHours(6);
 
     private readonly IServiceScopeFactory _scopes;
     private readonly VaultState _state;
@@ -21,7 +21,9 @@ public sealed class TrashPurgeService : BackgroundService
         VaultState state,
         WriteRing writeRing,
         SearchIndexService search,
+        JobRegistry registry,
         ILogger<TrashPurgeService> logger)
+        : base(registry)
     {
         _scopes = scopes;
         _state = state;
@@ -30,19 +32,17 @@ public sealed class TrashPurgeService : BackgroundService
         _logger = logger;
     }
 
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
-    {
-        // A short delay lets the cold-boot diff populate VaultState first.
-        try { await Task.Delay(TimeSpan.FromSeconds(30), stoppingToken); }
-        catch (OperationCanceledException) { return; }
+    protected override string JobId => "trash-purge";
+    protected override string JobName => "Empty the Trash";
+    protected override string JobDescription =>
+        "Deletes notes that have been in Trash longer than the time you chose in Settings. "
+        + "Once this runs, those notes are gone for good.";
+    protected override TimeSpan Interval => PurgeInterval;
 
-        using var timer = new PeriodicTimer(Interval);
-        do
-        {
-            try { await PurgeOnceAsync(stoppingToken); }
-            catch (Exception ex) { _logger.LogWarning(ex, "Trash purge sweep failed"); }
-        }
-        while (await timer.WaitForNextTickAsync(stoppingToken));
+    protected override async Task<string?> RunOnceAsync(CancellationToken ct)
+    {
+        var purged = await PurgeOnceAsync(ct);
+        return purged == 0 ? null : $"{purged} note{(purged == 1 ? "" : "s")} deleted for good";
     }
 
     internal async Task<int> PurgeOnceAsync(CancellationToken ct)

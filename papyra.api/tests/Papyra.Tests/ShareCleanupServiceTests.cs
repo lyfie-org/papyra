@@ -39,6 +39,7 @@ public sealed class ShareCleanupServiceTests
 
             var svc = new ShareCleanupService(
                 sp.GetRequiredService<IServiceScopeFactory>(),
+                new JobRegistry(NullLogger<JobRegistry>.Instance),
                 NullLogger<ShareCleanupService>.Instance);
 
             var removed = await svc.CleanupOnceAsync(default);

@@ -30,7 +30,8 @@ public sealed class GrantCleanupTests
             scope.ServiceProvider.GetRequiredService<AppDbContext>().Database.EnsureCreated();
 
         var svc = new GrantCleanupService(
-            sp.GetRequiredService<IServiceScopeFactory>(), state, NullLogger<GrantCleanupService>.Instance);
+            sp.GetRequiredService<IServiceScopeFactory>(), state,
+            new JobRegistry(NullLogger<JobRegistry>.Instance), NullLogger<GrantCleanupService>.Instance);
         return (svc, sp, conn);
     }
 

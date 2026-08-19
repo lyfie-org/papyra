@@ -5,7 +5,7 @@ import {
   User as UserIcon, Palette, Database, Info, Camera,
   Sun, Moon, Monitor, Upload, Download, RefreshCw, KeyRound, Copy, Trash2, Lock, ShieldAlert,
   Fingerprint, CheckCircle2, GitBranch, AlertTriangle, Bell, Mail, KeySquare, Send, UserPlus,
-  Sparkles,
+  Sparkles, Play, Cog,
 } from 'lucide-react';
 import { useGitConfig, useSaveGitConfig, useRunGitSync } from '../hooks/useGitSync';
 import {
@@ -17,6 +17,7 @@ import {
   type AiConfig, type PullProgress,
 } from '../hooks/useAi';
 import { useWebAuthnDevices } from '../hooks/useWebAuthnDevices';
+import { useJobs, useRunJob, type Job } from '../hooks/useJobs';
 import { hasPlatformAuthenticator, isWebAuthnAvailable } from '../lib/webauthn';
 import { useAuth, type AuthUser } from '../hooks/useAuth';
 import { useNotes } from '../hooks/useNotes';
@@ -24,6 +25,7 @@ import { useCategories } from '../hooks/useCategories';
 import { useTheme, type ThemePreference } from '../hooks/useTheme';
 import { clearSessionData } from '../lib/session';
 import { useConfirm } from '../lib/confirmContext';
+import { useToast } from '../lib/toastContext';
 import AvatarCropper from '../components/AvatarCropper';
 import KnowledgeHeatmap from '../components/KnowledgeHeatmap';
 import DayNotesOverlay from '../components/DayNotesOverlay';
@@ -33,7 +35,7 @@ import './SettingsPage.css';
 
 const APP_VERSION = '0.0.1';
 
-type Tab = 'profile' | 'appearance' | 'notifications' | 'security' | 'data' | 'keys' | 'sync' | 'sso' | 'email' | 'ai' | 'about';
+type Tab = 'profile' | 'appearance' | 'notifications' | 'security' | 'data' | 'keys' | 'sync' | 'sso' | 'email' | 'ai' | 'jobs' | 'about';
 
 const NAV: { id: Tab; label: string; icon: typeof UserIcon; adminOnly?: boolean }[] = [
   { id: 'profile', label: 'Profile', icon: UserIcon },
@@ -46,6 +48,7 @@ const NAV: { id: Tab; label: string; icon: typeof UserIcon; adminOnly?: boolean 
   { id: 'sso', label: 'SSO', icon: KeySquare, adminOnly: true },
   { id: 'email', label: 'Email', icon: Mail, adminOnly: true },
   { id: 'ai', label: 'AI', icon: Sparkles, adminOnly: true },
+  { id: 'jobs', label: 'Jobs', icon: Cog, adminOnly: true },
   { id: 'about', label: 'About', icon: Info },
 ];
 
@@ -126,6 +129,7 @@ export default function SettingsPage() {
           {tab === 'sso' && isAdmin && <SsoTab />}
           {tab === 'email' && isAdmin && <EmailTab />}
           {tab === 'ai' && isAdmin && <AiTab />}
+          {tab === 'jobs' && isAdmin && <JobsTab />}
           {tab === 'about' && <AboutTab />}
         </div>
       </div>
@@ -733,6 +737,128 @@ function KeysTab() {
 }
 
 // ── About ────────────────────────────────────────────────────────────────────────
+// ── Jobs ─────────────────────────────────────────────────────────────────────
+// What Papyra does while nobody is watching. Before this, "has the Trash been
+// emptying?" was a question you answered by reading server logs on the host.
+
+/** "every 6 hours", from a number of seconds. */
+function everyPhrase(seconds: number): string {
+  if (seconds % 86400 === 0) {
+    const days = seconds / 86400;
+    return days === 1 ? 'once a day' : `every ${days} days`;
+  }
+  if (seconds % 3600 === 0) {
+    const hours = seconds / 3600;
+    return hours === 1 ? 'every hour' : `every ${hours} hours`;
+  }
+  const minutes = Math.round(seconds / 60);
+  return minutes === 1 ? 'every minute' : `every ${minutes} minutes`;
+}
+
+/** "2 minutes ago", or a date once it stops being interesting. */
+function agoPhrase(iso: string): string {
+  const then = new Date(iso).getTime();
+  const seconds = Math.round((Date.now() - then) / 1000);
+  if (seconds < 60) return 'just now';
+  const minutes = Math.round(seconds / 60);
+  if (minutes < 60) return `${minutes} minute${minutes === 1 ? '' : 's'} ago`;
+  const hours = Math.round(minutes / 60);
+  if (hours < 24) return `${hours} hour${hours === 1 ? '' : 's'} ago`;
+  return new Date(iso).toLocaleDateString();
+}
+
+function JobsTab() {
+  const { data: jobs, isLoading, isError } = useJobs(true);
+  const run = useRunJob();
+  const { toast } = useToast();
+  const [busyId, setBusyId] = useState<string | null>(null);
+
+  async function trigger(job: Job) {
+    setBusyId(job.id);
+    try {
+      const result = await run.mutateAsync(job.id);
+      toast(result.ok
+        ? `${job.name}: ${result.summary ?? 'nothing needed doing'}`
+        : `${job.name} failed — ${result.error}`);
+    } catch (err) {
+      toast(err instanceof Error ? err.message : 'Couldn’t run that job.');
+    } finally {
+      setBusyId(null);
+    }
+  }
+
+  if (isLoading) return <div className="settings__panel"><p className="settings__hint">Loading…</p></div>;
+  if (isError) return <div className="settings__panel"><p className="settings__error">Couldn’t load the list of jobs.</p></div>;
+
+  const scheduled = (jobs ?? []).filter(j => j.kind === 'periodic');
+  const alwaysOn = (jobs ?? []).filter(j => j.kind === 'continuous');
+
+  return (
+    <div className="settings__panel">
+      <h2 id="scheduled-jobs" className="settings__subhead">Housekeeping</h2>
+      <p className="settings__hint">
+        Tidying Papyra does on its own. You never have to touch these — the button
+        is here for when you would rather not wait for the next time.
+      </p>
+
+      <ul className="jobs">
+        {scheduled.map(job => (
+          <li key={job.id} className="jobs__item">
+            <div className="jobs__text">
+              <p className="jobs__name">{job.name}</p>
+              <p className="jobs__desc">{job.description}</p>
+              <p className="jobs__meta">
+                <span>Runs {job.intervalSeconds ? everyPhrase(job.intervalSeconds) : 'on its own schedule'}</span>
+                {job.lastRun && (
+                  <>
+                    <span aria-hidden="true">·</span>
+                    <span className={job.lastRun.ok ? undefined : 'jobs__failed'}>
+                      {job.lastRun.ok
+                        ? `Last run ${agoPhrase(job.lastRun.finishedUtc)}${job.lastRun.summary ? `: ${job.lastRun.summary}` : ' — nothing needed doing'}`
+                        : `Failed ${agoPhrase(job.lastRun.finishedUtc)}: ${job.lastRun.error}`}
+                    </span>
+                  </>
+                )}
+                {!job.lastRun && !job.running && (
+                  <>
+                    <span aria-hidden="true">·</span>
+                    <span>Hasn’t run since the server started</span>
+                  </>
+                )}
+              </p>
+            </div>
+            <button
+              type="button"
+              className="settings__btn"
+              disabled={busyId === job.id || job.running}
+              onClick={() => void trigger(job)}
+            >
+              <Play size={15} /> {busyId === job.id || job.running ? 'Running…' : 'Run now'}
+            </button>
+          </li>
+        ))}
+      </ul>
+
+      <h2 id="always-on-jobs" className="settings__subhead">Always running</h2>
+      <p className="settings__hint">
+        These react to things as they happen rather than waiting for a schedule,
+        so there is nothing to start.
+      </p>
+      <ul className="jobs">
+        {alwaysOn.map(job => (
+          <li key={job.id} className="jobs__item">
+            <div className="jobs__text">
+              <p className="jobs__name">{job.name}</p>
+              <p className="jobs__desc">{job.description}</p>
+            </div>
+            <span className="jobs__on">On</span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
 function AboutTab() {
   return (
     <div className="settings__panel settings__about">
