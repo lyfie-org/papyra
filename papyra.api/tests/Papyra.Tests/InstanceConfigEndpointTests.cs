@@ -147,6 +147,7 @@ public sealed class InstanceConfigEndpointTests
 
             var bea = factory.CreateClient();
             await bea.PostAsJsonAsync("/api/auth/login", new LoginRequest("bea", Pw));
+            await TestAuth.CompleteForcedPasswordChangeAsync(bea, Pw);
 
             Assert.Equal(HttpStatusCode.Forbidden, (await bea.GetAsync("/api/auth/oidc")).StatusCode);
             Assert.Equal(HttpStatusCode.Forbidden, (await bea.GetAsync("/api/auth/smtp")).StatusCode);

@@ -3,7 +3,14 @@ import { useNavigate } from 'react-router-dom';
 import { Search, X } from 'lucide-react';
 import { useNotes } from '../hooks/useNotes';
 import { useSyncState } from '../hooks/useSync';
+import { useAuth } from '../hooks/useAuth';
+import { useCategories } from '../hooks/useCategories';
+import { useCollections } from '../hooks/useCollections';
 import { flattenMarkdown, normaliseLines } from '../lib/plainText';
+import {
+  GROUP_LABEL, categoryResults, collectionResults, noteResult, orderResults, settingsResults,
+  type SearchResult,
+} from '../lib/searchRegistry';
 import type { Note } from '../types/note';
 import './SearchBar.css';
 
@@ -20,7 +27,7 @@ const OFFLINE_SNIPPET = 120;
 // Local fallback used when the Lucene endpoint can't be reached (offline, or the
 // index is rebuilding). Substring matching over the cached vault — cruder than
 // Lucene, but it means search never simply stops working.
-function searchLocally(notes: Note[], query: string): Hit[] {
+function searchLocally(notes: Note[], query: string): Array<Hit & { rank: number }> {
   const q = query.toLowerCase();
   const ranked: Array<Hit & { rank: number }> = [];
   for (const n of notes) {
@@ -44,16 +51,25 @@ function searchLocally(notes: Note[], query: string): Hit[] {
 }
 
 /**
- * Full-text search over the vault. The Lucene endpoint has existed since the
- * search phase but nothing in the UI ever called it — this is that surface.
+ * Search over everything the app holds, not only notes.
+ *
+ * Notes and to-dos come from the Lucene endpoint (with a local substring
+ * fallback); settings pages, categories and collections are matched client-side
+ * against data already in the cache — see `lib/searchRegistry.ts`. Results are
+ * grouped by what they are and labelled with a breadcrumb, so "Model" reads as
+ * `Settings › AI` rather than as a mysterious bare word.
+ *
  * Cmd/Ctrl+K focuses it from anywhere; ↑/↓ walk the results; Enter opens one.
  */
 export default function SearchBar() {
   const navigate = useNavigate();
   const { data: notes } = useNotes();
+  const { data: categories } = useCategories();
+  const { data: collections } = useCollections();
+  const { user } = useAuth();
   const { online } = useSyncState();
   const [query, setQuery] = useState('');
-  const [hits, setHits] = useState<Hit[]>([]);
+  const [noteHits, setNoteHits] = useState<Array<Hit & { rank: number }>>([]);
   const [open, setOpen] = useState(false);
   const [active, setActive] = useState(0);
   const [offlineResults, setOfflineResults] = useState(false);
@@ -63,6 +79,7 @@ export default function SearchBar() {
   const wrapRef = useRef<HTMLDivElement>(null);
 
   const cached = useMemo(() => notes ?? [], [notes]);
+  const isAdmin = user?.role === 'Admin';
 
   const close = useCallback(() => { setOpen(false); setActive(0); }, []);
 
@@ -70,10 +87,10 @@ export default function SearchBar() {
   // disappear while the network attempt is in flight.
   useEffect(() => {
     const q = query.trim();
-    if (!q) { setHits([]); setOfflineResults(false); return; }
+    if (!q) { setNoteHits([]); setOfflineResults(false); return; }
 
     const local = searchLocally(cached, q);
-    setHits(local);
+    setNoteHits(local);
     setOfflineResults(true);
     setPartial(false);
     if (!online) return;
@@ -94,7 +111,8 @@ export default function SearchBar() {
             setPartial(true);
             return;
           }
-          setHits(remote.slice(0, 12));
+          // The endpoint ranks by relevance, so position IS the rank.
+          setNoteHits(remote.slice(0, 12).map((hit, i) => ({ ...hit, rank: i })));
           setOfflineResults(false);
           setPartial(false);
         })
@@ -102,6 +120,25 @@ export default function SearchBar() {
     }, DEBOUNCE_MS);
     return () => { cancelled = true; clearTimeout(timer); };
   }, [query, cached, online]);
+
+  // Everything the client can answer for itself is matched here — no debounce,
+  // no network, so settings and categories appear the instant a key lands.
+  const results: SearchResult[] = useMemo(() => {
+    const q = query.trim();
+    if (!q) return [];
+    const kinds = new Map(cached.map(n => [n.id, n.kind]));
+    return orderResults([
+      ...noteHits.map(hit => noteResult(hit, kinds.get(hit.id) ?? 'note', hit.rank)),
+      ...settingsResults(q, isAdmin),
+      ...categoryResults(categories ?? [], q),
+      ...collectionResults(collections ?? [], q),
+    ]);
+  }, [query, noteHits, cached, isAdmin, categories, collections]);
+
+  // The keyboard walks a flat list; the headings are drawn from it, not around
+  // it. Clamp on read rather than in an effect — the list shrinks on every
+  // keystroke, and a stale index for one paint would highlight the wrong row.
+  const activeIndex = results.length === 0 ? 0 : Math.min(active, results.length - 1);
 
   // Cmd/Ctrl+K from anywhere. Deliberately not a bare "/" — that would hijack
   // the key while the user is typing a path or a fraction into a note.
@@ -127,21 +164,24 @@ export default function SearchBar() {
     return () => window.removeEventListener('mousedown', onDown);
   }, [open, close]);
 
-  function openHit(hit: Hit) {
+  function openHit(hit: SearchResult) {
     close();
     setQuery('');
-    navigate(`/note/${encodeURIComponent(hit.id)}`);
+    navigate(hit.to);
   }
 
   function onKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
     if (e.key === 'Escape') { close(); inputRef.current?.blur(); return; }
-    if (!hits.length) return;
-    if (e.key === 'ArrowDown') { e.preventDefault(); setActive((a) => (a + 1) % hits.length); }
-    else if (e.key === 'ArrowUp') { e.preventDefault(); setActive((a) => (a - 1 + hits.length) % hits.length); }
-    else if (e.key === 'Enter') { e.preventDefault(); openHit(hits[active]); }
+    if (!results.length) return;
+    if (e.key === 'ArrowDown') { e.preventDefault(); setActive((activeIndex + 1) % results.length); }
+    else if (e.key === 'ArrowUp') { e.preventDefault(); setActive((activeIndex - 1 + results.length) % results.length); }
+    else if (e.key === 'Enter') { e.preventDefault(); openHit(results[activeIndex]); }
   }
 
   const showPanel = open && query.trim().length > 0;
+  // Only note results come from the index, so the offline and partial notices
+  // would be lying if a settings match were the only thing on screen.
+  const hasNoteResults = results.some(r => r.source === 'note' || r.source === 'todo' || r.source === 'inbox');
 
   return (
     <div className={`search${showPanel ? ' search--open' : ''}`} ref={wrapRef}>
@@ -152,8 +192,8 @@ export default function SearchBar() {
           className="search__input"
           type="search"
           value={query}
-          placeholder="Search notes"
-          aria-label="Search notes"
+          placeholder="Search"
+          aria-label="Search notes, to-dos and settings"
           role="combobox"
           aria-expanded={showPanel}
           aria-controls="search-results"
@@ -190,28 +230,35 @@ export default function SearchBar() {
 
       {showPanel && (
         <ul className="search__results" id="search-results" role="listbox">
-          {hits.length === 0 && <li className="search__empty">No matches.</li>}
-          {hits.map((hit, i) => (
-            <li key={hit.id}>
+          {results.length === 0 && <li className="search__empty">No matches.</li>}
+          {results.map((hit, i) => (
+            <li key={hit.key}>
+              {/* A heading whenever the group changes. `aria-hidden` because the
+                  breadcrumb inside each option already names its source — a
+                  screen reader would otherwise hear the group twice. */}
+              {(i === 0 || results[i - 1].source !== hit.source) && (
+                <p className="search__group" aria-hidden="true">{GROUP_LABEL[hit.source]}</p>
+              )}
               <button
                 type="button"
                 role="option"
-                aria-selected={i === active}
-                className={`search__hit${i === active ? ' search__hit--active' : ''}`}
+                aria-selected={i === activeIndex}
+                className={`search__hit${i === activeIndex ? ' search__hit--active' : ''}`}
                 onMouseEnter={() => setActive(i)}
                 onClick={() => openHit(hit)}
               >
-                <span className="search__hit-title">{hit.title || 'Untitled'}</span>
+                <span className="search__hit-crumb">{hit.breadcrumb.join(' › ')}</span>
+                <span className="search__hit-title">{hit.title}</span>
                 {hit.secure
                   ? <span className="search__hit-snippet search__hit-snippet--locked">Locked note</span>
                   : hit.snippet && <span className="search__hit-snippet">{hit.snippet.replace(/<\/?[^>]+>/g, '')}</span>}
               </button>
             </li>
           ))}
-          {offlineResults && hits.length > 0 && (
+          {offlineResults && hasNoteResults && (
             <li className="search__note">Searching this device — full-text search resumes when the server is back.</li>
           )}
-          {!offlineResults && partial && hits.length > 0 && (
+          {!offlineResults && partial && hasNoteResults && (
             <li className="search__note">Close matches — nothing contains that word exactly.</li>
           )}
         </ul>

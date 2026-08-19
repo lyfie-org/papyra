@@ -6,6 +6,13 @@ export interface AuthUser {
   name: string;
   email: string;
   role: string;
+  /**
+   * An admin created or reset this account, so its password is one somebody else
+   * chose. The API refuses everything but signing out and setting a new password
+   * until it clears, and the workspace guard routes here on it rather than
+   * letting every request on the page fail.
+   */
+  mustChangePassword?: boolean;
 }
 
 // 'setup' = no admin yet (428 → /setup); 'login' = unauthenticated (401 → /login);

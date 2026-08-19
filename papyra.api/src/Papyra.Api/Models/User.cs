@@ -9,6 +9,15 @@ public class User
     public string Email { get; set; } = string.Empty;
     public string PasswordHash { get; set; } = string.Empty;
     public string Role { get; set; } = "User";
+    /// <summary>
+    /// Set when an admin created or reset this account with a password they
+    /// chose, so the owner has never picked their own. While it is true the API
+    /// refuses everything except signing out and setting a new password, which
+    /// is the only way to clear it — an admin who knows a password must not be
+    /// able to keep reading that account's notes with it.
+    /// </summary>
+    public bool MustChangePassword { get; set; }
+
     // The external IdP subject for SSO-provisioned users (OIDC `sub`). Null for
     // local password accounts; unique when set so one IdP identity maps to one user.
     public string? ExternalId { get; set; }

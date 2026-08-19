@@ -126,6 +126,7 @@ public sealed class OverwriteSafetyTests
             var guest = factory.CreateClient();
             var login = await guest.PostAsJsonAsync("/api/auth/login", new LoginRequest("guest", "hunter2!"));
             Assert.Equal(HttpStatusCode.OK, login.StatusCode);
+            await TestAuth.CompleteForcedPasswordChangeAsync(guest, "hunter2!");
 
             var edit = await guest.PutAsJsonAsync(
                 $"/api/shares/incoming/{share!.Id}", new SharedBodyWrite("the sharee's replacement"));

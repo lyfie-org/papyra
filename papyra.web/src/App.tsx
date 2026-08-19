@@ -12,6 +12,8 @@ import VaultPage from './pages/VaultPage';
 import TokenPage from './pages/TokenPage';
 import TrashPage from './pages/TrashPage';
 import SettingsPage from './pages/SettingsPage';
+import ManageUsersPage from './pages/ManageUsersPage';
+import ChoosePasswordPage from './pages/ChoosePasswordPage';
 import SharedWithMePage from './pages/SharedWithMePage';
 import SharedNotePage from './pages/SharedNotePage';
 import LoginPage from './pages/LoginPage';
@@ -25,7 +27,7 @@ import InboxPage from './pages/InboxPage';
 // Gate the workspace behind a live session. The /me probe decides where an
 // unauthenticated visitor lands: /setup before any admin exists, else /login.
 function RequireAuth() {
-  const { state } = useAuth();
+  const { state, user } = useAuth();
   const queryClient = useQueryClient();
   const wasAuthed = useRef(false);
 
@@ -45,11 +47,24 @@ function RequireAuth() {
   if (state === 'setup') return <Navigate to="/setup" replace />;
   if (state === 'login') return <Navigate to="/login" replace />;
   if (state === 'error') return <div className="app-bootstrap">Couldn’t reach the server.</div>;
+  // A password somebody else chose is a password somebody else knows. The server
+  // refuses the rest of the API until this is done, so the workspace would only
+  // render a wall of failed requests.
+  if (user?.mustChangePassword) return <ChoosePasswordPage username={user.username} />;
   return (
     <FocusProvider>
       <WorkspaceLayout />
     </FocusProvider>
   );
+}
+
+// Admin-only route wrapper. `loading` matters: the roster would flash "not for
+// you" for a beat while /me is still in flight.
+function RequireAdmin() {
+  const { state, user } = useAuth();
+  if (state === 'loading') return <div className="app-bootstrap">Loading…</div>;
+  if (user?.role !== 'Admin') return <Navigate to="/settings" replace />;
+  return <ManageUsersPage />;
 }
 
 export default function App() {
@@ -78,6 +93,10 @@ export default function App() {
         <Route path="archive" element={<ArchivePage />} />
         <Route path="trash" element={<TrashPage />} />
         <Route path="settings" element={<SettingsPage />} />
+        {/* Managing other people is not a preference, so it is its own place
+            rather than a tab inside Settings. Non-admins are bounced: the API
+            refuses them anyway, and a dead page is worse than no page. */}
+        <Route path="admin" element={<RequireAdmin />} />
       </Route>
     </Routes>
   );

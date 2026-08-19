@@ -234,6 +234,7 @@ public sealed class AiProviderTests
 
             var bea = factory.CreateClient();
             await bea.PostAsJsonAsync("/api/auth/login", new LoginRequest("bea", Pw));
+            await TestAuth.CompleteForcedPasswordChangeAsync(bea, Pw);
 
             Assert.Equal(HttpStatusCode.Forbidden, (await bea.GetAsync("/api/ai/config")).StatusCode);
             Assert.Equal(HttpStatusCode.Forbidden,

@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  User as UserIcon, Palette, Database, Shield, Info, Camera,
+  User as UserIcon, Palette, Database, Info, Camera,
   Sun, Moon, Monitor, Upload, Download, RefreshCw, KeyRound, Copy, Trash2, Lock, ShieldAlert,
   Fingerprint, CheckCircle2, GitBranch, AlertTriangle, Bell, Mail, KeySquare, Send, UserPlus,
   Sparkles,
@@ -24,13 +24,12 @@ import { useCategories } from '../hooks/useCategories';
 import { useTheme, type ThemePreference } from '../hooks/useTheme';
 import { clearSessionData } from '../lib/session';
 import { useConfirm } from '../lib/confirmContext';
-import { useToast } from '../lib/toastContext';
 import { useSettings, useUpdateSettings, RETENTION_OPTIONS } from '../hooks/useSettings';
 import './SettingsPage.css';
 
 const APP_VERSION = '0.0.1';
 
-type Tab = 'profile' | 'appearance' | 'notifications' | 'security' | 'data' | 'keys' | 'sync' | 'sso' | 'email' | 'ai' | 'admin' | 'about';
+type Tab = 'profile' | 'appearance' | 'notifications' | 'security' | 'data' | 'keys' | 'sync' | 'sso' | 'email' | 'ai' | 'about';
 
 const NAV: { id: Tab; label: string; icon: typeof UserIcon; adminOnly?: boolean }[] = [
   { id: 'profile', label: 'Profile', icon: UserIcon },
@@ -43,9 +42,44 @@ const NAV: { id: Tab; label: string; icon: typeof UserIcon; adminOnly?: boolean 
   { id: 'sso', label: 'SSO', icon: KeySquare, adminOnly: true },
   { id: 'email', label: 'Email', icon: Mail, adminOnly: true },
   { id: 'ai', label: 'AI', icon: Sparkles, adminOnly: true },
-  { id: 'admin', label: 'Administration', icon: Shield, adminOnly: true },
   { id: 'about', label: 'About', icon: Info },
 ];
+
+/**
+ * Scrolls to the heading named by `?s=`, so a search result can land on one
+ * section rather than the top of a long tab.
+ *
+ * Several tabs render a "Loading…" placeholder while their config arrives, so
+ * the heading often does not exist on the first paint. Retry across a few frames
+ * instead of giving up, and stop once found or once the budget runs out.
+ */
+function useScrollToSection(section: string | null, tab: Tab) {
+  useEffect(() => {
+    if (!section) return;
+    const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches ?? false;
+
+    const settle = () => {
+      const el = document.getElementById(section);
+      if (!el) return;
+      el.scrollIntoView({ behavior: reduced ? 'auto' : 'smooth', block: 'start' });
+      // Move focus too, so a keyboard or screen-reader user arrives where the
+      // sighted user is looking. Headings aren't focusable by default.
+      el.setAttribute('tabindex', '-1');
+      el.focus({ preventScroll: true });
+    };
+
+    settle();
+    // A tab that is still fetching renders a placeholder, so the heading often
+    // does not exist yet — and when its real content lands, the panel grows and
+    // throws away whatever scroll position we had. Re-aim on every DOM change
+    // for a few seconds rather than scrolling once and hoping.
+    const observer = new MutationObserver(settle);
+    observer.observe(document.body, { childList: true, subtree: true });
+    const stop = setTimeout(() => observer.disconnect(), 5000);
+
+    return () => { observer.disconnect(); clearTimeout(stop); };
+  }, [section, tab]);
+}
 
 export default function SettingsPage() {
   const { user } = useAuth();
@@ -54,7 +88,10 @@ export default function SettingsPage() {
   const requested = params.get('tab') as Tab | null;
   const valid = NAV.find(n => n.id === requested && (!n.adminOnly || isAdmin));
   const tab: Tab = valid?.id ?? 'profile';
+  // Clearing `s` on a manual tab click stops a stale section from being chased
+  // after the user has navigated somewhere else themselves.
   const setTab = (t: Tab) => setParams(t === 'profile' ? {} : { tab: t }, { replace: true });
+  useScrollToSection(params.get('s'), tab);
 
   return (
     <section className="settings">
@@ -85,7 +122,6 @@ export default function SettingsPage() {
           {tab === 'sso' && isAdmin && <SsoTab />}
           {tab === 'email' && isAdmin && <EmailTab />}
           {tab === 'ai' && isAdmin && <AiTab />}
-          {tab === 'admin' && isAdmin && <AdminTab />}
           {tab === 'about' && <AboutTab />}
         </div>
       </div>
@@ -190,7 +226,7 @@ function ProfileTab({ user }: { user: AuthUser | null }) {
       </div>
 
       <form className="settings__form" onSubmit={saveProfile}>
-        <h2 className="settings__subhead">Account</h2>
+        <h2 id="account" className="settings__subhead">Account</h2>
         <label className="settings__field">Display name
           <input value={name} onChange={e => setName(e.target.value)} />
         </label>
@@ -204,7 +240,7 @@ function ProfileTab({ user }: { user: AuthUser | null }) {
       </form>
 
       <form className="settings__form" onSubmit={changePassword}>
-        <h2 className="settings__subhead">Change password</h2>
+        <h2 id="change-password" className="settings__subhead">Change password</h2>
         <label className="settings__field">Current password
           <input type="password" value={cur} onChange={e => setCur(e.target.value)} required />
         </label>
@@ -232,7 +268,7 @@ function AppearanceTab() {
   ];
   return (
     <div className="settings__panel">
-      <h2 className="settings__subhead">Theme</h2>
+      <h2 id="theme" className="settings__subhead">Theme</h2>
       <p className="settings__hint">Choose how Papyra looks. “System” follows your OS setting.</p>
       <div className="settings__segment" role="radiogroup" aria-label="Theme">
         {options.map(({ id, label, icon: Icon }) => (
@@ -291,7 +327,7 @@ function SecurityTab() {
 
   return (
     <div className="settings__panel">
-      <h2 className="settings__subhead">Biometric unlock</h2>
+      <h2 id="biometric-unlock" className="settings__subhead">Biometric unlock</h2>
       <p className="settings__hint">
         Register this device’s built-in authenticator (Touch ID, Face ID, or Windows Hello) to unlock notes
         marked <code>secure: true</code>. The private key never leaves your device — Papyra only stores the
@@ -386,7 +422,7 @@ function DataTab() {
 
   return (
     <div className="settings__panel">
-      <h2 className="settings__subhead">Import</h2>
+      <h2 id="import" className="settings__subhead">Import</h2>
       <p className="settings__hint">Bring notes in from another app. Existing notes are never overwritten.</p>
       <div className="settings__row">
         <select className="settings__select" value={provider} onChange={e => setProvider(e.target.value as 'obsidian' | 'keep')}>
@@ -401,7 +437,7 @@ function DataTab() {
       </div>
       {importMsg && <p className="settings__msg">{importMsg}</p>}
 
-      <h2 className="settings__subhead">Export</h2>
+      <h2 id="export" className="settings__subhead">Export</h2>
       <p className="settings__hint">Download every note as a zip of plain text files you can open anywhere.</p>
       <a className="settings__btn" href="/api/export">
         <Download size={16} /> Export all notes
@@ -409,14 +445,14 @@ function DataTab() {
 
       <EncryptedBackupSection />
 
-      <h2 className="settings__subhead">Maintenance</h2>
+      <h2 id="maintenance" className="settings__subhead">Maintenance</h2>
       <p className="settings__hint">If search is missing notes it should be finding, rebuild it from your files. Safe to run any time — it only rewrites what search uses, never your notes.</p>
       <button type="button" className="settings__btn" onClick={() => void rebuild()}>
         <RefreshCw size={16} /> Rebuild search
       </button>
       {rebuildMsg && <p className="settings__msg">{rebuildMsg}</p>}
 
-      <h2 className="settings__subhead">Trash auto-delete</h2>
+      <h2 id="trash-retention" className="settings__subhead">Trash auto-delete</h2>
       <p className="settings__hint">
         How long deleted notes stay in Trash. “Delete immediately” skips Trash — those deletes can’t be recovered.
       </p>
@@ -508,7 +544,7 @@ function EncryptedBackupSection() {
 
   return (
     <>
-      <h2 className="settings__subhead">Encrypted backup</h2>
+      <h2 id="encrypted-backup" className="settings__subhead">Encrypted backup</h2>
       <p className="settings__hint">
         Download an encrypted <code>.papyra-vault</code> of every note and attachment, sealed with your account
         password (AES-GCM). Keep the password — without it the backup can’t be opened.
@@ -524,7 +560,7 @@ function EncryptedBackupSection() {
       </form>
       {exportMsg && <p className="settings__msg">{exportMsg}</p>}
 
-      <h2 className="settings__subhead">Restore from encrypted backup</h2>
+      <h2 id="restore-backup" className="settings__subhead">Restore from encrypted backup</h2>
       <p className="settings__hint settings__hint--warn">
         <ShieldAlert size={15} /> Restoring <strong>replaces</strong> all your current notes and attachments with the
         backup’s contents. Enter the password the backup was sealed with.
@@ -602,7 +638,7 @@ function KeysTab() {
 
   return (
     <div className="settings__panel">
-      <h2 className="settings__subhead">Personal access tokens</h2>
+      <h2 id="access-tokens" className="settings__subhead">Personal access tokens</h2>
       <p className="settings__hint">
         Send a token as <code>X-API-Key: &lt;token&gt;</code> (or <code>Authorization: Bearer &lt;token&gt;</code>)
         to reach the API from scripts and integrations. A token carries your own access only. It’s shown
@@ -660,7 +696,7 @@ function KeysTab() {
 function AboutTab() {
   return (
     <div className="settings__panel settings__about">
-      <h2 className="settings__subhead">Papyra</h2>
+      <h2 id="about-papyra" className="settings__subhead">Papyra</h2>
       <p className="settings__hint">A note-taking app you run yourself. Your notes stay as plain text files on your own server.</p>
       <dl className="settings__details">
         <div><dt>Version</dt><dd>{APP_VERSION}</dd></div>
@@ -707,7 +743,7 @@ function SyncTab() {
 
   return (
     <div className="settings__panel">
-      <h2 className="settings__subhead">Back up to a git repository</h2>
+      <h2 id="git-backup" className="settings__subhead">Back up to a git repository</h2>
 
       <p className="settings__hint">
         Keeps a copy of your notes in a git repository you control, so you have a
@@ -764,7 +800,7 @@ function SyncTab() {
         </div>
       </form>
 
-      <h2 className="settings__subhead">Run a sync</h2>
+      <h2 id="run-a-sync" className="settings__subhead">Run a sync</h2>
       <p className="settings__hint">
         Stages, commits and pushes every tenant’s vault. A diverged remote is never
         force-pushed — the sync stops and flags a conflict instead.
@@ -810,7 +846,7 @@ function NotificationsTab() {
 
   return (
     <div className="settings__panel">
-      <h2 className="settings__subhead">Email notifications</h2>
+      <h2 id="email-notifications" className="settings__subhead">Email notifications</h2>
       <p className="settings__hint">
         Papyra emails you when something needs your attention. These are courtesy copies —
         your in-app Inbox always receives everything regardless of what you choose here.
@@ -902,7 +938,7 @@ function SsoTab() {
 
   return (
     <div className="settings__panel">
-      <h2 className="settings__subhead">Single sign-on (OIDC)</h2>
+      <h2 id="oidc" className="settings__subhead">Single sign-on (OIDC)</h2>
       <p className="settings__hint">
         Let people sign in with an existing identity provider. Papyra exchanges the provider’s
         identity for its own session, creating the account and its vault on first sign-in.
@@ -1017,7 +1053,7 @@ function EmailTab() {
 
   return (
     <div className="settings__panel">
-      <h2 className="settings__subhead">Outbound email (SMTP)</h2>
+      <h2 id="smtp" className="settings__subhead">Outbound email (SMTP)</h2>
       <p className="settings__hint">
         Used for password resets, invitations, and the notifications each person chooses on
         their own Notifications tab. Papyra sends plain-text messages only.
@@ -1072,7 +1108,7 @@ function EmailTab() {
         </div>
       </form>
 
-      <h2 className="settings__subhead">Send a test</h2>
+      <h2 id="send-a-test" className="settings__subhead">Send a test</h2>
       <p className="settings__hint">
         Prove the settings work before anyone’s password reset depends on them. Save first —
         the test uses the stored configuration.
@@ -1094,7 +1130,7 @@ function EmailTab() {
         {test.isError && <span className="settings__error">{(test.error as Error).message}</span>}
       </div>
 
-      <h2 className="settings__subhead">Invite someone</h2>
+      <h2 id="invite" className="settings__subhead">Invite someone</h2>
       <p className="settings__hint">
         Sends a one-time link instead of you choosing a password for them. The account is
         created only when they set their own; the link expires in 7 days.
@@ -1206,7 +1242,7 @@ function AiTab() {
 
   return (
     <div className="settings__panel">
-      <h2 className="settings__subhead">Assistant</h2>
+      <h2 id="assistant" className="settings__subhead">Assistant</h2>
       <p className="settings__hint">
         Ask questions about your own notes and get an answer that cites them. Notes you’ve
         locked are never included.
@@ -1220,7 +1256,7 @@ function AiTab() {
       </dl>
 
       {/* ── On this machine ──────────────────────────────────────────────── */}
-      <h3 className="settings__subhead">On this machine</h3>
+      <h3 id="local-models" className="settings__subhead">On this machine</h3>
       <p className="settings__hint">
         Download one of these and the assistant runs entirely on your own server — your
         notes never leave it, and there’s nothing to pay for. Pick the largest one your
@@ -1301,7 +1337,7 @@ function AiTab() {
       )}
 
       {/* ── Or use a paid service ────────────────────────────────────────── */}
-      <h3 className="settings__subhead">Or use a paid service</h3>
+      <h3 id="hosted-models" className="settings__subhead">Or use a paid service</h3>
       <p className="settings__hint">
         Faster and more accurate, but the parts of your notes needed to answer each
         question are sent to that company, and they charge you for it.
@@ -1401,127 +1437,3 @@ const AI_DEFAULTS: AiConfig = {
   anthropicChatModel: 'claude-opus-5',
   hasOpenAiKey: false, hasAnthropicKey: false,
 };
-
-// ── Admin ────────────────────────────────────────────────────────────────────────
-interface ManagedUser { id: number; username: string; name: string; email: string; role: string }
-
-function AdminTab() {
-  const confirm = useConfirm();
-  const { toast } = useToast();
-  const queryClient = useQueryClient();
-  const { data: users, isLoading, isError } = useQuery<ManagedUser[]>({
-    queryKey: ['users'],
-    queryFn: async () => {
-      const res = await fetch('/api/auth/users');
-      if (!res.ok) throw new Error(`GET /api/auth/users failed: ${res.status}`);
-      return res.json();
-    },
-  });
-
-  const [username, setUsername] = useState('');
-  const [name, setName] = useState('');
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [role, setRole] = useState('User');
-  const [error, setError] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
-
-  async function provision(e: React.FormEvent) {
-    e.preventDefault();
-    setError(null);
-    setBusy(true);
-    try {
-      const res = await fetch('/api/auth/users', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, name, email, password, role }),
-      });
-      if (!res.ok) {
-        const data = await res.json().catch(() => null);
-        setError(data?.error ?? 'Could not provision user.');
-        return;
-      }
-      setUsername(''); setName(''); setEmail(''); setPassword(''); setRole('User');
-      await queryClient.invalidateQueries({ queryKey: ['users'] });
-    } catch {
-      setError('Couldn’t reach the server.');
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function reset(id: number, label: string) {
-    const nextPw = window.prompt(`New password for ${label}:`);
-    if (!nextPw) return;
-    const res = await fetch(`/api/auth/users/${id}/reset`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ password: nextPw }),
-    });
-    if (!res.ok) toast('Couldn’t reset that password.');
-  }
-
-  async function remove(id: number, label: string) {
-    if (!(await confirm({
-      title: `Delete ${label}?`,
-      body: 'Their account, API keys and shares are removed and they can no longer sign in. Their note files stay on the server’s disk.',
-      confirmLabel: 'Delete user',
-      destructive: true,
-    }))) return;
-    const res = await fetch(`/api/auth/users/${id}`, { method: 'DELETE' });
-    if (res.ok) await queryClient.invalidateQueries({ queryKey: ['users'] });
-    else {
-      const data = await res.json().catch(() => null);
-      toast(data?.error ?? 'Couldn’t delete that user.');
-    }
-  }
-
-  return (
-    <div className="settings__panel">
-      <form className="settings__provision" onSubmit={provision}>
-        <h2 className="settings__subhead">Provision user</h2>
-        {error && <p className="settings__error" role="alert">{error}</p>}
-        <div className="settings__provision-row">
-          <input placeholder="Username" value={username} onChange={e => setUsername(e.target.value)} required />
-          <input placeholder="Display name" value={name} onChange={e => setName(e.target.value)} />
-          <input placeholder="Email" type="email" value={email} onChange={e => setEmail(e.target.value)} />
-          <input placeholder="Password" type="password" value={password} onChange={e => setPassword(e.target.value)} required />
-          <select value={role} onChange={e => setRole(e.target.value)} aria-label="Role">
-            <option value="User">User</option>
-            <option value="Admin">Admin</option>
-          </select>
-          <button type="submit" className="settings__btn" disabled={busy}>{busy ? 'Adding…' : 'Add'}</button>
-        </div>
-      </form>
-
-      <h2 className="settings__subhead">Users</h2>
-      {isLoading && <p>Loading users…</p>}
-      {isError && <p>Couldn’t load users.</p>}
-      {users && (
-        <table className="settings__users">
-          <thead>
-            <tr><th>Username</th><th>Name</th><th>Email</th><th>Role</th><th /></tr>
-          </thead>
-          <tbody>
-            {users.map(u => (
-              <tr key={u.id}>
-                <td>{u.username}</td>
-                <td>{u.name}</td>
-                <td>{u.email || '—'}</td>
-                <td>{u.role}</td>
-                <td>
-                  <button type="button" className="settings__link" onClick={() => void reset(u.id, u.username)}>
-                    Reset password
-                  </button>
-                  <button type="button" className="settings__link settings__link--danger" onClick={() => void remove(u.id, u.username)}>
-                    Delete
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-    </div>
-  );
-}

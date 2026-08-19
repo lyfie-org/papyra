@@ -56,6 +56,7 @@ public sealed class UserDirectoryEndpointTests
         var client = factory.CreateClient();     // fresh cookie jar
         var login = await client.PostAsJsonAsync("/api/auth/login", new LoginRequest(signInAs, Pw));
         Assert.Equal(HttpStatusCode.OK, login.StatusCode);
+        await TestAuth.CompleteForcedPasswordChangeAsync(client, Pw);
         return client;
     }
 

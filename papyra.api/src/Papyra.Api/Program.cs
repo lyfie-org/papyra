@@ -1,6 +1,7 @@
 using System.IO.Compression;
 using System.Security;
 using System.Security.Claims;
+using System.Net;
 using System.Net.Mail;
 using System.Text.Json;
 using System.Threading.RateLimiting;
@@ -571,6 +572,53 @@ app.UseStaticFiles(new StaticFileOptions
 
 app.UseAuthentication();
 
+// ── Development sign-in bypass ────────────────────────────────────────────────
+// Treats a loopback request as an already-signed-in user, so a local browser
+// session (or an automated UI run) reaches the app without going through the
+// login form. Development convenience only: it hands out a session with no
+// credential, which is exactly the thing the rest of this file exists to prevent.
+//
+// Three locks, all of which must be open:
+//   1. the environment is Development,
+//   2. `Papyra:DevSignInAs` names a user — absent, the middleware is never even
+//      added to the pipeline, so there is nothing to misfire in production,
+//   3. the request came from loopback, so a Development build accidentally
+//      exposed to a network still refuses remote callers.
+//
+// `DevSignInBypassTests` asserts locks 1 and 2 hold. A null RemoteIpAddress is
+// accepted because the in-process TestServer has no socket to report — a real
+// Kestrel connection always has an address.
+var devSignInAs = app.Configuration["Papyra:DevSignInAs"];
+if (app.Environment.IsDevelopment() && !string.IsNullOrWhiteSpace(devSignInAs))
+{
+    app.Logger.LogWarning(
+        "Development sign-in bypass ACTIVE: loopback requests are treated as '{User}' with no password. " +
+        "Papyra:DevSignInAs must never be set outside local development.", devSignInAs);
+
+    app.Use(async (context, next) =>
+    {
+        var remote = context.Connection.RemoteIpAddress;
+        if (context.User.Identity?.IsAuthenticated != true && (remote is null || IPAddress.IsLoopback(remote)))
+        {
+            var db = context.RequestServices.GetRequiredService<AppDbContext>();
+            var user = await db.Users.FirstOrDefaultAsync(
+                u => u.Username == devSignInAs, context.RequestAborted);
+            if (user is not null)
+            {
+                // Same claim shape as SignInAsync: UserId as NameIdentifier, so the
+                // per-tenant path jail scopes this session like any other.
+                context.User = new ClaimsPrincipal(new ClaimsIdentity(
+                [
+                    new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
+                    new Claim(ClaimTypes.Name, user.Username),
+                    new Claim(ClaimTypes.Role, user.Role),
+                ], "DevSignIn"));
+            }
+        }
+        await next();
+    });
+}
+
 // ── API-key auth ───────────────────────────────────────────────────────────────
 // When a request arrives without a cookie session, resolve a personal-access-token
 // from either the dedicated `X-API-Key: <token>` header or the standard
@@ -609,6 +657,45 @@ app.Use(async (context, next) =>
                         new Claim(ClaimTypes.Role, user.Role),
                     ], "ApiKey"));
                 }
+            }
+        }
+    }
+    await next();
+});
+
+// ── Forced password change ────────────────────────────────────────────────────
+// An account an admin provisioned (or reset) carries MustChangePassword until
+// its owner picks their own. A flag the client could ignore would be decoration,
+// so the refusal lives here: while it is set, every API call fails with
+// `password_change_required` except the handful needed to see who you are, set a
+// new password, and sign out.
+//
+// The flag is read from the database rather than carried in the cookie: an admin
+// resetting an account has to take effect on the session that account already
+// has open, not at its next sign-in.
+app.Use(async (context, next) =>
+{
+    var path = context.Request.Path;
+    if (context.User.Identity?.IsAuthenticated == true
+        && path.StartsWithSegments("/api")
+        && !path.StartsWithSegments("/api/auth/me")
+        && !path.StartsWithSegments("/api/auth/password")
+        && !path.StartsWithSegments("/api/auth/logout"))
+    {
+        var claim = context.User.FindFirstValue(ClaimTypes.NameIdentifier);
+        if (int.TryParse(claim, out var callerId))
+        {
+            var db = context.RequestServices.GetRequiredService<AppDbContext>();
+            var mustChange = await db.Users
+                .Where(u => u.Id == callerId)
+                .Select(u => u.MustChangePassword)
+                .FirstOrDefaultAsync(context.RequestAborted);
+            if (mustChange)
+            {
+                await Results.Json(
+                    new { error = "Choose your own password before you carry on.", code = "password_change_required" },
+                    statusCode: StatusCodes.Status403Forbidden).ExecuteAsync(context);
+                return;
             }
         }
     }
@@ -878,6 +965,7 @@ auth.MapPost("/reset-password", async (
     if (user is null) return Results.BadRequest(new { error = "This link is invalid or has expired." });
 
     user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(body.Password!);
+    user.MustChangePassword = false; // they chose this one themselves
     row.UsedUtc = DateTime.UtcNow;   // burn it in the same transaction as the change
     await db.SaveChangesAsync(ct);
 
@@ -946,7 +1034,14 @@ auth.MapGet("/me", async (HttpContext http, AppDbContext db, CancellationToken c
         return Results.Json(new { error = "Not authenticated." },
             statusCode: StatusCodes.Status401Unauthorized);
 
-    return Results.Ok(new { user.Id, user.Username, user.Name, user.Email, user.Role });
+    return Results.Ok(new
+    {
+        user.Id, user.Username, user.Name, user.Email, user.Role,
+        // The SPA routes to the change-password screen on this rather than on a
+        // 403, so a freshly provisioned user lands there instead of watching
+        // every request on the page fail.
+        user.MustChangePassword,
+    });
 });
 
 // ── WebAuthn (biometric gatekeeper) ───────────────────────────────────────────
@@ -1051,6 +1146,8 @@ auth.MapPost("/password", async (PasswordRequest body, ClaimsPrincipal principal
         return Results.Json(new { error = "Current password is incorrect." }, statusCode: StatusCodes.Status400BadRequest);
 
     user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(body.Next);
+    // Picking your own password is exactly what the flag was waiting for.
+    user.MustChangePassword = false;
     await db.SaveChangesAsync(ct);
     return Results.NoContent();
 }).RequireAuthorization();
@@ -1096,47 +1193,148 @@ var admin = auth.MapGroup("/users").RequireAuthorization(p => p.RequireRole("Adm
 admin.MapGet("/", async (AppDbContext db, CancellationToken ct) =>
     Results.Ok(await db.Users
         .OrderBy(u => u.Id)
-        .Select(u => new { u.Id, u.Username, u.Name, u.Email, u.Role })
+        .Select(u => new { u.Id, u.Username, u.Name, u.Email, u.Role, u.MustChangePassword })
         .ToListAsync(ct)));
 
-admin.MapPost("/", async (ProvisionRequest body, AppDbContext db, VaultObserver observer, CancellationToken ct) =>
+// Create an account on someone's behalf. The admin may type a first password or
+// leave it blank for a generated one; either way the account is flagged
+// MustChangePassword, because a password its owner did not choose is a password
+// somebody else knows. The password comes back in the response exactly once —
+// it is never stored in the clear and no later call can read it again.
+admin.MapPost("/", async (
+    ProvisionRequest body, AppDbContext db, VaultObserver observer,
+    EmailSender email, HttpContext http, CancellationToken ct) =>
 {
-    if (string.IsNullOrWhiteSpace(body.Username) || string.IsNullOrWhiteSpace(body.Password))
-        return Results.BadRequest(new { error = "Username and password are required." });
+    if (string.IsNullOrWhiteSpace(body.Username))
+        return Results.BadRequest(new { error = "Username is required." });
 
-    if (PasswordPolicy.Validate(body.Password) is { } weak)
+    var chosen = string.IsNullOrWhiteSpace(body.Password);
+    var password = chosen ? GeneratePassword() : body.Password!;
+    if (!chosen && PasswordPolicy.Validate(password) is { } weak)
         return Results.BadRequest(new { error = weak });
 
     var username = body.Username.Trim();
     if (await db.Users.AnyAsync(u => u.Username == username, ct))
         return Results.Conflict(new { error = "Username already taken." });
 
+    var address = body.Email?.Trim() ?? string.Empty;
+    if (body.SendEmail == true && address.Length == 0)
+        return Results.BadRequest(new { error = "Add an email address to send the sign-in details to." });
+
     var user = new User
     {
         Username = username,
         Name = string.IsNullOrWhiteSpace(body.Name) ? username : body.Name.Trim(),
-        Email = body.Email?.Trim() ?? string.Empty,
-        PasswordHash = BCrypt.Net.BCrypt.HashPassword(body.Password),
+        Email = address,
+        PasswordHash = BCrypt.Net.BCrypt.HashPassword(password),
         Role = body.Role == "Admin" ? "Admin" : "User",
+        MustChangePassword = true,
     };
     db.Users.Add(user);
     await db.SaveChangesAsync(ct);
 
     observer.WatchUser(user.Id.ToString()); // create + watch the new tenant's vault
-    return Results.Ok(new { user.Id, user.Username, user.Name, user.Email, user.Role });
+
+    var emailed = false;
+    if (body.SendEmail == true)
+    {
+        var url = email.PublicUrl($"{http.Request.Scheme}://{http.Request.Host}");
+        var sent = await email.SendAsync(
+            address,
+            "Your Papyra account is ready",
+            $"An account has been created for you on Papyra.\n\n"
+            + $"Address: {url}\nUsername: {username}\nFirst password: {password}\n\n"
+            + "You will be asked to choose your own password the first time you sign in. "
+            + "Until you do, this one is known to whoever set the account up.",
+            ct);
+        emailed = sent.Sent;
+    }
+
+    return Results.Ok(new
+    {
+        user.Id, user.Username, user.Name, user.Email, user.Role, user.MustChangePassword,
+        // Shown once, so the admin can pass it on by hand when no mail went out.
+        password,
+        emailed,
+    });
 });
 
-admin.MapPost("/{id:int}/reset", async (int id, ResetRequest body, AppDbContext db, CancellationToken ct) =>
+// Reset someone's password to one the admin can read out. Same bargain as
+// provisioning: typed or generated, returned once, and the account must change
+// it before it can be used for anything else.
+admin.MapPost("/{id:int}/reset", async (
+    int id, ResetRequest body, AppDbContext db, EmailSender email, CancellationToken ct) =>
 {
-    if (PasswordPolicy.Validate(body.Password) is { } weak)
+    var generated = string.IsNullOrWhiteSpace(body.Password);
+    var password = generated ? GeneratePassword() : body.Password!;
+    if (!generated && PasswordPolicy.Validate(password) is { } weak)
         return Results.BadRequest(new { error = weak });
 
     var user = await db.Users.FindAsync([id], ct);
     if (user is null) return Results.NotFound();
 
-    user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(body.Password);
+    user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(password);
+    user.MustChangePassword = true;
     await db.SaveChangesAsync(ct);
-    return Results.NoContent();
+
+    var emailed = false;
+    if (body.SendEmail == true && !string.IsNullOrWhiteSpace(user.Email))
+    {
+        var sent = await email.SendAsync(
+            user.Email,
+            "Your Papyra password was reset",
+            $"An administrator reset the password for \"{user.Username}\".\n\n"
+            + $"Temporary password: {password}\n\n"
+            + "You will be asked to choose your own the next time you sign in.",
+            ct);
+        emailed = sent.Sent;
+    }
+
+    return Results.Ok(new { password, emailed });
+});
+
+// A recovery link for an account whose owner can't sign in and shouldn't be read
+// a password down the phone. Same one-hour, single-use token as the self-service
+// "forgot password" flow — the difference is only who asked for it. Returned to
+// the admin so it can be handed over out of band when mail isn't configured.
+admin.MapPost("/{id:int}/recovery-link", async (
+    int id, RecoveryLinkRequest body, AppDbContext db, EmailSender email,
+    HttpContext http, CancellationToken ct) =>
+{
+    var user = await db.Users.FindAsync([id], ct);
+    if (user is null) return Results.NotFound();
+
+    if (body.SendEmail == true && string.IsNullOrWhiteSpace(user.Email))
+        return Results.BadRequest(new { error = "That account has no email address to send to." });
+
+    var (token, hash) = NewAuthToken();
+    db.AuthTokens.Add(new AuthToken
+    {
+        TokenHash = hash,
+        Kind = "reset",
+        UserId = user.Id,
+        Email = user.Email,
+        Username = user.Username,
+        ExpiresUtc = DateTime.UtcNow.AddHours(1),
+    });
+    await db.SaveChangesAsync(ct);
+
+    var link = $"{email.PublicUrl($"{http.Request.Scheme}://{http.Request.Host}")}/reset-password?token={token}";
+
+    var emailed = false;
+    if (body.SendEmail == true)
+    {
+        var sent = await email.SendAsync(
+            user.Email,
+            "Reset your Papyra password",
+            $"An administrator started a password reset for \"{user.Username}\".\n\n"
+            + $"Set a new one here:\n{link}\n\n"
+            + "This link expires in 1 hour and can be used once.",
+            ct);
+        emailed = sent.Sent;
+    }
+
+    return Results.Ok(new { link, expiresInMinutes = 60, emailed });
 });
 
 // Delete a user account. Refuses self-deletion (avoid locking yourself out) and
@@ -3229,6 +3427,19 @@ static bool IsUsernameChar(char c) =>
 // Mint a reset/invite token: a URL-safe random string for the email, and the
 // SHA-256 that is all the database ever holds. A stolen database backup
 // therefore yields no usable links.
+// A first password an admin can read out over the phone without spelling half of
+// it. Ambiguous characters (0/O, 1/l/I) are left out, and the alphabet is sampled
+// without modulo bias, so the entropy is the ~62 bits the length implies.
+static string GeneratePassword()
+{
+    const string alphabet = "abcdefghijkmnopqrstuvwxyzACDEFGHJKLMNPQRSTUVWXYZ23456789";
+    var chars = new char[16];
+    for (var i = 0; i < chars.Length; i++)
+        chars[i] = alphabet[System.Security.Cryptography.RandomNumberGenerator.GetInt32(alphabet.Length)];
+    // Grouped for reading aloud: xxxx-xxxx-xxxx-xxxx.
+    return string.Join('-', Enumerable.Range(0, 4).Select(g => new string(chars, g * 4, 4)));
+}
+
 static (string Token, string Hash) NewAuthToken()
 {
     var bytes = System.Security.Cryptography.RandomNumberGenerator.GetBytes(32);
@@ -3417,17 +3628,24 @@ public sealed record LoginRequest(
     string? Username,
     string? Password);
 
-// Admin-provisioned user. Username + password required; Role defaults to "User".
+// Admin-provisioned user. Username is required; a blank Password means "generate
+// one". Role defaults to "User". SendEmail mails the sign-in details, which needs
+// an address and configured SMTP.
 public sealed record ProvisionRequest(
     string? Username,
     string? Name,
     string? Email,
     string? Password,
-    string? Role);
+    string? Role,
+    bool? SendEmail = null);
 
-// Admin password reset payload for an existing user.
+// Admin password reset payload. A blank Password means "generate one".
 public sealed record ResetRequest(
-    string? Password);
+    string? Password,
+    bool? SendEmail = null);
+
+// Admin request for a one-time reset link on someone else's account.
+public sealed record RecoveryLinkRequest(bool? SendEmail = null);
 
 // Self-service profile update (display name + email).
 public sealed record ProfileRequest(string? Name, string? Email);

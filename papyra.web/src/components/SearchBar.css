@@ -162,6 +162,31 @@
 
 .search__hit--active { background: var(--accent-bg); }
 
+/* The accent tint lifts the row enough that muted text drops to 3.75:1 in dark
+   mode. Promote the secondary lines to the heading colour while a row is
+   active — they carry meaning (which page a hit lives on), so they need AA. */
+.search__hit--active .search__hit-crumb,
+.search__hit--active .search__hit-snippet { color: var(--text-h); }
+
+/* Group heading — "Notes", "Settings". Sits inside the list item that starts a
+   run of one source, so the flat keyboard order is untouched. */
+.search__group {
+  padding: var(--space-2) var(--space-3) var(--space-1);
+  font: 500 var(--fs-2xs) / 1.2 var(--sans);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text);
+}
+
+li:first-child .search__group { padding-top: var(--space-1); }
+
+/* Where the hit lives: "Settings › AI". Above the title, because the trail is
+   context for the name rather than part of it. */
+.search__hit-crumb {
+  font: 500 var(--fs-2xs) / 1.2 var(--sans);
+  color: var(--text);
+}
+
 .search__hit-title {
   font: 500 var(--fs-sm) / 1.35 var(--sans);
   color: var(--text-h);

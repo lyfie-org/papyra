@@ -158,8 +158,8 @@ export default function WorkspaceLayout() {
                   <Settings size={15} /> Settings
                 </button>
                 {isAdmin && (
-                  <button type="button" role="menuitem" onClick={() => go('/settings?tab=admin')}>
-                    <Shield size={15} /> Administration
+                  <button type="button" role="menuitem" onClick={() => go('/admin')}>
+                    <Shield size={15} /> Manage Users
                   </button>
                 )}
                 <div className="workspace__avatar-sep" />

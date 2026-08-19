@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Plus, Tag, Tags, X, Trash2 } from 'lucide-react';
 import { useNotes } from '../hooks/useNotes';
 import EmptyState from '../components/EmptyState';
@@ -15,17 +16,28 @@ export default function CategoriesPage() {
   const create = useCreateCategory();
   const del = useDeleteCategory();
 
-  const [selected, setSelected] = useState<Set<string>>(new Set());
+  // The picked categories live in `?name=`, not in component state: a search
+  // result opens this page with one already chosen, and a click here is the same
+  // thing said a different way. One source of truth, and the view is linkable.
+  const [params, setParams] = useSearchParams();
+  const selected = useMemo(() => new Set(params.getAll('name')), [params]);
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState('');
   const [color, setColor] = useState<string>(COLORS[0]);
 
+  function clearSelection() {
+    const next = new URLSearchParams(params);
+    next.delete('name');
+    setParams(next, { replace: true });
+  }
+
   function toggle(cat: string) {
-    setSelected(prev => {
-      const next = new Set(prev);
-      if (next.has(cat)) next.delete(cat); else next.add(cat);
-      return next;
-    });
+    const next = new Set(selected);
+    if (next.has(cat)) next.delete(cat); else next.add(cat);
+    const nextParams = new URLSearchParams(params);
+    nextParams.delete('name');
+    for (const c of next) nextParams.append('name', c);
+    setParams(nextParams, { replace: true });
   }
 
   async function submit(e: React.FormEvent) {
@@ -108,7 +120,7 @@ export default function CategoriesPage() {
               type="button"
               className="category-card__del"
               aria-label={`Remove category ${cat.name}`}
-              onClick={e => { e.stopPropagation(); void del.mutateAsync(cat.name); setSelected(s => { const n = new Set(s); n.delete(cat.name); return n; }); }}
+              onClick={e => { e.stopPropagation(); void del.mutateAsync(cat.name); if (selected.has(cat.name)) toggle(cat.name); }}
             >
               <Trash2 size={14} />
             </button>
@@ -122,7 +134,7 @@ export default function CategoriesPage() {
             <h2 className="categories__results-title">
               Notes in {[...selected].join(', ')}
             </h2>
-            <button type="button" className="categories__clear" onClick={() => setSelected(new Set())}>
+            <button type="button" className="categories__clear" onClick={() => clearSelection()}>
               <X size={15} /> Clear
             </button>
           </div>
