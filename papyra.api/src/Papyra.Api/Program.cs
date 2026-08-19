@@ -2568,12 +2568,22 @@ notes.MapGet("/{id}/shares", async (string id, ClaimsPrincipal user, AppDbContex
 });
 
 // Owner: create a share for a note.
-notes.MapPost("/{id}/shares", async (string id, ShareWrite body, ClaimsPrincipal user, AppDbContext db, CancellationToken ct) =>
+notes.MapPost("/{id}/shares", async (
+    string id, ShareWrite body, ClaimsPrincipal user, AppDbContext db,
+    VaultState state, MarkdownStorageService storage, VaultObserverOptions vault,
+    ILoggerFactory lf, CancellationToken ct) =>
 {
     var uid = int.Parse(Uid(user));
     var kind = body.Kind?.Trim().ToLowerInvariant();
     var access = body.Access?.Trim().ToLowerInvariant() == "edit" ? "edit" : "view";
     if (kind is not ("link" or "user")) return Results.BadRequest(new { error = "kind must be link or user." });
+
+    // A locked note's body is withheld from every other read path until a
+    // biometric unlock. A share is another read path, so this is where that
+    // promise would otherwise be worth nothing.
+    var subject = await storage.ReadAsync(OwnerNotePath(state, vault, lf, uid.ToString(), id), ct);
+    if (subject?.Secure == true)
+        return Results.BadRequest(new { error = "This note is locked. Unlock it before sharing it." });
 
     var share = new Share
     {
@@ -2591,6 +2601,24 @@ notes.MapPost("/{id}/shares", async (string id, ShareWrite body, ClaimsPrincipal
         if (grantee is null) return Results.NotFound(new { error = "No such user." });
         if (grantee.Id == uid) return Results.BadRequest(new { error = "You already own this note." });
         share.GranteeUserId = grantee.Id;
+
+        // Sharing with someone who already has this note is not an error, and it
+        // must not pile up rows — mentioning the same person twice would
+        // otherwise leave two grants for one piece of access, and revoking one
+        // would look like it did nothing.
+        var existing = await db.Shares.FirstOrDefaultAsync(
+            x => x.OwnerId == uid && x.NoteId == id && x.Kind == "user" && x.GranteeUserId == grantee.Id, ct);
+        if (existing is not null)
+        {
+            // Upgrade view to edit if that is what was asked for; never quietly
+            // downgrade, since that would silently take access away.
+            if (access == "edit" && existing.Access != "edit")
+            {
+                existing.Access = "edit";
+                await db.SaveChangesAsync(ct);
+            }
+            return Results.Ok(new { existing.Id, existing.Kind, existing.Access, existing.Token, existing.ExpiresUtc, existing.MaxViews });
+        }
     }
     else
     {
@@ -2616,6 +2644,43 @@ shares.MapDelete("/{shareId:int}", async (int shareId, ClaimsPrincipal user, App
     return Results.NoContent();
 });
 
+// Owner: who can see what, across every note at once.
+//
+// A card in the grid has to be able to say "shared with 2 people" without asking
+// per note — that is one request per card on a screen full of them. This is the
+// whole picture in a single query, keyed by note id, and it carries names rather
+// than only counts so the detail on hover needs no second trip.
+shares.MapGet("/summary", async (ClaimsPrincipal user, AppDbContext db, CancellationToken ct) =>
+{
+    var uid = int.Parse(Uid(user));
+    var rows = await db.Shares.Where(s => s.OwnerId == uid).ToListAsync(ct);
+    if (rows.Count == 0) return Results.Ok(Array.Empty<object>());
+
+    var granteeIds = rows.Where(s => s.GranteeUserId != null).Select(s => s.GranteeUserId!.Value).ToHashSet();
+    var names = await db.Users.Where(u => granteeIds.Contains(u.Id))
+        .ToDictionaryAsync(u => u.Id, u => u.Username, ct);
+
+    var summary = rows
+        .GroupBy(s => s.NoteId)
+        .Select(g => new
+        {
+            noteId = g.Key,
+            people = g.Where(s => s.Kind == "user" && s.GranteeUserId is not null)
+                .Select(s => names.GetValueOrDefault(s.GranteeUserId!.Value, "?"))
+                .OrderBy(n => n)
+                .ToArray(),
+            // Link shares have no name to show, so they are counted. A live one is
+            // a standing key to the note, which is worth saying out loud even
+            // when nobody has been named.
+            links = g.Count(s => s.Kind == "link"
+                && (s.ExpiresUtc is null || s.ExpiresUtc > DateTime.UtcNow)
+                && (s.MaxViews is null || s.ViewCount < s.MaxViews)),
+        })
+        .ToArray();
+
+    return Results.Ok(summary);
+});
+
 // Grantee: notes shared *with me* by other users.
 shares.MapGet("/incoming", async (
     ClaimsPrincipal user, AppDbContext db, VaultState state, MarkdownStorageService storage,
@@ -2630,6 +2695,9 @@ shares.MapGet("/incoming", async (
     foreach (var s in rows)
     {
         var note = await storage.ReadAsync(OwnerNotePath(state, vault, lf, s.OwnerId.ToString(), s.NoteId), ct);
+        // Locking a note is a decision made after the share, and it has to win:
+        // the owner's later "nobody sees this" outranks their earlier "you can".
+        if (note?.Secure == true) continue;
         result.Add(new
         {
             shareId = s.Id, noteId = s.NoteId, access = s.Access,
@@ -2650,6 +2718,11 @@ shares.MapGet("/incoming/{shareId:int}", async (
     if (share is null) return Results.NotFound();
     var note = await storage.ReadAsync(OwnerNotePath(state, vault, lf, share.OwnerId.ToString(), share.NoteId), ct);
     if (note is null) return Results.NotFound();
+    // Locked since it was shared: the body stays in the owner's vault. Reported
+    // as gone rather than forbidden — the sharee has no way to unlock it, so
+    // "come back with credentials" would be advice they cannot take.
+    if (note.Secure) return Results.Json(
+        new { error = "The owner locked this note." }, statusCode: StatusCodes.Status410Gone);
     return Results.Ok(new { note.Title, note.Body, note.Color, access = share.Access });
 });
 
@@ -2691,10 +2764,15 @@ app.MapGet("/api/shared/{token}", async (
     if (share.MaxViews is { } mv && share.ViewCount >= mv)
         return Results.Json(new { error = "This link has reached its view limit." }, statusCode: StatusCodes.Status410Gone);
 
-    share.ViewCount++;
-    await db.SaveChangesAsync(ct);
     var note = await storage.ReadAsync(OwnerNotePath(state, vault, lf, share.OwnerId.ToString(), share.NoteId), ct);
     if (note is null) return Results.NotFound();
+    if (note.Secure) return Results.Json(
+        new { error = "The owner locked this note." }, statusCode: StatusCodes.Status410Gone);
+
+    // Counted only once the note is actually being handed over, so a refused
+    // read doesn't burn one of a limited-view link's views.
+    share.ViewCount++;
+    await db.SaveChangesAsync(ct);
     return Results.Ok(new { note.Title, note.Body, note.Color, access = share.Access });
 });
 
@@ -3496,6 +3574,10 @@ static async Task<IResult> ApplySharedEdit(
     var path = OwnerNotePath(state, vault, lf, ownerUid, noteId);
     var note = await storage.ReadAsync(path, ct);
     if (note is null) return Results.NotFound();
+    // A locked note is not writable from outside the vault either: the editor on
+    // the other end was handed an empty body, so saving it would erase the note.
+    if (note.Secure) return Results.Json(
+        new { error = "The owner locked this note." }, statusCode: StatusCodes.Status410Gone);
 
     // Someone who is not the owner is about to replace the owner's text. Every
     // other write path snapshots the prior revision first; this one has to as

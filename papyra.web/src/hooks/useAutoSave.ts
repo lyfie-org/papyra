@@ -23,7 +23,19 @@ const DEBOUNCE_MS = 1500;
  * write path's version and MAY mutate (Papyra stamps block anchors there), so it
  * is called only when a revision is actually being persisted.
  */
-export function useAutoSave(note: Note, getDraft: () => Draft, getSaveDraft?: () => Draft) {
+export function useAutoSave(
+  note: Note,
+  getDraft: () => Draft,
+  getSaveDraft?: () => Draft,
+  /**
+   * Runs after a revision reaches the server, with the body it replaced. Used to
+   * notice what changed *between* revisions — a name that appeared in this save
+   * and not the last one. Skipped for a queued (offline) write: the change is
+   * real but the follow-up work needs the network, and it will be noticed on the
+   * save that eventually lands.
+   */
+  onSaved?: (priorBody: string, nextBody: string) => void,
+) {
   const [status, setStatus] = useState<SaveStatus>('idle');
   // isDirty drives caret protection: a remote update may only overwrite the
   // editor while the local draft is clean (see Sprint 5.2 conflict handling).
@@ -68,14 +80,16 @@ export function useAutoSave(note: Note, getDraft: () => Draft, getSaveDraft?: ()
       note.updated,
     );
 
+    const priorBody = saved.current.body;
     saved.current = draft;
     setIsDirty(false);
     setStatus(outcome === 'queued' ? 'queued' : 'saved');
+    if (outcome !== 'queued') onSaved?.(priorBody, draft.body);
     // Our own write is logged in the Write-Ring server-side (no broadcast echo),
     // so refresh the grid's snapshot ourselves. A queued write refreshes too —
     // the read path merges the outbox back over the server snapshot.
     queryClient.invalidateQueries({ queryKey: ['notes'] });
-  }, [getDraft, getSaveDraft, note.id, note.tags, note.color, note.pinned, note.archived, note.kind, note.updated, queryClient]);
+  }, [getDraft, getSaveDraft, onSaved, note.id, note.tags, note.color, note.pinned, note.archived, note.kind, note.updated, queryClient]);
 
   // Mark dirty: reset the debounce window on every keystroke (reset-on-new).
   const bump = useCallback(() => {

@@ -11,6 +11,11 @@ import './InboxPage.css';
  * Blocks other people have mentioned you in. Read-only by design: an entry is a
  * pointer into someone else's note, and the only thing you own here is whether
  * it stays in your list.
+ *
+ * An entry is still just the paragraph. What changed is that the author is now
+ * asked, as they write, whether to share the whole note as well — so an entry
+ * may or may not come with access to the note behind it, and the copy here must
+ * not promise either way.
  */
 export default function InboxPage() {
   const location = useLocation();
@@ -43,8 +48,9 @@ export default function InboxPage() {
       <header className="inbox__head">
         <h1 className="page-title inbox__title">Inbox</h1>
         <p className="inbox__lede">
-          Blocks other people have mentioned you in. You see only the block that
-          named you — never the rest of their note.
+          Paragraphs other people have named you in. Each entry is the paragraph
+          itself; whether you can open the note it came from is up to whoever
+          wrote it.
         </p>
       </header>
 
@@ -56,7 +62,7 @@ export default function InboxPage() {
           icon={InboxIcon}
           title="Nothing here yet"
           body="When someone else on this server types your name after an @ in one of their notes, the paragraph they wrote it in shows up here."
-          hint="You only ever see that one paragraph — never the rest of their note. The same is true in reverse when you mention someone."
+          hint="They're asked at the same time whether to share the whole note with you. If they say no, the paragraph is all you get — and the same choice is yours when you mention someone."
         />
       )}
 

@@ -111,6 +111,11 @@
 @media (max-width: 900px) {
   .notes-page__body {
     flex-direction: column;
+    /* `align-items: flex-start` above keeps the rail from stretching to the
+       grid's height in the row layout. Once the axis flips, that same rule sizes
+       every child to its own content width — which collapsed the note grid to
+       the width of its narrowest card on any window under 900px. */
+    align-items: stretch;
   }
 }
 

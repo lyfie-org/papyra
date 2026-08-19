@@ -28,6 +28,10 @@ const CONCEPTS: Array<[string, string]> = [
     'Type [[ in the editor to link another note. Every note shows its “Linked mentions” underneath, so you can walk backwards through your own references.',
   ],
   [
+    'Name someone with @ and they hear about it',
+    'Typing @ and their username in a note puts that paragraph in their Inbox. Papyra then asks whether to share the whole note with them as well — say no and the paragraph is all they see; say yes and they can open the note until you revoke it from the note’s share menu. A locked note is never shared and never delivers a mention.',
+  ],
+  [
     'Deleting gives you time to change your mind',
     'A deleted note goes to Trash and stays there for the period you choose in Settings — 30 days by default. Until then you can put it back. Once that period is up the note is erased for good, and no one can recover it. To keep something forever, restore it from Trash before the time runs out.',
   ],

@@ -9,7 +9,9 @@ import type { Note } from '../types/note';
 import { putNote } from '../lib/notesApi';
 import { useSettings } from '../hooks/useSettings';
 import { useSyncState } from '../hooks/useSync';
+import { useShareSummary } from '../hooks/useShares';
 import ShareDialog from './ShareDialog';
+import ShareBadge from './ShareBadge';
 import ConfirmDialog from './ConfirmDialog';
 import { useToast } from '../lib/toastContext';
 import { snippet } from '../lib/plainText';
@@ -49,6 +51,9 @@ export default function NoteCard({ note, variant = 'active', conflictId, conflic
   const offlineHint = online ? undefined : 'Needs a connection';
   const [menuOpen, setMenuOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
+  // One request for the whole grid, not one per card.
+  const { data: shareSummary } = useShareSummary();
+  const shared = shareSummary?.find(s => s.noteId === note.id);
   const menuRef = useRef<HTMLDivElement | null>(null);
 
   const title = note.title.trim() || 'Untitled';
@@ -164,6 +169,11 @@ export default function NoteCard({ note, variant = 'active', conflictId, conflic
           ))}
         </ul>
       )}
+
+      {/* Who else can read this. On the card rather than inside the share dialog
+          because "my notes are mine" is the promise, and an exception to it
+          should be visible without going looking for it. */}
+      {shared && <ShareBadge summary={shared} />}
 
       <div className="note-card__actions">
         {variant === 'trashed' ? (

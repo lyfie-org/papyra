@@ -10,6 +10,7 @@ import { createPapyraEditorAdapter } from '../lib/papyraEditorAdapter';
 import { putNote } from '../lib/notesApi';
 import { closeTarget } from '../lib/noteLink';
 import { useToast } from '../lib/toastContext';
+import { useMentionShare } from '../hooks/useMentionShare';
 import NoteToolbar from './NoteToolbar';
 import SnapshotPanel from './SnapshotPanel';
 import CategoryEditor from './CategoryEditor';
@@ -103,7 +104,15 @@ export default function NoteEditor({ note }: { note: Note }) {
     return { title: titleRef.current, body: md };
   }, [getDraft, note.kind, isLocked]);
 
-  const { status, isDirty, bump, reset, flush, savedRef } = useAutoSave(note, getDraft, getSaveDraft);
+  // Naming someone in a note offers to share the note with them — see
+  // useMentionShare for why it asks rather than acts.
+  const offerMentionShare = useMentionShare(note.id, note.secure);
+  const onSaved = useCallback(
+    (priorBody: string, nextBody: string) => { void offerMentionShare(priorBody, nextBody); },
+    [offerMentionShare],
+  );
+
+  const { status, isDirty, bump, reset, flush, savedRef } = useAutoSave(note, getDraft, getSaveDraft, onSaved);
   // Keyboard users land inside the editor instead of at the top of the page.
   useDialogFocus(editorScrollRef);
 

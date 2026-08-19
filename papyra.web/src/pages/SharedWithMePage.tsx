@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { X, Users } from 'lucide-react';
 import { useIncomingShares } from '../hooks/useShares';
 import SharedNoteView, { type SharedNote } from '../components/SharedNoteView';
+import { SharedByBadge } from '../components/ShareBadge';
 import EmptyState from '../components/EmptyState';
 import './SharedWithMePage.css';
 
@@ -44,7 +45,7 @@ export default function SharedWithMePage() {
         {incoming?.map(s => (
           <button key={s.shareId} type="button" className="shared-with__card" onClick={() => void open(s.shareId)}>
             <span className="shared-with__card-title">{s.title.trim() || 'Untitled'}</span>
-            <span className="shared-with__card-meta">from {s.owner} · {s.access === 'edit' ? 'can edit' : 'view only'}</span>
+            <SharedByBadge owner={s.owner} access={s.access} />
           </button>
         ))}
       </div>
