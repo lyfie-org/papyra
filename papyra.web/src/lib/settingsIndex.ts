@@ -37,6 +37,10 @@ export const SETTINGS_INDEX: SettingsEntry[] = [
   { tab: 'profile', tabLabel: 'Profile', keywords: ['account', 'avatar', 'profile picture', 'name', 'email'] },
   { tab: 'profile', tabLabel: 'Profile', section: 'account', sectionLabel: 'Account', keywords: ['display name', 'email address'] },
   { tab: 'profile', tabLabel: 'Profile', section: 'change-password', sectionLabel: 'Change password', keywords: ['password', 'new password'] },
+  {
+    tab: 'profile', tabLabel: 'Profile', section: 'activity', sectionLabel: 'Your writing, day by day',
+    keywords: ['heatmap', 'activity', 'streak', 'history', 'stats', 'calendar'],
+  },
 
   { tab: 'appearance', tabLabel: 'Appearance', keywords: ['look', 'colours', 'colors'] },
   { tab: 'appearance', tabLabel: 'Appearance', section: 'theme', sectionLabel: 'Theme', keywords: ['dark mode', 'light mode', 'night'] },

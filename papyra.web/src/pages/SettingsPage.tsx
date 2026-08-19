@@ -25,6 +25,8 @@ import { useTheme, type ThemePreference } from '../hooks/useTheme';
 import { clearSessionData } from '../lib/session';
 import { useConfirm } from '../lib/confirmContext';
 import AvatarCropper from '../components/AvatarCropper';
+import KnowledgeHeatmap from '../components/KnowledgeHeatmap';
+import DayNotesOverlay from '../components/DayNotesOverlay';
 import Avatar from '../components/Avatar';
 import { useSettings, useUpdateSettings, RETENTION_OPTIONS } from '../hooks/useSettings';
 import './SettingsPage.css';
@@ -146,6 +148,9 @@ function ProfileTab({ user }: { user: AuthUser | null }) {
   // The file the user picked, held while they frame it. Nothing is uploaded
   // until they say the crop is right.
   const [picking, setPicking] = useState<File | null>(null);
+  // The day whose notes are on screen. State, not a route and not a filter:
+  // looking at what you wrote on a Tuesday should not move you anywhere.
+  const [openDay, setOpenDay] = useState<string | null>(null);
 
   const [cur, setCur] = useState('');
   const [next, setNext] = useState('');
@@ -244,6 +249,21 @@ function ProfileTab({ user }: { user: AuthUser | null }) {
         <div className="settings__stat"><span className="settings__stat-num">{tagCount}</span> tags</div>
         <div className="settings__stat"><span className="settings__stat-num">{catCount}</span> categories</div>
       </div>
+
+      <h2 id="activity" className="settings__subhead">Your writing, day by day</h2>
+      <p className="settings__hint">
+        Every square is a day over the last six months; the darker it is, the more
+        notes you changed. Pick one to see what they were. It used to sit above
+        the notes desk, where picking a day quietly filtered everything.
+      </p>
+      <KnowledgeHeatmap selectedDay={openDay} onSelectDay={setOpenDay} />
+      {openDay && (
+        <DayNotesOverlay
+          day={openDay}
+          notes={(notes ?? []).filter(n => !n.trashed && n.updated.slice(0, 10) === openDay)}
+          onClose={() => setOpenDay(null)}
+        />
+      )}
 
       <form className="settings__form" onSubmit={saveProfile}>
         <h2 id="account" className="settings__subhead">Account</h2>

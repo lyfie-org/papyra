@@ -1,11 +1,10 @@
 import { useMemo, useState } from 'react';
 import { Outlet, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { Plus, UploadCloud, X } from 'lucide-react';
+import { Plus, UploadCloud } from 'lucide-react';
 import DraggableNoteGrid from '../components/DraggableNoteGrid';
 import NotesFilterBar, { type NotesScope } from '../components/NotesFilterBar';
 import SharedRail from '../components/SharedRail';
-import KnowledgeHeatmap from '../components/KnowledgeHeatmap';
 import ConflictResolver from '../components/ConflictResolver';
 import FirstRun from '../components/FirstRun';
 import { useNotes } from '../hooks/useNotes';
@@ -22,7 +21,6 @@ export default function NotesPage() {
   const [dragging, setDragging] = useState(false);
   const [importMsg, setImportMsg] = useState<string | null>(null);
   // Heatmap cell → filter the grid to notes last modified that day (YYYY-MM-DD).
-  const [dayFilter, setDayFilter] = useState<string | null>(null);
   // Desk filters (see NotesFilterBar). Kept here rather than in the URL: they are
   // a transient way to look at the desk, and putting them in the query string
   // would fight the `/note/:id` child route the editor opens over this page.
@@ -43,7 +41,6 @@ export default function NotesPage() {
 
   const visibleNotes = useMemo(() => {
     let list = notes ?? [];
-    if (dayFilter) list = list.filter((n) => n.updated.slice(0, 10) === dayFilter);
     if (scope === 'pinned') list = list.filter((n) => n.pinned);
     // Any selected tag matches — intersecting them would empty the grid almost
     // every time, since notes rarely carry several tags at once.
@@ -51,11 +48,11 @@ export default function NotesPage() {
       list = list.filter((n) => (n.tags ?? []).some((t) => selectedTags.includes(t)));
     }
     return list;
-  }, [notes, dayFilter, scope, selectedTags]);
+  }, [notes, scope, selectedTags]);
 
   // A genuinely empty vault (not just an empty filter or an all-archived one)
   // gets the first-run explainer instead of the grid.
-  const isFirstRun = !dayFilter && scope === 'all' && selectedTags.length === 0
+  const isFirstRun = scope === 'all' && selectedTags.length === 0
     && (notes ?? []).every(n => n.trashed);
 
   // Quick-import: drop .md/.txt onto the grid → new notes (native DnD, no lib).
@@ -133,17 +130,6 @@ export default function NotesPage() {
         <div className="notes-page__dropzone" aria-hidden="true">
           <UploadCloud size={40} />
           <p>Drop <code>.md</code> or <code>.txt</code> files to import</p>
-        </div>
-      )}
-
-      {!isLoading && !isError && <KnowledgeHeatmap selectedDay={dayFilter} onSelectDay={setDayFilter} />}
-
-      {dayFilter && (
-        <div className="notes-page__filter">
-          Showing notes from {dayFilter}
-          <button type="button" onClick={() => setDayFilter(null)} aria-label="Clear date filter">
-            <X size={14} /> Clear
-          </button>
         </div>
       )}
 
