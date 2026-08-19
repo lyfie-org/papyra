@@ -677,3 +677,65 @@
 @media (max-width: 640px) {
   .jobs__item { flex-direction: column; align-items: stretch; }
 }
+
+/* ── AI: what's answering, and what else is installed ─────────────────────── */
+
+/* Exact identifiers, folded away: nobody choosing a model needs to read
+   "mistral-nemo:12b", and anybody diagnosing one needs it exactly. */
+.settings__tech {
+  margin: var(--space-3) 0 var(--space-5);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--code-bg);
+}
+
+.settings__tech summary {
+  cursor: pointer;
+  font: 500 var(--fs-xs) / 1.4 var(--sans);
+  color: var(--text);
+}
+
+.settings__tech[open] summary { margin-bottom: var(--space-3); }
+
+.settings__tech code {
+  font-family: var(--mono);
+  font-size: var(--fs-xs);
+  color: var(--text-h);
+}
+
+.settings__installed {
+  list-style: none;
+  margin: 0 0 var(--space-5);
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.settings__installed-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.settings__installed-item:last-child { border-bottom: 0; }
+
+.settings__installed-name {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font: 500 var(--fs-sm) / 1.35 var(--sans);
+  color: var(--text-h);
+}
+
+.settings__installed-name code {
+  font: 400 var(--fs-2xs) / 1.4 var(--mono);
+  color: var(--text);
+}
+
+@media (max-width: 640px) {
+  .settings__installed-item { flex-direction: column; align-items: stretch; }
+}

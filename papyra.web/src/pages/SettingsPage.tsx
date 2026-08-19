@@ -18,6 +18,9 @@ import {
 } from '../hooks/useAi';
 import { useWebAuthnDevices } from '../hooks/useWebAuthnDevices';
 import { useJobs, useRunJob, type Job } from '../hooks/useJobs';
+import {
+  choiceFor, endpointLabel, friendlyModelName, providerLabel, sameModel,
+} from '../lib/aiModels';
 import { hasPlatformAuthenticator, isWebAuthnAvailable } from '../lib/webauthn';
 import { useAuth, type AuthUser } from '../hooks/useAuth';
 import { useNotes } from '../hooks/useNotes';
@@ -1358,6 +1361,29 @@ function AiTab() {
   const [pullError, setPullError] = useState<string | null>(null);
 
   const pull = usePullModel(setProgress);
+  // Switching to a model that is already here is a settings change, not a
+  // download, so it gets its own (much shorter) busy state.
+  const [switching, setSwitching] = useState<string | null>(null);
+
+  async function switchToModel(model: string) {
+    setSwitching(model);
+    try {
+      await save.mutateAsync({
+        chatProvider: 'ollama',
+        embedProvider: v('embedProvider'),
+        ollamaBaseUrl: v('ollamaBaseUrl'),
+        ollamaChatModel: model,
+        ollamaEmbedModel: v('ollamaEmbedModel'),
+        openAiBaseUrl: v('openAiBaseUrl'),
+        openAiChatModel: v('openAiChatModel'),
+        openAiEmbedModel: v('openAiEmbedModel'),
+        anthropicChatModel: v('anthropicChatModel'),
+      });
+      await refetchStatus();
+    } finally {
+      setSwitching(null);
+    }
+  }
 
   // null/undefined means "not edited yet", so a field shows the server's value
   // without an effect copying it into state on every refetch.
@@ -1402,6 +1428,10 @@ function AiTab() {
   const usingCloud = v('chatProvider') !== 'ollama';
   const installed = status?.installedModels ?? [];
   const activeModel = status?.chatModel;
+  // The search model is not an answering model, and the curated three already
+  // have cards of their own — this list is what is left.
+  const otherInstalled = installed.filter(m =>
+    !sameModel(m, v('ollamaEmbedModel')) && choiceFor(m, choices) === null);
   // Ollama reports "llama3.1:8b"; a bare name means the default tag.
   const isInstalled = (m: string) =>
     installed.some(i => i === m || i === `${m}:latest` || i.split(':')[0] === m.split(':')[0]);
@@ -1419,7 +1449,39 @@ function AiTab() {
           <dt>Status</dt>
           <dd>{status?.ready ? 'Ready' : (status?.reason ?? 'Not set up yet')}</dd>
         </div>
+        <div>
+          <dt>Answering</dt>
+          <dd>
+            {providerLabel(status?.chatProvider)}
+            {status?.chatProvider === 'ollama' && ` · ${friendlyModelName(status?.chatModel, choices)}`}
+          </dd>
+        </div>
+        <div>
+          <dt>Address</dt>
+          <dd>{endpointLabel(status?.chatProvider, v('ollamaBaseUrl'), v('openAiBaseUrl'))}</dd>
+        </div>
+        <div>
+          <dt>Search</dt>
+          <dd>
+            {status?.semanticSearchReady
+              ? 'Searching by meaning as well as by word'
+              : 'Words only — searching by meaning needs a search model'}
+          </dd>
+        </div>
       </dl>
+
+      {/* The exact identifiers, folded away. Nobody choosing a model needs to
+          read "mistral-nemo:12b", and anybody diagnosing one needs it exactly. */}
+      <details className="settings__tech">
+        <summary>Technical details</summary>
+        <dl className="settings__details">
+          <div><dt>Chat model</dt><dd><code>{status?.chatModel || '—'}</code></dd></div>
+          <div><dt>Search model</dt><dd><code>{status?.embedModel || '—'}</code></dd></div>
+          <div><dt>Chat provider</dt><dd><code>{status?.chatProvider || '—'}</code></dd></div>
+          <div><dt>Search provider</dt><dd><code>{status?.embedProvider || '—'}</code></dd></div>
+          <div><dt>Local engine</dt><dd><code>{v('ollamaBaseUrl') || '—'}</code></dd></div>
+        </dl>
+      </details>
 
       {/* ── On this machine ──────────────────────────────────────────────── */}
       <h3 id="local-models" className="settings__subhead">On this machine</h3>
@@ -1464,11 +1526,12 @@ function AiTab() {
               <button
                 type="button"
                 className="settings__btn"
-                disabled={active || pulling !== null || !status?.canPull}
-                onClick={() => install(c.model)}
+                disabled={active || pulling !== null || switching !== null || !status?.canPull}
+                onClick={() => (here ? void switchToModel(c.model) : install(c.model))}
               >
                 {active ? 'In use'
                   : busy ? 'Downloading…'
+                  : switching === c.model ? 'Switching…'
                   : here ? 'Use this one'
                   : 'Download'}
               </button>
@@ -1500,6 +1563,47 @@ function AiTab() {
           This can take a while on a slow connection. You can leave this page — the
           download keeps going.
         </p>
+      )}
+
+
+      {/* Models already on the machine, including any pulled outside Papyra.
+          Switching between them is a settings change, not a download — the
+          curated cards above are for getting a model in the first place. */}
+      {otherInstalled.length > 0 && (
+        <>
+          <h3 id="installed-models" className="settings__subhead">Already on this machine</h3>
+          <p className="settings__hint">
+            Other models found on this server. Papyra didn’t install these and can’t
+            say how well they answer questions about notes, but you can use one.
+          </p>
+          <ul className="settings__installed">
+            {otherInstalled.map(m => {
+              const inUse = sameModel(m, activeModel);
+              return (
+                <li key={m} className="settings__installed-item">
+                  <span className="settings__installed-name">
+                    {friendlyModelName(m, choices)}
+                    <code>{m}</code>
+                  </span>
+                  <button
+                    type="button"
+                    className="settings__btn"
+                    disabled={inUse || switching !== null || usingCloud}
+                    onClick={() => void switchToModel(m)}
+                  >
+                    {inUse ? 'In use' : switching === m ? 'Switching…' : 'Use this one'}
+                  </button>
+                </li>
+              );
+            })}
+          </ul>
+          {usingCloud && (
+            <p className="settings__hint">
+              Answers currently come from a paid service. Switch back to the model on
+              this machine below to use one of these.
+            </p>
+          )}
+        </>
       )}
 
       {/* ── Or use a paid service ────────────────────────────────────────── */}
