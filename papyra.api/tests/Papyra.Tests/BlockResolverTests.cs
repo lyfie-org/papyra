@@ -138,4 +138,55 @@ public sealed class BlockResolverTests
         // "x^2" is exponentiation in prose, not an anchor.
         Assert.Empty(BlockResolver.Anchors("The area scales with x^2 for a square."));
     }
+
+    // ── finding a block that never carried an anchor ──────────────────────────
+    // A mention written outside Papyra's editor has no `^id` to point at, so the
+    // grant records the line's text instead. Resolving it must stay a *lookup in
+    // the author's live note* — never a copy handed back unchecked — or a block
+    // the author has since reworded would keep being served.
+
+    [Fact]
+    public void ResolveLine_FindsALineThatIsStillThere()
+        => Assert.Equal("Could @bea look at this?",
+            BlockResolver.ResolveLine("Intro.\n\nCould @bea look at this?\n\nEnd.", "Could @bea look at this?"));
+
+    [Fact]
+    public void ResolveLine_FindsAListItem_WhichAnchorsNeverCover()
+        => Assert.Equal("- ask @bea about it",
+            BlockResolver.ResolveLine("- ask @bea about it\n- other", "- ask @bea about it"));
+
+    [Fact]
+    public void ResolveLine_ReturnsNullOnceTheLineIsReworded()
+        => Assert.Null(BlockResolver.ResolveLine("Could @bea look at the new one?", "Could @bea look at this?"));
+
+    [Fact]
+    public void ResolveLine_ReturnsNullOnceTheLineIsGone()
+        => Assert.Null(BlockResolver.ResolveLine("Something else entirely.", "Could @bea look at this?"));
+
+    [Fact]
+    public void ResolveLine_IgnoresAMatchInsideFencedCode()
+        => Assert.Null(BlockResolver.ResolveLine("```\nCould @bea look at this?\n```", "Could @bea look at this?"));
+
+    [Fact]
+    public void ResolveLine_MatchesAcrossAnAnchorTheAuthorHasSinceGained()
+    {
+        // Opening the note in Papyra stamps anchors. The stored line was captured
+        // before that, so the match has to be against the cleaned line, not the raw one.
+        Assert.Equal("Could @bea look at this?",
+            BlockResolver.ResolveLine("Could @bea look at this? ^ping0001", "Could @bea look at this?"));
+    }
+
+    [Fact]
+    public void ResolveLine_RefusesAnEmptyOrMissingReference()
+    {
+        Assert.Null(BlockResolver.ResolveLine("Anything at all.", null));
+        Assert.Null(BlockResolver.ResolveLine("Anything at all.", "   "));
+    }
+
+    [Fact]
+    public void Lines_SkipsFencedCodeAndBlankLines()
+    {
+        const string body = "First.\n\n```\nfenced @bea\n```\n\n- item";
+        Assert.Equal(["First.", "- item"], BlockResolver.Lines(body));
+    }
 }

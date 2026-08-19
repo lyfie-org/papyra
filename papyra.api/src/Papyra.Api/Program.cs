@@ -1959,7 +1959,16 @@ inbox.MapGet("/", async (ClaimsPrincipal user, VaultState state, AppDbContext db
         if (ownerPath is not null) state.TryGet(ownerUid, ownerPath, out source);
         // A deleted source, or one that has since been locked, resolves to null —
         // the UI shows a "no longer available" chip rather than an error.
-        var text = source is null || source.Secure ? null : BlockResolver.Resolve(source.Body, g.BlockId);
+        //
+        // An anchored grant is found by its `^id`; one delivered from a block that
+        // never had an anchor is found by the line's own text. Both re-read the
+        // author's live note on every request, so neither can serve a block the
+        // author has since reworded or removed.
+        var text = source is null || source.Secure
+            ? null
+            : g.BlockId.Length > 0
+                ? BlockResolver.Resolve(source.Body, g.BlockId)
+                : BlockResolver.ResolveLine(source.Body, g.BlockText);
         return new
         {
             g.Id,

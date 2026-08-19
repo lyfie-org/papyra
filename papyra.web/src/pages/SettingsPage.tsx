@@ -1338,6 +1338,10 @@ const SMTP_DEFAULTS: SmtpForm = {
   username: '', fromAddress: '', fromName: '', publicUrl: '',
 };
 
+// What every Assistant row reads while the probe is still out. A dash or a
+// default would be read as an answer; this cannot be mistaken for one.
+const CHECKING = 'Checking…';
+
 // ── AI assistant (admin) ─────────────────────────────────────────────────────────
 // Two audiences share this panel, so it's ordered for the common one. Almost
 // everybody wants a model on their own machine and nothing else: that's the top
@@ -1347,7 +1351,11 @@ const SMTP_DEFAULTS: SmtpForm = {
 // Keys are write-only: blank means "keep the stored one", same as SSO and Email.
 function AiTab() {
   const { data, isLoading, isError } = useAiConfig();
-  const { data: status, refetch: refetchStatus } = useAiStatus();
+  // The probe has to reach the model runner and time out before it can answer,
+  // which takes seconds. Until it does, every row below says so rather than
+  // asserting a default — "Address: Not set" while an address is configured is
+  // a wrong answer, and three seconds is long enough to read and act on.
+  const { data: status, isPending: statusPending, refetch: refetchStatus } = useAiStatus();
   const { data: choices } = useAiModels();
   const save = useSaveAiConfig();
 
@@ -1447,25 +1455,33 @@ function AiTab() {
       <dl className="settings__details">
         <div>
           <dt>Status</dt>
-          <dd>{status?.ready ? 'Ready' : (status?.reason ?? 'Not set up yet')}</dd>
+          <dd>{statusPending ? CHECKING : (status?.ready ? 'Ready' : (status?.reason ?? 'Not set up yet'))}</dd>
         </div>
         <div>
           <dt>Answering</dt>
           <dd>
-            {providerLabel(status?.chatProvider)}
-            {status?.chatProvider === 'ollama' && ` · ${friendlyModelName(status?.chatModel, choices)}`}
+            {statusPending ? CHECKING : (
+              <>
+                {providerLabel(status?.chatProvider)}
+                {status?.chatProvider === 'ollama' && ` · ${friendlyModelName(status?.chatModel, choices)}`}
+              </>
+            )}
           </dd>
         </div>
         <div>
           <dt>Address</dt>
-          <dd>{endpointLabel(status?.chatProvider, v('ollamaBaseUrl'), v('openAiBaseUrl'))}</dd>
+          <dd>
+            {statusPending
+              ? CHECKING
+              : endpointLabel(status?.chatProvider, v('ollamaBaseUrl'), v('openAiBaseUrl'))}
+          </dd>
         </div>
         <div>
           <dt>Search</dt>
           <dd>
-            {status?.semanticSearchReady
+            {statusPending ? CHECKING : (status?.semanticSearchReady
               ? 'Searching by meaning as well as by word'
-              : 'Words only — searching by meaning needs a search model'}
+              : 'Words only — searching by meaning needs a search model')}
           </dd>
         </div>
       </dl>
@@ -1475,9 +1491,9 @@ function AiTab() {
       <details className="settings__tech">
         <summary>Technical details</summary>
         <dl className="settings__details">
-          <div><dt>Chat model</dt><dd><code>{status?.chatModel || '—'}</code></dd></div>
-          <div><dt>Search model</dt><dd><code>{status?.embedModel || '—'}</code></dd></div>
-          <div><dt>Chat provider</dt><dd><code>{status?.chatProvider || '—'}</code></dd></div>
+          <div><dt>Chat model</dt><dd><code>{statusPending ? '…' : (status?.chatModel || '—')}</code></dd></div>
+          <div><dt>Search model</dt><dd><code>{statusPending ? '…' : (status?.embedModel || '—')}</code></dd></div>
+          <div><dt>Chat provider</dt><dd><code>{statusPending ? '…' : (status?.chatProvider || '—')}</code></dd></div>
           <div><dt>Search provider</dt><dd><code>{status?.embedProvider || '—'}</code></dd></div>
           <div><dt>Local engine</dt><dd><code>{v('ollamaBaseUrl') || '—'}</code></dd></div>
         </dl>

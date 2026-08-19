@@ -58,8 +58,7 @@ public static partial class BlockResolver
             // Strip every anchor token from the line, not only the matched one, so
             // a block that somehow carries two never leaks a stray "^id" into the
             // text a reader sees.
-            var text = AnchorToken().Replace(line, string.Empty);
-            text = CollapseGaps().Replace(text, " ").Trim();
+            var text = Clean(line);
             if (text.Length == 0) continue; // a bare "^id" line anchors nothing
             found.Add(new Anchor(m.Groups["id"].Value, text, i));
         }
@@ -80,6 +79,60 @@ public static partial class BlockResolver
                 return anchor.Text;
         return null;
     }
+
+    /// <summary>
+    /// Every line of the body that could carry a mention, cleaned the same way an
+    /// anchored block's text is: anchors stripped, gaps collapsed, trimmed, and
+    /// fenced code skipped. Unlike <see cref="Anchors"/> this does not require a
+    /// block to be stamped, so it also sees list items and table rows.
+    /// </summary>
+    public static IReadOnlyList<string> Lines(string? body)
+    {
+        var found = new List<string>();
+        if (string.IsNullOrEmpty(body)) return found;
+
+        var lines = body.Replace("\r\n", "\n").Split('\n');
+        string? openFence = null;
+
+        foreach (var line in lines)
+        {
+            var fence = Fence().Match(line);
+            if (fence.Success)
+            {
+                var marker = fence.Groups["fence"].Value;
+                if (openFence is null) openFence = marker;
+                else if (marker[0] == openFence[0] && marker.Length >= openFence.Length) openFence = null;
+                continue;
+            }
+            if (openFence is not null) continue;
+
+            var text = Clean(line);
+            if (text.Length > 0) found.Add(text);
+        }
+
+        return found;
+    }
+
+    /// <summary>
+    /// The stored line, if it is still there. This is what keeps an unanchored
+    /// grant a pointer rather than a copy: the text is matched against the
+    /// author's live note on every read, so editing or deleting the line takes
+    /// the entry away, the same as removing an anchored block does.
+    /// </summary>
+    public static string? ResolveLine(string? body, string? blockText)
+    {
+        if (string.IsNullOrWhiteSpace(blockText)) return null;
+        var wanted = Clean(blockText);
+        if (wanted.Length == 0) return null;
+        foreach (var line in Lines(body))
+            if (string.Equals(line, wanted, StringComparison.Ordinal))
+                return line;
+        return null;
+    }
+
+    /// <summary>One line as a reader should see it: no anchor tokens, no double gaps.</summary>
+    public static string Clean(string line)
+        => CollapseGaps().Replace(AnchorToken().Replace(line, string.Empty), " ").Trim();
 
     /// <summary>
     /// Guards a block id coming off the wire before it is used in a lookup or

@@ -77,7 +77,13 @@ public sealed class GrantCleanupService : PeriodicJob
             // that body, so absence here proves nothing. Keep the grant.
             if (note.Secure) continue;
 
-            if (BlockResolver.Resolve(note.Body, grant.BlockId) is null) dead.Add(grant);
+            // Anchored grants are matched by their `^id`; a grant delivered from a
+            // block that never carried one is matched by the line's own text. Both
+            // are dangling once the block they point at is gone from the note.
+            var resolved = grant.BlockId.Length > 0
+                ? BlockResolver.Resolve(note.Body, grant.BlockId)
+                : BlockResolver.ResolveLine(note.Body, grant.BlockText);
+            if (resolved is null) dead.Add(grant);
         }
 
         if (dead.Count == 0) return 0;

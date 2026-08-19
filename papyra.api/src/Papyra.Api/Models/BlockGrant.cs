@@ -14,8 +14,24 @@ public class BlockGrant
     /// <summary>The author whose vault holds the block.</summary>
     public int SourceOwnerId { get; set; }
     public string SourceNoteId { get; set; } = string.Empty;
-    /// <summary>The `^id` anchor within that note. Never the whole note.</summary>
+    /// <summary>
+    /// The `^id` anchor within that note. Never the whole note. Empty when the
+    /// mentioning block carried no anchor — see <see cref="BlockText"/>.
+    /// </summary>
     public string BlockId { get; set; } = string.Empty;
+
+    /// <summary>
+    /// The mentioning line as it read at delivery time, used to find the block
+    /// again when it has no anchor.
+    ///
+    /// Anchors are stamped by Papyra's own editor, so a mention written straight
+    /// into the `.md` from another tool — which this app invites — carried none,
+    /// and used to be dropped in silence. It is still a pointer, not a copy: the
+    /// inbox re-finds this line in the author's live note on every read, so an
+    /// edited, deleted or locked block goes dark exactly as an anchored one does.
+    /// Null for anchored grants, which resolve by <see cref="BlockId"/>.
+    /// </summary>
+    public string? BlockText { get; set; }
 
     /// <summary>The mentioned account this grant is for.</summary>
     public int GranteeUserId { get; set; }

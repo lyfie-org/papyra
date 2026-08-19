@@ -194,16 +194,65 @@ public sealed class MentionDeliveryIntegrationTests : IDisposable
         Assert.Equal(Expect(_calId), AllFiles());
     }
 
+    // An unanchored mention used to write nothing at all. Anchors are stamped by
+    // Papyra's own editor and nothing else, so every mention written straight into
+    // the .md — which a file-first app invites — was dropped in silence, as was
+    // every mention typed into a list item. It now delivers, still as one block.
     [Fact]
-    public async Task Delivery_FromAnUnanchoredBlock_CreatesNothing()
+    public async Task Delivery_FromAnUnanchoredBlock_DeliversThatOneLine()
     {
-        // A list item carries no anchor, so there is no single block to deliver —
-        // and shipping the whole note instead is exactly what must not happen.
         Send("n1", "- ask @bea about it\n- something private");
+        await WaitForFileAsync(InboxOf(_beaId));
+        await FenceAsync();
+
+        Assert.Equal(Expect(_beaId, _calId), AllFiles());
+
+        var inbox = await File.ReadAllTextAsync(InboxOf(_beaId));
+        Assert.Contains("ask @bea about it", inbox);
+        // The neighbouring list item is not the block bea was named in.
+        Assert.DoesNotContain("something private", inbox);
+    }
+
+    [Fact]
+    public async Task Delivery_FromAnUnanchoredBlock_RecordsTheLineRatherThanAnAnchor()
+    {
+        Send("n1", "Could @bea look at the boiler quote?");
+        await WaitForFileAsync(InboxOf(_beaId));
+
+        using var scope = _sp.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        var grant = await db.BlockGrants.SingleAsync();
+
+        Assert.Equal(string.Empty, grant.BlockId);
+        Assert.Equal("Could @bea look at the boiler quote?", grant.BlockText);
+        Assert.Equal(_beaId, grant.GranteeUserId);
+    }
+
+    [Fact]
+    public async Task Delivery_FromAMentionInsideFencedCode_CreatesNothing()
+    {
+        // An @name in a code sample is source, not a ping.
+        Send("n1", "```\nnotify @bea here\n```\nnothing else");
         await FenceAsync();
 
         Assert.Equal(Expect(_calId), AllFiles());
         Assert.False(Directory.Exists(_vault.UserNotesDir(_beaId.ToString())));
+    }
+
+    [Fact]
+    public async Task Delivery_OfTheSameUnanchoredLineTwice_GrantsOnce()
+    {
+        Send("n1", "Could @bea look at this?");
+        await WaitForFileAsync(InboxOf(_beaId));
+        // A fresh save with no prior body looks like a new mention, but the line
+        // is the same one — it must not pile up a second grant.
+        Send("n1", "Could @bea look at this?");
+        await FenceAsync();
+
+        using var scope = _sp.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        // Bea's only — the fence delivery has a grant of its own.
+        Assert.Equal(1, await db.BlockGrants.CountAsync(g => g.GranteeUserId == _beaId));
     }
 
     [Fact]

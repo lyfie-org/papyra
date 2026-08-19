@@ -43,8 +43,15 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         modelBuilder.Entity<NoteEmbedding>().HasIndex(e => new { e.UserId, e.NoteId });
         // One grant per (block, recipient): re-saving a note that still mentions
         // the same person must not stack duplicate inbox entries.
+        //
+        // BlockText is part of the key because an unanchored grant has no BlockId
+        // — every one of them carries the empty string. Without it, naming the
+        // same person a second time on a different unanchored line would collide
+        // with the first grant and be dropped, which is the silent loss this
+        // whole path exists to end. SQLite treats NULLs as distinct, so anchored
+        // rows (BlockText null) still get their uniqueness from BlockId alone.
         modelBuilder.Entity<BlockGrant>()
-            .HasIndex(g => new { g.SourceOwnerId, g.SourceNoteId, g.BlockId, g.GranteeUserId })
+            .HasIndex(g => new { g.SourceOwnerId, g.SourceNoteId, g.BlockId, g.BlockText, g.GranteeUserId })
             .IsUnique();
         modelBuilder.Entity<BlockGrant>().HasIndex(g => g.GranteeUserId);
         // The session list is "mine, most recent first" and nothing else.
