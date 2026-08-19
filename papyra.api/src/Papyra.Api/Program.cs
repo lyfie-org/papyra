@@ -2939,19 +2939,83 @@ app.MapGet("/api/search/semantic", async (
 // JSON so the client can render citations immediately and stream the answer:
 //   {"type":"citations", ...} → {"type":"token", ...}* → {"type":"done"}
 // Secure notes are never embedded, so they can never be retrieved into an answer.
+// Earlier turns handed to the model with a follow-up. Enough for "what about the
+// second one?" to resolve, few enough that a long thread cannot crowd the notes
+// out of the context window — the notes are what it is supposed to answer from.
+const int AiChatHistoryTurns = 8;
+
 app.MapPost("/api/ai/chat", async (
     AiChatRequest body, ClaimsPrincipal user, RagChatService rag, AiClient ai,
-    HttpContext http, CancellationToken ct) =>
+    AppDbContext db, HttpContext http, CancellationToken ct) =>
 {
     var question = body.Question?.Trim();
     if (string.IsNullOrWhiteSpace(question))
         return Results.BadRequest(new { error = "A question is required." });
 
+    var uid = int.Parse(Uid(user));
+
+    // An existing thread must belong to the caller. Someone else's conversation
+    // is a transcript of their notes, so this is the same boundary as the notes
+    // themselves — a wrong id is "not found", never someone else's history.
+    ChatSession? session = null;
+    if (body.SessionId is { } sid)
+    {
+        session = await db.ChatSessions.FirstOrDefaultAsync(s => s.Id == sid && s.UserId == uid, ct);
+        if (session is null) return Results.NotFound(new { error = "That conversation no longer exists." });
+    }
+
+    // Earlier turns, so a follow-up can say "the second one" and mean something.
+    // Capped: the whole thread would eventually outgrow the model's context, and
+    // the recent turns are the ones a follow-up refers to.
+    var history = session is null
+        ? []
+        : await db.ChatMessages
+            .Where(m => m.SessionId == session.Id)
+            .OrderByDescending(m => m.Id)
+            .Take(AiChatHistoryTurns)
+            .Select(m => new ChatTurn(m.Role, m.Content))
+            .ToListAsync(ct);
+    history.Reverse();
+
     var citations = await rag.RetrieveAsync(Uid(user), question, ct);
+
+    // Started here rather than after the answer: a conversation that the model
+    // fails to answer is still a conversation the person had, and losing the
+    // question they typed would be worse than an empty reply.
+    //
+    // The probe costs a request to the backend, so it happens at most once: a new
+    // thread needs it to record what answered, and a failed answer needs it to
+    // explain itself. A follow-up that works asks nothing extra.
+    AiStatus? status = null;
+    if (session is null)
+    {
+        status = await ai.ProbeAsync(ct);
+        session = new ChatSession
+        {
+            UserId = uid,
+            Title = ChatTitle(question),
+            Model = status.ChatModel,
+            Provider = status.ChatProvider,
+        };
+        db.ChatSessions.Add(session);
+        await db.SaveChangesAsync(ct);
+    }
+
+    db.ChatMessages.Add(new ChatMessage { SessionId = session.Id, Role = "user", Content = question });
+    session.UpdatedUtc = DateTime.UtcNow;
+    await db.SaveChangesAsync(ct);
 
     http.Response.ContentType = "application/x-ndjson";
     var writer = new StreamWriter(http.Response.Body);
 
+    // The session frame comes first so the panel can adopt a brand-new thread
+    // before a single token arrives.
+    await writer.WriteLineAsync(JsonSerializer.Serialize(new
+    {
+        type = "session",
+        sessionId = session.Id,
+        title = session.Title,
+    }));
     await writer.WriteLineAsync(JsonSerializer.Serialize(new
     {
         type = "citations",
@@ -2960,11 +3024,31 @@ app.MapPost("/api/ai/chat", async (
     await writer.FlushAsync(ct);
 
     var any = false;
-    await foreach (var token in rag.StreamAnswerAsync(question, citations, ct))
+    var answer = new System.Text.StringBuilder();
+    await foreach (var token in rag.StreamAnswerAsync(question, citations, history, ct))
     {
         any = true;
+        answer.Append(token);
         await writer.WriteLineAsync(JsonSerializer.Serialize(new { type = "token", value = token }));
         await writer.FlushAsync(ct); // flush per token so the UI streams
+    }
+
+    if (any)
+    {
+        db.ChatMessages.Add(new ChatMessage
+        {
+            SessionId = session.Id,
+            Role = "assistant",
+            Content = answer.ToString(),
+            // What the answer was based on at the time. The note may since have
+            // changed or gone; the citation is a record, not a live link.
+            CitationsJson = JsonSerializer.Serialize(citations.Select(c => new
+            {
+                noteId = c.NoteId, title = c.Title, snippet = c.Snippet, score = c.Score,
+            })),
+        });
+        session.UpdatedUtc = DateTime.UtcNow;
+        await db.SaveChangesAsync(ct);
     }
 
     // No tokens at all means the backend wasn't reachable. Ask it *why* and pass
@@ -2973,7 +3057,7 @@ app.MapPost("/api/ai/chat", async (
     string? failure = null;
     if (!any)
     {
-        var status = await ai.ProbeAsync(ct);
+        status ??= await ai.ProbeAsync(ct);
         // A configured-looking provider that still returns nothing is almost
         // always a rejected key or a model name that doesn't exist — neither of
         // which the probe can see without spending a request.
@@ -2986,6 +3070,87 @@ app.MapPost("/api/ai/chat", async (
     await writer.FlushAsync(ct);
     return Results.Empty;
 }).RequireAuthorization();
+
+// ── AI: conversations ─────────────────────────────────────────────────────────
+// A person's conversations with the assistant are a transcript of their own
+// notes, so every route here is scoped to the caller and a wrong id is "not
+// found" rather than somebody else's thread.
+var chats = app.MapGroup("/api/ai/sessions").RequireAuthorization().WithTags("AI");
+
+chats.MapGet("/", async (ClaimsPrincipal user, AppDbContext db, CancellationToken ct) =>
+{
+    var uid = int.Parse(Uid(user));
+    var rows = await db.ChatSessions
+        .Where(s => s.UserId == uid)
+        .OrderByDescending(s => s.UpdatedUtc)
+        .Select(s => new
+        {
+            s.Id,
+            s.Title,
+            s.Model,
+            s.Provider,
+            s.CreatedUtc,
+            s.UpdatedUtc,
+            messageCount = db.ChatMessages.Count(m => m.SessionId == s.Id),
+        })
+        .ToListAsync(ct);
+    return Results.Ok(rows);
+});
+
+chats.MapGet("/{id:int}", async (int id, ClaimsPrincipal user, AppDbContext db, CancellationToken ct) =>
+{
+    var uid = int.Parse(Uid(user));
+    var session = await db.ChatSessions.FirstOrDefaultAsync(s => s.Id == id && s.UserId == uid, ct);
+    if (session is null) return Results.NotFound();
+
+    var messages = await db.ChatMessages
+        .Where(m => m.SessionId == id)
+        .OrderBy(m => m.Id)
+        .Select(m => new { m.Id, m.Role, m.Content, m.CitationsJson, m.CreatedUtc })
+        .ToListAsync(ct);
+
+    return Results.Ok(new
+    {
+        session.Id, session.Title, session.Model, session.Provider, session.UpdatedUtc,
+        messages = messages.Select(m => new
+        {
+            m.Id, m.Role, m.Content, m.CreatedUtc,
+            // Parsed here so the client never has to know it was stored as text.
+            citations = string.IsNullOrWhiteSpace(m.CitationsJson)
+                ? (JsonElement?)null
+                : JsonSerializer.Deserialize<JsonElement>(m.CitationsJson),
+        }),
+    });
+});
+
+chats.MapPatch("/{id:int}", async (
+    int id, ChatSessionRename body, ClaimsPrincipal user, AppDbContext db, CancellationToken ct) =>
+{
+    var uid = int.Parse(Uid(user));
+    var session = await db.ChatSessions.FirstOrDefaultAsync(s => s.Id == id && s.UserId == uid, ct);
+    if (session is null) return Results.NotFound();
+
+    var title = body.Title?.Trim();
+    if (string.IsNullOrWhiteSpace(title)) return Results.BadRequest(new { error = "A name is required." });
+
+    session.Title = title.Length > 120 ? title[..120] : title;
+    await db.SaveChangesAsync(ct);
+    return Results.Ok(new { session.Id, session.Title });
+});
+
+chats.MapDelete("/{id:int}", async (int id, ClaimsPrincipal user, AppDbContext db, CancellationToken ct) =>
+{
+    var uid = int.Parse(Uid(user));
+    var session = await db.ChatSessions.FirstOrDefaultAsync(s => s.Id == id && s.UserId == uid, ct);
+    if (session is null) return Results.NotFound();
+
+    // The messages go with it. A conversation is the unit a person deletes, and
+    // orphaned turns would be a transcript nobody can reach but the disk keeps.
+    await db.ChatMessages.Where(m => m.SessionId == id).ExecuteDeleteAsync(ct);
+    db.ChatSessions.Remove(session);
+    await db.SaveChangesAsync(ct);
+    return Results.NoContent();
+});
 
 // ── AI: status, configuration and model download ──────────────────────────────
 // The status probe is what lets the assistant explain itself instead of silently
@@ -3606,6 +3771,17 @@ static string GeneratePassword()
     return string.Join('-', Enumerable.Range(0, 4).Select(g => new string(chars, g * 4, 4)));
 }
 
+// A conversation's name, taken from its first question. Truncated on a word
+// boundary where possible: "How do I..." beats "How do I export everyth".
+static string ChatTitle(string question)
+{
+    var flat = question.Replace('\n', ' ').Trim();
+    if (flat.Length <= 60) return flat;
+    var cut = flat[..60];
+    var space = cut.LastIndexOf(' ');
+    return (space > 30 ? cut[..space] : cut).TrimEnd() + "…";
+}
+
 static (string Token, string Hash) NewAuthToken()
 {
     var bytes = System.Security.Cryptography.RandomNumberGenerator.GetBytes(32);
@@ -3917,7 +4093,14 @@ public sealed record WebAuthnRegisterRequest(
     Fido2NetLib.AuthenticatorAttestationRawResponse? Response, string? Name);
 
 // A question asked of the vault via retrieval-augmented chat.
-public sealed record AiChatRequest(string? Question);
+/// <summary>
+/// A question, optionally continuing an existing conversation. A null SessionId
+/// starts a new one, which is what the panel sends on its first question.
+/// </summary>
+public sealed record AiChatRequest(string? Question, int? SessionId = null);
+
+/// <summary>Rename a conversation.</summary>
+public sealed record ChatSessionRename(string? Title);
 
 // WebAuthn unlock: the browser's assertion response.
 public sealed record WebAuthnAssertRequest(Fido2NetLib.AuthenticatorAssertionRawResponse? Response);

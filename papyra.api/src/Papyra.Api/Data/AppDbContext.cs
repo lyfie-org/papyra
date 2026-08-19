@@ -17,6 +17,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<NoteEmbedding> NoteEmbeddings => Set<NoteEmbedding>();
     public DbSet<BlockGrant> BlockGrants => Set<BlockGrant>();
     public DbSet<AuthToken> AuthTokens => Set<AuthToken>();
+    public DbSet<ChatSession> ChatSessions => Set<ChatSession>();
+    public DbSet<ChatMessage> ChatMessages => Set<ChatMessage>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -45,5 +47,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
             .HasIndex(g => new { g.SourceOwnerId, g.SourceNoteId, g.BlockId, g.GranteeUserId })
             .IsUnique();
         modelBuilder.Entity<BlockGrant>().HasIndex(g => g.GranteeUserId);
+        // The session list is "mine, most recent first" and nothing else.
+        modelBuilder.Entity<ChatSession>().HasIndex(c => new { c.UserId, c.UpdatedUtc });
+        // A thread is read in order, always by session.
+        modelBuilder.Entity<ChatMessage>().HasIndex(m => new { m.SessionId, m.Id });
     }
 }

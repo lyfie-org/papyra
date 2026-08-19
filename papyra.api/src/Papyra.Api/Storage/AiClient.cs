@@ -88,6 +88,13 @@ public sealed record AiStatus(
     IReadOnlyList<string> InstalledModels,
     bool SemanticSearchReady);
 
+/// <summary>
+/// One earlier turn of a conversation, as the model sees it: who said it and
+/// what they said. Deliberately not the stored entity — the model has no use for
+/// ids, timestamps or citations.
+/// </summary>
+public sealed record ChatTurn(string Role, string Content);
+
 /// <summary>One frame of an Ollama model download.</summary>
 public sealed record PullProgress(string Status, long Completed, long Total, string? Error);
 
@@ -347,34 +354,50 @@ public sealed class AiClient
     /// couldn't be reached; the caller reports that to the user rather than
     /// showing an empty answer.
     /// </summary>
+    public IAsyncEnumerable<string> StreamChatAsync(
+        string system, string question, CancellationToken ct) =>
+        StreamChatAsync(system, question, [], ct);
+
+    /// <param name="history">
+    /// Earlier turns of the same conversation, oldest first. Every provider takes
+    /// the same shape — a list of role/content pairs — so this is threaded through
+    /// as one list rather than three provider-specific ideas of a transcript.
+    /// </param>
     public async IAsyncEnumerable<string> StreamChatAsync(
-        string system, string question, [EnumeratorCancellation] CancellationToken ct)
+        string system, string question, IReadOnlyList<ChatTurn> history,
+        [EnumeratorCancellation] CancellationToken ct)
     {
         var s = await SettingsAsync(ct);
         if (!s.ChatConfigured) yield break;
 
         var stream = s.ChatProvider switch
         {
-            AiProviderKind.OpenAi => OpenAiChatAsync(s, system, question, ct),
-            AiProviderKind.Anthropic => AnthropicChatAsync(s, system, question, ct),
-            _ => OllamaChatAsync(s, system, question, ct),
+            AiProviderKind.OpenAi => OpenAiChatAsync(s, system, question, history, ct),
+            AiProviderKind.Anthropic => AnthropicChatAsync(s, system, question, history, ct),
+            _ => OllamaChatAsync(s, system, question, history, ct),
         };
 
         await foreach (var chunk in stream.WithCancellation(ct)) yield return chunk;
     }
 
+    // The transcript in the shape all three providers accept: role + content,
+    // oldest first, with the new question last.
+    private static object[] Turns(string question, IReadOnlyList<ChatTurn> history) =>
+    [
+        .. history.Select(h => new { role = h.Role == "assistant" ? "assistant" : "user", content = h.Content }),
+        new { role = "user", content = question },
+    ];
+
     private async IAsyncEnumerable<string> OllamaChatAsync(
-        AiSettings s, string system, string question, [EnumeratorCancellation] CancellationToken ct)
+        AiSettings s, string system, string question, IReadOnlyList<ChatTurn> history,
+        [EnumeratorCancellation] CancellationToken ct)
     {
         var body = new
         {
             model = s.OllamaChatModel,
             stream = true,
-            messages = new[]
-            {
-                new { role = "system", content = system },
-                new { role = "user", content = question },
-            },
+            messages = new object[] { new { role = "system", content = system } }
+                .Concat(Turns(question, history)).ToArray(),
         };
 
         using var http = _http.CreateClient("ai-chat");
@@ -405,17 +428,15 @@ public sealed class AiClient
     }
 
     private async IAsyncEnumerable<string> OpenAiChatAsync(
-        AiSettings s, string system, string question, [EnumeratorCancellation] CancellationToken ct)
+        AiSettings s, string system, string question, IReadOnlyList<ChatTurn> history,
+        [EnumeratorCancellation] CancellationToken ct)
     {
         var body = new
         {
             model = s.OpenAiChatModel,
             stream = true,
-            messages = new[]
-            {
-                new { role = "system", content = system },
-                new { role = "user", content = question },
-            },
+            messages = new object[] { new { role = "system", content = system } }
+                .Concat(Turns(question, history)).ToArray(),
         };
 
         using var http = _http.CreateClient("ai-chat");
@@ -450,7 +471,8 @@ public sealed class AiClient
     }
 
     private async IAsyncEnumerable<string> AnthropicChatAsync(
-        AiSettings s, string system, string question, [EnumeratorCancellation] CancellationToken ct)
+        AiSettings s, string system, string question, IReadOnlyList<ChatTurn> history,
+        [EnumeratorCancellation] CancellationToken ct)
     {
         // Grounded Q&A over a handful of note chunks: `low` effort keeps the
         // time-to-first-token short. Thinking is deliberately left on (the default
@@ -467,7 +489,7 @@ public sealed class AiClient
             // doesn't dead-end as a blank answer.
             fallbacks = "default",
             system,
-            messages = new[] { new { role = "user", content = question } },
+            messages = Turns(question, history),
         };
 
         using var http = _http.CreateClient("ai-chat");

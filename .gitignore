@@ -507,5 +507,9 @@ papyra.api/src/Papyra.Api/Data/*
 # Local dev runtime data (SQLite cache, notes, users, media) — kept in its own
 # folder so it never collides with the Data/ source namespace.
 .localdata/
+# Throwaway vault for the edge harness (papyra.api/tests/edge). Created and
+# discarded per run; never the dev vault, so a harness run cannot touch it.
+.edgedata/
 CLAUDE.md
 CODEBASE_MAP.md
+/papyra.api/src/Papyra.Api/.localdata.bak-20260819-180912

@@ -7,7 +7,7 @@ import {
 } from 'lucide-react';
 import type { Note } from '../types/note';
 import { putNote } from '../lib/notesApi';
-import { useSettings } from '../hooks/useSettings';
+import { useTrashNote } from '../hooks/useTrashNote';
 import { useSyncState } from '../hooks/useSync';
 import { useShareSummary } from '../hooks/useShares';
 import ShareDialog from './ShareDialog';
@@ -41,9 +41,9 @@ export default function NoteCard({ note, variant = 'active', conflictId, conflic
   const location = useLocation();
   const { toast } = useToast();
   // Only unrecoverable deletes ask. Everything else is done and reported.
-  const [confirming, setConfirming] = useState<'immediate' | 'forever' | null>(null);
+  const [confirming, setConfirming] = useState<'forever' | null>(null);
   const queryClient = useQueryClient();
-  const { data: settings } = useSettings();
+  const trashNote = useTrashNote();
   // Trash/restore/delete are server-side moves with no offline equivalent — the
   // outbox only carries note writes. Rather than firing a fetch that rejects
   // into a void, the controls say plainly that they need a connection.
@@ -89,17 +89,11 @@ export default function NoteCard({ note, variant = 'active', conflictId, conflic
     invalidate();
   }
 
-  // Soft-delete → trash. When retention is "immediate" (0), trashing can't be
-  // recovered, so warn and hard-delete instead.
+  // Soft-delete → trash, through the shared rule. It owns the Undo and the
+  // "Trash removes notes immediately" case, so the card and the open editor
+  // cannot disagree about what deleting a note does.
   async function trash() {
-    // With retention at "immediate" there is no Trash to fall back on, so this
-    // one really is a delete and has to ask.
-    if (settings?.trashRetentionDays === 0) { setConfirming('immediate'); return; }
-    await action('/trash');
-    toast(
-      `${note.kind === 'todo' ? 'List' : 'Note'} moved to Trash.`,
-      { label: 'Undo', onClick: () => void action('/untrash') },
-    );
+    await trashNote(note);
   }
 
   function deleteForever() { setConfirming('forever'); }
@@ -263,10 +257,8 @@ export default function NoteCard({ note, variant = 'active', conflictId, conflic
       {confirming && (
         <ConfirmDialog
           destructive
-          title={confirming === 'immediate' ? 'Delete this note?' : 'Delete for good?'}
-          body={confirming === 'immediate'
-            ? 'Trash is set to remove notes immediately, so there is nothing to restore from. This cannot be undone.'
-            : 'This removes the note from Trash permanently. It cannot be recovered.'}
+          title="Delete for good?"
+          body="This removes the note from Trash permanently. It cannot be recovered."
           confirmLabel="Delete"
           onConfirm={() => void reallyDelete()}
           onCancel={() => setConfirming(null)}

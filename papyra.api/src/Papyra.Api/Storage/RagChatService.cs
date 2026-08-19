@@ -71,7 +71,17 @@ public sealed class RagChatService
 
     // Stream the model's answer as it's generated. Yields text fragments; an empty
     // sequence means the model was unreachable (the caller reports it).
+    //
+    // `history` is the earlier turns of this conversation, oldest first. Without
+    // them a follow-up like "what about the second one?" has nothing to resolve
+    // against — the notes are retrieved fresh for every question, but the thread
+    // is what makes the question mean anything.
     public IAsyncEnumerable<string> StreamAnswerAsync(
         string question, IReadOnlyList<Citation> citations, CancellationToken ct) =>
-        _ai.StreamChatAsync(BuildSystemPrompt(citations), question, ct);
+        StreamAnswerAsync(question, citations, [], ct);
+
+    public IAsyncEnumerable<string> StreamAnswerAsync(
+        string question, IReadOnlyList<Citation> citations,
+        IReadOnlyList<ChatTurn> history, CancellationToken ct) =>
+        _ai.StreamChatAsync(BuildSystemPrompt(citations), question, history, ct);
 }

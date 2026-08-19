@@ -11,6 +11,7 @@ import { putNote } from '../lib/notesApi';
 import { closeTarget } from '../lib/noteLink';
 import { useToast } from '../lib/toastContext';
 import { useMentionShare } from '../hooks/useMentionShare';
+import { useTrashNote } from '../hooks/useTrashNote';
 import NoteToolbar from './NoteToolbar';
 import SnapshotPanel from './SnapshotPanel';
 import CategoryEditor from './CategoryEditor';
@@ -51,6 +52,9 @@ export default function NoteEditor({ note }: { note: Note }) {
   // `pending` state below.
   const { focus, pending: pendingUpdates, enter: enterFocus, exit: exitFocus, flush: flushUpdates } = useFocus();
   const ambient = useAmbient();
+  // Trashing a note is the same decision here as it is on a card, so both go
+  // through one rule — see useTrashNote for what drifted when they did not.
+  const trashNote = useTrashNote();
 
   // The host seam: media GET/upload → /api/media, [[ search → notes cache,
   // wikilink activation → router push. Rebuilt only when the open note or the
@@ -278,16 +282,13 @@ export default function NoteEditor({ note }: { note: Note }) {
     await queryClient.invalidateQueries({ queryKey: ['notes'] });
   }, [note.id, queryClient]);
 
-  // Trash: hard-delete the .md (irreversible) then leave the editor.
+  // Trash, through the shared rule: soft-delete with an Undo normally, and a
+  // confirmed permanent delete when Trash is set to remove notes immediately.
+  // Leave the editor only if the note actually went — backing out of the confirm
+  // should leave the person where they were, still editing.
   const trash = useCallback(async () => {
-    // Soft-delete: the note goes to Trash and stays restorable for the retention
-    // period, so this needs no confirmation — just tell the user where it went.
-    const res = await fetch(`/api/notes/${encodeURIComponent(note.id)}/trash`, { method: 'POST' });
-    if (!res.ok && res.status !== 404) throw new Error(`POST /api/notes/${note.id}/trash failed: ${res.status}`);
-    queryClient.invalidateQueries({ queryKey: ['notes'] });
-    navigate(closeTo);
-    toast(`${note.kind === 'todo' ? 'List' : 'Note'} moved to Trash.`);
-  }, [note.id, note.kind, queryClient, navigate, closeTo, toast]);
+    if (await trashNote(note)) navigate(closeTo);
+  }, [trashNote, note, navigate, closeTo]);
 
   // YAML `color` tints the canvas; fonts come from the design tokens. The palette
   // tints are always light, so a coloured note forces a light editor (dark ink)

@@ -27,7 +27,7 @@ import InboxPage from './pages/InboxPage';
 // Gate the workspace behind a live session. The /me probe decides where an
 // unauthenticated visitor lands: /setup before any admin exists, else /login.
 function RequireAuth() {
-  const { state, user } = useAuth();
+  const { state, user, retry } = useAuth();
   const queryClient = useQueryClient();
   const wasAuthed = useRef(false);
 
@@ -46,7 +46,16 @@ function RequireAuth() {
   if (state === 'loading') return <div className="app-bootstrap">Loading…</div>;
   if (state === 'setup') return <Navigate to="/setup" replace />;
   if (state === 'login') return <Navigate to="/login" replace />;
-  if (state === 'error') return <div className="app-bootstrap">Couldn’t reach the server.</div>;
+  if (state === 'error') {
+    return (
+      <div className="app-bootstrap">
+        <p>Couldn’t reach the server.</p>
+        {/* Retries happen by themselves, but a server that took longer to start
+            than the retries lasted would otherwise leave a dead page. */}
+        <button type="button" className="app-bootstrap__retry" onClick={retry}>Try again</button>
+      </div>
+    );
+  }
   // A password somebody else chose is a password somebody else knows. The server
   // refuses the rest of the API until this is done, so the workspace would only
   // render a wall of failed requests.
