@@ -24,6 +24,13 @@ using Scalar.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Accept plain-English environment variables (PAPYRA_ALLOW_INSECURE_COOKIES,
+// PAPYRA_ALLOWED_ORIGINS, …) alongside .NET's own `Section__Key` spelling.
+// Added last so it has the highest precedence among *providers*, but EnvAliases
+// only emits keys whose friendly variable was actually set — so a deployment
+// using the .NET names is unaffected. See EnvAliases for why this exists.
+builder.Configuration.AddInMemoryCollection(EnvAliases.Resolve(EnvAliases.FromProcess()));
+
 // OpenAPI document for the /docs developer portal. A document transformer registers
 // the personal-access-token scheme (X-API-Key) so the portal offers a token field
 // and marks the endpoints as secured.
@@ -230,6 +237,25 @@ builder.Services.AddDataProtection()
     // which differs between `dotnet run` and the container image.
     .SetApplicationName("Papyra");
 
+// Whether the session cookie may ride a plain-HTTP request.
+//
+// A `Secure` cookie is one a browser will only send back over a connection it
+// considers trustworthy. `localhost` always counts, which is why this never
+// shows up in local testing — but a self-hoster reaching the container at
+// `http://100.64.22.10:11033` over a VPN does not, so Chrome silently discards
+// the cookie at login and every subsequent request arrives anonymous. The
+// symptom is "signing in appears to work, then every refresh signs me out",
+// with no error anywhere to explain it.
+//
+// TLS remains the right answer for anything reachable from an untrusted
+// network, so this stays off by default. It exists because a WireGuard/
+// Tailscale tunnel already encrypts the transport, and demanding a certificate
+// on top of that is a real cost with no attacker it defends against.
+//
+// SameAsRequest, not None: a deployment that later gains TLS goes straight back
+// to marking the cookie Secure on HTTPS requests without touching this setting.
+var allowInsecureCookies = builder.Configuration.GetValue("Papyra:AllowInsecureCookies", false);
+
 var authBuilder = builder.Services
     .AddAuthentication(CookieAuthenticationDefaults.AuthenticationScheme);
 
@@ -247,7 +273,7 @@ authBuilder.AddCookie(options =>
         // is every state-changing route Papyra has; Strict only added protection
         // for cross-site *navigation*, and Papyra's GETs are reads.
         options.Cookie.SameSite = SameSiteMode.Lax;
-        options.Cookie.SecurePolicy = builder.Environment.IsDevelopment()
+        options.Cookie.SecurePolicy = builder.Environment.IsDevelopment() || allowInsecureCookies
             ? CookieSecurePolicy.SameAsRequest
             : CookieSecurePolicy.Always;
         options.SlidingExpiration = true;
@@ -416,6 +442,17 @@ if (enableCors)
 }
 
 var app = builder.Build();
+
+// Say it out loud. This weakens a real defence, and the person who set it six
+// months ago should be able to find out why their cookies are not Secure by
+// reading the boot log rather than the source.
+if (allowInsecureCookies && !app.Environment.IsDevelopment())
+{
+    app.Logger.LogWarning(
+        "Papyra:AllowInsecureCookies is ON: the session cookie is sent over plain HTTP. " +
+        "Only safe when the transport is already private (a WireGuard/Tailscale tunnel, " +
+        "or a host-only network). Anything reachable from an untrusted network needs TLS.");
+}
 
 // Run migrations on boot so papyra.db materializes before ports open.
 using (var scope = app.Services.CreateScope())

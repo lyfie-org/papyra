@@ -1,0 +1,111 @@
+# Papyra — self-hosted notes.
+#
+#   docker compose up -d          then open http://localhost:8080
+#
+# Every setting below is optional except the image name. Delete any line you
+# don't need; the defaults are what most people want.
+
+services:
+  papyra:
+    image: lyfie/papyra:latest
+    container_name: papyra
+    restart: unless-stopped
+
+    ports:
+      # host:container — change the FIRST number to serve on a different port.
+      - "8080:8080"
+
+    volumes:
+      # Your notes, as plain .md files. Back this up and you've backed up
+      # everything. Use a path (./papyra-data:/data) if you'd rather see them.
+      - papyra-data:/data
+
+    environment:
+      # ── Reaching Papyra over plain http (no https) ───────────────────────────
+      # Turn ON if you open Papyra at a bare address like http://192.168.1.50:8080
+      # or over a Tailscale/WireGuard IP. Without it, signing in appears to work
+      # and then logs you straight back out — browsers refuse to keep the session
+      # for a site that isn't https (localhost excepted).
+      #
+      # Only do this when the network is already private. If Papyra is reachable
+      # from the open internet, set up https instead and leave this off.
+      PAPYRA_ALLOW_INSECURE_COOKIES: "false"
+
+      # ── Where the AI assistant runs ──────────────────────────────────────────
+      # Points at the ollama service below. "localhost" would mean this container
+      # itself, so it is never the answer here.
+      #
+      # Already running Ollama elsewhere? Delete the ollama service and the
+      # depends_on, then pick one:
+      #
+      #   Another compose stack — join its network (see the `networks:` block at
+      #   the bottom of this file) and address it by container name on Ollama's
+      #   own port, not the port that stack publishes to the host:
+      #     PAPYRA_OLLAMA_URL: "http://ollama:11434"
+      #
+      #   On the host machine, or a stack whose port you'd rather go through:
+      #     PAPYRA_OLLAMA_URL: "http://host.docker.internal:11434"
+      #   and add:  extra_hosts: ["host.docker.internal:host-gateway"]
+      PAPYRA_OLLAMA_URL: "http://ollama:11434"
+
+      # ── File ownership ───────────────────────────────────────────────────────
+      # Makes the note files belong to you rather than root. Find yours with
+      # `id -u` and `id -g`. Only matters if you mounted a folder above.
+      PUID: "1000"
+      PGID: "1000"
+
+      # ── Rarely needed ────────────────────────────────────────────────────────
+      # Only if you serve the web app from a DIFFERENT address than the API.
+      # Comma-separated; normally leave this out entirely.
+      # PAPYRA_ALLOWED_ORIGINS: "https://notes.example.com"
+      #
+      # Only if Papyra sits behind a reverse proxy and you want real client
+      # addresses in the logs and rate limits. Comma-separated proxy IPs.
+      # PAPYRA_TRUSTED_PROXIES: "172.18.0.1"
+      #
+      # Only if you use passkeys behind a domain. Must be the bare hostname.
+      # PAPYRA_WEBAUTHN_DOMAIN: "notes.example.com"
+      # PAPYRA_WEBAUTHN_ORIGINS: "https://notes.example.com"
+
+    depends_on:
+      - ollama
+
+    stop_grace_period: 30s
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 5s
+      start_period: 20s
+      retries: 3
+
+  # Answers "Ask your notes" questions, on your own hardware. Delete this whole
+  # service if you don't want the assistant — Papyra works fine without it, and
+  # search falls back to matching words instead of meaning.
+  ollama:
+    image: ollama/ollama:latest
+    container_name: papyra-ollama
+    restart: unless-stopped
+    volumes:
+      # Models are gigabytes each; this keeps them across upgrades.
+      - ollama-models:/root/.ollama
+    # Deliberately not published to the host: only Papyra needs to reach it.
+    expose:
+      - "11434"
+
+volumes:
+  papyra-data:
+  ollama-models:
+
+# Reaching a container in ANOTHER compose stack (an Ollama you already run, say)
+# needs both stacks on one network — otherwise the name simply does not resolve.
+# Find the network the other stack put it on:
+#
+#   docker inspect ollama -f '{{range $k,$v := .NetworkSettings.Networks}}{{$k}}{{"\n"}}{{end}}'
+#
+# then uncomment this, put that name in `name:`, and add `ollama-net` to the
+# papyra service's own `networks:` list alongside `default`.
+#
+# networks:
+#   ollama-net:
+#     external: true
+#     name: PUT_THE_OTHER_STACKS_NETWORK_NAME_HERE
