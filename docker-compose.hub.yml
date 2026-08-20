@@ -32,10 +32,20 @@ services:
       PAPYRA_ALLOW_INSECURE_COOKIES: "false"
 
       # ── Where the AI assistant runs ──────────────────────────────────────────
-      # Points at the ollama service below. To use an Ollama already running on
-      # the host machine instead, comment out that service and use:
-      #   PAPYRA_OLLAMA_URL: "http://host.docker.internal:11434"
-      # ("localhost" here would mean this container itself, not your machine.)
+      # Points at the ollama service below. "localhost" would mean this container
+      # itself, so it is never the answer here.
+      #
+      # Already running Ollama elsewhere? Delete the ollama service and the
+      # depends_on, then pick one:
+      #
+      #   Another compose stack — join its network (see the `networks:` block at
+      #   the bottom of this file) and address it by container name on Ollama's
+      #   own port, not the port that stack publishes to the host:
+      #     PAPYRA_OLLAMA_URL: "http://ollama:11434"
+      #
+      #   On the host machine, or a stack whose port you'd rather go through:
+      #     PAPYRA_OLLAMA_URL: "http://host.docker.internal:11434"
+      #   and add:  extra_hosts: ["host.docker.internal:host-gateway"]
       PAPYRA_OLLAMA_URL: "http://ollama:11434"
 
       # ── File ownership ───────────────────────────────────────────────────────
@@ -85,3 +95,17 @@ services:
 volumes:
   papyra-data:
   ollama-models:
+
+# Reaching a container in ANOTHER compose stack (an Ollama you already run, say)
+# needs both stacks on one network — otherwise the name simply does not resolve.
+# Find the network the other stack put it on:
+#
+#   docker inspect ollama -f '{{range $k,$v := .NetworkSettings.Networks}}{{$k}}{{"\n"}}{{end}}'
+#
+# then uncomment this, put that name in `name:`, and add `ollama-net` to the
+# papyra service's own `networks:` list alongside `default`.
+#
+# networks:
+#   ollama-net:
+#     external: true
+#     name: PUT_THE_OTHER_STACKS_NETWORK_NAME_HERE
