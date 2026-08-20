@@ -19,6 +19,7 @@ import GhostCards from './GhostCards';
 import TimeMachineSlider from './TimeMachineSlider';
 import NoteToc from './NoteToc';
 import SecureNoteGate from './SecureNoteGate';
+import ShareDialog from './ShareDialog';
 import { Minimize2, RefreshCw, Volume2, VolumeX } from 'lucide-react';
 import { useFocus } from '../hooks/useFocus';
 import { useDialogFocus } from '../hooks/useDialogFocus';
@@ -56,13 +57,30 @@ export default function NoteEditor({ note }: { note: Note }) {
   // through one rule — see useTrashNote for what drifted when they did not.
   const trashNote = useTrashNote();
 
+  // A `[[link]]` naming no note we hold. Every wikilink renders the same whether
+  // or not it resolves, so a click on a dead one used to do nothing and say
+  // nothing. Say what happened, and offer the obvious next step.
+  const onUnresolvedLink = useCallback((target: string) => {
+    toast(`No note called “${target}”.`, {
+      label: 'Create it',
+      onClick: () => void (async () => {
+        const id = crypto.randomUUID();
+        await putNote(id, {
+          title: target, tags: [], color: null, pinned: false, archived: false, kind: 'note', body: '',
+        });
+        await queryClient.invalidateQueries({ queryKey: ['notes'] });
+        navigate(`/note/${id}`);
+      })(),
+    });
+  }, [toast, queryClient, navigate]);
+
   // The host seam: media GET/upload → /api/media, [[ search → notes cache,
   // wikilink activation → router push. Rebuilt only when the open note or the
   // injected services change. The editor owns the drop/paste upload pipeline
   // through adapter.uploadMedia, so Papyra no longer hand-splices ![[…]].
   const adapter = useMemo(
-    () => createPapyraEditorAdapter({ noteId: note.id, navigate, queryClient }),
-    [note.id, navigate, queryClient],
+    () => createPapyraEditorAdapter({ noteId: note.id, navigate, queryClient, onUnresolvedLink }),
+    [note.id, navigate, queryClient, onUnresolvedLink],
   );
   const [title, setTitle] = useState(note.title);
   // Mirror the title in a ref so the debounced save reads the live value, not a
@@ -119,6 +137,9 @@ export default function NoteEditor({ note }: { note: Note }) {
   const { status, isDirty, bump, reset, flush, savedRef } = useAutoSave(note, getDraft, getSaveDraft, onSaved);
   // Keyboard users land inside the editor instead of at the top of the page.
   useDialogFocus(editorScrollRef);
+
+  // Sharing from inside the open note — the same dialog the card opens.
+  const [shareOpen, setShareOpen] = useState(false);
 
   // Time-machine scrub bar. While open, autosave is hard-disabled (suppressSave)
   // so previewing a historical revision never overwrites the live file — only an
@@ -371,6 +392,7 @@ export default function NoteEditor({ note }: { note: Note }) {
                   : 'Note unlocked — it is back with your other notes.');
               }}
               onArchive={() => { void saveFrontmatter({ archived: true }); navigate(closeTo); }}
+              onShare={() => setShareOpen(true)}
               onTrash={() => {
                 void trash();
               }}
@@ -470,6 +492,8 @@ export default function NoteEditor({ note }: { note: Note }) {
           onRestored={() => { forceAdopt.current = true; }}
         />
       )}
+
+      {shareOpen && <ShareDialog note={note} onClose={() => setShareOpen(false)} />}
     </section>
     </div>
   );

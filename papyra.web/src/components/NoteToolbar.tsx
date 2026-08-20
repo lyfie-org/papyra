@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Pin, Palette, History, Archive, Trash2, Rewind, Maximize2, Lock, LockOpen } from 'lucide-react';
+import { Pin, Palette, History, Archive, Trash2, Rewind, Maximize2, Lock, LockOpen, Share2 } from 'lucide-react';
 import PalettePicker from './PalettePicker';
 import './NoteToolbar.css';
 import { useSyncState } from '../hooks/useSync';
@@ -16,6 +16,7 @@ interface Props {
   onTimeMachine: () => void;
   onFocus: () => void;
   onArchive: () => void;
+  onShare: () => void;
   onTrash: () => void;
   /** Whether this note is locked into the vault. */
   secure: boolean;
@@ -37,6 +38,7 @@ export default function NoteToolbar({
   onTimeMachine,
   onFocus,
   onArchive,
+  onShare,
   onTrash,
   secure,
   canToggleSecure,
@@ -118,6 +120,21 @@ export default function NoteToolbar({
         onClick={onArchive}
       >
         <Archive size={18} />
+      </button>
+
+      {/* Sharing was reachable only from the card. Opening a note to work on it
+          and then wanting to send it to someone is the ordinary order of events,
+          and it used to mean closing the note first to find its card again. */}
+      <button
+        type="button"
+        className="note-toolbar__btn"
+        aria-label="Share note"
+        // Creating a share is a server-side write with no offline equivalent.
+        disabled={!online}
+        title={online ? 'Share this note' : 'Needs a connection'}
+        onClick={onShare}
+      >
+        <Share2 size={18} />
       </button>
 
       {/* Locking is the only way into the Vault, and there was no control for it
