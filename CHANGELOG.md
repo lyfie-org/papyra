@@ -6,6 +6,28 @@ a Docker Hub tag and a GitHub Release.
 
 <!-- new releases are inserted directly below this line -->
 
+## [0.1.1] - 2026-08-20
+
+- feat: links find notes by filename, dead links say so, and a note can be shared while open (53a85d9)
+- fix: a mention delivers wherever it was written, and the assistant panel stops guessing (b0f5cd3)
+- feat: test cases updated (02bb5f5)
+- feat: say which model is answering, and let an admin pick another (2b3b984)
+- feat: see what Papyra does in the background, and start it yourself (fdebdd2)
+- feat: the heatmap moves to Settings, and a day opens instead of filtering (b6816d4)
+- feat: crop your picture to a square (2054ee5)
+- feat: a shared note says so, and says who to and a mention can offer the note, and a locked note can't be shared at all (ebc4ac8)
+- feat: accounts get their own page, and their own password, search everything, not only notes (cd87333)
+- fix: replace browser dialogs, fix search snippets, card spacing and note close (e458192)
+- fix: stop cross-account data leaking through the browser and git sync (66bf3da)
+- feat: explain every empty section instead of stating the obvious (9571e99)
+- feat: one-click local models, plain-language UI, search overlay fix (74b99b6)
+- feat: multi-provider AI (Ollama/OpenAI/Anthropic) with model download (33827f4)
+- fix: luthor version bump + multi-tenancy (7e1e1c9)
+- fix: scope NoteCache and the search index per tenant (495c024)
+- feat: hard-tested for production readiness, functional testing pending (22d2e4e)
+- chore: upgrade to @lyfie/luthor 2.9.1 and adopt its change API (2dc8e57)
+- feat: performed testing and edge case resolution (ba2b82c)
+
 ## [0.1.0] - 2026-08-07
 
 - fix: test case cleaned up (4c09fa3)
