@@ -6,6 +6,11 @@ a Docker Hub tag and a GitHub Release.
 
 <!-- new releases are inserted directly below this line -->
 
+## [0.1.2] - 2026-08-20
+
+- Update docker-compose.hub.yml (2bab849)
+- feat: environment variables you can read, and a session that survives plain http (fae077d)
+
 ## [0.1.1] - 2026-08-20
 
 - feat: links find notes by filename, dead links say so, and a note can be shared while open (53a85d9)
