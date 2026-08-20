@@ -54,8 +54,14 @@ public sealed class ColdBootDiffService : IHostedService
     {
         Directory.CreateDirectory(_options.UsersDir);
 
-        var cached = await db.NoteCache.ToDictionaryAsync(n => n.Id, ct);
-        var seen = new HashSet<string>(StringComparer.Ordinal);
+        // Keyed by (userId, noteId), never noteId alone: the same id legitimately
+        // exists in more than one vault (every mentioned user owns an "Inbox"
+        // note), and collapsing them here made the second tenant's row a
+        // duplicate-key insert that threw out of StartAsync — i.e. the container
+        // crash-looped and never served a request.
+        var cached = await db.NoteCache
+            .ToDictionaryAsync(n => (n.UserId, n.Id), ct);
+        var seen = new HashSet<(string UserId, string Id)>();
         int indexed = 0, removed = 0;
 
         foreach (var userDir in Directory.EnumerateDirectories(_options.UsersDir))
@@ -77,23 +83,23 @@ public sealed class ColdBootDiffService : IHostedService
                 var note = await _storage.ReadAsync(path, ct);
                 if (note is null || string.IsNullOrEmpty(note.Id)) continue;
 
-                seen.Add(note.Id);
+                seen.Add((userId, note.Id));
                 _state.Upsert(userId, path, note); // hydrate the in-memory vault on boot
 
                 var mtime = File.GetLastWriteTimeUtc(path);
-                if (!cached.TryGetValue(note.Id, out var row) || row.LastModified != mtime)
+                if (!cached.TryGetValue((userId, note.Id), out var row) || row.LastModified != mtime)
                 {
                     _search.IndexNote(userId, note);
-                    UpsertCache(db, row, note, mtime);
+                    UpsertCache(db, row, note, userId, mtime);
                     indexed++;
                 }
             }
         }
 
-        foreach (var (id, row) in cached)
+        foreach (var (key, row) in cached)
         {
-            if (seen.Contains(id)) continue;
-            _search.RemoveNote(id); // file deleted while offline
+            if (seen.Contains(key)) continue;
+            _search.RemoveNote(key.UserId, key.Id); // file deleted while offline
             db.NoteCache.Remove(row);
             removed++;
         }
@@ -119,12 +125,14 @@ public sealed class ColdBootDiffService : IHostedService
             File.GetLastWriteTimeUtc(path)));
     }
 
-    private static void UpsertCache(AppDbContext db, NoteCache? existing, Note note, DateTime mtime)
+    private static void UpsertCache(
+        AppDbContext db, NoteCache? existing, Note note, string userId, DateTime mtime)
     {
         if (existing is null)
         {
             db.NoteCache.Add(new NoteCache
             {
+                UserId = userId,
                 Id = note.Id,
                 Title = note.Title,
                 Tags = string.Join(' ', note.Tags),

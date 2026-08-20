@@ -7,7 +7,7 @@
   align-items: center;
   gap: 0.4rem;
   margin: 0 0 0.6rem;
-  font-family: 'Sora', sans-serif;
+  font-family: var(--sans);
   font-size: 0.8rem;
   font-weight: 600;
   letter-spacing: 0.02em;
@@ -21,7 +21,7 @@
   min-width: 1.2rem;
   height: 1.2rem;
   padding: 0 0.35rem;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: color-mix(in srgb, var(--accent) 30%, transparent);
   color: var(--text-h);
   font-size: 0.7rem;
@@ -44,11 +44,11 @@
   width: 100%;
   padding: 0.7rem 0.8rem;
   border: 1px dashed var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   background: color-mix(in srgb, var(--surface) 55%, transparent);
   text-align: left;
   cursor: pointer;
-  transition: background 0.15s ease, border-color 0.15s ease, transform 0.1s ease;
+  transition: background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease);
 }
 
 .ghost-card:hover {
@@ -62,13 +62,13 @@
 }
 
 .ghost-card__title {
-  font-family: 'Marcellus', serif;
+  font-family: var(--heading);
   font-size: 0.95rem;
   color: var(--text-h);
 }
 
 .ghost-card__snippet {
-  font-family: 'Sora', sans-serif;
+  font-family: var(--sans);
   font-size: 0.78rem;
   line-height: 1.4;
   color: var(--text);

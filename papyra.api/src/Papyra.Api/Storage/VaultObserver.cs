@@ -160,7 +160,7 @@ public sealed class VaultObserver : BackgroundService
                 if (_state.TryGet(userId, path, out var gone) && gone is not null)
                 {
                     _state.Remove(userId, path);
-                    _search?.RemoveNote(gone.Id);
+                    _search?.RemoveNote(userId, gone.Id);
                     await Broadcast("NoteDeleted", gone, token);
                 }
             }

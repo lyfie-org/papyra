@@ -88,8 +88,13 @@ public sealed class MarkdownStorageService
         fm[KeyColor] = note.Color;
         fm[KeyPinned] = note.Pinned;
         fm[KeyArchived] = note.Archived;
-        // Keep YAML clean: only stamp kind when it's not the default note.
+        // Keep YAML clean: only stamp kind when it's not the default note. The
+        // non-default kinds are enumerated rather than written through verbatim,
+        // so a client can't invent one — but every one of them MUST persist, or
+        // the note silently reverts to a plain note on the next read (an inbox
+        // would reappear on the notes desk).
         if (string.Equals(note.Kind, "todo", StringComparison.OrdinalIgnoreCase)) fm[KeyKind] = "todo";
+        else if (string.Equals(note.Kind, "inbox", StringComparison.OrdinalIgnoreCase)) fm[KeyKind] = "inbox";
         else fm.Remove(KeyKind);
         // Likewise only stamp `secure` while the note is actually locked.
         if (note.Secure) fm[KeySecure] = true;

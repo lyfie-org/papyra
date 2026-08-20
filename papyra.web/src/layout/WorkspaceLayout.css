@@ -10,8 +10,9 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  height: 60px;
-  padding: 0 20px;
+  gap: var(--space-6);
+  height: 64px;
+  padding: 0 var(--space-5);
   background: var(--surface);
   border-bottom: 1px solid var(--border);
   box-shadow: var(--shadow-nav);
@@ -21,7 +22,8 @@
 .workspace__brand {
   display: flex;
   align-items: center;
-  gap: 7px;
+  gap: var(--space-2);
+  flex: 0 0 auto;
 }
 
 .workspace__logo {
@@ -32,29 +34,34 @@
 
 .workspace__wordmark {
   font-family: var(--heading);
-  font-size: 24px;
+  font-size: var(--fs-xl);
   color: var(--text-h);
-  letter-spacing: 0.5px;
+  letter-spacing: 0.01em;
 }
 
 .workspace__sidebar-toggle {
   background: transparent;
   border: 1px solid transparent;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   color: var(--text-h);
-  font-size: 18px;
   line-height: 1;
-  padding: 6px 10px;
-  border-radius: 6px;
+  padding: var(--space-2);
+  border-radius: var(--radius-sm);
   cursor: pointer;
+  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
 }
 .workspace__sidebar-toggle:hover {
   background: var(--accent-bg);
+  color: var(--accent-text);
 }
 
 .workspace__nav-actions {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: var(--space-2);
+  flex: 0 0 auto;
 }
 
 .workspace__theme-toggle {
@@ -66,11 +73,16 @@
   color: var(--text-h);
   background: transparent;
   border: 1px solid var(--border);
-  border-radius: 50%;
+  border-radius: var(--radius-pill);
   cursor: pointer;
+  transition:
+    border-color var(--dur-fast) var(--ease),
+    background var(--dur-fast) var(--ease),
+    color var(--dur-fast) var(--ease);
 }
 .workspace__theme-toggle:hover {
-  border-color: var(--accent);
+  border-color: var(--accent-border);
+  background: var(--accent-bg);
   color: var(--accent-text);
 }
 
@@ -85,43 +97,57 @@
   width: 36px;
   height: 36px;
   border: none;
-  border-radius: 50%;
+  border-radius: var(--radius-pill);
   background: var(--accent);
   color: var(--accent-fg);
   font-family: var(--heading);
-  font-size: 18px;
+  font-size: var(--fs-md);
   text-decoration: none;
   cursor: pointer;
+  transition: transform var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease);
 }
+.workspace__avatar:hover { background: var(--accent-hover); }
+.workspace__avatar:active { transform: scale(0.96); }
 
 .workspace__avatar-menu {
   position: absolute;
-  top: calc(100% + 8px);
+  top: calc(100% + var(--space-2));
   right: 0;
   z-index: 40;
   display: flex;
   flex-direction: column;
   min-width: 11rem;
-  padding: 4px;
+  padding: var(--space-1);
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   background: var(--surface);
-  box-shadow: var(--shadow-card-hover);
+  box-shadow: var(--shadow);
+  transform-origin: top right;
+  animation: workspace-menu-in var(--dur) var(--ease);
+}
+
+@keyframes workspace-menu-in {
+  from { opacity: 0; transform: translateY(-4px) scale(0.98); }
+  to   { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .workspace__avatar-menu { animation: none; }
 }
 
 .workspace__avatar-menu button {
   display: flex;
   align-items: center;
-  gap: 9px;
-  padding: 9px 11px;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
   border: none;
-  border-radius: 7px;
+  border-radius: var(--radius-sm);
   background: transparent;
   color: var(--text-h);
-  font-family: var(--sans);
-  font-size: 14px;
+  font-size: var(--fs-sm);
   text-align: left;
   cursor: pointer;
+  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
 }
 .workspace__avatar-menu button:hover {
   background: var(--accent-bg);
@@ -130,7 +156,7 @@
 
 .workspace__avatar-sep {
   height: 1px;
-  margin: 4px 6px;
+  margin: var(--space-1) var(--space-2);
   background: var(--border);
 }
 
@@ -148,27 +174,30 @@
   flex-direction: column;
   background: var(--surface);
   border-right: 1px solid var(--border);
-  padding: 16px 12px;
+  padding: var(--space-4) var(--space-3);
   overflow-y: auto;
-  transition: width 0.2s ease, flex-basis 0.2s ease, padding 0.2s ease;
+  transition:
+    width var(--dur) var(--ease-inout),
+    flex-basis var(--dur) var(--ease-inout),
+    padding var(--dur) var(--ease-inout);
 }
 
 /* Collapsed = an icon rail, not gone: keep icons visible, hide the labels. */
 .workspace--collapsed .workspace__sidebar {
   flex-basis: 64px;
   width: 64px;
-  padding: 16px 8px;
+  padding: var(--space-4) var(--space-2);
 }
 .workspace--collapsed .workspace__nav-label {
   display: none;
 }
 .workspace--collapsed .workspace__nav-link {
   justify-content: center;
-  padding: 10px 0;
+  padding: var(--space-3) 0;
 }
 .workspace--collapsed .workspace__sidebar-footer {
   justify-content: center;
-  padding: 12px 0 4px;
+  padding: var(--space-3) 0 var(--space-1);
 }
 
 .workspace__sidebar ul {
@@ -177,19 +206,21 @@
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--space-1);
 }
 
 .workspace__nav-link {
   display: flex;
   align-items: center;
-  gap: 10px;
-  padding: 10px 14px;
-  border-radius: 8px;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-3);
+  border-radius: var(--radius-sm);
   color: var(--text);
   text-decoration: none;
-  font-size: 15px;
+  font-size: var(--fs-sm);
+  font-weight: 500;
   white-space: nowrap;
+  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
 }
 .workspace__nav-icon {
   flex: 0 0 auto;
@@ -209,54 +240,148 @@
   margin-top: auto;
   display: flex;
   flex-direction: column;
-  gap: 4px;
+  gap: var(--space-1);
 }
 
+/* Column, so the running version sits UNDER the connection status rather than
+   competing with it on the same line. */
 .workspace__sidebar-footer {
   display: flex;
-  align-items: center;
-  gap: 8px;
-  padding: 12px 14px 4px;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 2px;
+  padding: var(--space-3) var(--space-3) var(--space-1);
   font-family: var(--mono);
-  font-size: 12px;
+  font-size: var(--fs-2xs);
   color: var(--text);
   white-space: nowrap;
+}
+
+.workspace__status-row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* Quieter than the status line — reference information, not a live signal. */
+.workspace__version {
+  padding-left: calc(9px + var(--space-2));
+  opacity: 0.75;
+}
+
+.workspace--collapsed .workspace__version {
+  display: none;
+}
+
+/* Unread count on a sidebar entry (currently only the Inbox). Pushed to the
+   trailing edge so it never shifts the label. */
+.workspace__nav-badge {
+  margin-left: auto;
+  min-width: 18px;
+  padding: 0 5px;
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+  color: var(--accent-fg);
+  font-family: var(--mono);
+  font-size: var(--fs-2xs);
+  line-height: 18px;
+  text-align: center;
+}
+
+/* Collapsed rail has no room for a count; keep a dot so the signal survives. */
+.workspace--collapsed .workspace__nav-badge {
+  position: absolute;
+  top: 6px;
+  right: 6px;
+  min-width: 8px;
+  height: 8px;
+  padding: 0;
+  font-size: 0;
+  line-height: 0;
+}
+
+.workspace--collapsed .workspace__nav-link {
+  position: relative;
 }
 
 .workspace__status-dot {
   flex: 0 0 auto;
   width: 9px;
   height: 9px;
-  border-radius: 50%;
+  border-radius: var(--radius-pill);
+  transition: background var(--dur) var(--ease);
 }
 
 .workspace__status-dot--online {
   background: var(--accent);
 }
 
+/* Offline is not an error state — the app keeps working and the edits are safe
+   on this device — so it reads as a calm amber, with red reserved for nothing
+   at all. Pending/ syncing pulse gently to show work is outstanding. */
 .workspace__status-dot--offline {
-  background: var(--danger);
-  animation: workspace-pulse 1.2s ease-in-out infinite;
+  background: var(--warn);
+}
+
+.workspace__status-dot--pending,
+.workspace__status-dot--syncing {
+  background: var(--warn);
+  animation: workspace-pulse 1.6s var(--ease-inout) infinite;
 }
 
 @keyframes workspace-pulse {
   0%, 100% { opacity: 1; }
-  50% { opacity: 0.25; }
+  50% { opacity: 0.3; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .workspace__status-dot--offline { animation: none; }
+  .workspace__status-dot--pending,
+  .workspace__status-dot--syncing { animation: none; }
 }
 
 .workspace__desk {
   flex: 1 1 auto;
   min-width: 0;
   overflow-y: auto;
-  padding: 28px 32px;
+  padding: var(--space-8);
 }
 
 @media (max-width: 700px) {
   .workspace__desk {
-    padding: 20px 16px;
+    padding: var(--space-5) var(--space-4);
   }
 }
+
+/* The search field is the first thing to give up room on a narrow window. */
+@media (max-width: 620px) {
+  .workspace__navbar { gap: var(--space-3); padding: 0 var(--space-3); }
+  .workspace__wordmark { display: none; }
+}
+
+/* ── Narrow windows ────────────────────────────────────────────────────────────
+   Below ~860px a 220px label sidebar leaves too little desk: the note grid was
+   running off the right edge on a phone. Force the icon rail (the collapse state
+   the user can already choose) and let the desk have the rest. */
+@media (max-width: 860px) {
+  .workspace__sidebar {
+    flex-basis: 64px;
+    width: 64px;
+    padding: var(--space-4) var(--space-2);
+  }
+  .workspace__nav-label { display: none; }
+  .workspace__nav-link { justify-content: center; padding: var(--space-3) 0; }
+  .workspace__sidebar-footer { justify-content: center; padding: var(--space-3) 0 var(--space-1); }
+}
+
+@media (max-width: 560px) {
+  .workspace__sidebar {
+    flex-basis: 52px;
+    width: 52px;
+    padding: var(--space-3) var(--space-1);
+  }
+  /* The rail already carries the same destinations, so the hamburger is noise. */
+  .workspace__sidebar-toggle { display: none; }
+}
+
+/* The desk owns vertical scrolling; nothing should ever scroll it sideways. */
+.workspace__desk { overflow-x: hidden; }

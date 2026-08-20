@@ -8,32 +8,30 @@ namespace Papyra.Api.Storage;
 // to serve an expired/exhausted link (410); this sweep removes the dead rows so
 // they don't accumulate. Runs shortly after boot, then every 10 minutes.
 // Registered as a hosted service.
-public sealed class ShareCleanupService : BackgroundService
+public sealed class ShareCleanupService : PeriodicJob
 {
-    private static readonly TimeSpan Interval = TimeSpan.FromMinutes(10);
-
     private readonly IServiceScopeFactory _scopes;
     private readonly ILogger<ShareCleanupService> _logger;
 
-    public ShareCleanupService(IServiceScopeFactory scopes, ILogger<ShareCleanupService> logger)
+    public ShareCleanupService(
+        IServiceScopeFactory scopes, JobRegistry registry, ILogger<ShareCleanupService> logger)
+        : base(registry)
     {
         _scopes = scopes;
         _logger = logger;
     }
 
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
-    {
-        // Small delay so migrations have finished before the first sweep.
-        try { await Task.Delay(TimeSpan.FromSeconds(30), stoppingToken); }
-        catch (OperationCanceledException) { return; }
+    protected override string JobId => "share-cleanup";
+    protected override string JobName => "Tidy up finished share links";
+    protected override string JobDescription =>
+        "Removes share links that have expired or been opened as many times as you allowed. "
+        + "They already stop working the moment they run out; this clears the leftovers.";
+    protected override TimeSpan Interval => TimeSpan.FromMinutes(10);
 
-        using var timer = new PeriodicTimer(Interval);
-        do
-        {
-            try { await CleanupOnceAsync(stoppingToken); }
-            catch (Exception ex) { _logger.LogWarning(ex, "Share cleanup sweep failed"); }
-        }
-        while (await timer.WaitForNextTickAsync(stoppingToken));
+    protected override async Task<string?> RunOnceAsync(CancellationToken ct)
+    {
+        var removed = await CleanupOnceAsync(ct);
+        return removed == 0 ? null : $"{removed} finished link{(removed == 1 ? "" : "s")} cleared";
     }
 
     // Delete every share past its expiry or at/over its view cap. Returns the count

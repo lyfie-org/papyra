@@ -2,7 +2,7 @@
   margin: 0 1.5rem 1rem;
   padding: 0.7rem 0.9rem;
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   background: color-mix(in srgb, var(--surface) 70%, transparent);
 }
 
@@ -14,7 +14,7 @@
 }
 
 .time-machine__label {
-  font-family: 'Sora', sans-serif;
+  font-family: var(--sans);
   font-size: 0.78rem;
   font-weight: 600;
   letter-spacing: 0.04em;
@@ -29,7 +29,7 @@
   background: transparent;
   color: var(--text);
   cursor: pointer;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   padding: 0.2rem;
 }
 
@@ -48,7 +48,7 @@
 }
 
 .time-machine__stamp {
-  font-family: 'Roboto Mono', monospace;
+  font-family: var(--mono);
   font-size: 0.76rem;
   color: var(--text);
   white-space: nowrap;
@@ -67,10 +67,10 @@
   gap: 0.35rem;
   padding: 0.4rem 0.7rem;
   border: 1px solid var(--accent);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   background: var(--accent);
   color: var(--accent-fg);
-  font-family: 'Sora', sans-serif;
+  font-family: var(--sans);
   font-size: 0.78rem;
   cursor: pointer;
   white-space: nowrap;
@@ -88,4 +88,4 @@
   color: var(--text);
 }
 
-.time-machine__error { color: #b4543f; }
+.time-machine__error { color: var(--danger); }

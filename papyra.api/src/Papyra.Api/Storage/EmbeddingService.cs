@@ -1,5 +1,3 @@
-using System.Net.Http.Json;
-using System.Text.Json.Serialization;
 using System.Threading.Channels;
 using Microsoft.EntityFrameworkCore;
 using Papyra.Api.Data;
@@ -10,41 +8,34 @@ namespace Papyra.Api.Storage;
 // A semantic hit: the note, the chunk that matched, and its cosine similarity.
 public sealed record SemanticHit(string NoteId, string Text, double Score);
 
-// Local semantic index. On save, a note's body is chunked and embedded via a local
-// Ollama model; the vectors live in SQLite alongside the note id + owning user.
-// Similarity search is brute-force cosine in-process — for a personal vault that's
-// milliseconds, and it keeps Papyra a single self-contained container (no vector-DB
-// service to run).
+// Local semantic index. On save, a note's body is chunked and embedded by whichever
+// backend the instance is configured for (see AiClient); the vectors live in SQLite
+// alongside the note id + owning user. Similarity search is brute-force cosine
+// in-process — for a personal vault that's milliseconds, and it keeps Papyra a
+// single self-contained container (no vector-DB service to run).
 //
 // Vectors are a DERIVED cache: the .md files remain the source of truth, so the
 // table can be dropped and rebuilt at will. Embedding happens on a background queue
-// so a save never waits on the model, and degrades to a clean no-op when Ollama or
-// the model isn't there.
+// so a save never waits on the model, and degrades to a clean no-op when the
+// backend or the model isn't there.
 public sealed class EmbeddingService : BackgroundService
 {
     private readonly Channel<(string UserId, string NoteId, string Body)> _queue =
         Channel.CreateUnbounded<(string, string, string)>();
 
     private readonly IServiceScopeFactory _scopes;
-    private readonly IConfiguration _config;
     private readonly VaultState _state;
     private readonly ILogger<EmbeddingService> _logger;
-    private readonly HttpClient _http;
-    private readonly string _model;
+    private readonly AiClient _ai;
 
     public EmbeddingService(
-        IServiceScopeFactory scopes, IConfiguration config, VaultState state, ILogger<EmbeddingService> logger)
+        IServiceScopeFactory scopes, AiClient ai, VaultState state, ILogger<EmbeddingService> logger)
     {
         _scopes = scopes;
-        _config = config;
+        _ai = ai;
         _state = state;
         _logger = logger;
-        _model = config["Ollama:EmbedModel"] ?? "nomic-embed-text";
-        var baseUrl = config["Ollama:BaseUrl"] ?? "http://localhost:11434";
-        _http = new HttpClient { BaseAddress = new Uri(baseUrl), Timeout = TimeSpan.FromSeconds(60) };
     }
-
-    public bool Enabled => !string.IsNullOrWhiteSpace(_config["Ollama:BaseUrl"] ?? "http://localhost:11434");
 
     // Queue a note for (re-)embedding. Called from the note write path.
     public void Enqueue(string userId, string noteId, string? body) =>
@@ -147,28 +138,10 @@ public sealed class EmbeddingService : BackgroundService
         }
     }
 
-    // Ask Ollama for one embedding. Returns null (rather than throwing) when Ollama
-    // isn't running or the model is missing, so the app degrades to keyword search.
-    private async Task<float[]?> EmbedAsync(string text, CancellationToken ct)
-    {
-        try
-        {
-            var res = await _http.PostAsJsonAsync("/api/embeddings",
-                new { model = _model, prompt = text }, ct);
-            if (!res.IsSuccessStatusCode)
-            {
-                _logger.LogDebug("Ollama embeddings returned {Status}", (int)res.StatusCode);
-                return null;
-            }
-            var payload = await res.Content.ReadFromJsonAsync<OllamaEmbedResponse>(ct);
-            return payload?.Embedding is { Length: > 0 } v ? v : null;
-        }
-        catch (Exception ex)
-        {
-            _logger.LogDebug(ex, "Ollama unreachable; semantic features disabled");
-            return null;
-        }
-    }
+    // One embedding from the configured backend. Null (rather than an exception)
+    // when it isn't running or the model is missing, so the app degrades to
+    // keyword search instead of failing the save that triggered it.
+    private Task<float[]?> EmbedAsync(string text, CancellationToken ct) => _ai.EmbedAsync(text, ct);
 
     // ── pure helpers (unit-tested) ─────────────────────────────────────────────
 
@@ -198,11 +171,5 @@ public sealed class EmbeddingService : BackgroundService
         var floats = new float[bytes.Length / sizeof(float)];
         Buffer.BlockCopy(bytes, 0, floats, 0, bytes.Length);
         return floats;
-    }
-
-    private sealed class OllamaEmbedResponse
-    {
-        [JsonPropertyName("embedding")]
-        public float[]? Embedding { get; set; }
     }
 }

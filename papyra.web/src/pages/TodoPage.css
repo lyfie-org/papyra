@@ -1,5 +1,5 @@
 .todo-page {
-  padding: 8px 4px 48px;
+  padding: var(--space-2) var(--space-1) var(--space-12);
 }
 
 .todo-page__head {
@@ -9,20 +9,17 @@
   gap: 1rem;
   flex-wrap: wrap;
 }
-.todo-page__title {
-  margin: 0;
-}
 .todo-page__new {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  padding: 8px 14px;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
   border: 1px solid var(--accent-border);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   background: var(--accent-bg);
   color: var(--accent-text);
   font-family: var(--sans);
-  font-size: 14px;
+  font-size: var(--fs-sm);
   cursor: pointer;
 }
 .todo-page__new:hover {
@@ -36,7 +33,7 @@
 .todo-grid {
   display: grid;
   grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
-  gap: 16px;
+  gap: var(--space-4);
   align-items: start;
   margin-top: 20px;
 }
@@ -51,7 +48,7 @@
 }
 .todo-card__progress {
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: var(--fs-2xs);
   color: var(--text);
   opacity: 0.8;
 }
@@ -62,19 +59,21 @@
   padding: 0;
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: var(--space-2);
 }
 .todo-card__item {
   display: flex;
   align-items: flex-start;
-  gap: 8px;
+  gap: var(--space-2);
   font-family: var(--sans);
-  font-size: 14px;
+  font-size: var(--fs-sm);
   color: var(--text-h);
 }
+/* Completed items read as done through the strike-through and the filled box;
+   fading them to 0.6 also dropped them to 2.9:1, which fails AA. */
 .todo-card__item.is-done .todo-card__text {
   text-decoration: line-through;
-  opacity: 0.6;
+  color: var(--text);
 }
 .todo-card__check {
   flex-shrink: 0;
@@ -88,7 +87,7 @@
   border-radius: 5px;
   background: transparent;
   color: var(--accent-fg);
-  font-size: 12px;
+  font-size: var(--fs-xs);
   line-height: 1;
   cursor: pointer;
 }
@@ -103,19 +102,19 @@
 .todo-card__add {
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: var(--space-2);
   margin-top: 8px;
 }
 .todo-card__add-input {
   flex: 1;
   min-width: 0;
-  padding: 5px 10px;
+  padding: var(--space-1) var(--space-3);
   border: 1px dashed var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   background: transparent;
   color: var(--text-h);
   font-family: var(--sans);
-  font-size: 13px;
+  font-size: var(--fs-xs);
 }
 .todo-card__add-btn {
   display: inline-flex;
@@ -125,7 +124,7 @@
   height: 28px;
   flex-shrink: 0;
   border: none;
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: var(--accent-bg);
   color: var(--accent-text);
   cursor: pointer;
@@ -133,4 +132,41 @@
 .todo-card__add-btn:hover {
   background: var(--accent);
   color: var(--accent-fg);
+}
+
+/* A tinted to-do card is painted with the note's (always light) YAML colour, so
+   its text has to switch to the dark tint ink like NoteCard's does — otherwise
+   dark mode leaves tan-on-lavender at ~1.7:1, well under AA. */
+.note-card--colored .todo-card__progress,
+.note-card--colored .todo-card__item,
+.note-card--colored .todo-card__title-link,
+.note-card--colored .todo-card__add-input {
+  color: var(--tint-ink);
+}
+
+/* 11px metadata needs the full 4.5:1, so it takes the darker ink at full
+   opacity rather than the muted tone the larger text can afford. */
+.note-card--colored .todo-card__progress {
+  color: var(--tint-ink-soft);
+  opacity: 1;
+}
+
+/* Done items on a tinted card: the muted tint ink, not the theme's --text,
+   which would be tan-on-lavender. */
+.note-card--colored .todo-card__item.is-done .todo-card__text {
+  color: var(--tint-ink-soft);
+}
+
+.note-card--colored .todo-card__check {
+  border-color: var(--tint-scrim);
+}
+
+.note-card--colored .todo-card__add-input {
+  background: color-mix(in srgb, #fff 55%, transparent);
+  border-color: var(--tint-scrim);
+}
+
+.note-card--colored .todo-card__add-input::placeholder {
+  color: var(--tint-ink-muted);
+  opacity: 0.75;
 }

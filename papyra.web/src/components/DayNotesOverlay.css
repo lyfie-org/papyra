@@ -1,0 +1,102 @@
+.day-notes__scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: grid;
+  place-items: center;
+  padding: var(--space-4);
+  background: color-mix(in srgb, var(--scrim) 55%, transparent);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  animation: day-notes-in var(--dur) var(--ease);
+}
+
+.day-notes {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  width: min(520px, 100%);
+  max-height: min(70vh, 640px);
+  padding: var(--space-6);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+
+.day-notes__head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+}
+
+.day-notes__title {
+  margin: 0;
+  font: 400 var(--fs-lg) / 1.25 var(--heading);
+  color: var(--text-h);
+}
+
+.day-notes__count {
+  margin: var(--space-1) 0 0;
+  font: 400 var(--fs-xs) / 1.5 var(--sans);
+  color: var(--text);
+}
+
+.day-notes__close {
+  flex: none;
+  display: inline-flex;
+  padding: var(--space-1);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.day-notes__close:hover { color: var(--text-h); background: var(--code-bg); }
+
+.day-notes__list {
+  overflow-y: auto;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+}
+
+.day-notes__item {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  padding: var(--space-3);
+  border-radius: var(--radius-sm);
+  text-decoration: none;
+  transition: background var(--dur-fast) var(--ease);
+}
+
+.day-notes__item:hover { background: var(--code-bg); }
+
+.day-notes__item-title {
+  font: 500 var(--fs-sm) / 1.35 var(--sans);
+  color: var(--text-h);
+}
+
+.day-notes__item-snippet {
+  font: 400 var(--fs-xs) / 1.45 var(--sans);
+  color: var(--text);
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+
+@keyframes day-notes-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .day-notes__scrim { animation: none; }
+  .day-notes__item { transition: none; }
+}

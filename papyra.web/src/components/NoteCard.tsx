@@ -1,50 +1,25 @@
 import { useEffect, useRef, useState, type CSSProperties } from 'react';
-import { Link } from 'react-router-dom';
+import { Link, useLocation } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   AlertTriangle, Pin, Archive, ArchiveRestore, Share2, Trash2, RotateCcw,
   MoreHorizontal, Copy, Link2,
 } from 'lucide-react';
 import type { Note } from '../types/note';
-import { useSettings } from '../hooks/useSettings';
+import { putNote } from '../lib/notesApi';
+import { useTrashNote } from '../hooks/useTrashNote';
+import { useSyncState } from '../hooks/useSync';
+import { useShareSummary } from '../hooks/useShares';
 import ShareDialog from './ShareDialog';
+import ShareBadge from './ShareBadge';
+import ConfirmDialog from './ConfirmDialog';
+import { useToast } from '../lib/toastContext';
+import { snippet } from '../lib/plainText';
+import { originState } from '../lib/noteLink';
 import './NoteCard.css';
 
-const SNIPPET_LEN = 220;
 
 export type CardVariant = 'active' | 'archived' | 'trashed';
-
-// Cards are plain-text previews (Keep-style), so flatten the markdown to readable
-// prose instead of leaking raw syntax (#, **, ![[…]]) into the snippet.
-function stripMarkdown(md: string): string {
-  return md
-    .replace(/```[\s\S]*?```/g, ' ')                    // fenced code blocks
-    .replace(/`([^`]+)`/g, '$1')                        // inline code
-    .replace(/!\[\[[^\]]*\]\]/g, ' ')                   // media embeds ![[file]]
-    .replace(/\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g, '$1')   // wikilinks [[a|b]] → a
-    .replace(/!\[[^\]]*\]\([^)]*\)/g, ' ')              // images ![alt](url)
-    .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')            // links [text](url) → text
-    .replace(/^\s{0,3}#{1,6}\s+/gm, '')                 // headings
-    .replace(/^\s{0,3}>\s?/gm, '')                      // blockquotes
-    .replace(/^\s{0,3}[-*+]\s+\[[ xX]\]\s+/gm, '')      // task list markers
-    .replace(/^\s{0,3}[-*+]\s+/gm, '')                  // bullet list markers
-    .replace(/^\s{0,3}\d+\.\s+/gm, '')                  // ordered list markers
-    .replace(/^\s{0,3}(?:[-*_]\s*){3,}$/gm, ' ')        // horizontal rules
-    .replace(/(\*\*|__)(.*?)\1/g, '$2')                 // bold
-    .replace(/(\*|_)(.*?)\1/g, '$2')                    // italic
-    .replace(/~~(.*?)~~/g, '$2');                       // strikethrough
-}
-
-function snippet(body: string): string {
-  // Keep line breaks so a multi-line note renders as stacked lines (the card CSS
-  // has white-space: pre-wrap + line-clamp). Only collapse intra-line whitespace.
-  const text = stripMarkdown(body)
-    .replace(/[ \t]+/g, ' ')           // collapse runs of spaces/tabs
-    .replace(/[ \t]*\n[ \t]*/g, '\n')  // trim space around newlines
-    .replace(/\n{3,}/g, '\n\n')        // cap blank-line runs
-    .trim();
-  return text.length > SNIPPET_LEN ? `${text.slice(0, SNIPPET_LEN)}…` : text;
-}
 
 interface Props {
   note: Note;
@@ -63,10 +38,22 @@ function stop(e: React.MouseEvent) {
 }
 
 export default function NoteCard({ note, variant = 'active', conflictId, conflictCount, onResolveConflict }: Props) {
+  const location = useLocation();
+  const { toast } = useToast();
+  // Only unrecoverable deletes ask. Everything else is done and reported.
+  const [confirming, setConfirming] = useState<'forever' | null>(null);
   const queryClient = useQueryClient();
-  const { data: settings } = useSettings();
+  const trashNote = useTrashNote();
+  // Trash/restore/delete are server-side moves with no offline equivalent — the
+  // outbox only carries note writes. Rather than firing a fetch that rejects
+  // into a void, the controls say plainly that they need a connection.
+  const { online } = useSyncState();
+  const offlineHint = online ? undefined : 'Needs a connection';
   const [menuOpen, setMenuOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
+  // One request for the whole grid, not one per card.
+  const { data: shareSummary } = useShareSummary();
+  const shared = shareSummary?.find(s => s.noteId === note.id);
   const menuRef = useRef<HTMLDivElement | null>(null);
 
   const title = note.title.trim() || 'Untitled';
@@ -88,16 +75,11 @@ export default function NoteCard({ note, variant = 'active', conflictId, conflic
 
   // Persist a frontmatter patch, preserving every field the card isn't changing.
   async function patchNote(patch: Partial<Note>) {
-    const res = await fetch(`/api/notes/${encodeURIComponent(note.id)}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        title: note.title, tags: note.tags, color: note.color,
-        pinned: note.pinned, archived: note.archived, kind: note.kind, body: note.body,
-        ...patch,
-      }),
-    });
-    if (!res.ok) throw new Error(`PUT /api/notes/${note.id} failed: ${res.status}`);
+    await putNote(note.id, {
+      title: note.title, tags: note.tags, color: note.color,
+      pinned: note.pinned, archived: note.archived, kind: note.kind, body: note.body,
+      ...patch,
+    }, note.updated);
     invalidate();
   }
 
@@ -107,33 +89,27 @@ export default function NoteCard({ note, variant = 'active', conflictId, conflic
     invalidate();
   }
 
-  // Soft-delete → trash. When retention is "immediate" (0), trashing can't be
-  // recovered, so warn and hard-delete instead.
+  // Soft-delete → trash, through the shared rule. It owns the Undo and the
+  // "Trash removes notes immediately" case, so the card and the open editor
+  // cannot disagree about what deleting a note does.
   async function trash() {
-    if (settings?.trashRetentionDays === 0) {
-      if (!confirm('Delete this note? Trash auto-delete is set to immediate — it cannot be recovered.')) return;
-      await action('', 'DELETE');
-      return;
-    }
-    await action('/trash');
+    await trashNote(note);
   }
 
-  async function deleteForever() {
-    if (!confirm('Permanently delete this note? This cannot be recovered.')) return;
+  function deleteForever() { setConfirming('forever'); }
+
+  async function reallyDelete() {
+    setConfirming(null);
     await action('', 'DELETE');
+    toast('Note deleted for good.');
   }
 
   async function duplicate() {
     const id = crypto.randomUUID();
-    const res = await fetch(`/api/notes/${id}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        title: title === 'Untitled' ? '' : `${note.title} copy`,
-        tags: note.tags, color: note.color, pinned: false, archived: false, kind: note.kind, body: note.body,
-      }),
+    await putNote(id, {
+      title: title === 'Untitled' ? '' : `${note.title} copy`,
+      tags: note.tags, color: note.color, pinned: false, archived: false, kind: note.kind, body: note.body,
     });
-    if (!res.ok) throw new Error(`duplicate failed: ${res.status}`);
     invalidate();
   }
 
@@ -188,17 +164,24 @@ export default function NoteCard({ note, variant = 'active', conflictId, conflic
         </ul>
       )}
 
+      {/* Who else can read this. On the card rather than inside the share dialog
+          because "my notes are mine" is the promise, and an exception to it
+          should be visible without going looking for it. */}
+      {shared && <ShareBadge summary={shared} />}
+
       <div className="note-card__actions">
         {variant === 'trashed' ? (
           <>
             <button
               type="button" className="note-card__action" aria-label="Restore note"
+              disabled={!online} title={offlineHint}
               onClick={(e) => { stop(e); void action('/untrash'); }}
             >
               <RotateCcw size={16} />
             </button>
             <button
               type="button" className="note-card__action note-card__action--danger" aria-label="Delete forever"
+              disabled={!online} title={offlineHint}
               onClick={(e) => { stop(e); void deleteForever(); }}
             >
               <Trash2 size={16} />
@@ -223,12 +206,14 @@ export default function NoteCard({ note, variant = 'active', conflictId, conflic
             )}
             <button
               type="button" className="note-card__action" aria-label="Share note"
+              disabled={!online} title={offlineHint}
               onClick={(e) => { stop(e); setMenuOpen(false); setShareOpen(true); }}
             >
               <Share2 size={16} />
             </button>
             <button
               type="button" className="note-card__action note-card__action--danger" aria-label="Delete note"
+              disabled={!online} title={offlineHint}
               onClick={(e) => { stop(e); void trash(); }}
             >
               <Trash2 size={16} />
@@ -268,7 +253,18 @@ export default function NoteCard({ note, variant = 'active', conflictId, conflic
     <>
       {variant === 'trashed'
         ? <div className="note-card__link">{card}</div>
-        : <Link to={`/note/${encodeURIComponent(note.id)}`} className="note-card__link">{card}</Link>}
+        : <Link to={`/note/${encodeURIComponent(note.id)}`} state={originState(location)} className="note-card__link">{card}</Link>}
+      {confirming && (
+        <ConfirmDialog
+          destructive
+          title="Delete for good?"
+          body="This removes the note from Trash permanently. It cannot be recovered."
+          confirmLabel="Delete"
+          onConfirm={() => void reallyDelete()}
+          onCancel={() => setConfirming(null)}
+        />
+      )}
+
       {shareOpen && <ShareDialog note={note} onClose={() => setShareOpen(false)} />}
     </>
   );

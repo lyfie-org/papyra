@@ -1,14 +1,17 @@
-import { useState } from 'react';
+import { useState, useRef} from 'react';
 import { Link2, Users, X, Trash2, Plus } from 'lucide-react';
 import type { Note } from '../types/note';
 import { useNoteShares, useCreateShare, useRevokeShare, type Share } from '../hooks/useShares';
 import './ShareDialog.css';
+import { useDialogFocus } from '../hooks/useDialogFocus';
 
 function shareUrl(token: string) {
   return `${window.location.origin}/shared/${token}`;
 }
 
 export default function ShareDialog({ note, onClose }: { note: Note; onClose: () => void }) {
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+  useDialogFocus(dialogRef);
   const { data: shares } = useNoteShares(note.id);
   const create = useCreateShare(note.id);
   const revoke = useRevokeShare(note.id);
@@ -54,7 +57,7 @@ export default function ShareDialog({ note, onClose }: { note: Note; onClose: ()
 
   return (
     <div className="share" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
-      <div className="share__dialog" role="dialog" aria-modal="true" aria-label="Share note">
+      <div ref={dialogRef} className="share__dialog" role="dialog" aria-modal="true" aria-label="Share note">
         <header className="share__head">
           <h2 className="share__title">Share “{note.title.trim() || 'Untitled'}”</h2>
           <button type="button" className="share__close" aria-label="Close" onClick={onClose}><X size={18} /></button>

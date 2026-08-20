@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import Masonry from 'react-masonry-css';
 import type { Note } from '../types/note';
 import type { Conflict } from '../hooks/useConflicts';
@@ -18,6 +19,9 @@ interface GridProps {
   // Which slice of the vault this grid shows; also drives each card's actions.
   variant?: CardVariant;
   emptyLabel?: string;
+  // A full explanation to show instead of emptyLabel. An empty section is where
+  // the user most needs telling what the section is for, so prefer this.
+  empty?: ReactNode;
   // parentId → its unresolved conflict copies (drives the per-card banner).
   conflictsByParent?: Map<string, Conflict[]>;
   onResolveConflict?: (conflictId: string) => void;
@@ -55,7 +59,7 @@ function MasonrySection({ notes, variant, conflictsByParent, onResolveConflict }
 }
 
 export default function NoteGrid({
-  notes, variant = 'active', emptyLabel = 'No notes yet.', conflictsByParent, onResolveConflict,
+  notes, variant = 'active', emptyLabel = 'No notes yet.', empty, conflictsByParent, onResolveConflict,
 }: GridProps) {
   // Each slice is mutually exclusive: trashed wins, then archived, then active.
   const slice = notes.filter(n =>
@@ -64,7 +68,7 @@ export default function NoteGrid({
     : !n.archived && !n.trashed);
 
   if (slice.length === 0) {
-    return <p className="note-grid__empty">{emptyLabel}</p>;
+    return empty ? <>{empty}</> : <p className="note-grid__empty">{emptyLabel}</p>;
   }
 
   // Only the active desk groups pinned notes; archive/trash are flat lists.

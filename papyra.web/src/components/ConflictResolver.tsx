@@ -1,8 +1,9 @@
-import { useCallback, useEffect, useState } from 'react';
+import { useCallback, useEffect, useState, useRef} from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { X, ArrowLeft, ArrowRight, Copy } from 'lucide-react';
 import { lineDiff } from '../lib/lineDiff';
 import './ConflictResolver.css';
+import { useDialogFocus } from '../hooks/useDialogFocus';
 
 // One conflict's two sides, fetched on open. Left = the parent note as Papyra has
 // it; right = the sync tool's conflicting copy.
@@ -27,6 +28,8 @@ interface Props {
 // goes through the API (atomic) and deletes the rejected .md; the notes + conflicts
 // queries are invalidated so the grid re-hydrates.
 export default function ConflictResolver({ conflictId, onClose }: Props) {
+  const dialogRef = useRef<HTMLDivElement | null>(null);
+  useDialogFocus(dialogRef);
   const queryClient = useQueryClient();
   const [detail, setDetail] = useState<ConflictDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
@@ -68,7 +71,7 @@ export default function ConflictResolver({ conflictId, onClose }: Props) {
   const rows = detail ? lineDiff(detail.parentBody, detail.conflictBody) : null;
 
   return (
-    <div className="conflict-resolver" role="dialog" aria-label="Resolve conflict" aria-modal="true">
+    <div ref={dialogRef} className="conflict-resolver" role="dialog" aria-label="Resolve conflict" aria-modal="true">
       <div className="conflict-resolver__sheet">
         <header className="conflict-resolver__head">
           <h2 className="conflict-resolver__title">Resolve Conflict</h2>

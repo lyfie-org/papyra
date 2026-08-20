@@ -1,0 +1,218 @@
+.search {
+  position: relative;
+  flex: 1 1 420px;
+  max-width: 420px;
+  min-width: 0;
+}
+
+/* The whole control — field included — has to clear the scrim. Only the results
+   used to be lifted, which left the user typing behind a blurred sheet with no
+   idea what they'd written. Lifting the container keeps field and results on one
+   plane, so they read as a single surface rather than two stacked ones. */
+.search--open {
+  z-index: 60;
+}
+
+.search__field {
+  position: relative;
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  height: 36px;
+  padding: 0 var(--space-2) 0 var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--bg);
+  transition:
+    border-color var(--dur-fast) var(--ease),
+    box-shadow var(--dur) var(--ease);
+}
+
+/* Opaque + raised while open: the field is now sitting over blurred content, so
+   it needs its own ground to stay readable. */
+.search--open .search__field {
+  z-index: 1;
+  background: var(--surface);
+  border-color: var(--accent-border);
+  box-shadow: var(--shadow);
+}
+
+.search__field:focus-within {
+  border-color: var(--accent-border);
+  box-shadow: 0 0 0 3px var(--accent-bg);
+}
+
+.search__icon {
+  flex: 0 0 auto;
+  color: var(--text);
+  opacity: 0.75;
+}
+
+.search__input {
+  flex: 1 1 auto;
+  min-width: 0;
+  border: 0;
+  outline: none;
+  background: transparent;
+  font: 500 var(--fs-sm) / 1.4 var(--sans);
+  letter-spacing: 0.01em;
+  color: var(--text-h);
+}
+
+.search__input::placeholder { color: var(--text); opacity: 0.7; }
+/* The native clear affordance duplicates our own button. */
+.search__input::-webkit-search-cancel-button { display: none; }
+
+.search__kbd {
+  flex: 0 0 auto;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  font: 500 var(--fs-2xs) / 1 var(--mono);
+  color: var(--text);
+}
+
+.search__clear {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+
+.search__clear:hover { background: var(--code-bg); color: var(--text-h); }
+
+/* Same scrim recipe as the open-note modal (NoteEditor.css) so the two modal
+   surfaces read as one system.
+
+   z-index 0, not 55: `.search--open` raises the whole control to 60, which makes
+   it a stacking context — so the scrim is ranked against its *siblings* (the
+   field and the results), not against the page. It still covers everything
+   outside the control, because the control as a whole sits at 60. Ranking it
+   above 0 here is what used to bury the input the user was typing into. */
+.search__scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 0;
+  background: color-mix(in srgb, var(--scrim) 55%, transparent);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+}
+
+/* Hangs directly under the field, same width, so the two form one column —
+   the field is the header of the panel rather than a separate widget. */
+.search__results {
+  position: absolute;
+  z-index: 1;
+  top: calc(100% + var(--space-2));
+  left: 0;
+  right: 0;
+  max-height: min(60vh, 420px);
+  overflow-y: auto;
+  margin: 0;
+  padding: var(--space-1);
+  list-style: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  transform-origin: top center;
+  animation: search-in var(--dur) var(--ease);
+}
+
+/* Grows down out of the field rather than fading in on top of it. */
+@keyframes search-in {
+  from { opacity: 0; transform: translateY(-6px) scale(0.98); }
+  to   { opacity: 1; transform: none; }
+}
+
+.search__scrim { animation: search-scrim-in var(--dur) var(--ease); }
+
+@keyframes search-scrim-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .search__field { transition: none; }
+  .search__results,
+  .search__scrim { animation: none; }
+}
+
+.search__hit {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-1);
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  text-align: left;
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease);
+}
+
+.search__hit--active { background: var(--accent-bg); }
+
+/* The accent tint lifts the row enough that muted text drops to 3.75:1 in dark
+   mode. Promote the secondary lines to the heading colour while a row is
+   active — they carry meaning (which page a hit lives on), so they need AA. */
+.search__hit--active .search__hit-crumb,
+.search__hit--active .search__hit-snippet { color: var(--text-h); }
+
+/* Group heading — "Notes", "Settings". Sits inside the list item that starts a
+   run of one source, so the flat keyboard order is untouched. */
+.search__group {
+  padding: var(--space-2) var(--space-3) var(--space-1);
+  font: 500 var(--fs-2xs) / 1.2 var(--sans);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text);
+}
+
+li:first-child .search__group { padding-top: var(--space-1); }
+
+/* Where the hit lives: "Settings › AI". Above the title, because the trail is
+   context for the name rather than part of it. */
+.search__hit-crumb {
+  font: 500 var(--fs-2xs) / 1.2 var(--sans);
+  color: var(--text);
+}
+
+.search__hit-title {
+  font: 500 var(--fs-sm) / 1.35 var(--sans);
+  color: var(--text-h);
+}
+
+.search__hit-snippet {
+  font: 400 var(--fs-xs) / 1.45 var(--sans);
+  color: var(--text);
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  overflow: hidden;
+}
+
+.search__hit-snippet--locked { font-family: var(--mono); opacity: 0.7; }
+
+.search__empty,
+.search__note {
+  padding: var(--space-2) var(--space-3);
+  font: 400 var(--fs-xs) / 1.45 var(--sans);
+  color: var(--text);
+}
+
+.search__note { border-top: 1px solid var(--border); margin-top: var(--space-1); }
+
+@media (max-width: 860px) {
+  .search { flex-basis: 200px; }
+  .search__kbd { display: none; }
+}

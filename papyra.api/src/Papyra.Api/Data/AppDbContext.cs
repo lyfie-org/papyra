@@ -15,16 +15,23 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<SmartCollection> SmartCollections => Set<SmartCollection>();
     public DbSet<WebAuthnCredential> WebAuthnCredentials => Set<WebAuthnCredential>();
     public DbSet<NoteEmbedding> NoteEmbeddings => Set<NoteEmbedding>();
+    public DbSet<BlockGrant> BlockGrants => Set<BlockGrant>();
+    public DbSet<AuthToken> AuthTokens => Set<AuthToken>();
+    public DbSet<ChatSession> ChatSessions => Set<ChatSession>();
+    public DbSet<ChatMessage> ChatMessages => Set<ChatMessage>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder.Entity<AppSetting>().HasKey(s => s.Key);
-        modelBuilder.Entity<NoteCache>().HasKey(n => n.Id);
+        // Composite: a note id is unique per vault, not per instance. See NoteCache.
+        modelBuilder.Entity<NoteCache>().HasKey(n => new { n.UserId, n.Id });
         modelBuilder.Entity<User>().HasIndex(u => u.Username).IsUnique();
         // Unique per IdP subject; SQLite treats NULLs as distinct, so local
         // (non-SSO) accounts with a null ExternalId don't collide.
         modelBuilder.Entity<User>().HasIndex(u => u.ExternalId).IsUnique();
         modelBuilder.Entity<ApiKey>().HasIndex(k => k.TokenHash).IsUnique();
+        // Reset/invite tokens are looked up by hash on redemption.
+        modelBuilder.Entity<AuthToken>().HasIndex(t => t.TokenHash).IsUnique();
         modelBuilder.Entity<ApiKey>().HasIndex(k => k.UserId);
         modelBuilder.Entity<Share>().HasIndex(s => s.Token);
         modelBuilder.Entity<Share>().HasIndex(s => s.NoteId);
@@ -34,5 +41,22 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         modelBuilder.Entity<WebAuthnCredential>().HasIndex(c => c.CredentialId).IsUnique();
         modelBuilder.Entity<WebAuthnCredential>().HasIndex(c => c.UserId);
         modelBuilder.Entity<NoteEmbedding>().HasIndex(e => new { e.UserId, e.NoteId });
+        // One grant per (block, recipient): re-saving a note that still mentions
+        // the same person must not stack duplicate inbox entries.
+        //
+        // BlockText is part of the key because an unanchored grant has no BlockId
+        // — every one of them carries the empty string. Without it, naming the
+        // same person a second time on a different unanchored line would collide
+        // with the first grant and be dropped, which is the silent loss this
+        // whole path exists to end. SQLite treats NULLs as distinct, so anchored
+        // rows (BlockText null) still get their uniqueness from BlockId alone.
+        modelBuilder.Entity<BlockGrant>()
+            .HasIndex(g => new { g.SourceOwnerId, g.SourceNoteId, g.BlockId, g.BlockText, g.GranteeUserId })
+            .IsUnique();
+        modelBuilder.Entity<BlockGrant>().HasIndex(g => g.GranteeUserId);
+        // The session list is "mine, most recent first" and nothing else.
+        modelBuilder.Entity<ChatSession>().HasIndex(c => new { c.UserId, c.UpdatedUtc });
+        // A thread is read in order, always by session.
+        modelBuilder.Entity<ChatMessage>().HasIndex(m => new { m.SessionId, m.Id });
     }
 }

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { PapyraEditor, type PapyraEditorRef } from '@lyfie/luthor/presets/papyra';
 import '@lyfie/luthor/styles.css';
@@ -7,6 +7,11 @@ import type { Note } from '../types/note';
 import { useAutoSave, type Draft } from '../hooks/useAutoSave';
 import { useTheme } from '../hooks/useTheme';
 import { createPapyraEditorAdapter } from '../lib/papyraEditorAdapter';
+import { putNote } from '../lib/notesApi';
+import { closeTarget } from '../lib/noteLink';
+import { useToast } from '../lib/toastContext';
+import { useMentionShare } from '../hooks/useMentionShare';
+import { useTrashNote } from '../hooks/useTrashNote';
 import NoteToolbar from './NoteToolbar';
 import SnapshotPanel from './SnapshotPanel';
 import CategoryEditor from './CategoryEditor';
@@ -14,8 +19,10 @@ import GhostCards from './GhostCards';
 import TimeMachineSlider from './TimeMachineSlider';
 import NoteToc from './NoteToc';
 import SecureNoteGate from './SecureNoteGate';
+import ShareDialog from './ShareDialog';
 import { Minimize2, RefreshCw, Volume2, VolumeX } from 'lucide-react';
 import { useFocus } from '../hooks/useFocus';
+import { useDialogFocus } from '../hooks/useDialogFocus';
 import { useAmbient } from '../hooks/useAmbient';
 import './NoteEditor.css';
 
@@ -23,6 +30,7 @@ const STATUS_LABEL = {
   idle: '',
   saving: 'Saving…',
   saved: 'Saved to local disk',
+  queued: 'Saved on this device — will sync',
 } as const;
 
 // The editing canvas for a single note. Luthor's markdown preset owns the body
@@ -31,6 +39,11 @@ const STATUS_LABEL = {
 export default function NoteEditor({ note }: { note: Note }) {
   const { theme } = useTheme();
   const navigate = useNavigate();
+  const location = useLocation();
+  const { toast } = useToast();
+  // The list the note was opened from, so closing returns there rather than
+  // always dropping the user on Notes.
+  const closeTo = closeTarget(location);
   const queryClient = useQueryClient();
   const editorRef = useRef<PapyraEditorRef | null>(null);
   // The scrolling editor panel — the ghost TOC measures heading offsets against it.
@@ -40,14 +53,34 @@ export default function NoteEditor({ note }: { note: Note }) {
   // `pending` state below.
   const { focus, pending: pendingUpdates, enter: enterFocus, exit: exitFocus, flush: flushUpdates } = useFocus();
   const ambient = useAmbient();
+  // Trashing a note is the same decision here as it is on a card, so both go
+  // through one rule — see useTrashNote for what drifted when they did not.
+  const trashNote = useTrashNote();
+
+  // A `[[link]]` naming no note we hold. Every wikilink renders the same whether
+  // or not it resolves, so a click on a dead one used to do nothing and say
+  // nothing. Say what happened, and offer the obvious next step.
+  const onUnresolvedLink = useCallback((target: string) => {
+    toast(`No note called “${target}”.`, {
+      label: 'Create it',
+      onClick: () => void (async () => {
+        const id = crypto.randomUUID();
+        await putNote(id, {
+          title: target, tags: [], color: null, pinned: false, archived: false, kind: 'note', body: '',
+        });
+        await queryClient.invalidateQueries({ queryKey: ['notes'] });
+        navigate(`/note/${id}`);
+      })(),
+    });
+  }, [toast, queryClient, navigate]);
 
   // The host seam: media GET/upload → /api/media, [[ search → notes cache,
   // wikilink activation → router push. Rebuilt only when the open note or the
   // injected services change. The editor owns the drop/paste upload pipeline
   // through adapter.uploadMedia, so Papyra no longer hand-splices ![[…]].
   const adapter = useMemo(
-    () => createPapyraEditorAdapter({ noteId: note.id, navigate, queryClient }),
-    [note.id, navigate, queryClient],
+    () => createPapyraEditorAdapter({ noteId: note.id, navigate, queryClient, onUnresolvedLink }),
+    [note.id, navigate, queryClient, onUnresolvedLink],
   );
   const [title, setTitle] = useState(note.title);
   // Mirror the title in a ref so the debounced save reads the live value, not a
@@ -69,18 +102,50 @@ export default function NoteEditor({ note }: { note: Note }) {
     body: editorRef.current?.getMarkdown() ?? latestBody.current,
   }), []);
 
-  const { status, isDirty, bump, reset, flush, savedRef } = useAutoSave(note, getDraft);
+  // A `secure: true` note arrives with an empty body — the API withholds it until a
+  // biometric unlock. Until then the canvas is replaced by the gate, so the editor
+  // can never autosave an empty body over the real (locked) content on disk.
+  const [unlocked, setUnlocked] = useState(false);
+  const isLocked = !!note.secure && !unlocked;
+
+  // The write path's draft. `ensureBlockAnchors()` stamps a hidden `^id` onto
+  // every un-anchored block and returns the stamped markdown, so anchors reach
+  // disk only when a revision is actually saved — not on every commit, which
+  // would rewrite the .md constantly and give Syncthing/git-sync churn to fight
+  // over. Mirroring the result into latestBody in the same tick is what stops the
+  // stamp's own onChange from looking like a user edit and re-triggering a save.
+  //
+  // Never call this from the remote-update check: stamping a note the user has
+  // not touched would make it look dirty and block a legitimate remote adopt.
+  const getSaveDraft = useCallback((): Draft => {
+    // A to-do body is a checklist (lists are not stampable) and a locked note's
+    // body is withheld — neither should be stamped.
+    if (note.kind === 'todo' || isLocked) return getDraft();
+    const md = editorRef.current?.ensureBlockAnchors() ?? latestBody.current;
+    latestBody.current = md;
+    return { title: titleRef.current, body: md };
+  }, [getDraft, note.kind, isLocked]);
+
+  // Naming someone in a note offers to share the note with them — see
+  // useMentionShare for why it asks rather than acts.
+  const offerMentionShare = useMentionShare(note.id, note.secure);
+  const onSaved = useCallback(
+    (priorBody: string, nextBody: string) => { void offerMentionShare(priorBody, nextBody); },
+    [offerMentionShare],
+  );
+
+  const { status, isDirty, bump, reset, flush, savedRef } = useAutoSave(note, getDraft, getSaveDraft, onSaved);
+  // Keyboard users land inside the editor instead of at the top of the page.
+  useDialogFocus(editorScrollRef);
+
+  // Sharing from inside the open note — the same dialog the card opens.
+  const [shareOpen, setShareOpen] = useState(false);
 
   // Time-machine scrub bar. While open, autosave is hard-disabled (suppressSave)
   // so previewing a historical revision never overwrites the live file — only an
   // explicit "Restore this version" writes to disk.
   const [timeMachine, setTimeMachine] = useState(false);
   const suppressSave = useRef(false);
-  // A `secure: true` note arrives with an empty body — the API withholds it until a
-  // biometric unlock. Until then the canvas is replaced by the gate, so the editor
-  // can never autosave an empty body over the real (locked) content on disk.
-  const [unlocked, setUnlocked] = useState(false);
-  const isLocked = !!note.secure && !unlocked;
 
   // Close the editor modal: persist the draft first so closing never loses edits,
   // then return to the grid. Backdrop click and Escape both route here.
@@ -96,8 +161,8 @@ export default function NoteEditor({ note }: { note: Note }) {
     // A still-locked note holds an empty body (withheld server-side) — flushing
     // would write that emptiness over the real content on disk.
     if (!isLocked) await flush();
-    navigate('/');
-  }, [flush, navigate, timeMachine, isLocked]);
+    navigate(closeTo);
+  }, [flush, navigate, timeMachine, isLocked, closeTo]);
 
   // What the editor currently displays — the yardstick for detecting that the
   // server snapshot (refreshed by SignalR invalidation) carries a new revision.
@@ -137,51 +202,63 @@ export default function NoteEditor({ note }: { note: Note }) {
       shown.current = { id: note.id, ...incoming };
       return;
     }
-    if (!isDirty) { applyRemote(incoming); return; }
+    // Ask the editor itself whether it is holding unsaved text, rather than
+    // trusting the isDirty flag alone. The flag is React state set from an
+    // event handler, so a remote revision that lands in the same tick as the
+    // keystroke can be processed while it still reads false — and adopting then
+    // wipes the user's unsaved words with no warning. The draft comparison is a
+    // ref read, always current.
+    const draft = getDraft();
+    const holdingUnsaved = isDirty
+      || draft.title !== savedRef.current.title
+      || draft.body !== savedRef.current.body;
+    if (!holdingUnsaved) { applyRemote(incoming); return; }
     // Dirty: protect the caret, surface the conflict for the user to resolve.
     shown.current = { id: note.id, ...incoming };
     setPending(incoming);
-  }, [note, isDirty, applyRemote, savedRef]);
+  }, [note, isDirty, applyRemote, savedRef, getDraft]);
 
   // Keep my local edits and let the next save overwrite the remote revision.
   const keepLocal = useCallback(() => { setPending(null); bump(); }, [bump]);
 
-  // Escape closes the modal — but let an open sub-panel (recovery) or the conflict
-  // banner claim the key first so it doesn't yank the user out unexpectedly.
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return;
-      // Escape exits focus mode first (not the editor); otherwise let an open
-      // sub-panel or the conflict banner claim it before closing the editor.
-      if (focus) { exitFocus(); return; }
-      if (!recoverOpen && !pending && !timeMachine) void close();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [close, recoverOpen, pending, timeMachine, focus, exitFocus]);
+  // Edits arrive from the editor itself (luthor >=2.9.1 `onChange`). Before that
+  // API existed Papyra had to sniff the DOM — Lexical stops propagation of the
+  // contenteditable's `input` event, so a wrapper's onInput never fired and
+  // typing was silently never saved. `source` distinguishes a real edit from our
+  // own setMarkdown (remote adopt, time-machine preview), so a programmatic
+  // mutation can no longer masquerade as one.
+  const onEditorChange = useCallback(({ markdown, source }: { markdown: string; source: 'user' | 'programmatic' }) => {
+    if (source !== 'user') return;
+    // Belt and braces: while scrubbing history the canvas is showing a preview,
+    // and nothing it emits may schedule a save over the live file.
+    if (suppressSave.current) return;
+    if (markdown === latestBody.current) return;
+    latestBody.current = markdown;
+    bump();
+  }, [bump]);
 
   // Toolbar frontmatter mutation: PUT the live draft plus the changed YAML field,
   // so a pin/color/archive flip never clobbers unsaved body/title. Re-baselines
   // the save state so the write doesn't immediately echo back as a dirty change.
-  const saveFrontmatter = useCallback(async (patch: Partial<Pick<Note, 'color' | 'pinned' | 'archived' | 'tags' | 'kind'>>) => {
+  const saveFrontmatter = useCallback(async (patch: Partial<Pick<Note, 'color' | 'pinned' | 'archived' | 'tags' | 'kind' | 'secure'>>) => {
     // While locked the draft body is the withheld (empty) one — writing it would
     // destroy the note's real content, so frontmatter edits wait for the unlock.
     if (isLocked) return;
     const draft = getDraft();
-    const res = await fetch(`/api/notes/${encodeURIComponent(note.id)}`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        title: draft.title,
-        tags: patch.tags !== undefined ? patch.tags : note.tags,
-        color: patch.color !== undefined ? patch.color : note.color,
-        pinned: patch.pinned !== undefined ? patch.pinned : note.pinned,
-        archived: patch.archived !== undefined ? patch.archived : note.archived,
-        kind: patch.kind !== undefined ? patch.kind : note.kind,
-        body: draft.body,
-      }),
-    });
-    if (!res.ok) throw new Error(`PUT /api/notes/${note.id} failed: ${res.status}`);
+    // Same offline-safe seam as the autosave path: parks in the outbox when the
+    // API is unreachable instead of throwing away the toggle.
+    await putNote(note.id, {
+      title: draft.title,
+      tags: patch.tags !== undefined ? patch.tags : note.tags,
+      color: patch.color !== undefined ? patch.color : note.color,
+      pinned: patch.pinned !== undefined ? patch.pinned : note.pinned,
+      archived: patch.archived !== undefined ? patch.archived : note.archived,
+      kind: patch.kind !== undefined ? patch.kind : note.kind,
+      body: draft.body,
+      // Only sent when the toggle was the thing that changed; the API reads an
+      // absent value as "leave the lock alone".
+      ...(patch.secure !== undefined ? { secure: patch.secure } : {}),
+    }, note.updated);
     reset(draft);
     // A color flip remounts the editor (theme swap, see key/style below); seed the
     // fresh mount with the live text so unsaved edits survive the remount.
@@ -226,13 +303,13 @@ export default function NoteEditor({ note }: { note: Note }) {
     await queryClient.invalidateQueries({ queryKey: ['notes'] });
   }, [note.id, queryClient]);
 
-  // Trash: hard-delete the .md (irreversible) then leave the editor.
+  // Trash, through the shared rule: soft-delete with an Undo normally, and a
+  // confirmed permanent delete when Trash is set to remove notes immediately.
+  // Leave the editor only if the note actually went — backing out of the confirm
+  // should leave the person where they were, still editing.
   const trash = useCallback(async () => {
-    const res = await fetch(`/api/notes/${encodeURIComponent(note.id)}`, { method: 'DELETE' });
-    if (!res.ok && res.status !== 404) throw new Error(`DELETE /api/notes/${note.id} failed: ${res.status}`);
-    queryClient.invalidateQueries({ queryKey: ['notes'] });
-    navigate('/');
-  }, [note.id, queryClient, navigate]);
+    if (await trashNote(note)) navigate(closeTo);
+  }, [trashNote, note, navigate, closeTo]);
 
   // YAML `color` tints the canvas; fonts come from the design tokens. The palette
   // tints are always light, so a coloured note forces a light editor (dark ink)
@@ -254,6 +331,7 @@ export default function NoteEditor({ note }: { note: Note }) {
       style={style}
       role="dialog"
       aria-modal="true"
+      aria-label={`Note editor: ${title.trim() || 'Untitled'}`}
       onMouseDown={(e) => e.stopPropagation()}
     >
       {focus && (
@@ -299,16 +377,24 @@ export default function NoteEditor({ note }: { note: Note }) {
             <NoteToolbar
               pinned={note.pinned}
               color={note.color}
-              isTodo={note.kind === 'todo'}
               onTogglePin={() => void saveFrontmatter({ pinned: !note.pinned })}
-              onToggleTodo={() => void saveFrontmatter({ kind: note.kind === 'todo' ? 'note' : 'todo' })}
               onPickColor={(c) => void saveFrontmatter({ color: c })}
               onRecover={() => setRecoverOpen(true)}
               onTimeMachine={() => void openTimeMachine()}
               onFocus={enterFocus}
-              onArchive={() => { void saveFrontmatter({ archived: true }); navigate('/'); }}
+              secure={note.secure ?? false}
+              canToggleSecure={!isLocked}
+              onToggleSecure={() => {
+                const next = !(note.secure ?? false);
+                void saveFrontmatter({ secure: next });
+                toast(next
+                  ? 'Note locked and moved to the Vault.'
+                  : 'Note unlocked — it is back with your other notes.');
+              }}
+              onArchive={() => { void saveFrontmatter({ archived: true }); navigate(closeTo); }}
+              onShare={() => setShareOpen(true)}
               onTrash={() => {
-                if (confirm('Delete this note? This permanently removes the .md file.')) void trash();
+                void trash();
               }}
             />
           </>
@@ -349,32 +435,48 @@ export default function NoteEditor({ note }: { note: Note }) {
         />
       )}
 
-      {/* contenteditable input events bubble here → mirror the markdown + mark dirty. */}
+      {/* Edits are detected natively (see the observer effect) — Lexical swallows
+          the bubbling `input` event, so a React onInput here would never fire. */}
       {!isLocked && (
-      <div
-        className="note-editor__canvas"
-        onInput={() => {
-          // Suppressed while scrubbing history — a preview is not an edit, and
-          // must never schedule a save of an old revision over the live file.
-          if (suppressSave.current) return;
-          const md = editorRef.current?.getMarkdown();
-          if (md != null) latestBody.current = md;
-          bump();
-        }}
-      >
+      <div className="note-editor__canvas">
         <PapyraEditor
           key={`${note.id}-${editorKey}-${editorTheme}-${note.color ?? 'none'}`}
           initialTheme={theme}
           colored={colored}
           defaultEditorView="visual"
+          // Anchors are assigned by getSaveDraft at save time, never on commit.
+          blockAnchors="on-demand"
           defaultContent={body}
           placeholder="Start writing…"
           adapter={adapter}
+          onChange={onEditorChange}
+          // The editor reports divergence between its model and the DOM (text
+          // written behind the reconciler's back by an extension or a password
+          // manager renders but never reaches getMarkdown). Surface it instead of
+          // letting the visible note and the saved note drift apart in silence.
+          onDesync={(info) => console.warn('[papyra] editor DOM diverged from model', info)}
           onReady={(methods) => {
             editorRef.current = methods;
             // defaultContent loads as plain text, so parse the markdown into the
             // visual surface explicitly — otherwise the body renders as raw source.
             methods.setMarkdown(body);
+            // onReady fires post-reconciliation as of luthor 2.9.1, so the editor's
+            // own (normalised) serialization is a stable baseline right here — no
+            // settle timer. Baselining against our input instead would make every
+            // note look edited the moment it opened.
+            const normalised = methods.getMarkdown();
+            latestBody.current = normalised;
+            // Re-baseline the *save* baseline too, not just the mirror. It starts
+            // life as the raw bytes from disk, and markdown that Papyra didn't
+            // author round-trips through Lexical with cosmetic differences (a
+            // blank line after `## Heading`, list bullet style). Every note that
+            // arrived from Obsidian, an import, git-sync or the API therefore read
+            // as dirty before a single keystroke — which the caret guard then
+            // honoured by refusing remote updates and showing "This note was
+            // modified externally / Overwrite with Local" on a note the user had
+            // never touched. The draft is clean by definition here: the editor was
+            // just built from this body and nothing has been typed.
+            reset({ title: titleRef.current, body: normalised });
           }}
         />
       </div>
@@ -390,6 +492,8 @@ export default function NoteEditor({ note }: { note: Note }) {
           onRestored={() => { forceAdopt.current = true; }}
         />
       )}
+
+      {shareOpen && <ShareDialog note={note} onClose={() => setShareOpen(false)} />}
     </section>
     </div>
   );

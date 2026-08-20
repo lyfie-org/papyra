@@ -1,6 +1,7 @@
-import { useState } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { Trash2, Layers } from 'lucide-react';
 import NoteGrid from '../components/NoteGrid';
+import EmptyState from '../components/EmptyState';
 import RuleBuilder from '../components/RuleBuilder';
 import { useCollections, useCollectionNotes, useDeleteCollection, type SmartRules } from '../hooks/useCollections';
 import './CollectionsPage.css';
@@ -19,7 +20,16 @@ function describe(rulesJson: string): string {
 // renders the matches in the standard grid — the notes also stay on the main feed.
 export default function CollectionsPage() {
   const { data: collections, isLoading } = useCollections();
-  const [selected, setSelected] = useState<number | null>(null);
+  // The open collection lives in `?id=` so a search result can land on one, and
+  // so the chip below and that result set the same thing rather than two.
+  const [params, setParams] = useSearchParams();
+  const requested = Number(params.get('id'));
+  const selected = params.get('id') !== null && Number.isInteger(requested) ? requested : null;
+  const select = (id: number | null) => {
+    const next = new URLSearchParams(params);
+    if (id === null) next.delete('id'); else next.set('id', String(id));
+    setParams(next, { replace: true });
+  };
   const { data: notes, isLoading: loadingNotes } = useCollectionNotes(selected);
   const remove = useDeleteCollection();
 
@@ -27,7 +37,7 @@ export default function CollectionsPage() {
 
   return (
     <section className="collections">
-      <h1 className="collections__title">Smart Collections</h1>
+      <h1 className="page-title collections__title">Smart Collections</h1>
       <p className="collections__hint">
         Saved searches over your notes. A collection is a view — matching notes stay on the main feed.
       </p>
@@ -43,7 +53,7 @@ export default function CollectionsPage() {
               <button
                 type="button"
                 className={`collections__chip${selected === c.id ? ' is-active' : ''}`}
-                onClick={() => setSelected(selected === c.id ? null : c.id)}
+                onClick={() => select(selected === c.id ? null : c.id)}
               >
                 <Layers size={14} /> {c.name}
               </button>
@@ -51,7 +61,7 @@ export default function CollectionsPage() {
                 type="button"
                 className="collections__remove"
                 aria-label={`Delete ${c.name}`}
-                onClick={() => { if (selected === c.id) setSelected(null); remove.mutate(c.id); }}
+                onClick={() => { if (selected === c.id) select(null); remove.mutate(c.id); }}
               >
                 <Trash2 size={13} />
               </button>
@@ -60,7 +70,12 @@ export default function CollectionsPage() {
         </ul>
       )}
       {collections && collections.length === 0 && (
-        <p className="collections__status">No collections yet — build one above.</p>
+        <EmptyState
+          icon={Layers}
+          title="No collections yet"
+          body="A collection is a saved search. Set the rules once — a category, a date range, a word — and it keeps itself up to date as you write, so you never have to run that search again."
+          hint="Build your first one using the form above."
+        />
       )}
 
       {active && (

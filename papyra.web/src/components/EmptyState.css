@@ -1,0 +1,78 @@
+/* Deliberately quieter than the first-run cards: this is a section that happens
+   to be empty, not the whole app introducing itself. Same family, less weight —
+   centred, one column, no border, so it reads as guidance rather than content. */
+.empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  max-width: 46ch;
+  margin: var(--space-8) auto var(--space-12);
+  padding: 0 var(--space-3);
+  text-align: center;
+  animation: empty-state-in var(--dur-slow) var(--ease);
+}
+
+@keyframes empty-state-in {
+  from { opacity: 0; transform: translateY(6px); }
+  to   { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .empty-state { animation: none; }
+}
+
+.empty-state__icon {
+  margin-bottom: var(--space-3);
+  color: var(--accent);
+}
+
+.empty-state__title {
+  margin: 0 0 var(--space-2);
+  font: 400 var(--fs-xl) / 1.2 var(--heading);
+  letter-spacing: -0.01em;
+  color: var(--text-h);
+}
+
+.empty-state__body {
+  margin: 0;
+  font: 400 var(--fs-sm) / 1.6 var(--sans);
+  color: var(--text);
+}
+
+/* The actionable half. Set apart so the eye lands on "what do I do" without
+   having to re-read the explanation above it. */
+.empty-state__hint {
+  margin: var(--space-3) 0 0;
+  padding-top: var(--space-3);
+  border-top: 1px solid var(--border);
+  font: 400 var(--fs-sm) / 1.6 var(--sans);
+  color: var(--text-h);
+}
+
+.empty-state__action {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-4);
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+  color: var(--accent-fg);
+  font: 500 var(--fs-sm) / 1 var(--sans);
+  text-decoration: none;
+  cursor: pointer;
+  transition: filter var(--dur-fast) var(--ease);
+}
+
+.empty-state__action:hover { filter: brightness(1.06); }
+.empty-state__action:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+
+.empty-state code,
+.empty-state kbd {
+  padding: 0.1em 0.35em;
+  border-radius: var(--radius-sm);
+  background: var(--code-bg);
+  font-family: var(--mono);
+  font-size: 0.9em;
+}

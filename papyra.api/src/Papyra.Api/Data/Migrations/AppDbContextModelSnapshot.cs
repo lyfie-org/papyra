@@ -15,7 +15,7 @@ namespace Papyra.Api.Data.Migrations
         protected override void BuildModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
-            modelBuilder.HasAnnotation("ProductVersion", "10.0.0");
+            modelBuilder.HasAnnotation("ProductVersion", "10.0.10");
 
             modelBuilder.Entity("Papyra.Api.Models.ApiKey", b =>
                 {
@@ -67,8 +67,164 @@ namespace Papyra.Api.Data.Migrations
                     b.ToTable("Settings");
                 });
 
+            modelBuilder.Entity("Papyra.Api.Models.AuthToken", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Email")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("ExpiresUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Kind")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Role")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("TokenHash")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("UsedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int?>("UserId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Username")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("TokenHash")
+                        .IsUnique();
+
+                    b.ToTable("AuthTokens");
+                });
+
+            modelBuilder.Entity("Papyra.Api.Models.BlockGrant", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("BlockId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("BlockText")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime?>("DismissedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("GranteeUserId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime?>("ReadUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("SourceNoteId")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("SourceOwnerId")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("SourceUsername")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("GranteeUserId");
+
+                    b.HasIndex("SourceOwnerId", "SourceNoteId", "BlockId", "BlockText", "GranteeUserId")
+                        .IsUnique();
+
+                    b.ToTable("BlockGrants");
+                });
+
+            modelBuilder.Entity("Papyra.Api.Models.ChatMessage", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("CitationsJson")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Content")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Role")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("SessionId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("SessionId", "Id");
+
+                    b.ToTable("ChatMessages");
+                });
+
+            modelBuilder.Entity("Papyra.Api.Models.ChatSession", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<DateTime>("CreatedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Model")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Provider")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("Title")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("UpdatedUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("UserId", "UpdatedUtc");
+
+                    b.ToTable("ChatSessions");
+                });
+
             modelBuilder.Entity("Papyra.Api.Models.NoteCache", b =>
                 {
+                    b.Property<string>("UserId")
+                        .HasColumnType("TEXT");
+
                     b.Property<string>("Id")
                         .HasColumnType("TEXT");
 
@@ -83,7 +239,7 @@ namespace Papyra.Api.Data.Migrations
                         .IsRequired()
                         .HasColumnType("TEXT");
 
-                    b.HasKey("Id");
+                    b.HasKey("UserId", "Id");
 
                     b.ToTable("NoteCache");
                 });
@@ -213,9 +369,21 @@ namespace Papyra.Api.Data.Migrations
                     b.Property<string>("ExternalId")
                         .HasColumnType("TEXT");
 
+                    b.Property<bool>("MustChangePassword")
+                        .HasColumnType("INTEGER");
+
                     b.Property<string>("Name")
                         .IsRequired()
                         .HasColumnType("TEXT");
+
+                    b.Property<bool>("NotifyOnMention")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("NotifyOnSecurity")
+                        .HasColumnType("INTEGER");
+
+                    b.Property<bool>("NotifyOnShare")
+                        .HasColumnType("INTEGER");
 
                     b.Property<string>("PasswordHash")
                         .IsRequired()

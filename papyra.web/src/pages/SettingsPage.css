@@ -2,11 +2,6 @@
   max-width: 62rem;
 }
 
-.settings__title {
-  font-family: var(--heading);
-  color: var(--text-h);
-}
-
 .settings__tabs {
   display: flex;
   gap: 0.5rem;
@@ -108,6 +103,57 @@
   color: var(--accent);
 }
 
+/* Standing warning attached to a setting whose blast radius is wider than it
+   looks (git mirroring publishes every tenant's vault). Louder than a hint and
+   always visible — not a toast that can be missed. */
+.settings__callout {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  max-width: 38rem;
+  margin: 0 0 1.2rem;
+  padding: 0.85rem 1rem;
+  border: 1px solid var(--accent-border);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius-sm);
+  background: var(--accent-bg);
+  color: var(--text-h);
+  font-size: 0.85rem;
+}
+
+.settings__callout svg {
+  flex: none;
+  margin-top: 0.1rem;
+  color: var(--accent);
+}
+
+.settings__callout strong {
+  display: block;
+  margin-bottom: 0.35rem;
+  color: var(--text-h);
+}
+
+/* --text-h, not --text: the accent tint lightens the backdrop enough that the
+   muted body colour measures 4.25:1 in dark mode, under the AA floor. A standing
+   warning is also the last place to use de-emphasised text. */
+.settings__callout p {
+  margin: 0 0 0.5rem;
+  color: var(--text-h);
+  line-height: 1.5;
+}
+
+.settings__callout p:last-child {
+  margin-bottom: 0;
+}
+
+.settings__callout code {
+  padding: 0.05rem 0.25rem;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  font-family: var(--mono);
+  font-size: 0.8rem;
+}
+
 .settings__field {
   display: flex;
   flex-direction: column;
@@ -120,7 +166,7 @@
 .settings__select {
   padding: 0.5rem 0.6rem;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   background: var(--bg);
   color: var(--text-h);
   font-family: var(--sans);
@@ -137,7 +183,7 @@
 .settings__provision-row select {
   padding: 0.5rem 0.6rem;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   background: var(--bg);
   color: var(--text-h);
   font-family: var(--sans);
@@ -147,7 +193,7 @@
 .settings__provision-row button {
   padding: 0.5rem 0.9rem;
   border: 1px solid var(--accent-border);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   background: var(--accent);
   color: var(--accent-fg);
   font-family: var(--sans);
@@ -203,7 +249,7 @@
   align-self: flex-start;
   padding: 0.55rem 0.9rem;
   border: 1px solid var(--danger-border);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   background: var(--danger-bg);
   color: var(--danger);
   font-family: var(--sans);
@@ -219,7 +265,7 @@
   margin: 0 0 0.5rem;
   padding: 0.5rem 0.7rem;
   border: 1px solid var(--danger-border);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   background: var(--danger-bg);
   color: var(--danger);
   font-family: var(--sans);
@@ -256,7 +302,7 @@
   gap: 0.6rem;
   padding: 0.55rem 0.8rem;
   border: none;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   background: transparent;
   color: var(--text);
   font-family: var(--sans);
@@ -278,7 +324,7 @@
   min-width: 0;
   padding: 1.4rem 1.5rem;
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: var(--radius-md);
   background: var(--surface);
   box-shadow: var(--shadow-card);
 }
@@ -294,11 +340,11 @@
   width: 64px;
   height: 64px;
   border: none;
-  border-radius: 50%;
+  border-radius: var(--radius-pill);
   background: var(--accent);
   color: var(--accent-fg);
   font-family: var(--heading);
-  font-size: 28px;
+  font-size: var(--fs-xl);
   cursor: pointer;
   overflow: hidden;
   flex-shrink: 0;
@@ -318,7 +364,7 @@
   justify-content: center;
   width: 22px;
   height: 22px;
-  border-radius: 50%;
+  border-radius: var(--radius-pill);
   background: var(--surface);
   color: var(--text-h);
   box-shadow: var(--shadow-card);
@@ -342,7 +388,7 @@
 .settings__form .settings__field input {
   padding: 0.5rem 0.6rem;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   background: var(--bg);
   color: var(--text-h);
   font-family: var(--sans);
@@ -367,9 +413,12 @@
   align-self: flex-start;
   padding: 0.5rem 0.9rem;
   border: 1px solid var(--accent-border);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   background: var(--accent-bg);
-  color: var(--accent-text);
+  /* The label is --text-h, not --accent-text: on the accent tint the accent
+     colour measures 4.32:1 in dark mode, under AA. The border and background
+     still carry the accent, so the button reads the same. */
+  color: var(--text-h);
   font-family: var(--sans);
   font-size: 0.9rem;
   text-decoration: none;
@@ -398,7 +447,7 @@
   gap: 0.3rem;
   padding: 0.3rem;
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   background: var(--bg);
 }
 .settings__segment-btn {
@@ -407,7 +456,7 @@
   gap: 0.45rem;
   padding: 0.5rem 0.9rem;
   border: none;
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   background: transparent;
   color: var(--text);
   font-family: var(--sans);
@@ -426,7 +475,7 @@
   gap: 0.6rem;
   padding: 0.7rem 0.9rem;
   border: 1px solid var(--accent-border);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   background: var(--accent-bg);
 }
 .settings__token-value {
@@ -437,4 +486,256 @@
   background: transparent;
   color: var(--text-h);
   font-size: 0.8rem;
+}
+
+/* ── Assistant: model choices ────────────────────────────────────────────────
+   Three cards, read like a product shelf: plain name, what it's good at, what it
+   costs in disk and memory, one button. The engine's model identifier is
+   deliberately never rendered — it means nothing to the person choosing. */
+.settings__models {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(15rem, 1fr));
+  gap: var(--space-3);
+  max-width: 46rem;
+  margin: 0 0 1.2rem;
+  padding: 0;
+  list-style: none;
+}
+
+.settings__model {
+  display: flex;
+  flex-direction: column;
+  gap: 0.55rem;
+  padding: 0.9rem 1rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+
+.settings__model.is-active {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+.settings__model-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+.settings__model-tier {
+  font-family: var(--heading);
+  font-size: var(--fs-lg);
+  color: var(--text-h);
+}
+
+.settings__model-badge {
+  padding: 0.15rem 0.5rem;
+  border-radius: var(--radius-pill);
+  background: var(--accent-bg);
+  /* --text-h, not --text: the accent tint lifts the backdrop enough that the
+     muted body colour drops under AA in dark mode. */
+  color: var(--text-h);
+  font-size: var(--fs-2xs);
+  letter-spacing: 0.02em;
+}
+
+.settings__model-blurb {
+  flex: 1;
+  margin: 0;
+  font-size: var(--fs-sm);
+  line-height: 1.5;
+  color: var(--text);
+}
+
+.settings__model-specs {
+  display: flex;
+  gap: 1.2rem;
+  margin: 0;
+  padding: 0.55rem 0;
+  border-top: 1px solid var(--border);
+}
+
+.settings__model-specs div { display: flex; flex-direction: column; gap: 0.1rem; }
+.settings__model-specs dt { font-size: var(--fs-2xs); color: var(--text); }
+.settings__model-specs dd {
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--text-h);
+}
+
+.settings__model .settings__btn { width: 100%; justify-content: center; }
+
+.settings__model-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  font-size: var(--fs-2xs);
+  color: var(--text);
+}
+
+/* Width comes from --pct, set inline as the download reports bytes. */
+.settings__model-bar {
+  height: 4px;
+  border-radius: var(--radius-pill);
+  background: var(--border);
+  overflow: hidden;
+}
+
+.settings__model-bar::after {
+  content: '';
+  display: block;
+  width: var(--pct, 0%);
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  transition: width var(--dur) var(--ease);
+}
+
+.settings__advanced {
+  max-width: 38rem;
+  margin: 0.5rem 0 1rem;
+  font-size: var(--fs-sm);
+}
+
+.settings__advanced summary {
+  cursor: pointer;
+  color: var(--text);
+  padding: 0.3rem 0;
+}
+
+.settings__advanced summary:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* Secondary action: same shape as the primary button, no fill. Used where the
+   action is optional (setting up a paid provider) and shouldn't compete with
+   the recommended path above it. */
+.settings__btn--ghost {
+  border: 1px solid var(--border);
+  background: transparent;
+  color: var(--text-h);
+}
+
+.settings__btn--ghost:hover { border-color: var(--accent); background: var(--accent-bg); }
+
+/* ── Jobs ─────────────────────────────────────────────────────────────────── */
+
+.jobs {
+  list-style: none;
+  margin: 0 0 var(--space-6);
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.jobs__item {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-4) 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.jobs__item:last-child { border-bottom: 0; }
+
+.jobs__text { display: flex; flex-direction: column; gap: var(--space-1); }
+
+.jobs__name {
+  margin: 0;
+  font: 500 var(--fs-sm) / 1.35 var(--sans);
+  color: var(--text-h);
+}
+
+.jobs__desc,
+.jobs__meta {
+  margin: 0;
+  max-width: 60ch;
+  font: 400 var(--fs-xs) / 1.5 var(--sans);
+  color: var(--text);
+}
+
+.jobs__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+
+/* A job that failed is the one thing on this screen worth interrupting for. */
+.jobs__failed { color: var(--danger); }
+
+.jobs__on {
+  flex: none;
+  padding: 2px var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--code-bg);
+  color: var(--text);
+  font: 500 var(--fs-2xs) / 1.5 var(--sans);
+}
+
+@media (max-width: 640px) {
+  .jobs__item { flex-direction: column; align-items: stretch; }
+}
+
+/* ── AI: what's answering, and what else is installed ─────────────────────── */
+
+/* Exact identifiers, folded away: nobody choosing a model needs to read
+   "mistral-nemo:12b", and anybody diagnosing one needs it exactly. */
+.settings__tech {
+  margin: var(--space-3) 0 var(--space-5);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--code-bg);
+}
+
+.settings__tech summary {
+  cursor: pointer;
+  font: 500 var(--fs-xs) / 1.4 var(--sans);
+  color: var(--text);
+}
+
+.settings__tech[open] summary { margin-bottom: var(--space-3); }
+
+.settings__tech code {
+  font-family: var(--mono);
+  font-size: var(--fs-xs);
+  color: var(--text-h);
+}
+
+.settings__installed {
+  list-style: none;
+  margin: 0 0 var(--space-5);
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+}
+
+.settings__installed-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--border);
+}
+
+.settings__installed-item:last-child { border-bottom: 0; }
+
+.settings__installed-name {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  font: 500 var(--fs-sm) / 1.35 var(--sans);
+  color: var(--text-h);
+}
+
+.settings__installed-name code {
+  font: 400 var(--fs-2xs) / 1.4 var(--mono);
+  color: var(--text);
+}
+
+@media (max-width: 640px) {
+  .settings__installed-item { flex-direction: column; align-items: stretch; }
 }

@@ -44,7 +44,9 @@ public sealed class OrphanPruneServiceTests
         var config = new ConfigurationBuilder()
             .AddInMemoryCollection(new Dictionary<string, string?> { ["Papyra:DataDir"] = dataDir })
             .Build();
-        return new OrphanPruneService(state, config, new StubEnv(), NullLogger<OrphanPruneService>.Instance);
+        return new OrphanPruneService(
+            state, config, new StubEnv(),
+            new JobRegistry(NullLogger<JobRegistry>.Instance), NullLogger<OrphanPruneService>.Instance);
     }
 
     private static string NewTempDir()

@@ -2,8 +2,12 @@ import { useEffect, useState } from 'react';
 import { HubConnectionBuilder, HubConnectionState, type HubConnection } from '@microsoft/signalr';
 import { useQueryClient } from '@tanstack/react-query';
 import { useFocus } from './useFocus';
+import { setSync } from '../lib/syncStatus';
 
 export type ServerStatus = 'online' | 'offline';
+
+/** Ceiling for reconnect backoff, and the fixed retry beat once it's reached. */
+const RECONNECT_CAP_MS = 15_000;
 
 // Global real-time bridge: connect to /hubs/notes, and on any external note event
 // refresh the grid. In focus mode the refresh is buffered (see useFocus) so a remote
@@ -17,7 +21,14 @@ export function useSignalR(): ServerStatus {
   useEffect(() => {
     const connection: HubConnection = new HubConnectionBuilder()
       .withUrl('/hubs/notes')
-      .withAutomaticReconnect()
+      // The stock policy gives up after ~60s. A self-hosted server can easily be
+      // down longer than that (an image upgrade, a laptop asleep) and the app
+      // would then sit there claiming "offline" until a manual reload. Back off
+      // to 15s and keep trying forever.
+      .withAutomaticReconnect({
+        nextRetryDelayInMilliseconds: (ctx) =>
+          Math.min(1000 * 2 ** ctx.previousRetryCount, RECONNECT_CAP_MS),
+      })
       .build();
 
     const invalidateConflicts = () => queryClient.invalidateQueries({ queryKey: ['conflicts'] });
@@ -30,22 +41,42 @@ export function useSignalR(): ServerStatus {
     connection.on('NoteConflict', invalidateConflicts);
     connection.on('ConflictResolved', invalidateConflicts);
 
-    connection.onreconnecting(() => setStatus('offline'));
-    connection.onreconnected(() => setStatus('online'));
-    connection.onclose(() => setStatus('offline'));
+    // The hub is the most sensitive reachability signal we have — it notices the
+    // API dying while the browser still thinks it has a network. Mirror it into
+    // the sync store so the outbox drains the moment the server comes back.
+    const publish = (online: boolean) => { setStatus(online ? 'online' : 'offline'); setSync({ online }); };
+
+    connection.onreconnecting(() => publish(false));
+    connection.onreconnected(() => publish(true));
 
     let cancelled = false;
-    connection
-      .start()
-      .then(() => {
-        if (!cancelled) setStatus('online');
-      })
-      .catch(() => {
-        if (!cancelled) setStatus('offline');
-      });
+    let retry: ReturnType<typeof setTimeout> | undefined;
+
+    // The automatic policy only covers a connection that came up once; a start
+    // that never succeeded (server down when the tab opened) has to be retried
+    // here, or the app stays "offline" forever after the API comes back.
+    const connect = () => {
+      if (cancelled || connection.state !== HubConnectionState.Disconnected) return;
+      connection
+        .start()
+        .then(() => { if (!cancelled) publish(true); })
+        .catch(() => {
+          if (cancelled) return;
+          publish(false);
+          retry = setTimeout(connect, RECONNECT_CAP_MS);
+        });
+    };
+
+    connection.onclose(() => {
+      publish(false);
+      retry = setTimeout(connect, RECONNECT_CAP_MS);
+    });
+
+    connect();
 
     return () => {
       cancelled = true;
+      if (retry) clearTimeout(retry);
       if (connection.state !== HubConnectionState.Disconnected) {
         void connection.stop();
       }

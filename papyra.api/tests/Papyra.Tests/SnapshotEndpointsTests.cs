@@ -26,7 +26,7 @@ public sealed class SnapshotEndpointsTests
     private static async Task<string> SeedAdminAsync(HttpClient client)
     {
         var res = await client.PostAsJsonAsync("/api/auth/setup", new SetupRequest(
-            Username: "admin", Name: "Admin", Email: "a@b.c", Password: "hunter2"));
+            Username: "admin", Name: "Admin", Email: "a@b.c", Password: "hunter2!"));
         Assert.Equal(HttpStatusCode.OK, res.StatusCode);
         var doc = await res.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
         return doc.GetProperty("id").GetInt32().ToString();

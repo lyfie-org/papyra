@@ -6,8 +6,19 @@ services:
     image: papyra:latest
     ports:
       - "8080:8080"
+    # The image declares VOLUME ["/data"], so without this every `up --build`
+    # recreated the container against a FRESH anonymous volume — silently
+    # discarding the vault, the SQLite cache and the user accounts on each
+    # rebuild. Name it so notes survive image upgrades.
+    volumes:
+      - papyra-data:/data
     environment:
       Cors__AllowedOrigins__0: "http://localhost:8080"
+      # The local model engine. Papyra downloads and runs its models here, so
+      # "Ask your notes" works without an account anywhere.
+      Ollama__BaseUrl: "http://ollama:11434"
+    depends_on:
+      - ollama
     stop_grace_period: 30s
     restart: unless-stopped
     healthcheck:
@@ -16,3 +27,21 @@ services:
       timeout: 5s
       start_period: 20s
       retries: 3
+
+  # Runs the local language model that answers questions about your notes.
+  # Nothing here talks to the internet except to download a model you picked.
+  ollama:
+    image: ollama/ollama:latest
+    # Models are gigabytes each — a named volume keeps them across upgrades so a
+    # rebuild never silently re-downloads them.
+    volumes:
+      - ollama-models:/root/.ollama
+    # Not published to the host: only Papyra needs to reach it, and exposing an
+    # unauthenticated model runner on the network is a bad default.
+    expose:
+      - "11434"
+    restart: unless-stopped
+
+volumes:
+  papyra-data:
+  ollama-models:

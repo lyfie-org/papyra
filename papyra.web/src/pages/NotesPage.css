@@ -11,7 +11,7 @@
 }
 
 .notes-page__import-msg {
-  font-family: 'Sora', sans-serif;
+  font-family: var(--sans);
   font-size: 0.8rem;
   color: var(--text);
 }
@@ -23,9 +23,9 @@
   margin-bottom: 1rem;
   padding: 0.4rem 0.5rem 0.4rem 0.8rem;
   border: 1px solid var(--border);
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: var(--surface);
-  font-family: 'Sora', sans-serif;
+  font-family: var(--sans);
   font-size: 0.82rem;
   color: var(--text-h);
 }
@@ -36,7 +36,7 @@
   gap: 0.25rem;
   padding: 0.2rem 0.5rem;
   border: none;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   background: color-mix(in srgb, var(--accent) 18%, transparent);
   color: var(--text-h);
   font: inherit;
@@ -54,15 +54,15 @@
   justify-content: center;
   gap: 0.75rem;
   border: 2px dashed var(--accent);
-  border-radius: 14px;
+  border-radius: var(--radius-md);
   background: color-mix(in srgb, var(--bg) 82%, transparent);
   color: var(--text-h);
-  font-family: 'Sora', sans-serif;
+  font-family: var(--sans);
   pointer-events: none;
 }
 
 .notes-page__dropzone code {
-  font-family: 'Roboto Mono', monospace;
+  font-family: var(--mono);
   color: var(--accent);
 }
 
@@ -72,13 +72,13 @@
   gap: 0.4rem;
   padding: 0.5rem 0.9rem;
   border: 1px solid var(--accent-border);
-  border-radius: 8px;
+  border-radius: var(--radius-sm);
   background: var(--accent);
   color: var(--accent-fg);
   font-family: var(--sans);
   font-size: 0.9rem;
   cursor: pointer;
-  transition: background 0.15s ease;
+  transition: background var(--dur-fast) var(--ease);
 }
 
 .notes-page__new:hover {
@@ -94,6 +94,48 @@
   color: var(--text);
 }
 
+/* Desk + shared rail. The grid must be free to shrink (min-width:0) or the
+   absolutely-positioned card canvas keeps its measured width and pushes the
+   rail off-screen. */
+.notes-page__body {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-4);
+}
+
+.notes-page__main {
+  flex: 1 1 auto;
+  min-width: 0;
+}
+
+@media (max-width: 900px) {
+  .notes-page__body {
+    flex-direction: column;
+    /* `align-items: flex-start` above keeps the rail from stretching to the
+       grid's height in the row layout. Once the axis flips, that same rule sizes
+       every child to its own content width — which collapsed the note grid to
+       the width of its narrowest card on any window under 900px. */
+    align-items: stretch;
+  }
+}
+
+/* Explanatory line under a page title (the Vault's "these stay locked" note). */
+.notes-page__lede {
+  max-width: 46rem;
+  margin: 0 0 var(--space-4);
+  color: var(--text);
+  font-size: var(--fs-sm);
+  line-height: 1.55;
+}
+
+.notes-page__lede code {
+  padding: 0.05rem 0.3rem;
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  font-family: var(--mono);
+  font-size: 0.85em;
+}
+
 .notes-page__bar {
   display: flex;
   align-items: center;
@@ -102,16 +144,8 @@
   margin-bottom: 1rem;
 }
 
-.notes-page__title {
-  margin: 0;
-  font-family: var(--heading);
-  font-size: 1.6rem;
-  color: var(--text-h);
-}
-
 .notes-page__hint {
   color: var(--text);
   font-family: var(--mono);
-  font-size: 0.75rem;
-  opacity: 0.8;
+  font-size: var(--fs-xs);
 }

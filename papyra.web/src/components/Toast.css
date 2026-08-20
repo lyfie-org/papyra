@@ -1,0 +1,72 @@
+/* Bottom-centre, above everything including the note modal and the search scrim
+   — a toast that a dialog covers has failed at its one job. */
+.toasts {
+  position: fixed;
+  left: 50%;
+  bottom: var(--space-6);
+  z-index: 200;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  align-items: center;
+  transform: translateX(-50%);
+  pointer-events: none; /* the strip never blocks the page; each toast opts back in */
+}
+
+.toast {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  max-width: min(90vw, 34rem);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  color: var(--text-h);
+  font: 400 var(--fs-sm) / 1.4 var(--sans);
+  pointer-events: auto;
+  animation: toast-in var(--dur) var(--ease);
+}
+
+@keyframes toast-in {
+  from { opacity: 0; transform: translateY(8px); }
+  to   { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .toast { animation: none; }
+}
+
+.toast__message { flex: 1; }
+
+.toast__action {
+  flex: none;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--accent);
+  font: 500 var(--fs-sm) / 1.4 var(--sans);
+  cursor: pointer;
+}
+
+.toast__action:hover { text-decoration: underline; }
+
+.toast__close {
+  display: grid;
+  flex: none;
+  place-items: center;
+  width: 1.4rem;
+  height: 1.4rem;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+
+.toast__close:hover { background: var(--code-bg); color: var(--text-h); }
+
+.toast__action:focus-visible,
+.toast__close:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }

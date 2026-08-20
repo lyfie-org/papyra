@@ -1,0 +1,243 @@
+.users-page {
+  max-width: 1100px;
+  margin: 0 auto;
+  padding: var(--space-6) var(--space-5) var(--space-10);
+}
+
+.users-page__head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-4);
+  flex-wrap: wrap;
+}
+
+.users-page__title { margin: 0; }
+
+.users-page__new {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--accent-border);
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+  color: var(--accent-fg);
+  font: 500 var(--fs-sm) / 1 var(--sans);
+  cursor: pointer;
+  transition: filter var(--dur-fast) var(--ease);
+}
+
+.users-page__new:hover { filter: brightness(1.04); }
+
+.users-page__hint,
+.users-page__status {
+  margin: var(--space-3) 0 var(--space-6);
+  max-width: 62ch;
+  font: 400 var(--fs-sm) / 1.55 var(--sans);
+  color: var(--text);
+}
+
+/* ── Roster ─────────────────────────────────────────────────────────────── */
+
+.users-table {
+  width: 100%;
+  border-collapse: collapse;
+  font: 400 var(--fs-sm) / 1.45 var(--sans);
+}
+
+.users-table th,
+.users-table td {
+  text-align: left;
+  padding: var(--space-3);
+  border-bottom: 1px solid var(--border);
+  color: var(--text-h);
+  vertical-align: middle;
+}
+
+.users-table th {
+  color: var(--text);
+  font-weight: 500;
+  font-size: var(--fs-xs);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+
+.users-table__who {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+.users-table__you { color: var(--text); }
+
+/* The warning colour carries the icon, not the words: --warn on --bg measures
+   4.21:1 in light mode, under AA for text but comfortably over the 3:1 a
+   graphic needs. */
+.users-table__flag {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  color: var(--text-h);
+}
+
+.users-table__flag svg { color: var(--warn); }
+
+.users-table__ok { color: var(--text); }
+
+.users-table__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-3);
+}
+
+.users-table__link {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--text-h);
+  font: 500 var(--fs-xs) / 1.4 var(--sans);
+  cursor: pointer;
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.users-table__link--danger { color: var(--danger); }
+
+/* ── Dialogs ────────────────────────────────────────────────────────────── */
+
+.users-dialog__scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: center;
+  padding: var(--space-4);
+  background: color-mix(in srgb, var(--scrim) 55%, transparent);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+  animation: users-dialog-in var(--dur) var(--ease);
+}
+
+.users-dialog {
+  width: min(520px, 100%);
+  max-height: 90vh;
+  overflow-y: auto;
+  padding: var(--space-6);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+
+.users-dialog__title {
+  margin: 0 0 var(--space-4);
+  font: 400 var(--fs-xl) / 1.2 var(--heading);
+  color: var(--text-h);
+}
+
+.users-dialog__form {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+}
+
+.users-dialog__field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  font: 500 var(--fs-xs) / 1.3 var(--sans);
+  color: var(--text);
+}
+
+.users-dialog__field input,
+.users-dialog__field select {
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--text-h);
+  font: 400 var(--fs-sm) / 1.4 var(--sans);
+}
+
+.users-dialog__check {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  font: 400 var(--fs-sm) / 1.4 var(--sans);
+  color: var(--text-h);
+}
+
+.users-dialog__note {
+  margin: 0;
+  font: 400 var(--fs-xs) / 1.5 var(--sans);
+  color: var(--text);
+}
+
+.users-dialog__error {
+  margin: 0;
+  font: 400 var(--fs-sm) / 1.45 var(--sans);
+  color: var(--danger);
+}
+
+/* The one thing on screen worth reading character by character. */
+.users-dialog__secret {
+  margin: var(--space-4) 0;
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--code-bg);
+  color: var(--text-h);
+  font: 400 var(--fs-md) / 1.5 var(--mono);
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
+.users-dialog__actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--space-3);
+}
+
+.users-dialog__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--bg);
+  color: var(--text-h);
+  font: 500 var(--fs-sm) / 1 var(--sans);
+  cursor: pointer;
+}
+
+.users-dialog__btn--primary {
+  border-color: var(--accent-border);
+  background: var(--accent);
+  color: var(--accent-fg);
+}
+
+.users-dialog__btn:disabled { opacity: 0.6; cursor: default; }
+
+@keyframes users-dialog-in {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .users-dialog__scrim { animation: none; }
+}
+
+@media (max-width: 720px) {
+  .users-table thead { display: none; }
+  .users-table tr {
+    display: grid;
+    gap: var(--space-1);
+    padding: var(--space-3) 0;
+    border-bottom: 1px solid var(--border);
+  }
+  .users-table td { border: 0; padding: 0; }
+}

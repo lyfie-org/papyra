@@ -19,9 +19,15 @@ function level(count: number): number {
   return 4;
 }
 
-// GitHub-style contribution grid over the last ~26 weeks. Cell intensity encodes how
-// many notes were last modified that day; clicking a cell filters the dashboard to
-// that day (click again to clear).
+/**
+ * Contribution grid over the last ~26 weeks. Cell intensity is how many notes
+ * were last changed that day; picking one opens that day (the caller decides
+ * what "open" means — today it is an overlay, not a filter and not a route).
+ *
+ * Cells are `<rect>`s rather than buttons because they are one SVG, so each
+ * carries its own tabindex, role and label: a keyboard reaches every day, and a
+ * screen reader hears "3 notes on 2026-03-12" rather than a shape.
+ */
 export default function KnowledgeHeatmap({
   selectedDay,
   onSelectDay,
@@ -81,7 +87,15 @@ export default function KnowledgeHeatmap({
             rx={2}
             className={`heatmap__cell${selectedDay === c.key ? ' is-selected' : ''}`}
             data-level={level(c.count)}
+            role="button"
+            tabIndex={0}
+            aria-label={`${c.count} note${c.count === 1 ? '' : 's'} on ${c.key}`}
             onClick={() => onSelectDay(selectedDay === c.key ? null : c.key)}
+            onKeyDown={(e) => {
+              if (e.key !== 'Enter' && e.key !== ' ') return;
+              e.preventDefault();  // Space scrolls the panel otherwise
+              onSelectDay(selectedDay === c.key ? null : c.key);
+            }}
           >
             <title>{`${c.key}: ${c.count} note${c.count === 1 ? '' : 's'}`}</title>
           </rect>
