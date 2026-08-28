@@ -503,6 +503,13 @@ papyra.api/src/Papyra.Api/Data/*
 !papyra.api/src/Papyra.Api/Data/AppDbContext.cs
 !papyra.api/src/Papyra.Api/Data/Migrations/
 !papyra.api/src/Papyra.Api/Data/Migrations/**
+# The bare `data/` rule above matches a folder of that name at ANY depth, so it
+# also swallowed the website's source folder papyra.app/src/data/ (site facts and
+# the feature-pillar copy). That failed only in CI — the files exist locally, so
+# the build passed here and then died on a clean checkout with
+# "Could not resolve '../data/site'". Un-ignore the directory itself; there is no
+# `papyra.app/src/data/*` rule, so everything inside it is tracked normally.
+!papyra.app/src/data/
 
 # Local dev runtime data (SQLite cache, notes, users, media) — kept in its own
 # folder so it never collides with the Data/ source namespace.
@@ -520,3 +527,9 @@ CODEBASE_MAP.md
 papyra.app/dist/
 papyra.app/public/demo/
 papyra.app/.astro/
+# Wrangler's local scratch dir, written by `pnpm --filter papyra-app run
+# preview:cf`. Holds miniflare's local SQLite caches and per-run bundle temp
+# files — machine-local, regenerated on every run, and by far the largest thing
+# in the repo if committed (a single WAL file reached 2.5 MB). No credentials
+# live here; wrangler keeps auth in the user profile, outside the project.
+.wrangler/

@@ -593,8 +593,26 @@ const routes: Route[] = [
     })],
   ['PUT', /^\/api\/ai\/config$/, () => serverOnly('Changing the AI provider')],
   ['POST', /^\/api\/ai\/pull$/, () => serverOnly('Downloading a model')],
-  ['GET', /^\/api\/ai\/sessions$/, () =>
-    json(getState().chatSessions.map(({ messages, ...summary }) => summary))],
+  [
+    'GET',
+    /^\/api\/ai\/sessions$/,
+    () =>
+      // Listed explicitly rather than destructuring `messages` away: the summary
+      // endpoint returns ChatSessionSummary, and naming the fields keeps that
+      // contract visible (and satisfies no-unused-vars, which does not allow
+      // dropping a rest sibling here).
+      json(
+        getState().chatSessions.map((s) => ({
+          id: s.id,
+          title: s.title,
+          model: s.model,
+          provider: s.provider,
+          createdUtc: s.createdUtc,
+          updatedUtc: s.updatedUtc,
+          messageCount: s.messageCount,
+        })),
+      ),
+  ],
   [
     'GET',
     /^\/api\/ai\/sessions\/(\d+)$/,
