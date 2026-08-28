@@ -92,13 +92,32 @@ jobs:
           fi
           echo "No third-party font origin in the shipped pages."
 
+      # Wrangler is run straight from papyra.app's own devDependencies rather than
+      # through cloudflare/wrangler-action. The action installs its own copy, and
+      # in a pnpm workspace that install fails outright — pnpm refuses to add a
+      # package to the workspace root without -w ("failed with exit code 1"
+      # before it ever reaches authentication). Calling it directly also pins the
+      # deploy to the same wrangler version the lockfile already resolves.
+      #
+      # Secrets come in as environment variables, which wrangler reads natively.
+      #
+      # Skipped for pull requests from forks: GitHub withholds secrets there, so
+      # the deploy could only ever fail. Everything above still runs, so an
+      # outside contribution is still fully built and checked.
       - name: Deploy to Cloudflare Pages
-        uses: cloudflare/wrangler-action@v3
-        with:
-          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
-          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        if: >-
+          github.event_name != 'pull_request' ||
+          github.event.pull_request.head.repo.full_name == github.repository
+        working-directory: papyra.app
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+        run: |
+          if [ -z "$CLOUDFLARE_API_TOKEN" ] || [ -z "$CLOUDFLARE_ACCOUNT_ID" ]; then
+            echo "::error::CLOUDFLARE_API_TOKEN and/or CLOUDFLARE_ACCOUNT_ID are not set. Add them under Settings → Secrets and variables → Actions. The Pages project must also already exist: wrangler pages project create papyra --production-branch=main"
+            exit 1
+          fi
           # main → production (papyra.app); every other branch → a preview URL.
-          command: >-
-            pages deploy papyra.app/dist
-            --project-name=papyra
-            --branch=${{ github.head_ref || github.ref_name }}
+          pnpm exec wrangler pages deploy dist \
+            --project-name=papyra \
+            --branch="${{ github.head_ref || github.ref_name }}"
