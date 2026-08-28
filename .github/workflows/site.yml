@@ -1,0 +1,104 @@
+name: site
+
+# Builds and deploys the product website (papyra.app).
+#
+# Deployed from Actions rather than through Cloudflare Pages' own Git
+# integration: the build reaches across the monorepo into papyra.web to produce
+# the live demo, and it needs the exact toolchain this repo pins — Node 22 and
+# pnpm 11.5.1 — which is already solved here and would need coaxing in the Pages
+# build image.
+#
+# Requires two repository secrets, added by hand in Settings → Secrets:
+#   CLOUDFLARE_API_TOKEN    — scoped to "Cloudflare Pages — Edit"
+#   CLOUDFLARE_ACCOUNT_ID
+
+on:
+  push:
+    branches: [main, development]
+    paths:
+      - 'papyra.app/**'
+      - 'papyra.web/**'
+      - 'pnpm-workspace.yaml'
+      - 'pnpm-lock.yaml'
+      - '.github/workflows/site.yml'
+  pull_request:
+    paths:
+      - 'papyra.app/**'
+      - 'papyra.web/**'
+  # So a deploy can be re-run without an empty commit.
+  workflow_dispatch:
+
+concurrency:
+  group: site-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  build-and-deploy:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      # The Pages action comments the preview URL on pull requests.
+      deployments: write
+    steps:
+      - uses: actions/checkout@v7
+
+      - uses: pnpm/action-setup@v6
+        with:
+          version: 11.5.1
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 22
+          cache: pnpm
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Check design tokens have not drifted from the app
+        run: pnpm --filter papyra-app run check:tokens
+
+      # Must run BEFORE the site build: it writes into papyra.app/public/demo,
+      # which Astro then copies into dist.
+      - name: Build the in-browser demo
+        run: pnpm --filter papyra-web run build:demo
+
+      - name: Build the site
+        run: pnpm --filter papyra-app run build
+
+      # A silently-ignored rule here means deep links 404 in production, and the
+      # only signal is a line in wrangler's output — so make it a hard gate.
+      - name: Verify the demo's SPA fallback shipped
+        run: |
+          test -f papyra.app/dist/demo/404.html \
+            || { echo "::error::papyra.app/dist/demo/404.html is missing — deep links into the demo will 404. See demoBuild() in papyra.web/vite.config.ts."; exit 1; }
+          test -f papyra.app/dist/_headers
+          echo "SPA fallback and headers present."
+
+      # No third-party origin may appear in the shipped output: it is what makes
+      # the site behave identically on every network, including ones where
+      # Google's CDNs are unreachable. Fonts are self-hosted; nothing else is remote.
+      - name: Verify no third-party font origin shipped
+        run: |
+          # Pages and stylesheets only. The editor bundle (@lyfie/luthor) carries
+          # Google Fonts URLs for its own in-editor font picker; the CSP blocks
+          # them and no page ever requests one, so scanning JS would only produce
+          # a permanent false positive.
+          hits=$(grep -rl 'fonts\.googleapis\.com\|fonts\.gstatic\.com' papyra.app/dist \
+                   --include='*.html' --include='*.css' || true)
+          if [ -n "$hits" ]; then
+            echo "::error::A third-party font origin is referenced in the built pages."
+            echo "$hits"
+            exit 1
+          fi
+          echo "No third-party font origin in the shipped pages."
+
+      - name: Deploy to Cloudflare Pages
+        uses: cloudflare/wrangler-action@v3
+        with:
+          apiToken: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          accountId: ${{ secrets.CLOUDFLARE_ACCOUNT_ID }}
+          # main → production (papyra.app); every other branch → a preview URL.
+          command: >-
+            pages deploy papyra.app/dist
+            --project-name=papyra
+            --branch=${{ github.head_ref || github.ref_name }}

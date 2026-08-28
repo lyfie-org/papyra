@@ -18,9 +18,19 @@ import { ConfirmProvider } from './components/ConfirmProvider.tsx';
 import './index.css';
 import App from './App.tsx';
 
+// Demo mode: stand up the in-browser fake server BEFORE React mounts, so the
+// very first request the app makes (the /api/auth/me session probe) is already
+// answered. Dynamic import keeps every byte of src/demo out of the real build.
+if (import.meta.env.VITE_DEMO) {
+  const { startDemo } = await import('./demo');
+  await startDemo();
+}
+
 // Offline shell + read cache. Only registered for the built app: in dev the
 // module graph is served unbundled and a caching worker would fight HMR.
-if (import.meta.env.PROD && 'serviceWorker' in navigator) {
+// Skipped in the demo — a worker caching synthetic responses would serve stale
+// answers back to a backend that only exists in memory.
+if (import.meta.env.PROD && !import.meta.env.VITE_DEMO && 'serviceWorker' in navigator) {
   window.addEventListener('load', () => {
     void navigator.serviceWorker.register('/sw.js').catch(() => {
       /* offline support is an enhancement — a failed registration is not fatal */
@@ -44,7 +54,7 @@ createRoot(document.getElementById('root')!).render(
       <ThemeProvider>
         <ToastProvider>
           <ConfirmProvider>
-            <BrowserRouter>
+            <BrowserRouter basename={import.meta.env.BASE_URL}>
               <App />
             </BrowserRouter>
           </ConfirmProvider>

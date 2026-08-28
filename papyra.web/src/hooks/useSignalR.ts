@@ -19,6 +19,16 @@ export function useSignalR(): ServerStatus {
   const [status, setStatus] = useState<ServerStatus>('offline');
 
   useEffect(() => {
+    // The browser demo has no server and therefore no hub. Report a healthy
+    // connection and stop: without this the app would retry a websocket that can
+    // never open, every 15 seconds, forever. This is the only network dependency
+    // in the app that isn't a fetch, so it's the only one the demo has to stub.
+    if (import.meta.env.VITE_DEMO) {
+      setStatus('online');
+      setSync({ online: true });
+      return;
+    }
+
     const connection: HubConnection = new HubConnectionBuilder()
       .withUrl('/hubs/notes')
       // The stock policy gives up after ~60s. A self-hosted server can easily be

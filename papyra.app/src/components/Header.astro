@@ -1,0 +1,159 @@
+---
+import { Image } from 'astro:assets';
+import logo from '../assets/papyra_logo.png';
+import ThemeToggle from './ThemeToggle.astro';
+import Icon from './Icon.astro';
+import { GITHUB_URL, NAV } from '../data/site';
+
+const path = Astro.url.pathname;
+const isCurrent = (href: string) => (href === '/' ? path === '/' : path.startsWith(href));
+---
+
+<header class="site-header">
+  <div class="wrap site-header__inner">
+    <a class="site-header__brand" href="/">
+      <Image src={logo} alt="" width={30} height={30} densities={[1, 2]} loading="eager" />
+      <span>Papyra</span>
+    </a>
+
+    <nav class="site-header__nav" aria-label="Main">
+      {
+        NAV.map((item) => (
+          <a href={item.href} aria-current={isCurrent(item.href) ? 'page' : undefined}>
+            {item.label}
+          </a>
+        ))
+      }
+    </nav>
+
+    <div class="site-header__actions">
+      <ThemeToggle />
+      <a
+        class="site-header__gh"
+        href={GITHUB_URL}
+        rel="noopener noreferrer"
+        aria-label="Papyra on GitHub"
+      >
+        <Icon name="github" size={18} />
+      </a>
+      <a class="btn site-header__cta" href="/demo/">Try the demo</a>
+    </div>
+  </div>
+</header>
+
+<style>
+  .site-header {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    background: color-mix(in srgb, var(--bg) 82%, transparent);
+    backdrop-filter: saturate(1.4) blur(12px);
+    border-bottom: 1px solid var(--border);
+    box-shadow: var(--shadow-nav);
+  }
+
+  .site-header__inner {
+    display: flex;
+    align-items: center;
+    gap: var(--space-6);
+    min-height: 60px;
+  }
+
+  .site-header__brand {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    font: 400 var(--fs-lg) / 1 var(--heading);
+    color: var(--text-h);
+    text-decoration: none;
+    letter-spacing: -0.01em;
+  }
+
+  .site-header__brand img {
+    border-radius: 6px;
+  }
+
+  .site-header__nav {
+    display: flex;
+    gap: var(--space-5);
+    margin-right: auto;
+    font-size: var(--fs-sm);
+  }
+
+  .site-header__nav a {
+    color: var(--text);
+    text-decoration: none;
+    padding-block: var(--space-2);
+    border-bottom: 1.5px solid transparent;
+    transition:
+      color var(--dur-fast) var(--ease),
+      border-color var(--dur-fast) var(--ease);
+  }
+
+  .site-header__nav a:hover,
+  .site-header__nav a[aria-current='page'] {
+    color: var(--text-h);
+    border-bottom-color: var(--accent);
+  }
+
+  .site-header__actions {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    margin-left: auto;
+  }
+
+  .site-header__gh {
+    display: inline-grid;
+    place-items: center;
+    width: 36px;
+    height: 36px;
+    border-radius: var(--radius-pill);
+    border: 1px solid var(--border);
+    background: var(--surface);
+    color: var(--text);
+    transition:
+      border-color var(--dur) var(--ease),
+      color var(--dur) var(--ease);
+  }
+
+  .site-header__gh:hover {
+    border-color: var(--accent-border);
+    color: var(--text-h);
+  }
+
+  .site-header__cta {
+    padding: var(--space-2) var(--space-4);
+  }
+
+  /* Below ~900px the nav moves under the brand rather than fighting the actions
+     for space; there is no hamburger to mis-tap. */
+  @media (max-width: 56rem) {
+    .site-header__inner {
+      flex-wrap: wrap;
+      gap: var(--space-3);
+      padding-block: var(--space-3);
+    }
+
+    .site-header__nav {
+      order: 3;
+      width: 100%;
+      margin-right: 0;
+      gap: var(--space-4);
+      overflow-x: auto;
+      scrollbar-width: none;
+      border-top: 1px solid var(--border);
+      padding-top: var(--space-2);
+    }
+
+    .site-header__nav::-webkit-scrollbar {
+      display: none;
+    }
+  }
+
+  @media (max-width: 30rem) {
+    .site-header__cta {
+      display: none;
+    }
+  }
+</style>

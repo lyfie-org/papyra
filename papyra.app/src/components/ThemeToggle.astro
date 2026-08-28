@@ -1,0 +1,75 @@
+---
+// Light/dark switch. Writes the same `papyra-theme` localStorage key the app
+// uses, so the choice follows the visitor into /demo and back.
+---
+
+<button
+  type="button"
+  class="theme-toggle"
+  data-theme-toggle
+  aria-label="Switch between light and dark"
+>
+  <svg class="theme-toggle__sun" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true">
+    <circle cx="12" cy="12" r="4"></circle>
+    <path d="M12 2v2M12 20v2M4.93 4.93l1.41 1.41M17.66 17.66l1.41 1.41M2 12h2M20 12h2M6.34 17.66l-1.41 1.41M19.07 4.93l-1.41 1.41"></path>
+  </svg>
+  <svg class="theme-toggle__moon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+    <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+  </svg>
+</button>
+
+<style>
+  .theme-toggle {
+    display: inline-grid;
+    place-items: center;
+    width: 36px;
+    height: 36px;
+    padding: 0;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-pill);
+    background: var(--surface);
+    color: var(--text);
+    cursor: pointer;
+    transition:
+      border-color var(--dur) var(--ease),
+      background var(--dur) var(--ease),
+      color var(--dur) var(--ease);
+  }
+
+  .theme-toggle:hover {
+    border-color: var(--accent-border);
+    background: var(--accent-bg);
+    color: var(--text-h);
+  }
+
+  /* Show the icon for the theme you would switch TO. */
+  .theme-toggle__moon,
+  :global([data-theme='dark']) .theme-toggle__sun {
+    display: none;
+  }
+
+  :global([data-theme='dark']) .theme-toggle__moon {
+    display: block;
+  }
+</style>
+
+<script>
+  const KEY = 'papyra-theme';
+  const root = document.documentElement;
+
+  document.querySelectorAll('[data-theme-toggle]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const next = root.getAttribute('data-theme') === 'dark' ? 'light' : 'dark';
+      // The app fades the swap over ~250ms with this class; match it so the
+      // site and the demo feel like one product.
+      root.classList.add('theme-transitioning');
+      root.setAttribute('data-theme', next);
+      try {
+        localStorage.setItem(KEY, next);
+      } catch {
+        /* private mode — the toggle still works for this page view */
+      }
+      window.setTimeout(() => root.classList.remove('theme-transitioning'), 250);
+    });
+  });
+</script>

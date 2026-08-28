@@ -1,0 +1,30 @@
+# Cloudflare Pages header rules. Order matters: later, more specific rules win.
+
+/*
+  # No third-party origin is reachable, which is what makes the site behave the
+  # same on every network on earth — including ones where Google's CDNs are not
+  # available. Fonts are self-hosted; there are no CDN scripts and no external
+  # analytics. The policy is what enforces that promise rather than just stating it.
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; media-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'
+  Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
+  X-Content-Type-Options: nosniff
+  Referrer-Policy: strict-origin-when-cross-origin
+  Permissions-Policy: geolocation=(), microphone=(), camera=(), interest-cohort=()
+  Cross-Origin-Opener-Policy: same-origin
+
+# Content-hashed filenames: safe to keep for a year and never revalidate.
+/_astro/*
+  Cache-Control: public, max-age=31536000, immutable
+
+/demo/assets/*
+  Cache-Control: public, max-age=31536000, immutable
+
+/fonts/*
+  Cache-Control: public, max-age=31536000, immutable
+
+# HTML is the only thing that changes at a stable URL, so it always revalidates.
+/*.html
+  Cache-Control: public, max-age=0, must-revalidate
+
+/
+  Cache-Control: public, max-age=0, must-revalidate
