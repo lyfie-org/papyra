@@ -1,0 +1,124 @@
+---
+title: Troubleshooting
+summary: The failures people actually hit, what causes them, and what to do — starting with the sign-in loop.
+group: Reference
+order: 2
+---
+
+## Signing in bounces me straight back to the login screen
+
+Much the most common problem. You are reaching Papyra over plain HTTP at
+something other than `localhost`, and the browser is refusing to keep the
+session cookie.
+
+On a private network:
+
+```yaml
+PAPYRA_ALLOW_INSECURE_COOKIES: "true"
+```
+
+Otherwise set up [HTTPS](/docs/https/). There is nothing wrong with your
+password.
+
+## The sidebar says "Server Offline" but the app works
+
+The realtime connection cannot open, usually because a reverse proxy is not
+forwarding websockets. Add the upgrade headers — see
+[HTTPS and reverse proxies](/docs/https/).
+
+Papyra keeps working: it falls back to periodic refreshes. What you lose is live
+updates across devices and the immediate offline signal.
+
+## Everyone got signed out after an upgrade
+
+`/data/.papyra/keys/` was lost. That directory holds the keys your session
+cookies are signed with; without it every existing session is unverifiable.
+
+It lives on the data volume so this does not happen. If you are restoring from
+backup, make sure that directory is in it. Nothing is damaged — everyone signs
+in again.
+
+## The assistant will not answer
+
+It tells you why. The usual causes:
+
+- **No model installed** — Settings → AI, pick a tier.
+- **`PAPYRA_OLLAMA_URL` is wrong** — most often `localhost`, which means the
+  Papyra container itself, not the Ollama container.
+- **Not enough RAM** — a Balanced model needs about 8 GB. Drop a tier.
+- **The `ollama` service was removed** — then this is expected; keyword search
+  still works.
+
+See [the assistant](/docs/ai/).
+
+## Semantic search finds nothing, keyword search works
+
+Embeddings are computed as notes are written, so notes that arrived before a
+model was configured were never embedded. **Settings → Data & Storage → rebuild
+embeddings**, once.
+
+## Search misses a note I can see
+
+Rebuild the full-text index in **Settings → Data & Storage**. It is derived data;
+rebuilding cannot lose anything.
+
+If search works but looks cruder than usual and results are labelled partial,
+Papyra is matching locally in your browser because the server or index was
+unavailable — which is the fallback working as intended.
+
+## Notes I edited elsewhere have not appeared
+
+Papyra watches the folder, so this should be immediate. If not:
+
+- Check you edited under `/data/users/<you>/notes/` and not a stale copy.
+- Some network filesystems do not emit change events. Restarting Papyra forces a
+  full reconcile — it compares disk against cache before opening the port.
+
+## A conflict banner appeared
+
+Two versions of the same note were written independently, usually by a syncing
+tool. Papyra kept both rather than picking a winner. Open the resolver, compare
+the two panes, choose.
+
+To make it rarer, exclude `.papyra/` from whatever you are syncing — per-instance
+state syncing between machines creates conflicts that mean nothing.
+
+## The files are owned by root
+
+Set `PUID` and `PGID` to your own user and restart:
+
+```yaml
+PUID: "1000"
+PGID: "1000"
+```
+
+Find yours with `id -u` and `id -g`. This only matters if you mounted a host
+folder rather than using the named volume.
+
+## Passkeys are not offered
+
+Passkeys require a secure context. They do not work over plain HTTP outside
+`localhost`, and no Papyra setting changes that — it is the browser's rule.
+
+If they worked and then stopped, check whether the hostname changed. Passkeys
+are bound to a domain, and `PAPYRA_WEBAUTHN_DOMAIN` must be the bare hostname —
+no scheme, no port.
+
+## Git backup stopped
+
+Papyra refuses to force-push over a diverged remote. If history moved apart —
+you pushed from elsewhere, or rewrote it — the sync stops and says so rather
+than overwriting. Reconcile the remote by hand and it resumes.
+
+## Something else
+
+Check the container logs first:
+
+```bash
+docker compose logs -f papyra
+```
+
+Then open an issue at
+[github.com/lyfie-org/papyra](https://github.com/lyfie-org/papyra/issues) with
+what you did, what happened, and the relevant log lines. Report anything
+security-related [privately](/docs/security/) instead.

@@ -1,0 +1,92 @@
+---
+title: Working with the files directly
+summary: Papyra is not the only thing allowed to touch your notes. How to use Obsidian, Syncthing, git or a text editor alongside it without anything getting confused.
+group: Living with it
+order: 1
+---
+
+Your notes are `.md` files in `/data/users/<you>/notes/`. Papyra watches that
+folder and expects other things to write to it.
+
+## What a note looks like
+
+```markdown
+---
+id: quarterly-review
+title: Quarterly review
+created: 2026-08-12T09:14:22Z
+categories: [work, planning]
+pinned: true
+---
+
+# Quarterly review
+
+Pull the numbers from [[revenue-model]] before Thursday.
+```
+
+`id` is the filename without the extension. `categories` are what the UI calls
+categories and what everything else calls tags. `updated` is deliberately **not**
+stored — it is read from the file's modification time, so sync tools never see
+churn from a field only Papyra cares about.
+
+## Editing from somewhere else
+
+Change a file with any editor and Papyra notices within moments: it re-reads the
+file, updates its cache and index, and pushes the change to any open browser tab.
+No polling, no refresh.
+
+That includes creating a note by dropping a `.md` file into the folder, and
+deleting one by removing the file.
+
+## Using Obsidian on the same folder
+
+Point an Obsidian vault at `/data/users/<you>/notes/` and both work at once.
+
+Frontmatter keys Papyra does not own — Obsidian plugin fields, `aliases`, your
+own scripts' metadata — are carried through every read and write untouched.
+Papyra edits the keys it owns and puts everything else back exactly as it found
+it. A round trip through Papyra is not allowed to lose anything.
+
+`[[wiki links]]` mean the same thing in both.
+
+## Syncthing, Dropbox, and other syncers
+
+These work, with one caveat worth understanding.
+
+If the same note is edited in two places while they are out of contact, the
+syncer will bring back two versions. Papyra detects that collision, keeps both,
+and offers a split-pane resolver rather than silently picking a winner. You will
+see a banner on the grid.
+
+To reduce how often that happens, sync the notes folder but exclude
+`.papyra/` — the snapshots and index are per-instance state, and syncing them
+between machines creates conflicts that mean nothing.
+
+## Directories Papyra owns
+
+Leave these to Papyra:
+
+- `.papyra/` — snapshots, card order, category colours
+- `.trash/` — deleted notes awaiting retention expiry
+- `/data/.papyra/` — the SQLite cache, the Lucene index, and the
+  data-protection keys
+
+The cache and index are disposable; Papyra rebuilds them from the notes on
+demand (Settings → Data & Storage). The **keys** directory is not disposable —
+losing it signs out every browser.
+
+## git
+
+Papyra can commit and push your vault for you on a schedule — see
+[Backups](/docs/backups/). You can equally run `git` in the folder yourself; they
+do not conflict, though picking one is simpler.
+
+## Filenames
+
+The `id` field and the filename are the same string. Renaming a file renames the
+note, and any `[[wiki link]]` pointing at the old name stops resolving — the same
+as it would in Obsidian.
+
+Note ids are unique **per account**, not globally. Two people on the same server
+can both have a note called `Inbox`, and they are different notes in different
+folders.

@@ -1,0 +1,109 @@
+---
+title: HTTPS and reverse proxies
+summary: Why sessions and passkeys need real HTTPS, a working Caddy and nginx config, and what to tell Papyra about your proxy.
+group: Getting started
+order: 3
+---
+
+Papyra speaks plain HTTP on port 8080 and does not terminate TLS itself. Put a
+reverse proxy in front of it.
+
+## Why it matters more than usual
+
+Two things break without HTTPS, and both fail in confusing ways:
+
+**Sessions.** Browsers refuse to store a `Secure` cookie for a site that is not
+HTTPS. Sign-in appears to succeed and then bounces you straight back to the
+login screen, with nothing in the logs to explain it.
+
+**Passkeys.** WebAuthn requires a secure context. Vault notes cannot be unlocked
+over plain HTTP outside `localhost`, and no Papyra setting overrides that — it
+is the browser's rule, not ours.
+
+## Caddy
+
+Caddy gets a certificate for you, with no further configuration:
+
+```caddyfile
+notes.example.com {
+    reverse_proxy papyra:8080
+}
+```
+
+## nginx
+
+```nginx
+server {
+    listen 443 ssl http2;
+    server_name notes.example.com;
+
+    ssl_certificate     /etc/letsencrypt/live/notes.example.com/fullchain.pem;
+    ssl_certificate_key /etc/letsencrypt/live/notes.example.com/privkey.pem;
+
+    location / {
+        proxy_pass http://papyra:8080;
+        proxy_set_header Host              $host;
+        proxy_set_header X-Real-IP         $remote_addr;
+        proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        # Realtime updates are a websocket. Without these, notes stop updating
+        # live across devices and the sidebar sits on "Server Offline".
+        proxy_http_version 1.1;
+        proxy_set_header Upgrade    $http_upgrade;
+        proxy_set_header Connection "upgrade";
+        proxy_read_timeout 3600s;
+    }
+}
+```
+
+The websocket lines are the ones people forget. Papyra keeps working without
+them — it falls back and retries — but live updates stop and the connection
+indicator stays stubbornly offline.
+
+## Tell Papyra about the proxy
+
+Behind a proxy, every request appears to come from the proxy's own address.
+Papyra will not believe forwarded headers from an unlisted source, so until you
+name your proxy, rate limits and logs see a single client and one visitor can
+exhaust everybody's budget.
+
+```yaml
+PAPYRA_TRUSTED_PROXIES: "172.18.0.1"
+```
+
+Use the address Papyra actually sees. In compose that is the gateway of the
+shared network, not your router's LAN address:
+
+```bash
+docker inspect papyra -f '{{range .NetworkSettings.Networks}}{{.Gateway}}{{end}}'
+```
+
+## Passkeys behind a domain
+
+```yaml
+PAPYRA_WEBAUTHN_DOMAIN: "notes.example.com"
+PAPYRA_WEBAUTHN_ORIGINS: "https://notes.example.com"
+```
+
+`PAPYRA_WEBAUTHN_DOMAIN` is the bare hostname — no `https://`, no port, no
+trailing slash. `PAPYRA_WEBAUTHN_ORIGINS` is the full origin.
+
+Passkeys registered against one domain do not work on another. If you move
+Papyra to a new hostname, existing passkeys stop being offered and have to be
+re-registered.
+
+## No HTTPS at all?
+
+On a genuinely private network — a home LAN, Tailscale, WireGuard — you can run
+without TLS:
+
+```yaml
+PAPYRA_ALLOW_INSECURE_COOKIES: "true"
+```
+
+Sessions then work over plain HTTP. Passkeys still will not, because that is the
+browser's call.
+
+Do not do this on anything reachable from the open internet. The session cookie
+travels in clear text, and anyone on the path can take it.

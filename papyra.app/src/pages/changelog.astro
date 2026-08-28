@@ -1,12 +1,210 @@
 ---
 import Base from '../layouts/Base.astro';
+import Icon from '../components/Icon.astro';
+import { GITHUB_URL, DOCKER_IMAGE } from '../data/site';
+import { readChangelog } from '../lib/changelog.mjs';
+
+const { releases, version } = readChangelog();
+
+const dateFormat = new Intl.DateTimeFormat('en-GB', {
+  day: 'numeric',
+  month: 'long',
+  year: 'numeric',
+  timeZone: 'UTC',
+});
 ---
 
-<Base title="Changelog" description="Every release of Papyra, newest first.">
+<Base
+  title="Changelog"
+  description="Every release of Papyra, newest first. Each entry maps to a Docker Hub tag and a GitHub release."
+>
   <section class="section">
     <div class="wrap wrap--narrow">
+      <p class="eyebrow">Releases</p>
       <h1>Changelog</h1>
-      <p class="lede">Every release of Papyra, newest first.</p>
+      <p class="lede log__lede">
+        Every release, newest first. Each one maps to a Docker Hub tag and a GitHub release —
+        this page is generated from the repository's own <code>CHANGELOG.md</code>, which the
+        release workflow writes.
+      </p>
+
+      {
+        version && (
+          <p class="log__current">
+            Current release <strong>v{version}</strong> — pull it as{' '}
+            <code>{DOCKER_IMAGE.replace(':latest', `:v${version}`)}</code>
+          </p>
+        )
+      }
+
+      {
+        releases.length === 0 ? (
+          <p>No releases recorded yet.</p>
+        ) : (
+          <ol class="log">
+            {releases.map((release) => (
+              <li class="log__release">
+                <div class="log__head">
+                  <h2 id={`v${release.version}`}>
+                    <a href={`${GITHUB_URL}/releases/tag/v${release.version}`} rel="noopener noreferrer">
+                      v{release.version}
+                    </a>
+                  </h2>
+                  <time datetime={release.date}>
+                    {dateFormat.format(new Date(`${release.date}T00:00:00Z`))}
+                  </time>
+                </div>
+
+                <ul class="log__entries">
+                  {release.entries.map((entry) => (
+                    <li>
+                      {entry.kind && (
+                        <span class={`log__kind log__kind--${entry.kind.toLowerCase()}`}>
+                          {entry.kind}
+                        </span>
+                      )}
+                      <span class="log__text">{entry.text}</span>
+                      {entry.sha && (
+                        <a
+                          class="log__sha"
+                          href={`${GITHUB_URL}/commit/${entry.sha}`}
+                          rel="noopener noreferrer"
+                          aria-label={`Commit ${entry.sha}`}
+                        >
+                          {entry.sha.slice(0, 7)}
+                        </a>
+                      )}
+                    </li>
+                  ))}
+                </ul>
+              </li>
+            ))}
+          </ol>
+        )
+      }
+
+      <p class="log__foot">
+        <a class="btn btn--ghost" href={`${GITHUB_URL}/releases`} rel="noopener noreferrer">
+          <Icon name="github" size={16} />
+          All releases on GitHub
+        </a>
+      </p>
     </div>
   </section>
 </Base>
+
+<style>
+  .log__lede {
+    max-width: 60ch;
+  }
+
+  .log__current {
+    margin: var(--space-5) 0 var(--space-10);
+    padding: var(--space-3) var(--space-4);
+    border: 1px solid var(--accent-border);
+    background: var(--accent-bg);
+    border-radius: var(--radius-sm);
+    font-size: var(--fs-sm);
+    color: var(--text-h);
+  }
+
+  .log {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: var(--space-10);
+  }
+
+  .log__head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: var(--space-4);
+    margin-bottom: var(--space-4);
+    padding-bottom: var(--space-2);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .log__head h2 {
+    margin: 0;
+    font-size: var(--fs-xl);
+    scroll-margin-top: 80px;
+  }
+
+  .log__head h2 a {
+    color: inherit;
+    text-decoration: none;
+  }
+
+  .log__head h2 a:hover {
+    color: var(--accent-text);
+  }
+
+  .log__head time {
+    font-size: var(--fs-xs);
+    color: var(--text);
+    white-space: nowrap;
+  }
+
+  .log__entries {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: var(--space-3);
+  }
+
+  .log__entries li {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--space-2);
+    font-size: var(--fs-sm);
+    line-height: 1.5;
+  }
+
+  .log__kind {
+    flex: none;
+    padding: 2px 8px;
+    border-radius: var(--radius-pill);
+    font: 500 var(--fs-2xs) / 1.5 var(--sans);
+    background: var(--code-bg);
+    color: var(--text);
+    border: 1px solid var(--border);
+  }
+
+  .log__kind--feature {
+    background: var(--accent-bg);
+    border-color: var(--accent-border);
+    color: var(--accent-text);
+  }
+
+  .log__kind--fix {
+    background: var(--warn-bg);
+    border-color: var(--warn-border);
+    color: var(--warn);
+  }
+
+  .log__text {
+    flex: 1 1 16rem;
+    min-width: 0;
+    color: var(--text-h);
+    overflow-wrap: anywhere;
+  }
+
+  .log__sha {
+    font: 400 var(--fs-2xs) / 1.6 var(--mono);
+    color: var(--text);
+    text-decoration: none;
+  }
+
+  .log__sha:hover {
+    color: var(--accent-text);
+    text-decoration: underline;
+  }
+
+  .log__foot {
+    margin-top: var(--space-10);
+  }
+</style>

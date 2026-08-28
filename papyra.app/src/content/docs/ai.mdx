@@ -1,0 +1,101 @@
+---
+title: The assistant and semantic search
+summary: Papyra runs a model on your own hardware by default. How to install one, how much machine it needs, and how to use a hosted provider instead.
+group: In depth
+order: 1
+---
+
+Two features need a model: **semantic search**, which finds notes by meaning
+rather than by the words you typed, and **Ask your notes**, which answers
+questions with citations into your own writing.
+
+Both work through the same provider settings, and both are off until a model is
+available. Keyword search does not need any of this.
+
+## The default: Ollama, on your hardware
+
+The published compose file runs Ollama alongside Papyra. Nothing is sent
+anywhere.
+
+Go to **Settings → AI** and install a model. Papyra offers three, described in
+plain language rather than by name:
+
+| Tier | Model | Download | RAM needed |
+| --- | --- | --- | --- |
+| Small | `llama3.2:1b` | 1.3 GB | 2 GB |
+| Balanced | `llama3.1:8b` | 4.7 GB | 8 GB |
+| Best | `mistral-nemo:12b` | 7.1 GB | 12 GB |
+
+Balanced is the sensible default for a normal computer. Small genuinely runs on
+a Raspberry Pi. The download reports real byte progress, because a ten-minute
+wait with an indeterminate spinner reads as a hang.
+
+Models are gigabytes each, so the compose file keeps them on their own volume
+and they survive upgrades.
+
+## Where Ollama is
+
+```yaml
+PAPYRA_OLLAMA_URL: "http://ollama:11434"
+```
+
+Inside compose that is the service name and Ollama's *own* port — not a port
+published to the host. `localhost` would mean the Papyra container itself, so it
+is never right here.
+
+Running Ollama already, elsewhere? Delete the `ollama` service and the
+`depends_on`, then either put both stacks on one network and use the container
+name, or reach the host:
+
+```yaml
+PAPYRA_OLLAMA_URL: "http://host.docker.internal:11434"
+extra_hosts: ["host.docker.internal:host-gateway"]
+```
+
+## Using OpenAI or Anthropic instead
+
+**Settings → AI**, as an administrator. Choose the provider, paste a key, save.
+No restart.
+
+Chat and embeddings are configured **independently**. Answering with a hosted
+model while keeping search embeddings entirely local is a supported and sensible
+combination — embeddings run over every note you own, so that is the half most
+worth keeping at home.
+
+API keys are write-only over the API: the server will tell you whether a key is
+stored, never what it is. Leaving the field blank on save keeps the existing key
+rather than clearing it.
+
+## When it will not answer
+
+The assistant explains itself rather than returning a blank. "No model is
+installed" and "your API key was rejected" call for very different actions, and
+Papyra distinguishes them.
+
+Common causes:
+
+- **Nothing installed yet** — Settings → AI, install a tier.
+- **`PAPYRA_OLLAMA_URL` points at the wrong place** — most often `localhost`,
+  which is the Papyra container itself.
+- **Not enough memory** — the model is loaded into RAM. A Balanced model on a
+  2 GB machine will fail or crawl. Drop a tier.
+- **Ollama service deleted** — intentional and fine; the assistant is simply off
+  and keyword search still works.
+
+## Semantic search needs an embedding pass
+
+Embeddings are computed as notes are written. If you imported a large vault
+before configuring a model, the existing notes were never embedded — run
+**Settings → Data & Storage → rebuild embeddings** once, and semantic search
+will cover them.
+
+The same section rebuilds the full-text index, which is worth doing if search
+results ever look stale. Both are derived data; neither can lose a note.
+
+## What leaves your machine
+
+With Ollama: nothing.
+
+With OpenAI or Anthropic configured: the question, plus the note excerpts
+retrieved to answer it, go to that provider. Papyra does not send your whole
+vault, and it does not send anything at all until you ask a question.

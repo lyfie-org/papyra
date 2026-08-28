@@ -1,0 +1,71 @@
+---
+title: Search it, then ask it
+blurb: Full-text search over every note, plus meaning-based search that finds the note you were thinking of. Then ask a question and get an answer drawn from your own writing, with citations you can open.
+points: ['Lucene index', 'Semantic search', 'Local AI', 'Cited answers']
+order: 4
+lede: Three ways to find something, in increasing order of how vague you are allowed to be. All of them run on your own hardware by default.
+docs: /docs/ai/
+---
+
+import Shot from '../../components/Shot.astro';
+
+## Keyword search
+
+`⌘K` (or `Ctrl+K`) opens search from anywhere. It is a Lucene index over every
+note, returning ranked hits with the matching phrase highlighted in context.
+
+The overlay searches more than notes: categories, collections and even settings
+pages are matched, so "retention" takes you to the Trash setting rather than
+making you remember which tab it lives on.
+
+If the index is rebuilding or the server is unreachable, search does not simply
+stop working — it falls back to matching over the notes already cached in your
+browser and labels the results as partial. Cruder, but never a dead end.
+
+<Shot name="categories" alt="The Categories view, listing tags with their note counts" caption="Categories, collections and settings are all reachable from the same search overlay." />
+
+## Semantic search
+
+Lucene finds the words you typed. Semantic search finds the note you meant.
+
+Papyra chunks each note, embeds the chunks locally, and stores the vectors
+alongside the index. Searching for *"that thing about pricing per user"* will
+surface a note that says "we settled on per-seat" without either phrase
+overlapping. It is the right tool when you remember the shape of an idea but not
+its vocabulary.
+
+## Ask your notes
+
+The spark icon opens an assistant that answers from your vault. It retrieves the
+relevant chunks, hands them to a model, and streams the answer back — with the
+notes it used cited underneath, as links you can open and check.
+
+It is a conversation, not a one-shot query: earlier turns are kept and sent
+along, so "what about the second one?" resolves. Conversations are saved per
+account, renameable, and deletable; a transcript of your notes never leaves the
+account that owns it.
+
+When it cannot answer, it says why. "No model installed" and "your API key was
+rejected" call for very different actions from you, and Papyra distinguishes
+them instead of returning an unexplained blank.
+
+## The model runs on your machine
+
+The default is Ollama, alongside Papyra, on your hardware. Nothing is sent
+anywhere. Papyra offers three one-click installs in plain language rather than
+making you choose model names:
+
+| Tier | Model | Download | RAM needed |
+| --- | --- | --- | --- |
+| Small | `llama3.2:1b` | 1.3 GB | 2 GB |
+| Balanced | `llama3.1:8b` | 4.7 GB | 8 GB |
+| Best | `mistral-nemo:12b` | 7.1 GB | 12 GB |
+
+A model is several gigabytes, so the install reports real byte progress rather
+than an indeterminate spinner — an unexplained ten-minute wait reads as a hang.
+
+If you would rather use a hosted model, an admin can point the instance at
+OpenAI or Anthropic from Settings. Chat and embeddings are configured
+independently, so answering with a hosted model while keeping search embeddings
+entirely local is a supported combination. API keys are write-only over the API:
+the server reports whether a key is stored, never what it is.

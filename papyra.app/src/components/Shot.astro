@@ -1,0 +1,85 @@
+---
+import { Image } from 'astro:assets';
+
+// A screenshot of the real application, in the reader's own theme.
+//
+// Both themes are emitted and CSS picks one. The hidden variant carries
+// loading="lazy" and is display:none, so browsers do not fetch it — a lazy image
+// that never enters the viewport is never requested. That keeps the page at the
+// cost of one screenshot while still matching light or dark exactly.
+//
+// Files come from scripts/shoot.mjs; the glob is eager so Astro can optimise
+// each one at build time.
+interface Props {
+  /** Base name from scripts/shoot.mjs, e.g. "grid" or "editor". */
+  name: string;
+  /** What the screenshot shows. Never decorative — these carry real meaning. */
+  alt: string;
+  /** Caption under the frame. */
+  caption?: string;
+  device?: 'desktop' | 'mobile';
+}
+
+const { name, alt, caption, device = 'desktop' } = Astro.props;
+
+const shots = import.meta.glob<{ default: ImageMetadata }>(
+  '../assets/shots/*.png',
+  { eager: true },
+);
+
+const pick = (theme: 'light' | 'dark') => {
+  const key = `../assets/shots/${name}-${device}-${theme}.png`;
+  const mod = shots[key];
+  if (!mod) {
+    throw new Error(
+      `Shot "${name}-${device}-${theme}.png" not found. Run: pnpm --filter papyra-app run shoot`,
+    );
+  }
+  return mod.default;
+};
+
+const light = pick('light');
+const dark = pick('dark');
+// Captured at deviceScaleFactor 2, so half the pixel width is the CSS width.
+const width = Math.round(light.width / 2);
+---
+
+<figure class="shot">
+  <Image class="shot__img shot__img--light" src={light} alt={alt} width={width} loading="lazy" />
+  <Image class="shot__img shot__img--dark" src={dark} alt={alt} width={width} loading="lazy" />
+  {caption && <figcaption>{caption}</figcaption>}
+</figure>
+
+<style>
+  .shot {
+    margin: var(--space-6) 0;
+  }
+
+  .shot :global(.shot__img) {
+    display: block;
+    width: 100%;
+    height: auto;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-card);
+  }
+
+  .shot :global(.shot__img--dark) {
+    display: none;
+  }
+
+  :global([data-theme='dark']) .shot :global(.shot__img--light) {
+    display: none;
+  }
+
+  :global([data-theme='dark']) .shot :global(.shot__img--dark) {
+    display: block;
+  }
+
+  .shot figcaption {
+    margin-top: var(--space-3);
+    font-size: var(--fs-xs);
+    line-height: 1.5;
+    color: var(--text);
+  }
+</style>

@@ -4,8 +4,13 @@ import Base from '../layouts/Base.astro';
 import Icon from '../components/Icon.astro';
 import CodeBlock from '../components/CodeBlock.astro';
 import logo from '../assets/papyra_logo.png';
-import { GITHUB_URL, TAGLINE } from '../data/site';
-import { PILLARS } from '../data/pillars';
+import { getCollection } from 'astro:content';
+import { GITHUB_URL, DOCKER_HUB_URL, TAGLINE } from '../data/site';
+import { readChangelog } from '../lib/changelog.mjs';
+
+// The feature collection is the single source for these cards and for the
+// deep-dive pages, so the two can never describe Papyra differently.
+const pillars = (await getCollection('features')).sort((a, b) => a.data.order - b.data.order);
 
 const noteSample = `---
 id: quarterly-review
@@ -24,6 +29,27 @@ Pull the numbers from [[revenue-model]] before Thursday.
 - [ ] Ask @dana for the support figures
 `;
 
+const { version } = readChangelog();
+
+// Structured data so search results can show Papyra as the application it is —
+// free, self-hosted, open source — rather than guessing from the prose.
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@type': 'SoftwareApplication',
+  name: 'Papyra',
+  description: TAGLINE,
+  applicationCategory: 'ProductivityApplication',
+  applicationSubCategory: 'Note-taking',
+  operatingSystem: 'Docker (Linux, macOS, Windows)',
+  url: 'https://papyra.app',
+  downloadUrl: DOCKER_HUB_URL,
+  codeRepository: GITHUB_URL,
+  license: 'https://www.gnu.org/licenses/gpl-3.0.html',
+  isAccessibleForFree: true,
+  ...(version ? { softwareVersion: version } : {}),
+  offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
+};
+
 const installSample = `curl -O https://raw.githubusercontent.com/lyfie-org/papyra/main/docker-compose.hub.yml
 docker compose -f docker-compose.hub.yml up -d
 
@@ -35,6 +61,8 @@ docker compose -f docker-compose.hub.yml up -d
   description="Self-hosted notes that stay as plain Markdown files on your own server. Full-text and semantic search, an assistant that answers from your own notes, offline editing, sharing, and passkey-locked vaults. Open source, one Docker command."
   bareTitle
 >
+  <script type="application/ld+json" is:inline set:html={JSON.stringify(jsonLd)} />
+
   <section class="hero">
     <div class="wrap hero__inner">
       <Image
@@ -97,11 +125,11 @@ docker compose -f docker-compose.hub.yml up -d
 
       <div class="grid">
         {
-          PILLARS.map((pillar) => (
-            <a class="card" href={pillar.href}>
-              <h3>{pillar.title}</h3>
-              <p>{pillar.blurb}</p>
-              <p class="card__more">{pillar.points.join(' · ')}</p>
+          pillars.map((pillar) => (
+            <a class="card" href={`/features/${pillar.id}/`}>
+              <h3>{pillar.data.title}</h3>
+              <p>{pillar.data.blurb}</p>
+              <p class="card__more">{pillar.data.points.join(' · ')}</p>
             </a>
           ))
         }

@@ -1,0 +1,79 @@
+---
+title: People, invites and SSO
+summary: Adding people to your server, sending invites and password resets, and pointing Papyra at an identity provider.
+group: In depth
+order: 3
+---
+
+The first account created on a fresh instance is the administrator. There is no
+default account and no default password.
+
+## Adding people
+
+**Settings → Manage users**, as an administrator. You can:
+
+- **Create an account** with a temporary password.
+- **Reset a password** when someone is locked out.
+- **Generate a one-time recovery link** to hand over directly.
+- **Delete an account**, which removes that person's vault.
+
+An account an admin created or reset must choose a new password before the API
+will let it do anything else. A password somebody else chose is a password
+somebody else knows, so the rest of the app stays closed until it is changed.
+
+## Email invites and resets
+
+Without SMTP configured, you create accounts by hand and pass on the temporary
+password or recovery link yourself. That is a perfectly reasonable way to run a
+server for your family.
+
+With SMTP configured (**Settings → Email**), Papyra can email an invite and
+handle "forgot password" itself. There is a **Send test email** button — use it,
+because SMTP misconfiguration otherwise only shows up when somebody is already
+locked out.
+
+The SMTP password is write-only: the server reports whether one is stored, never
+what it is.
+
+## Single sign-on
+
+**Settings → SSO**, as an administrator. Papyra speaks OIDC and provisions an
+account on first successful login.
+
+You need, from your identity provider:
+
+- **Authority URL** — the issuer, e.g. `https://id.example.com/realms/main`
+- **Client ID** and **Client secret**
+- A **redirect URI** registered at the provider, pointing back at Papyra
+
+It is configured from the UI at runtime and takes effect **without a restart** —
+you are not editing a config file inside a container to change an identity
+provider.
+
+If the provider cannot be reached, Papyra says so in words and names the setting
+to check, rather than returning a bare gateway error.
+
+> **Honest status:** SSO is implemented and its configuration flow is tested,
+> but a full round trip against a live identity provider is the one thing the
+> project has not been able to verify itself. If you turn it on, keep a
+> password-based administrator account so you cannot lock yourself out.
+
+## Personal access tokens
+
+**Settings → API Keys** creates tokens for scripts and integrations. A token
+inherits the permissions and the folder of the account that created it — it can
+reach exactly that person's notes and nothing else.
+
+Tokens are stored hashed, so Papyra shows the value once, at creation, and never
+again. Send it as `X-API-Key` or `Authorization: Bearer`. See the
+[API reference](/api/).
+
+## Privacy between accounts
+
+Each account's notes live in their own directory, and every path is checked
+against that directory before anything is read or written. An administrator can
+manage accounts — create, reset, delete — but administration is not readership:
+there is no "view all notes" screen, because there is no code path that would
+produce one.
+
+The exception is deletion. Deleting an account removes its vault.

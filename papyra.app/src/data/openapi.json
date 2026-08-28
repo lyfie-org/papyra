@@ -1,0 +1,3466 @@
+{
+  "openapi": "3.1.1",
+  "info": {
+    "title": "Papyra API",
+    "description": "Self-hosted, file-first notes. Authenticate with a personal access token (Settings → API Keys), sent as an `X-API-Key` header.",
+    "version": "1.0.0"
+  },
+  "servers": [
+    {
+      "url": "http://localhost:5299/"
+    }
+  ],
+  "paths": {
+    "/api/shared/{token}": {
+      "get": {
+        "tags": [
+          "Papyra.Api"
+        ],
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Papyra.Api"
+        ],
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SharedBodyWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/shared/{token}/media/{filename}": {
+      "get": {
+        "tags": [
+          "Papyra.Api"
+        ],
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "filename",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/search": {
+      "get": {
+        "tags": [
+          "Papyra.Api"
+        ],
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/search/semantic": {
+      "get": {
+        "tags": [
+          "Papyra.Api"
+        ],
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "take",
+            "in": "query",
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": [
+                "integer",
+                "string"
+              ],
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/ai/chat": {
+      "post": {
+        "tags": [
+          "Papyra.Api"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AiChatRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/ai/status": {
+      "get": {
+        "tags": [
+          "AI"
+        ],
+        "summary": "Whether the assistant can answer, and why not",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/ai/models": {
+      "get": {
+        "tags": [
+          "AI"
+        ],
+        "summary": "Downloadable local models",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/ai/pull": {
+      "post": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Download a local model (admin)",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AiPullRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/system/rebuild-embeddings": {
+      "post": {
+        "tags": [
+          "Papyra.Api"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/system/prune-media": {
+      "post": {
+        "tags": [
+          "System"
+        ],
+        "summary": "Prune unreferenced media now (admin)",
+        "description": "Moves media files that no live note references into the owning tenant's .trash and reports how many moved. Same sweep the nightly background service runs; nothing is deleted outright.",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/system/rebuild-index": {
+      "post": {
+        "tags": [
+          "Papyra.Api"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/media/upload": {
+      "post": {
+        "tags": [
+          "Papyra.Api"
+        ],
+        "parameters": [
+          {
+            "name": "noteId",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "required": [
+                  "file"
+                ],
+                "type": "object",
+                "properties": {
+                  "file": {
+                    "$ref": "#/components/schemas/IFormFile"
+                  }
+                }
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/media/{filename}": {
+      "get": {
+        "tags": [
+          "Papyra.Api"
+        ],
+        "parameters": [
+          {
+            "name": "filename",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/import/{provider}": {
+      "post": {
+        "tags": [
+          "Papyra.Api"
+        ],
+        "parameters": [
+          {
+            "name": "provider",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "required": [
+                  "file"
+                ],
+                "type": "object",
+                "properties": {
+                  "file": {
+                    "$ref": "#/components/schemas/IFormFile"
+                  }
+                }
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/import/quick": {
+      "post": {
+        "tags": [
+          "Papyra.Api"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/export": {
+      "get": {
+        "tags": [
+          "Papyra.Api"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/auth/setup": {
+      "post": {
+        "tags": [
+          "Auth"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SetupRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/auth/login": {
+      "post": {
+        "tags": [
+          "Auth"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/LoginRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/auth/logout": {
+      "post": {
+        "tags": [
+          "Auth"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/auth/providers": {
+      "get": {
+        "tags": [
+          "Auth"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/auth/login/sso": {
+      "get": {
+        "tags": [
+          "Auth"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/auth/forgot-password": {
+      "post": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Request a password reset link",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ForgotPasswordRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/auth/token/{token}": {
+      "get": {
+        "tags": [
+          "Auth"
+        ],
+        "parameters": [
+          {
+            "name": "token",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/auth/reset-password": {
+      "post": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Set a new password from a reset link",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResetPasswordRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/auth/accept-invite": {
+      "post": {
+        "tags": [
+          "Auth"
+        ],
+        "summary": "Redeem an invitation and create the account",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResetPasswordRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/auth/me": {
+      "get": {
+        "tags": [
+          "Auth"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/auth/profile": {
+      "put": {
+        "tags": [
+          "Auth"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProfileRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/auth/password": {
+      "post": {
+        "tags": [
+          "Auth"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/PasswordRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/auth/avatar": {
+      "post": {
+        "tags": [
+          "Auth"
+        ],
+        "requestBody": {
+          "content": {
+            "multipart/form-data": {
+              "schema": {
+                "required": [
+                  "file"
+                ],
+                "type": "object",
+                "properties": {
+                  "file": {
+                    "$ref": "#/components/schemas/IFormFile"
+                  }
+                }
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "get": {
+        "tags": [
+          "Auth"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/auth/avatar/{username}": {
+      "get": {
+        "tags": [
+          "Auth"
+        ],
+        "parameters": [
+          {
+            "name": "username",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/auth/notifications": {
+      "get": {
+        "tags": [
+          "Auth"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Auth"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NotificationPrefsWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/auth/webauthn/credentials": {
+      "get": {
+        "tags": [
+          "WebAuthn"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/auth/webauthn/register/challenge": {
+      "post": {
+        "tags": [
+          "WebAuthn"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/auth/webauthn/register/verify": {
+      "post": {
+        "tags": [
+          "WebAuthn"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WebAuthnRegisterRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/auth/webauthn/challenge": {
+      "post": {
+        "tags": [
+          "WebAuthn"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/auth/webauthn/verify": {
+      "post": {
+        "tags": [
+          "WebAuthn"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WebAuthnAssertRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/auth/webauthn/credentials/{id}": {
+      "delete": {
+        "tags": [
+          "WebAuthn"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/auth/users": {
+      "get": {
+        "tags": [
+          "Admin"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Admin"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ProvisionRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/auth/users/{id}/reset": {
+      "post": {
+        "tags": [
+          "Admin"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResetRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/auth/users/{id}/recovery-link": {
+      "post": {
+        "tags": [
+          "Admin"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/RecoveryLinkRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/auth/users/{id}": {
+      "delete": {
+        "tags": [
+          "Admin"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/auth/oidc": {
+      "get": {
+        "tags": [
+          "Admin"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Configure SSO (admin)",
+        "description": "Stores the OIDC authority, client id and secret. Takes effect immediately — the cached authentication options for the `oidc` scheme are evicted on save.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OidcConfigWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/auth/smtp": {
+      "get": {
+        "tags": [
+          "Admin"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Configure outbound email (admin)",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SmtpConfigWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/auth/smtp/test": {
+      "post": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Send a test email (admin)",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SmtpTestRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/auth/smtp/invite": {
+      "post": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Invite a user by email (admin)",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/InviteRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/jobs": {
+      "get": {
+        "tags": [
+          "Admin"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/jobs/{id}/run": {
+      "post": {
+        "tags": [
+          "Admin"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/users/search": {
+      "get": {
+        "tags": [
+          "Directory"
+        ],
+        "parameters": [
+          {
+            "name": "q",
+            "in": "query",
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/notes": {
+      "get": {
+        "tags": [
+          "Notes"
+        ],
+        "summary": "List notes",
+        "description": "Returns the caller's notes (metadata + body) from the in-memory vault. Optional from/to filter by last-modified date.",
+        "parameters": [
+          {
+            "name": "from",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          },
+          {
+            "name": "to",
+            "in": "query",
+            "schema": {
+              "type": "string",
+              "format": "date-time"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/notes/activity": {
+      "get": {
+        "tags": [
+          "Notes"
+        ],
+        "summary": "Note activity heatmap",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/notes/{id}/secure": {
+      "get": {
+        "tags": [
+          "Notes"
+        ],
+        "summary": "Reveal a secure note's body",
+        "description": "Requires a valid X-Unlock-Token from a successful WebAuthn assertion; 401 otherwise.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/notes/order": {
+      "get": {
+        "tags": [
+          "Notes"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Notes"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/OrderWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/notes/{id}": {
+      "put": {
+        "tags": [
+          "Notes"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/NoteWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "Notes"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/notes/{id}/trash": {
+      "post": {
+        "tags": [
+          "Notes"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/notes/{id}/untrash": {
+      "post": {
+        "tags": [
+          "Notes"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/notes/{id}/blocks": {
+      "get": {
+        "tags": [
+          "Notes"
+        ],
+        "summary": "List a note's block anchors",
+        "description": "Every `^id` anchor in the note, in document order, for building a block reference.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/notes/{id}/blocks/{blockId}": {
+      "get": {
+        "tags": [
+          "Notes"
+        ],
+        "summary": "Resolve one anchored block",
+        "description": "Returns only the anchored block's text — never the surrounding note body.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "blockId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/notes/{id}/backlinks": {
+      "get": {
+        "tags": [
+          "Notes"
+        ],
+        "summary": "List backlinks",
+        "description": "Notes that reference this note through a [[Title]] wikilink, each with a highlighted snippet.",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/notes/{id}/snapshots": {
+      "get": {
+        "tags": [
+          "Notes"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/notes/{id}/snapshots/{snapshotId}": {
+      "get": {
+        "tags": [
+          "Notes"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "snapshotId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/notes/{id}/restore/{snapshotId}": {
+      "post": {
+        "tags": [
+          "Notes"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          },
+          {
+            "name": "snapshotId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/notes/{id}/shares": {
+      "get": {
+        "tags": [
+          "Notes"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Notes"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ShareWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/inbox": {
+      "get": {
+        "tags": [
+          "Inbox"
+        ],
+        "summary": "List inbox entries",
+        "description": "Each entry is one anchored block another user pinged you with, already resolved.",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/inbox/{id}": {
+      "delete": {
+        "tags": [
+          "Inbox"
+        ],
+        "summary": "Dismiss an inbox entry",
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/inbox/read": {
+      "post": {
+        "tags": [
+          "Inbox"
+        ],
+        "summary": "Mark all inbox entries read",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/categories": {
+      "get": {
+        "tags": [
+          "Categories"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Categories"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/CategoryWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/categories/{name}": {
+      "delete": {
+        "tags": [
+          "Categories"
+        ],
+        "parameters": [
+          {
+            "name": "name",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/keys": {
+      "get": {
+        "tags": [
+          "API Keys"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "API Keys"
+        ],
+        "summary": "Create API key",
+        "description": "Generates a personal access token. The raw token is returned once — store it; only its hash is kept.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ApiKeyWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/keys/{id}": {
+      "delete": {
+        "tags": [
+          "API Keys"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/collections": {
+      "get": {
+        "tags": [
+          "Collections"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Collections"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SmartCollectionWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/collections/{id}": {
+      "delete": {
+        "tags": [
+          "Collections"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/collections/{id}/notes": {
+      "get": {
+        "tags": [
+          "Collections"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/webhooks": {
+      "get": {
+        "tags": [
+          "Webhooks"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "post": {
+        "tags": [
+          "Webhooks"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/WebhookWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/webhooks/{id}": {
+      "delete": {
+        "tags": [
+          "Webhooks"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/git": {
+      "get": {
+        "tags": [
+          "Git"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Git"
+        ],
+        "summary": "Configure git backup of your own vault",
+        "description": "Sets the remote for a mirror of the caller's vault only. Papyra's own state (.papyra/, .trash/) is gitignored. Each account has its own repository and its own credentials; no account can configure or trigger another's.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/GitConfigWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/git/sync": {
+      "post": {
+        "tags": [
+          "Git"
+        ],
+        "summary": "Back up your vault now",
+        "description": "Stages, commits and pushes the caller's vault. Returns status 'pushed', 'clean', or 'conflict' — a diverged remote is never force-pushed; the conflict flag is raised instead and the remote is left untouched.",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/settings": {
+      "get": {
+        "tags": [
+          "Settings"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Settings"
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SettingsRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/conflicts": {
+      "get": {
+        "tags": [
+          "Conflicts"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/conflicts/{id}": {
+      "get": {
+        "tags": [
+          "Conflicts"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/conflicts/{id}/resolve": {
+      "post": {
+        "tags": [
+          "Conflicts"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ResolveConflictRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/shares/{shareId}": {
+      "delete": {
+        "tags": [
+          "Sharing"
+        ],
+        "parameters": [
+          {
+            "name": "shareId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/shares/summary": {
+      "get": {
+        "tags": [
+          "Sharing"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/shares/incoming": {
+      "get": {
+        "tags": [
+          "Sharing"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/shares/incoming/{shareId}": {
+      "get": {
+        "tags": [
+          "Sharing"
+        ],
+        "parameters": [
+          {
+            "name": "shareId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Sharing"
+        ],
+        "parameters": [
+          {
+            "name": "shareId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SharedBodyWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/shares/incoming/{shareId}/media/{filename}": {
+      "get": {
+        "tags": [
+          "Sharing"
+        ],
+        "parameters": [
+          {
+            "name": "shareId",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": "integer",
+              "format": "int32"
+            }
+          },
+          {
+            "name": "filename",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "type": "string"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/ai/sessions": {
+      "get": {
+        "tags": [
+          "AI"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/ai/sessions/{id}": {
+      "get": {
+        "tags": [
+          "AI"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "patch": {
+        "tags": [
+          "AI"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ChatSessionRename"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "delete": {
+        "tags": [
+          "AI"
+        ],
+        "parameters": [
+          {
+            "name": "id",
+            "in": "path",
+            "required": true,
+            "schema": {
+              "pattern": "^-?(?:0|[1-9]\\d*)$",
+              "type": "integer",
+              "format": "int32"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/ai/config": {
+      "get": {
+        "tags": [
+          "Admin"
+        ],
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      },
+      "put": {
+        "tags": [
+          "Admin"
+        ],
+        "summary": "Configure the AI provider (admin)",
+        "description": "Selects the chat and embedding backends and stores their API keys. Takes effect immediately — AiClient re-reads its settings when the config version bumps.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AiConfigWrite"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/backups/generate": {
+      "post": {
+        "tags": [
+          "Backups"
+        ],
+        "summary": "Generate encrypted backup",
+        "description": "Verifies the account password, then streams an AES-GCM encrypted .papyra-vault of the caller's notes + media.",
+        "requestBody": {
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/BackupRequest"
+              }
+            }
+          },
+          "required": true
+        },
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    },
+    "/api/backups/restore": {
+      "post": {
+        "tags": [
+          "Backups"
+        ],
+        "summary": "Restore from encrypted backup",
+        "description": "Decrypts an uploaded .papyra-vault (multipart: password + file) and replaces the caller's notes + media, then rebuilds the cache.",
+        "responses": {
+          "200": {
+            "description": "OK"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "schemas": {
+      "AiChatRequest": {
+        "required": [
+          "question"
+        ],
+        "type": "object",
+        "properties": {
+          "question": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "sessionId": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "AiConfigWrite": {
+        "required": [
+          "chatProvider",
+          "embedProvider",
+          "ollamaBaseUrl",
+          "ollamaChatModel",
+          "ollamaEmbedModel",
+          "openAiBaseUrl",
+          "openAiChatModel",
+          "openAiEmbedModel",
+          "openAiKey",
+          "anthropicChatModel",
+          "anthropicKey"
+        ],
+        "type": "object",
+        "properties": {
+          "chatProvider": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "embedProvider": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "ollamaBaseUrl": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "ollamaChatModel": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "ollamaEmbedModel": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "openAiBaseUrl": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "openAiChatModel": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "openAiEmbedModel": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "openAiKey": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "anthropicChatModel": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "anthropicKey": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "AiPullRequest": {
+        "required": [
+          "model"
+        ],
+        "type": "object",
+        "properties": {
+          "model": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "ApiKeyWrite": {
+        "required": [
+          "name"
+        ],
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "AssertionResponse": {
+        "required": [
+          "authenticatorData",
+          "signature",
+          "clientDataJSON"
+        ],
+        "type": "object",
+        "properties": {
+          "authenticatorData": {
+            "format": "byte"
+          },
+          "signature": {
+            "format": "byte"
+          },
+          "clientDataJSON": {
+            "format": "byte"
+          },
+          "userHandle": {
+            "format": "byte"
+          }
+        }
+      },
+      "AttestationResponse": {
+        "required": [
+          "attestationObject",
+          "clientDataJSON",
+          "transports"
+        ],
+        "type": "object",
+        "properties": {
+          "attestationObject": {
+            "format": "byte"
+          },
+          "clientDataJSON": {
+            "format": "byte"
+          },
+          "transports": {
+            "type": [
+              "null",
+              "array"
+            ]
+          }
+        }
+      },
+      "AuthenticationExtensionsClientOutputs": {
+        "type": "object",
+        "properties": {
+          "example.extension.bool": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "appid": {
+            "type": "boolean"
+          },
+          "exts": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "uvm": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "array",
+              "items": {
+                "pattern": "^-?(?:0|[1-9]\\d*)$",
+                "type": [
+                  "integer",
+                  "string"
+                ],
+                "format": "uint64"
+              }
+            }
+          },
+          "credProps": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/CredentialPropertiesOutput"
+              }
+            ]
+          },
+          "prf": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AuthenticationExtensionsPRFOutputs"
+              }
+            ]
+          },
+          "largeBlob": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AuthenticationExtensionsLargeBlobOutputs"
+              }
+            ]
+          },
+          "credProtect": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/CredentialProtectionPolicy"
+              }
+            ]
+          }
+        }
+      },
+      "AuthenticationExtensionsLargeBlobOutputs": {
+        "type": "object",
+        "properties": {
+          "supported": {
+            "type": "boolean"
+          },
+          "blob": {
+            "format": "byte"
+          },
+          "written": {
+            "type": "boolean"
+          }
+        }
+      },
+      "AuthenticationExtensionsPRFOutputs": {
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": "boolean"
+          },
+          "results": {
+            "$ref": "#/components/schemas/AuthenticationExtensionsPRFValues"
+          }
+        }
+      },
+      "AuthenticationExtensionsPRFValues": {
+        "required": [
+          "first"
+        ],
+        "type": "object",
+        "properties": {
+          "first": {
+            "format": "byte"
+          },
+          "second": {
+            "format": "byte"
+          }
+        }
+      },
+      "AuthenticatorAssertionRawResponse": {
+        "required": [
+          "id",
+          "rawId",
+          "type",
+          "clientExtensionResults"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "rawId": {
+            "format": "byte"
+          },
+          "response": {
+            "$ref": "#/components/schemas/AssertionResponse"
+          },
+          "type": {
+            "$ref": "#/components/schemas/PublicKeyCredentialType"
+          },
+          "extensions": {
+            "$ref": "#/components/schemas/AuthenticationExtensionsClientOutputs"
+          },
+          "clientExtensionResults": {
+            "$ref": "#/components/schemas/AuthenticationExtensionsClientOutputs"
+          }
+        }
+      },
+      "AuthenticatorAttestationRawResponse": {
+        "required": [
+          "id",
+          "rawId",
+          "type",
+          "response",
+          "clientExtensionResults"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "rawId": {
+            "format": "byte"
+          },
+          "type": {
+            "$ref": "#/components/schemas/PublicKeyCredentialType"
+          },
+          "response": {
+            "$ref": "#/components/schemas/AttestationResponse"
+          },
+          "extensions": {
+            "$ref": "#/components/schemas/AuthenticationExtensionsClientOutputs"
+          },
+          "clientExtensionResults": {
+            "$ref": "#/components/schemas/AuthenticationExtensionsClientOutputs"
+          }
+        }
+      },
+      "BackupRequest": {
+        "required": [
+          "password"
+        ],
+        "type": "object",
+        "properties": {
+          "password": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "CategoryWrite": {
+        "required": [
+          "name",
+          "color"
+        ],
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "color": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "ChatSessionRename": {
+        "required": [
+          "title"
+        ],
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "CredentialPropertiesOutput": {
+        "type": "object",
+        "properties": {
+          "rk": {
+            "type": "boolean"
+          },
+          "authenticatorDisplayName": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "CredentialProtectionPolicy": {},
+      "ForgotPasswordRequest": {
+        "required": [
+          "usernameOrEmail"
+        ],
+        "type": "object",
+        "properties": {
+          "usernameOrEmail": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "GitConfigWrite": {
+        "required": [
+          "remoteUrl",
+          "branch",
+          "token"
+        ],
+        "type": "object",
+        "properties": {
+          "remoteUrl": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "branch": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "token": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "IFormFile": {
+        "type": "string",
+        "format": "binary"
+      },
+      "InviteRequest": {
+        "required": [
+          "username",
+          "email",
+          "role"
+        ],
+        "type": "object",
+        "properties": {
+          "username": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "email": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "role": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "LoginRequest": {
+        "required": [
+          "username",
+          "password"
+        ],
+        "type": "object",
+        "properties": {
+          "username": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "password": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "NoteWrite": {
+        "required": [
+          "title",
+          "tags",
+          "color",
+          "pinned",
+          "archived",
+          "body"
+        ],
+        "type": "object",
+        "properties": {
+          "title": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "tags": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "type": "string"
+            }
+          },
+          "color": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "pinned": {
+            "type": "boolean"
+          },
+          "archived": {
+            "type": "boolean"
+          },
+          "body": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "kind": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "secure": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          }
+        }
+      },
+      "NotificationPrefsWrite": {
+        "required": [
+          "mention",
+          "share"
+        ],
+        "type": "object",
+        "properties": {
+          "mention": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "share": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          }
+        }
+      },
+      "OidcConfigWrite": {
+        "required": [
+          "enabled",
+          "authority",
+          "clientId",
+          "clientSecret",
+          "displayName"
+        ],
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "authority": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "clientId": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "clientSecret": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "displayName": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "OrderEntryDto": {
+        "required": [
+          "id",
+          "key",
+          "setAt"
+        ],
+        "type": "object",
+        "properties": {
+          "id": {
+            "type": "string"
+          },
+          "key": {
+            "pattern": "^-?(?:0|[1-9]\\d*)(?:\\.\\d+)?(?:[eE][+-]?\\d+)?$",
+            "type": [
+              "number",
+              "string"
+            ],
+            "format": "double"
+          },
+          "setAt": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int64"
+          }
+        }
+      },
+      "OrderWrite": {
+        "required": [
+          "entries"
+        ],
+        "type": "object",
+        "properties": {
+          "entries": {
+            "type": [
+              "null",
+              "array"
+            ],
+            "items": {
+              "$ref": "#/components/schemas/OrderEntryDto"
+            }
+          }
+        }
+      },
+      "PasswordRequest": {
+        "required": [
+          "current",
+          "next"
+        ],
+        "type": "object",
+        "properties": {
+          "current": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "next": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "ProfileRequest": {
+        "required": [
+          "name",
+          "email"
+        ],
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "email": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "ProvisionRequest": {
+        "required": [
+          "username",
+          "name",
+          "email",
+          "password",
+          "role"
+        ],
+        "type": "object",
+        "properties": {
+          "username": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "name": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "email": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "password": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "role": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "sendEmail": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          }
+        }
+      },
+      "PublicKeyCredentialType": {},
+      "RecoveryLinkRequest": {
+        "type": "object",
+        "properties": {
+          "sendEmail": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          }
+        }
+      },
+      "ResetPasswordRequest": {
+        "required": [
+          "token",
+          "password"
+        ],
+        "type": "object",
+        "properties": {
+          "token": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "password": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "ResetRequest": {
+        "required": [
+          "password"
+        ],
+        "type": "object",
+        "properties": {
+          "password": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "sendEmail": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          }
+        }
+      },
+      "ResolveConflictRequest": {
+        "required": [
+          "keep"
+        ],
+        "type": "object",
+        "properties": {
+          "keep": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "SettingsRequest": {
+        "required": [
+          "trashRetentionDays"
+        ],
+        "type": "object",
+        "properties": {
+          "trashRetentionDays": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "SetupRequest": {
+        "required": [
+          "username",
+          "name",
+          "email",
+          "password"
+        ],
+        "type": "object",
+        "properties": {
+          "username": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "name": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "email": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "password": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "SharedBodyWrite": {
+        "required": [
+          "body"
+        ],
+        "type": "object",
+        "properties": {
+          "body": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "ShareWrite": {
+        "required": [
+          "kind",
+          "access",
+          "granteeUsername",
+          "expiresUtc",
+          "maxViews"
+        ],
+        "type": "object",
+        "properties": {
+          "kind": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "access": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "granteeUsername": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "expiresUtc": {
+            "type": [
+              "null",
+              "string"
+            ],
+            "format": "date-time"
+          },
+          "maxViews": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          }
+        }
+      },
+      "SmartCollectionWrite": {
+        "required": [
+          "name",
+          "rulesJson"
+        ],
+        "type": "object",
+        "properties": {
+          "name": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "rulesJson": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "SmtpConfigWrite": {
+        "required": [
+          "enabled",
+          "host",
+          "port",
+          "useSsl",
+          "username",
+          "password",
+          "fromAddress",
+          "fromName",
+          "publicUrl"
+        ],
+        "type": "object",
+        "properties": {
+          "enabled": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "host": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "port": {
+            "pattern": "^-?(?:0|[1-9]\\d*)$",
+            "type": [
+              "null",
+              "integer",
+              "string"
+            ],
+            "format": "int32"
+          },
+          "useSsl": {
+            "type": [
+              "null",
+              "boolean"
+            ]
+          },
+          "username": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "password": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "fromAddress": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "fromName": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "publicUrl": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "SmtpTestRequest": {
+        "required": [
+          "to"
+        ],
+        "type": "object",
+        "properties": {
+          "to": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "WebAuthnAssertRequest": {
+        "required": [
+          "response"
+        ],
+        "type": "object",
+        "properties": {
+          "response": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AuthenticatorAssertionRawResponse"
+              }
+            ]
+          }
+        }
+      },
+      "WebAuthnRegisterRequest": {
+        "required": [
+          "response",
+          "name"
+        ],
+        "type": "object",
+        "properties": {
+          "response": {
+            "oneOf": [
+              {
+                "type": "null"
+              },
+              {
+                "$ref": "#/components/schemas/AuthenticatorAttestationRawResponse"
+              }
+            ]
+          },
+          "name": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      },
+      "WebhookWrite": {
+        "required": [
+          "event",
+          "url",
+          "secret"
+        ],
+        "type": "object",
+        "properties": {
+          "event": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "url": {
+            "type": [
+              "null",
+              "string"
+            ]
+          },
+          "secret": {
+            "type": [
+              "null",
+              "string"
+            ]
+          }
+        }
+      }
+    },
+    "securitySchemes": {
+      "ApiKey": {
+        "type": "apiKey",
+        "description": "Personal access token. Send as: X-API-Key: <token>",
+        "name": "X-API-Key",
+        "in": "header"
+      }
+    }
+  },
+  "security": [
+    {
+      "ApiKey": []
+    }
+  ],
+  "tags": [
+    {
+      "name": "Papyra.Api"
+    },
+    {
+      "name": "AI"
+    },
+    {
+      "name": "Admin"
+    },
+    {
+      "name": "System"
+    },
+    {
+      "name": "Auth"
+    },
+    {
+      "name": "WebAuthn"
+    },
+    {
+      "name": "Directory"
+    },
+    {
+      "name": "Notes"
+    },
+    {
+      "name": "Inbox"
+    },
+    {
+      "name": "Categories"
+    },
+    {
+      "name": "API Keys"
+    },
+    {
+      "name": "Collections"
+    },
+    {
+      "name": "Webhooks"
+    },
+    {
+      "name": "Git"
+    },
+    {
+      "name": "Settings"
+    },
+    {
+      "name": "Conflicts"
+    },
+    {
+      "name": "Sharing"
+    },
+    {
+      "name": "Backups"
+    }
+  ]
+}

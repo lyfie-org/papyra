@@ -1,0 +1,81 @@
+---
+title: Sharing and mentions
+summary: Public links that expire, sharing with someone on your server, and what exactly a mention gives away.
+group: In depth
+order: 2
+---
+
+## Public links
+
+Open a note, use the share control, and create a link. Choose how it ends:
+
+- **On a date** — the link stops working then.
+- **After N views** — it burns out once used up.
+- **Never** — until you revoke it.
+
+Anyone with the link can read the note, with no account. A link can also grant
+editing.
+
+Expired and exhausted links are tidied up by a background job rather than
+lingering; you can revoke any link by hand at any time from the note's share
+menu.
+
+## Sharing with someone on your server
+
+Share directly with another account and the note appears in their **Shared with
+me**. They get exactly what you granted — view or edit — and it ends when you
+revoke it.
+
+Either way, the note's card in your grid carries a badge showing it has left the
+vault, with the names on hover. This is on the card rather than two clicks away
+on purpose: "who else can read this one" is the question the whole product is
+built around.
+
+## Mentions give away one paragraph
+
+Type `@` and a username. The **block you named them in** — that paragraph, not
+the note — is delivered to their Inbox.
+
+Papyra then asks whether you also want to share the whole note:
+
+- **No** — the paragraph is genuinely all they can see. They cannot open the note.
+- **Yes** — they can open the note until you revoke it from the share menu.
+
+The default is the narrow one.
+
+If the source note is later deleted or locked, the inbox entry says so plainly
+instead of showing stale text. The grant is scoped to that block, so there is
+nothing else it could fall back to.
+
+## Locked notes never leave
+
+A Vault note is **never shareable and never delivers a mention**, whatever you
+type in it. There is no setting to override this. If you need to share something
+that lives in a locked note, move it to an unlocked one first.
+
+## Wiki links are not sharing
+
+`[[double bracket]]` links and **Linked mentions** are navigation within your own
+vault. Linking to a note gives nobody access to it, and a shared note's links to
+notes you have not shared simply will not resolve for the recipient.
+
+## Smart collections
+
+A collection is a saved rule, not a folder: everything tagged `work` and pinned,
+or anything whose text mentions pricing. Build the rule in the UI and the
+collection stays current as you write.
+
+Notes are not moved or copied into a collection, so a note can be in several at
+once, or none. Collections are private to you and are not shared by sharing a
+note.
+
+## Revoking
+
+Everything is revocable, and revocation is immediate:
+
+- A link — the note's share menu.
+- A person's access — the same place.
+- A mention — the recipient dismisses it from their Inbox, which drops the grant.
+
+Once revoked, the next request from that link or person is refused. There is no
+grace period, and nothing is cached on their side that would keep working.

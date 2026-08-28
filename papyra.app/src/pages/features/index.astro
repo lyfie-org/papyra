@@ -1,12 +1,140 @@
 ---
+import { getCollection } from 'astro:content';
 import Base from '../../layouts/Base.astro';
+import Icon from '../../components/Icon.astro';
+
+const features = (await getCollection('features')).sort(
+  (a, b) => a.data.order - b.data.order,
+);
 ---
 
-<Base title="Features" description="Every capability Papyra ships today, explained in plain language.">
+<Base
+  title="Features"
+  description="Everything Papyra ships today: plain-file storage, autosave with snapshots, offline editing, full-text and semantic search, an assistant that answers from your own notes, sharing and mentions, passkey-locked vaults, SSO and encrypted backups."
+>
   <section class="section">
-    <div class="wrap wrap--narrow">
-      <h1>Features</h1>
-      <p class="lede">Every capability Papyra ships today, explained in plain language.</p>
+    <div class="wrap">
+      <p class="eyebrow">Features</p>
+      <h1>What Papyra does</h1>
+      <p class="lede features__lede">
+        Six things, in the order a newcomer should meet them. All of it ships today — you can
+        try most of it in the browser demo without installing anything.
+      </p>
+
+      <ol class="features__list">
+        {
+          features.map((feature) => (
+            <li class="features__item">
+              <a class="features__link" href={`/features/${feature.id}/`}>
+                <span class="features__num">{String(feature.data.order).padStart(2, '0')}</span>
+                <span class="features__body">
+                  <h2>{feature.data.title}</h2>
+                  <p>{feature.data.blurb}</p>
+                  <span class="features__points">{feature.data.points.join(' · ')}</span>
+                </span>
+                <Icon name="arrow-right" size={18} class="features__arrow" />
+              </a>
+            </li>
+          ))
+        }
+      </ol>
+
+      <p class="features__cta">
+        <a class="btn" href="/demo/">Try it in your browser</a>
+      </p>
     </div>
   </section>
 </Base>
+
+<style>
+  .features__lede {
+    margin-bottom: var(--space-10);
+  }
+
+  .features__list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: var(--space-4);
+  }
+
+  .features__link {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: start;
+    gap: var(--space-5);
+    padding: var(--space-5) var(--space-6);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    box-shadow: var(--shadow-card);
+    text-decoration: none;
+    color: inherit;
+    transition:
+      box-shadow var(--dur) var(--ease),
+      border-color var(--dur) var(--ease),
+      transform var(--dur) var(--ease);
+  }
+
+  .features__link:hover {
+    box-shadow: var(--shadow-card-hover);
+    border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
+    transform: translateY(-2px);
+    color: inherit;
+  }
+
+  .features__num {
+    font: 400 var(--fs-lg) / 1.2 var(--heading);
+    color: var(--accent);
+  }
+
+  .features__body h2 {
+    font-size: var(--fs-lg);
+    margin: 0 0 var(--space-2);
+  }
+
+  .features__body p {
+    margin: 0 0 var(--space-3);
+    font-size: var(--fs-sm);
+    line-height: 1.55;
+    color: var(--text);
+  }
+
+  .features__points {
+    font-size: var(--fs-xs);
+    color: var(--accent-text);
+  }
+
+  .features__arrow {
+    color: var(--text);
+    align-self: center;
+    flex: none;
+  }
+
+  .features__link:hover .features__arrow {
+    color: var(--accent);
+  }
+
+  .features__cta {
+    margin-top: var(--space-10);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .features__link:hover {
+      transform: none;
+    }
+  }
+
+  @media (max-width: 40rem) {
+    .features__link {
+      grid-template-columns: auto 1fr;
+      padding: var(--space-4);
+      gap: var(--space-3);
+    }
+
+    .features__arrow {
+      display: none;
+    }
+  }
+</style>

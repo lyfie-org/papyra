@@ -5,12 +5,17 @@
   "type": "module",
   "scripts": {
     "dev": "astro dev",
-    "build": "node scripts/check-tokens.mjs && astro build",
+    "build": "node scripts/check-tokens.mjs && astro build && node scripts/check-links.mjs",
     "preview": "astro preview",
     "check": "astro check",
     "check:tokens": "node scripts/check-tokens.mjs",
     "fonts": "node scripts/fetch-fonts.mjs",
-    "preview:cf": "wrangler pages dev dist --port 4323"
+    "preview:cf": "wrangler pages dev dist --port 4323",
+    "shoot": "node scripts/shoot.mjs",
+    "check:links": "node scripts/check-links.mjs",
+    "check:layout": "node scripts/check-layout.mjs",
+    "openapi": "node scripts/fetch-openapi.mjs",
+    "og": "node scripts/og.mjs"
   },
   "dependencies": {
     "@astrojs/mdx": "^7.0.8",
@@ -24,6 +29,7 @@
   "devDependencies": {
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
+    "playwright": "^1.62.1",
     "typescript": "~6.0.2",
     "wrangler": "^4.127.0"
   }

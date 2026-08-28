@@ -1,12 +1,94 @@
 ---
-import Base from '../../layouts/Base.astro';
+import { getCollection } from 'astro:content';
+import Docs from '../../layouts/Docs.astro';
+import CodeBlock from '../../components/CodeBlock.astro';
+import Icon from '../../components/Icon.astro';
+
+const GROUPS = ['Getting started', 'Living with it', 'In depth', 'Reference'] as const;
+
+const all = await getCollection('docs');
+const sections = GROUPS.map((group) => ({
+  group,
+  pages: all
+    .filter((page) => page.data.group === group)
+    .sort((a, b) => a.data.order - b.data.order),
+})).filter((section) => section.pages.length > 0);
+
+const quickStart = `curl -O https://raw.githubusercontent.com/lyfie-org/papyra/main/docker-compose.hub.yml
+docker compose -f docker-compose.hub.yml up -d
+
+# then open http://localhost:8080`;
 ---
 
-<Base title="Documentation" description="Install, configure, secure and back up your own Papyra server.">
-  <section class="section">
-    <div class="wrap wrap--narrow">
-      <h1>Documentation</h1>
-      <p class="lede">Install, configure, secure and back up your own Papyra server.</p>
-    </div>
-  </section>
-</Base>
+<Docs
+  title="Documentation"
+  description="Install, configure, secure and back up your own Papyra server. Environment variables, reverse proxies, the assistant, SSO, backups and troubleshooting."
+>
+  <h1>Documentation</h1>
+  <p class="lede docs__lede">
+    Everything needed to run Papyra yourself. If you are in a hurry, the whole install
+    is two commands.
+  </p>
+
+  <CodeBlock lang="bash" label="Quick start" code={quickStart} />
+
+  <p class="docs__cta">
+    <a class="btn" href="/docs/install/">
+      Start with the install guide
+      <Icon name="arrow-right" size={16} />
+    </a>
+  </p>
+
+  {
+    sections.map((section) => (
+      <section class="docs__section">
+        <h2>{section.group}</h2>
+        <ul class="docs__cards">
+          {section.pages.map((page) => (
+            <li>
+              <a class="card" href={`/docs/${page.id}/`}>
+                <h3>{page.data.title}</h3>
+                <p>{page.data.summary}</p>
+              </a>
+            </li>
+          ))}
+        </ul>
+      </section>
+    ))
+  }
+</Docs>
+
+<style>
+  .docs__lede {
+    margin-bottom: var(--space-6);
+  }
+
+  .docs__cta {
+    margin: var(--space-5) 0 var(--space-10);
+  }
+
+  .docs__section {
+    margin-bottom: var(--space-10);
+  }
+
+  .docs__section h2 {
+    font-size: var(--fs-xl);
+    margin-bottom: var(--space-4);
+    padding-bottom: var(--space-3);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .docs__cards {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: var(--space-4);
+    grid-template-columns: repeat(auto-fit, minmax(16rem, 1fr));
+  }
+
+  .docs__cards h3 {
+    font-size: var(--fs-md);
+    margin: 0;
+  }
+</style>

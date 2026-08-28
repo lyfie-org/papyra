@@ -1,12 +1,451 @@
 ---
 import Base from '../../layouts/Base.astro';
+import CodeBlock from '../../components/CodeBlock.astro';
+import Icon from '../../components/Icon.astro';
+import { GITHUB_URL } from '../../data/site';
+import { buildReference } from '../../lib/openapi.mjs';
+
+const api = buildReference();
+
+const authSample = `# Settings → API Keys creates the token. It is shown once.
+export PAPYRA=https://notes.example.com
+export PAPYRA_TOKEN=pk_live_...
+
+curl -s "$PAPYRA/api/notes" -H "X-API-Key: $PAPYRA_TOKEN"`;
+
+const createSample = `# There is no POST for notes. A new note is a PUT to an id you choose,
+# and the same call updates an existing one.
+curl -s -X PUT "$PAPYRA/api/notes/shopping-list" \\
+  -H "X-API-Key: $PAPYRA_TOKEN" \\
+  -H "Content-Type: application/json" \\
+  -d '{
+        "title": "Shopping list",
+        "body": "- [ ] Coffee\\n- [ ] Olive oil",
+        "tags": ["home"],
+        "kind": "todo"
+      }'`;
+
+const searchSample = `# Keyword search (Lucene), then meaning-based search over embeddings.
+curl -s "$PAPYRA/api/search?q=pricing"          -H "X-API-Key: $PAPYRA_TOKEN"
+curl -s "$PAPYRA/api/search/semantic?q=pricing" -H "X-API-Key: $PAPYRA_TOKEN"`;
 ---
 
-<Base title="API" description="Papyra's HTTP API: authenticate with a personal access token and drive your notes from anywhere.">
+<Base
+  title="API reference"
+  description="Papyra's HTTP API. Authenticate with a personal access token, drive your notes from anywhere. Every endpoint, grouped, with the shape of each request."
+>
   <section class="section">
-    <div class="wrap wrap--narrow">
-      <h1>API reference</h1>
-      <p class="lede">Papyra's HTTP API: authenticate with a personal access token and drive your notes from anywhere.</p>
+    <div class="wrap api">
+      <div class="api__intro">
+        <p class="eyebrow">Reference</p>
+        <h1>The Papyra API</h1>
+        <p class="lede">
+          Everything the web app does, your scripts can do. {api.operationCount} operations
+          across {api.pathCount} paths, described by an OpenAPI {api.version} document your own
+          instance publishes.
+        </p>
+
+        <div class="prose">
+          <h2 id="authenticating">Authenticating</h2>
+          <p>
+            Create a personal access token in <strong>Settings → API Keys</strong>. It is shown
+            once, at creation, because Papyra stores only a hash of it.
+          </p>
+          <p>
+            Send it as <code>X-API-Key</code>, or as <code>Authorization: Bearer</code> if that
+            suits your client better — the two are equivalent. It is an opaque token, <em>not</em>
+            a JWT; there is nothing to decode.
+          </p>
+          <CodeBlock lang="bash" label="Terminal" code={authSample} />
+          <p>
+            A token inherits the account that made it, including its folder. It can reach exactly
+            that person's notes and nothing else.
+          </p>
+
+          <h2 id="notes">Creating and updating a note</h2>
+          <p>
+            <strong>There is no <code>POST /api/notes</code>.</strong> A note's id is its filename
+            on disk, and you choose it, so creating and updating are the same call:
+            <code>PUT /api/notes/&#123;id&#125;</code>. Writing to an id that does not exist creates
+            it; writing to one that does replaces it, snapshotting the previous revision first.
+          </p>
+          <CodeBlock lang="bash" label="Terminal" code={createSample} />
+
+          <h2 id="searching">Searching</h2>
+          <CodeBlock lang="bash" label="Terminal" code={searchSample} />
+          <p>
+            Semantic search needs an embedding model configured — see
+            <a href="/docs/ai/">the assistant</a>. Keyword search always works.
+          </p>
+
+          <h2 id="try-it">Trying requests</h2>
+          <p>
+            This page is a reference, not a console — there is no public Papyra instance for it to
+            call. <strong>Your own instance serves a live, interactive portal at
+            <code>/docs</code></strong>, where you paste your token and actually issue requests.
+            That is deliberately reachable in production so self-hosters have real documentation
+            for their own server.
+          </p>
+          <p>
+            The document behind this page is at <code>/openapi/v1.json</code> on your instance —
+            point any OpenAPI tool at it.
+          </p>
+
+          <h2 id="notes-on-reading">Two things to know while reading</h2>
+          <ul>
+            <li>
+              Everything needs authentication except <code>/api/shared/&#123;token&#125;</code>,
+              which is the public share-link surface and is anonymous by design.
+            </li>
+            <li>
+              Only {api.documented} of {api.operationCount} operations carry a written summary
+              today. The rest are listed with their real shape — method, path, parameters and
+              request body — but no prose. That gap is
+              <a href={`${GITHUB_URL}/issues`}>tracked upstream</a>.
+            </li>
+          </ul>
+        </div>
+      </div>
+
+      <nav class="api__toc" aria-label="Endpoint groups">
+        <h2>Endpoints</h2>
+        <ul>
+          {
+            api.groups.map((group) => (
+              <li>
+                <a href={`#${group.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}`}>
+                  {group.name}
+                  <span>{group.operations.length}</span>
+                </a>
+              </li>
+            ))
+          }
+        </ul>
+      </nav>
+    </div>
+
+    <div class="wrap">
+      {
+        api.groups.map((group) => (
+          <section class="api__group" id={group.name.toLowerCase().replace(/[^a-z0-9]+/g, '-')}>
+            <h2>
+              {group.name}
+              <span class="api__count">{group.operations.length}</span>
+            </h2>
+
+            <ul class="api__ops">
+              {group.operations.map((op) => (
+                <li class="op" id={op.id}>
+                  <details>
+                    <summary>
+                      <span class={`op__method op__method--${op.method.toLowerCase()}`}>
+                        {op.method}
+                      </span>
+                      <code class="op__path">{op.path}</code>
+                      {op.summary && <span class="op__summary">{op.summary}</span>}
+                      {op.anonymous && <span class="op__badge">no auth</span>}
+                      {op.admin && <span class="op__badge op__badge--admin">admin</span>}
+                    </summary>
+
+                    <div class="op__body">
+                      {op.description && <p class="op__desc">{op.description}</p>}
+
+                      {op.params.length > 0 && (
+                        <div class="op__section">
+                          <h3>Parameters</h3>
+                          <ul class="op__fields">
+                            {op.params.map((p) => (
+                              <li>
+                                <code>{p.name}</code>
+                                <span class="op__meta">
+                                  {p.in} · {p.type}
+                                  {p.required ? ' · required' : ''}
+                                </span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+
+                      {op.bodyFields.length > 0 && (
+                        <div class="op__section">
+                          <h3>Request body{op.bodyName ? ` — ${op.bodyName}` : ''}</h3>
+                          <ul class="op__fields">
+                            {op.bodyFields.map((f) => (
+                              <li>
+                                <code>{f.name}</code>
+                                <span class="op__meta">
+                                  {f.type}
+                                  {f.required ? ' · required' : ''}
+                                </span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+
+                      <div class="op__section">
+                        <h3>Responses</h3>
+                        <p class="op__codes">
+                          {op.responses.length > 0 ? op.responses.join(' · ') : '200'}
+                        </p>
+                      </div>
+                    </div>
+                  </details>
+                </li>
+              ))}
+            </ul>
+          </section>
+        ))
+      }
+
+      <p class="api__foot">
+        <a class="btn btn--ghost" href="/docs/accounts/">
+          <Icon name="book" size={16} />
+          Creating tokens
+        </a>
+      </p>
     </div>
   </section>
 </Base>
+
+<style>
+  .api {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 14rem;
+    gap: clamp(var(--space-6), 4vw, var(--space-10));
+    align-items: start;
+    margin-bottom: var(--space-12);
+  }
+
+  .api__toc {
+    position: sticky;
+    top: 76px;
+    font-size: var(--fs-sm);
+  }
+
+  .api__toc h2 {
+    font: 500 var(--fs-2xs) / 1 var(--sans);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--text);
+    margin: 0 0 var(--space-3);
+  }
+
+  .api__toc ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: var(--space-1);
+    border-left: 1px solid var(--border);
+  }
+
+  .api__toc a {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--space-2);
+    padding: var(--space-1) var(--space-3);
+    margin-left: -1px;
+    border-left: 2px solid transparent;
+    color: var(--text);
+    text-decoration: none;
+  }
+
+  .api__toc a:hover {
+    color: var(--text-h);
+    border-left-color: var(--accent);
+  }
+
+  .api__toc span {
+    font: 400 var(--fs-2xs) / 1.6 var(--mono);
+    color: var(--text);
+    opacity: 0.7;
+  }
+
+  .api__group {
+    margin-bottom: var(--space-10);
+    scroll-margin-top: 80px;
+  }
+
+  .api__group h2 {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-3);
+    font-size: var(--fs-xl);
+    margin-bottom: var(--space-4);
+    padding-bottom: var(--space-3);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .api__count {
+    font: 400 var(--fs-xs) / 1 var(--mono);
+    color: var(--text);
+  }
+
+  .api__ops {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: var(--space-2);
+  }
+
+  .op {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-sm);
+    background: var(--surface);
+    scroll-margin-top: 80px;
+  }
+
+  .op summary {
+    display: flex;
+    align-items: center;
+    flex-wrap: wrap;
+    gap: var(--space-3);
+    padding: var(--space-3) var(--space-4);
+    cursor: pointer;
+    list-style: none;
+  }
+
+  .op summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .op summary:hover {
+    background: var(--accent-bg);
+  }
+
+  .op__method {
+    flex: none;
+    min-width: 3.6rem;
+    text-align: center;
+    padding: 3px 6px;
+    border-radius: 4px;
+    font: 500 var(--fs-2xs) / 1.4 var(--mono);
+    letter-spacing: 0.04em;
+    background: var(--code-bg);
+    color: var(--text-h);
+    border: 1px solid var(--border);
+  }
+
+  .op__method--get { color: var(--accent-text); border-color: var(--accent-border); }
+  .op__method--post { color: var(--warn); border-color: var(--warn-border); }
+  .op__method--put,
+  .op__method--patch { color: var(--text-h); }
+  .op__method--delete { color: var(--danger); border-color: var(--danger-border); }
+
+  .op__path {
+    font-size: var(--fs-xs);
+    background: none;
+    padding: 0;
+    color: var(--text-h);
+    /* Flex items default to min-width:auto, so a long path like
+       /api/notes/{id}/snapshots/{snapshotId} refuses to shrink and pushes the
+       page sideways on a phone. Both are needed: min-width to allow shrinking,
+       overflow-wrap because the path has no natural break points. */
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .op__summary {
+    font-size: var(--fs-xs);
+    color: var(--text);
+    min-width: 0;
+    overflow-wrap: anywhere;
+  }
+
+  .op__badge {
+    margin-left: auto;
+    padding: 2px 8px;
+    border-radius: var(--radius-pill);
+    font: 500 var(--fs-2xs) / 1.5 var(--sans);
+    background: var(--accent-bg);
+    color: var(--accent-text);
+  }
+
+  .op__badge--admin {
+    background: var(--warn-bg);
+    color: var(--warn);
+  }
+
+  .op__body {
+    padding: 0 var(--space-4) var(--space-4);
+    border-top: 1px solid var(--border);
+  }
+
+  .op__desc {
+    margin: var(--space-3) 0 0;
+    font-size: var(--fs-sm);
+    line-height: 1.55;
+    color: var(--text);
+  }
+
+  .op__section h3 {
+    font: 500 var(--fs-2xs) / 1 var(--sans);
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--text);
+    margin: var(--space-4) 0 var(--space-2);
+  }
+
+  .op__fields {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: var(--space-1);
+  }
+
+  .op__fields li {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    align-items: baseline;
+  }
+
+  .op__fields code {
+    font-size: var(--fs-xs);
+    background: var(--code-bg);
+    padding: 1px 6px;
+    border-radius: 4px;
+  }
+
+  .op__meta,
+  .op__codes {
+    font-size: var(--fs-xs);
+    color: var(--text);
+    margin: 0;
+  }
+
+  .api__foot {
+    margin-top: var(--space-8);
+  }
+
+  @media (max-width: 64rem) {
+    .api {
+      /* minmax(0, 1fr), not 1fr: a bare 1fr track refuses to shrink below its
+         min-content, so one wide <pre> forces the whole column — and the page —
+         open. Caught by scripts/check-layout.mjs at 320px. */
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .api__toc {
+      position: static;
+      order: -1;
+    }
+
+    .api__toc ul {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--space-1) var(--space-3);
+      border-left: none;
+    }
+
+    .api__toc a {
+      margin-left: 0;
+      border-left: none;
+      padding: 2px 0;
+    }
+  }
+</style>
