@@ -1,0 +1,59 @@
+---
+// Inlined icons. The repo ships public/icons.svg, but its glyphs are filled with
+// a hardcoded near-black (#08060d) and would vanish in dark mode, and external
+// <use> sprite references are still patchy. Inlining with currentColor is
+// theme-correct and costs no extra request. The GitHub mark is lifted verbatim
+// from that sprite; the rest match the lucide set the app already uses.
+interface Props {
+  name: 'github' | 'docker' | 'arrow-right' | 'terminal' | 'book' | 'play';
+  size?: number;
+  class?: string;
+}
+
+const { name, size = 18, class: className } = Astro.props;
+
+const paths: Record<Props['name'], { viewBox: string; body: string; filled?: boolean }> = {
+  github: {
+    viewBox: '0 0 19 19',
+    filled: true,
+    body: '<path fill="currentColor" fill-rule="evenodd" d="M9.356 1.85C5.05 1.85 1.57 5.356 1.57 9.694a7.84 7.84 0 0 0 5.324 7.44c.387.079.528-.168.528-.376 0-.182-.013-.805-.013-1.454-2.165.467-2.616-.935-2.616-.935-.349-.91-.864-1.143-.864-1.143-.71-.48.051-.48.051-.48.787.051 1.2.805 1.2.805.695 1.194 1.817.857 2.268.649.064-.507.27-.857.49-1.052-1.728-.182-3.545-.857-3.545-3.87 0-.857.31-1.558.8-2.104-.078-.195-.349-1 .077-2.078 0 0 .657-.208 2.14.805a7.5 7.5 0 0 1 1.946-.26c.657 0 1.328.092 1.946.26 1.483-1.013 2.14-.805 2.14-.805.426 1.078.155 1.883.078 2.078.502.546.799 1.247.799 2.104 0 3.013-1.818 3.675-3.558 3.87.284.247.528.714.528 1.454 0 1.052-.012 1.896-.012 2.156 0 .208.142.455.528.377a7.84 7.84 0 0 0 5.324-7.441c.013-4.338-3.48-7.844-7.773-7.844" clip-rule="evenodd"/>',
+  },
+  docker: {
+    viewBox: '0 0 24 24',
+    filled: true,
+    body: '<path fill="currentColor" d="M13.98 11.08h2.12a.19.19 0 0 0 .19-.19V9.01a.19.19 0 0 0-.19-.19h-2.12a.18.18 0 0 0-.18.18v1.9c0 .1.08.18.18.18m-2.95-5.43h2.12a.19.19 0 0 0 .18-.19V3.57a.19.19 0 0 0-.18-.18h-2.12a.18.18 0 0 0-.19.18v1.89c0 .1.09.19.19.19m0 2.71h2.12a.19.19 0 0 0 .18-.18V6.29a.19.19 0 0 0-.18-.18h-2.12a.18.18 0 0 0-.19.18v1.89c0 .1.09.18.19.18m-2.93 0h2.12a.19.19 0 0 0 .18-.18V6.29a.18.18 0 0 0-.18-.18H8.1a.18.18 0 0 0-.18.18v1.89c0 .1.08.18.18.18m-2.96 0h2.11a.19.19 0 0 0 .19-.18V6.29a.18.18 0 0 0-.19-.18H5.14a.19.19 0 0 0-.19.18v1.89c0 .1.08.18.19.18m5.89 2.72h2.12a.19.19 0 0 0 .18-.19V9.01a.19.19 0 0 0-.18-.19h-2.12a.18.18 0 0 0-.19.18v1.9c0 .1.09.18.19.18m-2.93 0h2.12a.18.18 0 0 0 .18-.19V9.01a.18.18 0 0 0-.18-.19H8.1a.18.18 0 0 0-.18.18v1.9c0 .1.08.18.18.18m-2.96 0h2.11a.18.18 0 0 0 .19-.19V9.01a.18.18 0 0 0-.18-.19H5.14a.19.19 0 0 0-.19.19v1.89c0 .1.08.19.19.19m-2.92 0h2.12a.18.18 0 0 0 .18-.19V9.01a.18.18 0 0 0-.18-.19H2.22a.18.18 0 0 0-.19.18v1.9c0 .1.08.18.19.18M23.76 9.9c-.06-.05-.67-.51-1.95-.51-.34 0-.68.03-1.01.09a3.77 3.77 0 0 0-1.72-2.57l-.34-.2-.23.33a4.6 4.6 0 0 0-.6 1.42c-.24.97-.1 1.88.4 2.66a4.7 4.7 0 0 1-1.75.42H.5a.5.5 0 0 0-.5.5 7.6 7.6 0 0 0 .46 2.68 4.05 4.05 0 0 0 1.61 2.1c.7.4 1.85.63 3.15.63.58 0 1.17-.05 1.75-.15a7.3 7.3 0 0 0 2.29-.83 6.3 6.3 0 0 0 1.56-1.28 8.5 8.5 0 0 0 1.53-2.61h.14c1.37 0 2.21-.55 2.68-1a3 3 0 0 0 .72-1.06l.1-.29z"/>',
+  },
+  'arrow-right': {
+    viewBox: '0 0 24 24',
+    body: '<path d="M5 12h14M12 5l7 7-7 7"/>',
+  },
+  terminal: {
+    viewBox: '0 0 24 24',
+    body: '<path d="m4 17 6-6-6-6M12 19h8"/>',
+  },
+  book: {
+    viewBox: '0 0 24 24',
+    body: '<path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"/>',
+  },
+  play: {
+    viewBox: '0 0 24 24',
+    body: '<path d="M8 5.5v13l11-6.5z"/>',
+  },
+};
+
+const icon = paths[name];
+---
+
+<svg
+  width={size}
+  height={size}
+  viewBox={icon.viewBox}
+  fill="none"
+  stroke={icon.filled ? 'none' : 'currentColor'}
+  stroke-width="1.75"
+  stroke-linecap="round"
+  stroke-linejoin="round"
+  class={className}
+  aria-hidden="true"
+  set:html={icon.body}
+/>

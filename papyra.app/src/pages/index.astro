@@ -1,0 +1,274 @@
+---
+import { Image } from 'astro:assets';
+import Base from '../layouts/Base.astro';
+import Icon from '../components/Icon.astro';
+import CodeBlock from '../components/CodeBlock.astro';
+import logo from '../assets/papyra_logo.png';
+import { GITHUB_URL, TAGLINE } from '../data/site';
+import { PILLARS } from '../data/pillars';
+
+const noteSample = `---
+id: quarterly-review
+title: Quarterly review
+created: 2026-08-12T09:14:22Z
+updated: 2026-08-28T16:02:41Z
+categories: [work, planning]
+pinned: true
+---
+
+# Quarterly review
+
+Pull the numbers from [[revenue-model]] before Thursday.
+
+- [x] Draft the summary
+- [ ] Ask @dana for the support figures
+`;
+
+const installSample = `curl -O https://raw.githubusercontent.com/lyfie-org/papyra/main/docker-compose.hub.yml
+docker compose -f docker-compose.hub.yml up -d
+
+# then open http://localhost:8080`;
+---
+
+<Base
+  title="Papyra — a calm, self-hosted home for your notes"
+  description="Self-hosted notes that stay as plain Markdown files on your own server. Full-text and semantic search, an assistant that answers from your own notes, offline editing, sharing, and passkey-locked vaults. Open source, one Docker command."
+  bareTitle
+>
+  <section class="hero">
+    <div class="wrap hero__inner">
+      <Image
+        class="hero__logo"
+        src={logo}
+        alt=""
+        width={88}
+        height={88}
+        densities={[1, 2]}
+        loading="eager"
+      />
+      <h1>Papyra</h1>
+      <p class="hero__tagline">{TAGLINE}</p>
+      <p class="hero__lede">
+        Every note is an ordinary Markdown file in a folder you own. Papyra gives that folder a
+        fast, beautiful place to live — search, links, sharing, and an assistant that answers from
+        your own writing — without ever locking a word of it away.
+      </p>
+      <div class="hero__actions">
+        <a class="btn" href="/demo/">
+          <Icon name="play" size={16} />
+          Try it in your browser
+        </a>
+        <a class="btn btn--ghost" href={GITHUB_URL} rel="noopener noreferrer">
+          <Icon name="github" size={16} />
+          View the source
+        </a>
+      </div>
+      <p class="hero__note">
+        No sign-up. The demo runs entirely on your device — nothing is sent anywhere.
+      </p>
+    </div>
+  </section>
+
+  <section class="section proof">
+    <div class="wrap proof__inner">
+      <div>
+        <p class="eyebrow">The whole idea</p>
+        <h2>Google-Keep-shaped surface.<br />Obsidian-shaped substance.</h2>
+        <p>
+          Most note apps keep your writing in a database and hand you an export button. Papyra has
+          no export button to speak of, because it never needed one: the folder <em>is</em> the storage.
+          Open it in Obsidian, sync it with Syncthing, grep it, back it up with <code>rsync</code>,
+          edit a file by hand — Papyra watches the folder and picks up whatever changed.
+        </p>
+        <p>Nothing about your notes depends on Papyra continuing to exist. That is the point.</p>
+      </div>
+      <figure class="proof__file">
+        <figcaption>~/notes/alice/quarterly-review.md</figcaption>
+        <CodeBlock lang="markdown" label="On disk" code={noteSample} copyable={false} />
+      </figure>
+    </div>
+  </section>
+
+  <section class="section" id="features">
+    <div class="wrap">
+      <p class="eyebrow">What you get</p>
+      <h2>Everything, running on your own hardware</h2>
+      <p class="lede section__lede">Papyra is one Docker container. All of this ships today.</p>
+
+      <div class="grid">
+        {
+          PILLARS.map((pillar) => (
+            <a class="card" href={pillar.href}>
+              <h3>{pillar.title}</h3>
+              <p>{pillar.blurb}</p>
+              <p class="card__more">{pillar.points.join(' · ')}</p>
+            </a>
+          ))
+        }
+      </div>
+    </div>
+  </section>
+
+  <section class="section install">
+    <div class="wrap install__inner">
+      <div>
+        <p class="eyebrow">Getting started</p>
+        <h2>One file, one command</h2>
+        <p>
+          Save the compose file, run it, open <code>http://localhost:8080</code>. The first account
+          you create is the administrator. The optional Ollama sidecar is what powers semantic
+          search and the assistant locally — leave it out and everything else still works.
+        </p>
+        <p class="install__links">
+          <a class="btn btn--ghost" href="/docs/install/">
+            <Icon name="book" size={16} />
+            Full install guide
+          </a>
+        </p>
+      </div>
+      <CodeBlock lang="bash" label="Terminal" code={installSample} />
+    </div>
+  </section>
+
+  <section class="section">
+    <div class="wrap wrap--narrow">
+      <aside class="callout">
+        <h2>Honestly: this is young software</h2>
+        <p>
+          Papyra is under active development, and the project says so on its own front page. Things
+          can change between releases. It is built with care and tested hard — a full backend suite
+          plus 239 end-to-end checks run on every commit — but if you adopt it today, keep the
+          backups it makes for you.
+        </p>
+        <p class="callout__foot">
+          The one thing that will not bite you: your notes are already plain files. Worst case, you
+          keep the folder and walk away.
+        </p>
+      </aside>
+    </div>
+  </section>
+</Base>
+
+<style>
+  .hero {
+    padding-block: clamp(var(--space-12), 9vw, 8rem) clamp(var(--space-10), 6vw, 5rem);
+    text-align: center;
+  }
+
+  .hero__inner {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  .hero__logo {
+    border-radius: var(--radius-lg);
+    margin-bottom: var(--space-5);
+    height: auto;
+  }
+
+  .hero h1 {
+    margin-bottom: var(--space-3);
+  }
+
+  .hero__tagline {
+    font: 400 var(--fs-xl) / 1.25 var(--heading);
+    color: var(--text-h);
+    letter-spacing: -0.01em;
+    max-width: 20ch;
+    margin-bottom: var(--space-5);
+  }
+
+  .hero__lede {
+    font-size: var(--fs-md);
+    line-height: 1.6;
+    color: var(--text);
+    max-width: 56ch;
+    margin-bottom: var(--space-8);
+  }
+
+  .hero__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-3);
+    justify-content: center;
+  }
+
+  .hero__note {
+    margin: var(--space-4) 0 0;
+    font-size: var(--fs-xs);
+    color: var(--text);
+  }
+
+  .section__lede {
+    margin-bottom: var(--space-8);
+  }
+
+  .proof__inner,
+  .install__inner {
+    display: grid;
+    gap: clamp(var(--space-6), 4vw, var(--space-12));
+    grid-template-columns: 1fr 1fr;
+    align-items: center;
+  }
+
+  .proof__file {
+    margin: 0;
+    display: grid;
+    gap: var(--space-2);
+    min-width: 0;
+  }
+
+  .proof__file figcaption {
+    font: 400 var(--fs-xs) / 1 var(--mono);
+    color: var(--text);
+  }
+
+  .card__more {
+    margin-top: var(--space-2);
+    padding-top: var(--space-3);
+    border-top: 1px solid var(--border);
+    font-size: var(--fs-xs);
+    color: var(--accent-text);
+  }
+
+  .install__links {
+    margin-bottom: 0;
+  }
+
+  .install__inner :global(.code) {
+    min-width: 0;
+  }
+
+  .callout {
+    padding: var(--space-6);
+    border: 1px solid var(--warn-border);
+    border-left-width: 3px;
+    border-radius: var(--radius-md);
+    background: var(--warn-bg);
+  }
+
+  .callout h2 {
+    font-size: var(--fs-lg);
+    margin-bottom: var(--space-3);
+    color: var(--warn);
+  }
+
+  .callout p {
+    font-size: var(--fs-sm);
+    line-height: 1.6;
+    margin-bottom: var(--space-3);
+  }
+
+  .callout__foot {
+    margin-bottom: 0;
+    color: var(--text-h);
+  }
+
+  @media (max-width: 56rem) {
+    .proof__inner,
+    .install__inner {
+      grid-template-columns: 1fr;
+    }
+  }
+</style>

@@ -1,0 +1,32 @@
+# No redirect rules — deliberately. This file exists to record why, because the
+# obvious thing to put here does not work.
+#
+# The demo at /demo is a client-side-routed SPA (react-router), so a deep link
+# like /demo/note/quarterly-review has no file behind it and needs a fallback.
+# The standard Cloudflare Pages recipe is:
+#
+#     /demo/*  /demo/index.html  200
+#
+# Pages REJECTS that rule: "Infinite loop detected in this rule and has been
+# ignored", because it normalises the destination /demo/index.html back to
+# /demo/, which matches /demo/* again. Wrangler reports "Parsed 0 valid redirect
+# rules" and deep links silently 404. Any splat pointing at an index.html is
+# refused the same way.
+#
+# Listing each route explicitly (with :placeholder segments for /note/:id) does
+# parse — all 14 rules accepted — but it still does not work: Pages resolves them
+# as real 3xx redirects to /demo/ rather than 200 rewrites, so the path is thrown
+# away and the visitor lands on the note grid instead of their note. Worse, the
+# redirect is cacheable, so a browser that saw it once keeps doing it.
+#
+# What actually works: Cloudflare Pages serves the nearest parent 404.html for an
+# unmatched path, with the URL left intact. So the demo build writes a copy of
+# its own shell to /demo/404.html and that IS the SPA fallback — no rules, no
+# loops, no redirects, clean URLs, and one origin shared with the site (which is
+# how a visitor's light/dark choice follows them into the demo and back).
+#
+# See the `demoBuild()` plugin in papyra.web/vite.config.ts.
+#
+# If you ever do add a rule here, check it took effect with:
+#     pnpm --filter papyra-app run preview:cf
+# which prints how many rules actually parsed.

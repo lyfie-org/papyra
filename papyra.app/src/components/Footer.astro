@@ -1,0 +1,183 @@
+---
+import Icon from './Icon.astro';
+import { GITHUB_URL, DOCKER_HUB_URL, LICENSE } from '../data/site';
+
+const year = new Date().getFullYear();
+
+const columns = [
+  {
+    title: 'Product',
+    links: [
+      { href: '/features/', label: 'Features' },
+      { href: '/demo/', label: 'Live demo' },
+      { href: '/changelog/', label: 'Changelog' },
+    ],
+  },
+  {
+    title: 'Documentation',
+    links: [
+      { href: '/docs/install/', label: 'Install' },
+      { href: '/docs/configuration/', label: 'Configuration' },
+      { href: '/api/', label: 'API reference' },
+    ],
+  },
+  {
+    title: 'Project',
+    links: [
+      { href: GITHUB_URL, label: 'Source on GitHub', external: true },
+      { href: DOCKER_HUB_URL, label: 'Docker Hub', external: true },
+      { href: '/security/', label: 'Security' },
+    ],
+  },
+];
+---
+
+<footer class="site-footer">
+  <div class="wrap site-footer__inner">
+    <div class="site-footer__about">
+      <p class="site-footer__mark">Papyra</p>
+      <p class="site-footer__blurb">
+        A note-taking app you run yourself. Your notes stay as plain text files on your own
+        server.
+      </p>
+      <p class="site-footer__icons">
+        <a href={GITHUB_URL} rel="noopener noreferrer" aria-label="Papyra on GitHub">
+          <Icon name="github" size={18} />
+        </a>
+        <a href={DOCKER_HUB_URL} rel="noopener noreferrer" aria-label="Papyra on Docker Hub">
+          <Icon name="docker" size={18} />
+        </a>
+      </p>
+    </div>
+
+    {
+      columns.map((col) => (
+        <nav class="site-footer__col">
+          <h2>{col.title}</h2>
+          <ul>
+            {col.links.map((link) => (
+              <li>
+                <a href={link.href} rel={'external' in link ? 'noopener noreferrer' : undefined}>
+                  {link.label}
+                </a>
+              </li>
+            ))}
+          </ul>
+        </nav>
+      ))
+    }
+  </div>
+
+  <div class="wrap site-footer__legal">
+    <p>© {year} Papyra · Released under the {LICENSE}</p>
+    <p>Built and hosted without a single third-party request.</p>
+  </div>
+</footer>
+
+<style>
+  .site-footer {
+    margin-top: var(--space-12);
+    border-top: 1px solid var(--border);
+    background: color-mix(in srgb, var(--surface) 60%, transparent);
+    padding-block: var(--space-10) var(--space-6);
+  }
+
+  .site-footer__inner {
+    display: grid;
+    gap: var(--space-8);
+    grid-template-columns: 1.4fr repeat(3, 1fr);
+    align-items: start;
+  }
+
+  .site-footer__mark {
+    font: 400 var(--fs-xl) / 1 var(--heading);
+    color: var(--text-h);
+    letter-spacing: -0.01em;
+    margin: 0 0 var(--space-2);
+  }
+
+  .site-footer__blurb {
+    font-size: var(--fs-sm);
+    line-height: 1.55;
+    color: var(--text);
+    max-width: 32ch;
+  }
+
+  .site-footer__icons {
+    display: flex;
+    gap: var(--space-3);
+    margin: 0;
+  }
+
+  .site-footer__icons a {
+    display: inline-grid;
+    place-items: center;
+    width: 34px;
+    height: 34px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-pill);
+    background: var(--surface);
+    color: var(--text);
+    transition:
+      border-color var(--dur) var(--ease),
+      color var(--dur) var(--ease);
+  }
+
+  .site-footer__icons a:hover {
+    border-color: var(--accent-border);
+    color: var(--text-h);
+  }
+
+  .site-footer__col h2 {
+    font: 500 var(--fs-xs) / 1 var(--sans);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--text-h);
+    margin: 0 0 var(--space-3);
+  }
+
+  .site-footer__col ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: var(--space-2);
+  }
+
+  .site-footer__col a {
+    font-size: var(--fs-sm);
+    color: var(--text);
+    text-decoration: none;
+  }
+
+  .site-footer__col a:hover {
+    color: var(--accent-text);
+    text-decoration: underline;
+  }
+
+  .site-footer__legal {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-between;
+    gap: var(--space-2);
+    margin-top: var(--space-8);
+    padding-top: var(--space-5);
+    border-top: 1px solid var(--border);
+  }
+
+  .site-footer__legal p {
+    margin: 0;
+    font-size: var(--fs-xs);
+    color: var(--text);
+  }
+
+  @media (max-width: 56rem) {
+    .site-footer__inner {
+      grid-template-columns: repeat(2, 1fr);
+    }
+
+    .site-footer__about {
+      grid-column: 1 / -1;
+    }
+  }
+</style>

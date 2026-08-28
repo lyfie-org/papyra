@@ -16,9 +16,22 @@ const RECONNECT_CAP_MS = 15_000;
 export function useSignalR(): ServerStatus {
   const queryClient = useQueryClient();
   const { onExternalUpdate } = useFocus();
-  const [status, setStatus] = useState<ServerStatus>('offline');
+  // The browser demo has no server and therefore no hub, so it is online from
+  // the first paint — set here rather than in the effect below, which would be a
+  // needless second render (and trips react-hooks/set-state-in-effect).
+  const [status, setStatus] = useState<ServerStatus>(
+    import.meta.env.VITE_DEMO ? 'online' : 'offline',
+  );
 
   useEffect(() => {
+    // Without this the demo would retry a websocket that can never open, every
+    // 15 seconds, forever. The hub is the only network dependency in the app that
+    // isn't a fetch, so it's the only one the demo has to stub.
+    if (import.meta.env.VITE_DEMO) {
+      setSync({ online: true });
+      return;
+    }
+
     const connection: HubConnection = new HubConnectionBuilder()
       .withUrl('/hubs/notes')
       // The stock policy gives up after ~60s. A self-hosted server can easily be

@@ -1,0 +1,30 @@
+{
+  "name": "papyra-app",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "astro dev",
+    "build": "node scripts/check-tokens.mjs && astro build",
+    "preview": "astro preview",
+    "check": "astro check",
+    "check:tokens": "node scripts/check-tokens.mjs",
+    "fonts": "node scripts/fetch-fonts.mjs",
+    "preview:cf": "wrangler pages dev dist --port 4323"
+  },
+  "dependencies": {
+    "@astrojs/mdx": "^7.0.8",
+    "@astrojs/react": "^6.0.4",
+    "@astrojs/sitemap": "^3.7.3",
+    "astro": "~7.2.8",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6",
+    "sharp": "^0.35.4"
+  },
+  "devDependencies": {
+    "@types/react": "^19.2.14",
+    "@types/react-dom": "^19.2.3",
+    "typescript": "~6.0.2",
+    "wrangler": "^4.127.0"
+  }
+}
