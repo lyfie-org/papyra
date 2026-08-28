@@ -1,0 +1,165 @@
+---
+import { getCollection } from 'astro:content';
+import Base from './Base.astro';
+
+interface Props {
+  title: string;
+  description: string;
+  /** id of the current page, so the sidebar can mark it. Omitted on the index. */
+  current?: string;
+}
+
+const { title, description, current } = Astro.props;
+
+// Sidebar order is the group order below, then `order` within each group.
+const GROUPS = ['Getting started', 'Living with it', 'In depth', 'Reference'] as const;
+
+const all = await getCollection('docs');
+const sidebar = GROUPS.map((group) => ({
+  group,
+  pages: all
+    .filter((page) => page.data.group === group)
+    .sort((a, b) => a.data.order - b.data.order),
+})).filter((section) => section.pages.length > 0);
+---
+
+<Base title={title} description={description}>
+  <div class="wrap docs">
+    <nav class="docs__sidebar" aria-label="Documentation">
+      <a class="docs__home" href="/docs/" aria-current={current ? undefined : 'page'}>
+        Documentation
+      </a>
+      {
+        sidebar.map((section) => (
+          <div class="docs__group">
+            <h2>{section.group}</h2>
+            <ul>
+              {section.pages.map((page) => (
+                <li>
+                  <a
+                    href={`/docs/${page.id}/`}
+                    aria-current={page.id === current ? 'page' : undefined}
+                  >
+                    {page.data.title}
+                  </a>
+                </li>
+              ))}
+            </ul>
+          </div>
+        ))
+      }
+    </nav>
+
+    <div class="docs__main">
+      <slot />
+    </div>
+  </div>
+</Base>
+
+<style>
+  .docs {
+    display: grid;
+    grid-template-columns: 15rem minmax(0, 1fr);
+    gap: clamp(var(--space-6), 4vw, var(--space-12));
+    padding-block: var(--space-10) var(--space-12);
+    align-items: start;
+  }
+
+  .docs__sidebar {
+    position: sticky;
+    top: 76px;
+    display: grid;
+    gap: var(--space-6);
+    font-size: var(--fs-sm);
+  }
+
+  .docs__home {
+    font: 400 var(--fs-lg) / 1.2 var(--heading);
+    color: var(--text-h);
+    text-decoration: none;
+    letter-spacing: -0.01em;
+  }
+
+  .docs__home[aria-current='page'] {
+    color: var(--accent-text);
+  }
+
+  .docs__group h2 {
+    font: 500 var(--fs-2xs) / 1 var(--sans);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--text);
+    margin: 0 0 var(--space-3);
+  }
+
+  .docs__group ul {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: var(--space-1);
+    border-left: 1px solid var(--border);
+  }
+
+  .docs__group a {
+    display: block;
+    padding: var(--space-1) var(--space-3);
+    margin-left: -1px;
+    border-left: 2px solid transparent;
+    color: var(--text);
+    text-decoration: none;
+    line-height: 1.4;
+  }
+
+  .docs__group a:hover {
+    color: var(--text-h);
+    border-left-color: var(--border);
+  }
+
+  .docs__group a[aria-current='page'] {
+    color: var(--accent-text);
+    border-left-color: var(--accent);
+  }
+
+  .docs__main {
+    min-width: 0;
+  }
+
+  /* Under ~64rem the sidebar becomes a scrollable strip above the content
+     rather than a hamburger nobody finds. */
+  @media (max-width: 64rem) {
+    .docs {
+      /* minmax(0, 1fr) rather than 1fr — a bare fr track will not shrink below
+         its min-content, and one wide code block would force the page open. */
+      grid-template-columns: minmax(0, 1fr);
+      gap: var(--space-6);
+    }
+
+    .docs__sidebar {
+      position: static;
+      gap: var(--space-4);
+      padding-bottom: var(--space-5);
+      border-bottom: 1px solid var(--border);
+    }
+
+    .docs__group ul {
+      display: flex;
+      flex-wrap: wrap;
+      gap: var(--space-1) var(--space-4);
+      border-left: none;
+    }
+
+    .docs__group a {
+      padding: 2px 0;
+      margin-left: 0;
+      border-left: none;
+      border-bottom: 2px solid transparent;
+    }
+
+    .docs__group a:hover,
+    .docs__group a[aria-current='page'] {
+      border-left: none;
+      border-bottom-color: var(--accent);
+    }
+  }
+</style>

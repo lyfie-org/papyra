@@ -72,19 +72,24 @@ Everything else you see is the actual application.`,
     tags: ['work', 'planning'],
     color: '#ece3cf',
     updated: daysAgo(1, 15),
-    body: `Three tiers, priced off seats rather than storage — storage is cheap and punishing people for writing more is a strange thing for a notes company to do.
-
-| Tier | Seats | Monthly |
-| --- | --- | --- |
-| Solo | 1 | Free, self-hosted |
-| Team | up to 20 | $6 / seat |
-| Org | unlimited | $9 / seat |
+    // The table sits below the fold of the card preview on purpose. Note cards
+    // render a plain-text preview and flatten markdown, so a table near the top
+    // shows up as a row of raw pipes on the grid.
+    body: `Three tiers, priced off seats rather than storage — storage is cheap, and punishing people for writing more is a strange thing for a notes company to do.
 
 ## Pricing decision
 
 We settled on per-seat because it is the only number a buyer can predict a year out. Usage-based pricing tested badly: nobody could answer "what will this cost me in March".
 
-Open question for [[quarterly-review]]: does the Team tier need an annual option before launch?`,
+Open question for [[quarterly-review]]: does the Team tier need an annual option before launch?
+
+## The tiers
+
+| Tier | Seats | Monthly |
+| --- | --- | --- |
+| Solo | 1 | Free, self-hosted |
+| Team | up to 20 | $6 / seat |
+| Org | unlimited | $9 / seat |`,
   }),
   note({
     id: 'quarterly-review',

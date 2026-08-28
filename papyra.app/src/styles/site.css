@@ -294,3 +294,151 @@ a.card:hover {
     border-color var(--dur) var(--ease-inout),
     box-shadow var(--dur) var(--ease-inout) !important;
 }
+
+/* ---------------------------------------------------------------------- prose */
+/* Long-form body copy rendered from MDX (feature deep dives, docs). Measure is
+   capped at ~68 characters — the point where the eye starts losing the line. */
+
+.prose {
+  max-width: 68ch;
+  font-size: var(--fs-md);
+  line-height: 1.65;
+  color: var(--text);
+}
+
+.prose > * + * {
+  margin-top: var(--space-4);
+}
+
+.prose h2 {
+  font-size: var(--fs-xl);
+  margin-top: var(--space-10);
+  margin-bottom: var(--space-3);
+  padding-top: var(--space-5);
+  border-top: 1px solid var(--border);
+}
+
+.prose h2:first-child {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: none;
+}
+
+.prose h3 {
+  font-size: var(--fs-lg);
+  margin-top: var(--space-6);
+  margin-bottom: var(--space-2);
+}
+
+.prose strong {
+  color: var(--text-h);
+  font-weight: 600;
+}
+
+.prose ul,
+.prose ol {
+  padding-left: var(--space-5);
+  display: grid;
+  gap: var(--space-2);
+}
+
+.prose li::marker {
+  color: var(--accent);
+}
+
+.prose li > ul,
+.prose li > ol {
+  margin-top: var(--space-2);
+}
+
+.prose blockquote {
+  margin: var(--space-5) 0;
+  padding: var(--space-2) var(--space-5);
+  border-left: 3px solid var(--accent-border);
+  background: var(--accent-bg);
+  border-radius: 0 var(--radius-sm) var(--radius-sm) 0;
+  color: var(--text-h);
+}
+
+.prose blockquote > * + * {
+  margin-top: var(--space-3);
+}
+
+/* Shiki highlights fenced code at build time and inlines the colours, so no
+   highlighter is shipped to the browser. Only the frame is ours. */
+.prose pre {
+  margin: var(--space-5) 0;
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  overflow-x: auto;
+  font-size: var(--fs-xs);
+  line-height: 1.6;
+}
+
+.prose :not(pre) > code {
+  font-size: 0.875em;
+  padding: 2px 6px;
+  background: var(--code-bg);
+  border-radius: 4px;
+  color: var(--text-h);
+  /* An inline URL or filesystem path has no break opportunities, so on a narrow
+     screen it pushes the page sideways. Allow a break anywhere inside it. */
+  overflow-wrap: anywhere;
+}
+
+/* Tables scroll inside their own box; the page itself never scrolls sideways. */
+.prose .table-scroll {
+  overflow-x: auto;
+  margin: var(--space-5) 0;
+}
+
+.prose table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--fs-sm);
+}
+
+.prose th,
+.prose td {
+  padding: var(--space-2) var(--space-3);
+  border-bottom: 1px solid var(--border);
+  text-align: left;
+}
+
+.prose th {
+  font-weight: 500;
+  color: var(--text-h);
+  white-space: nowrap;
+}
+
+.prose tbody tr:last-child td {
+  border-bottom: none;
+}
+
+.prose img {
+  max-width: 100%;
+  height: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  box-shadow: var(--shadow-card);
+}
+
+.prose hr {
+  border: none;
+  border-top: 1px solid var(--border);
+  margin: var(--space-8) 0;
+}
+
+/* Shiki dual-theme. Astro inlines both palettes as CSS variables on every token
+   and leaves the choice to the page; the light one is the default, and this
+   flips the whole block in dark mode. Keyed off data-theme, not a media query,
+   so it follows the site's own toggle rather than the OS. */
+[data-theme='dark'] .prose .astro-code,
+[data-theme='dark'] .prose .astro-code span {
+  color: var(--shiki-dark) !important;
+  background-color: var(--shiki-dark-bg) !important;
+  font-style: var(--shiki-dark-font-style) !important;
+  font-weight: var(--shiki-dark-font-weight) !important;
+  text-decoration: var(--shiki-dark-text-decoration) !important;
+}

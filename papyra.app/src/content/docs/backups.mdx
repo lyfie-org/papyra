@@ -1,0 +1,88 @@
+---
+title: Backups and git
+summary: Four ways to get your notes out — copying the folder, zip export, encrypted archives, and an automatic git mirror.
+group: Living with it
+order: 2
+---
+
+Your notes are already plain files, so backup is a question of convenience
+rather than possibility. Papyra offers several routes; pick whichever you will
+actually keep doing.
+
+## Copy the folder
+
+The whole of `/data` is the backup. `rsync` it, snapshot the volume, point your
+existing backup tool at it — nothing here needs Papyra's cooperation.
+
+```bash
+rsync -a --delete /var/lib/docker/volumes/papyra-data/_data/ /backup/papyra/
+```
+
+Restoring is putting the folder back. The SQLite cache and Lucene index inside
+`.papyra/` are rebuildable, so a backup that skips them is still complete — but
+**do keep `/data/.papyra/keys/`**, or every signed-in browser is logged out on
+restore.
+
+## Zip export
+
+**Settings → Backup → Export**. Downloads your whole vault as a zip. Per account,
+on demand, no scheduling. Good for taking a copy before you change something.
+
+## Encrypted archives
+
+**Settings → Backup → Generate**. Produces an AES-GCM encrypted archive with a
+key derived from a password you choose. **Settings → Backup → Restore** takes one
+back.
+
+Use this when the backup will sit somewhere you do not fully trust — object
+storage, a USB stick, a friend's NAS.
+
+> The password is not recoverable. Papyra does not store it and cannot reset it.
+> An encrypted backup with a forgotten password is lost.
+
+## Automatic git mirror
+
+**Settings → Backup → Git**, per account. Give it a remote and a branch and
+Papyra commits and pushes your notes on a schedule, using a real git
+implementation rather than shelling out.
+
+This is the one to set up if you want the backup to happen without you
+remembering. It also gives you a full history of every note, browsable with any
+git tool.
+
+**It will never force-push over a diverged remote.** If the remote's history has
+moved apart from Papyra's — you pushed from elsewhere, or rewrote history — the
+sync stops and reports it rather than overwriting whatever is there. Resolve it
+by hand and it resumes.
+
+Push manually any time with **Sync now**.
+
+## What to actually do
+
+For most people: keep the volume in whatever backs up the rest of the machine,
+and turn on the git mirror. The first protects you from losing the disk; the
+second from losing a note you wanted back.
+
+Add encrypted archives when the copy leaves your control.
+
+## Restoring onto a fresh instance
+
+1. Bring up Papyra with an empty volume so it initialises.
+2. Stop the container.
+3. Put the backed-up `/data` in place, including `.papyra/keys/`.
+4. Start it again.
+
+On start-up Papyra reconciles disk against cache **before** it opens the port, so
+notes restored underneath it are picked up on the way up. You do not need to
+rebuild anything by hand, though **Settings → Data & Storage** will rebuild the
+index and embeddings if search looks stale afterwards.
+
+## Trash is not a backup
+
+Deleted notes sit in Trash for the retention period — 30 days by default,
+configurable in **Settings → Data & Storage**, including "keep forever" and
+"delete immediately". Once retention expires the note is erased for good.
+
+Snapshots of overwritten text are a different mechanism again, kept per note and
+reachable from **File recovery** and **Time machine** in the note toolbar.
+Neither of those is a substitute for having the folder somewhere else.

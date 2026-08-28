@@ -517,6 +517,10 @@ papyra.api/src/Papyra.Api/Data/*
 # Throwaway vault for the edge harness (papyra.api/tests/edge). Created and
 # discarded per run; never the dev vault, so a harness run cannot touch it.
 .edgedata/
+# Throwaway vault used by papyra.app/scripts/fetch-openapi.mjs, which boots the
+# API purely to read its OpenAPI document. Removed on a clean run; ignored so a
+# crashed one cannot be committed.
+.openapi-tmp/
 CLAUDE.md
 CODEBASE_MAP.md
 /papyra.api/src/Papyra.Api/.localdata.bak-20260819-180912

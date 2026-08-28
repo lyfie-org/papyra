@@ -1,0 +1,105 @@
+---
+title: Install Papyra
+summary: One compose file, one command. Papyra is a single container, with an optional model sidecar for the assistant.
+group: Getting started
+order: 1
+---
+
+Papyra ships as a Docker image, `lyfie/papyra`. The published recipe brings up
+Papyra plus an Ollama sidecar for the assistant.
+
+```bash
+curl -O https://raw.githubusercontent.com/lyfie-org/papyra/main/docker-compose.hub.yml
+docker compose -f docker-compose.hub.yml up -d
+```
+
+Open `http://localhost:8080`. The first account you create is the administrator
+— there is no default password to change, because there is no default account.
+
+## What you just started
+
+**`papyra`** — the whole application. One .NET process serves both the API and
+the web app, so there is no separate frontend container and no reverse proxy
+required to glue them together. It listens on `8080` inside the container.
+
+**`ollama`** — answers "Ask your notes" questions and powers meaning-based
+search, on your own hardware. It is deliberately **not** published to the host:
+only Papyra needs to reach it. Delete the whole service if you do not want the
+assistant; Papyra works fine without it, and search falls back to matching words
+instead of meaning.
+
+## The data volume
+
+Everything lives under `/data`. Back that up and you have backed up everything.
+
+```
+/data
+├── .papyra/              instance state — all of it disposable except keys/
+│   ├── papyra.db         SQLite cache, rebuildable from the notes
+│   ├── lucene-index/     full-text index, rebuildable
+│   └── keys/             data-protection keys — NOT disposable, see below
+└── users/
+    └── <user>/
+        ├── notes/        your notes, as .md files. This is the real thing.
+        ├── media/        images you pasted or uploaded
+        ├── .trash/       deleted notes, until retention expires
+        └── .papyra/
+            ├── snapshots/     earlier revisions of each note
+            ├── order.json     manual card positions
+            └── categories.json
+```
+
+The compose file uses a named volume. If you would rather see the files, swap it
+for a path:
+
+```yaml
+volumes:
+  - ./papyra-data:/data
+```
+
+Then set `PUID`/`PGID` to your own user so the files belong to you rather than
+root. Find them with `id -u` and `id -g`.
+
+> **`.papyra/keys` is the one directory you must not lose.** It holds the keys
+> your session cookies are signed with. Delete it and every signed-in browser is
+> silently logged out. It lives on the volume precisely so a container upgrade
+> does not invalidate every session.
+
+## Changing the port
+
+The first number is the host side:
+
+```yaml
+ports:
+  - "9000:8080"
+```
+
+## Upgrading
+
+```bash
+docker compose -f docker-compose.hub.yml pull
+docker compose -f docker-compose.hub.yml up -d
+```
+
+On start-up Papyra reconciles the folder against its cache **before** it opens
+the port, so files that changed while it was down are folded in first. A green
+health check therefore means more than "the process is up" — it means disk and
+cache already agree.
+
+Roll back by pinning the previous tag instead of `latest`.
+
+## Signing in over plain HTTP
+
+If you reach Papyra at a bare address like `http://192.168.1.50:8080`, signing
+in will appear to work and then drop you straight back to the login screen.
+Browsers refuse to keep a session cookie for a site that is not HTTPS —
+`localhost` excepted.
+
+On a network that is already private (a LAN, Tailscale, WireGuard):
+
+```yaml
+PAPYRA_ALLOW_INSECURE_COOKIES: "true"
+```
+
+If Papyra is reachable from the open internet, set up
+[HTTPS](/docs/https/) instead and leave this off.

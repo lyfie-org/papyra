@@ -1,0 +1,67 @@
+---
+title: Importing your notes
+summary: Bringing a vault in from Obsidian or Google Keep, dragging in single files, or simply copying Markdown into the folder.
+group: Living with it
+order: 3
+---
+
+## The simplest import
+
+Copy `.md` files into `/data/users/<you>/notes/`. Papyra notices them and they
+appear. No import step, no processing — they were already in the right format.
+
+This is the right move for an Obsidian vault you have direct filesystem access
+to, and it preserves everything, because nothing is being converted.
+
+## Obsidian
+
+**Settings → Data & Storage → Import → Obsidian**. Upload your vault and Papyra
+brings the notes across, keeping frontmatter and `[[wiki links]]`, which mean the
+same thing in both apps.
+
+Import runs as a background job with live progress, so a large vault does not tie
+up the page.
+
+## Google Keep
+
+Export from [Google Takeout](https://takeout.google.com), selecting Keep. Then
+**Settings → Data & Storage → Import → Google Keep** with the archive.
+
+Papyra maps what has an equivalent: title, body, colours, pinned state, labels
+become categories, and checklists become Markdown checklists. Keep's reminders
+have no equivalent and are not imported.
+
+## Drag a file in
+
+Drop a text file onto the note grid and it is imported as a note, immediately.
+Good for one-offs.
+
+## After a large import
+
+Two things are worth doing once the dust settles, both in **Settings → Data &
+Storage**:
+
+- **Rebuild the search index** if search does not immediately find imported
+  notes.
+- **Rebuild embeddings** if you want semantic search to cover them. Embeddings
+  are computed as notes are written, so notes that arrived before a model was
+  configured were never embedded. This one takes a while on a big vault and runs
+  in the background.
+
+## What to check afterwards
+
+Skim a handful of imported notes for:
+
+- **Attachments.** Images referenced by relative paths need those files present
+  in `media/`; a copied-in vault should bring them along, an archive import may
+  not.
+- **Frontmatter you rely on.** Keys Papyra does not own are preserved untouched,
+  but it is worth confirming with one note that yours came through.
+- **Links.** `[[wiki links]]` resolve by note id, which is the filename. A note
+  renamed during import will have links pointing at the old name.
+
+## Going the other way
+
+Everything imported stays a plain file, so leaving is the same operation in
+reverse: copy the folder, or use **Settings → Backup → Export** for a zip. See
+[Backups](/docs/backups/).

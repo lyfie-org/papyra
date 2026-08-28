@@ -1,0 +1,135 @@
+---
+import { getCollection, render } from 'astro:content';
+import Base from '../../layouts/Base.astro';
+import Icon from '../../components/Icon.astro';
+
+export async function getStaticPaths() {
+  const features = (await getCollection('features')).sort(
+    (a, b) => a.data.order - b.data.order,
+  );
+
+  // Prev/next are computed here rather than in the page body so each generated
+  // page knows its neighbours without re-reading the whole collection.
+  return features.map((entry, i) => ({
+    params: { slug: entry.id },
+    props: {
+      entry,
+      prev: features[i - 1],
+      next: features[i + 1],
+    },
+  }));
+}
+
+const { entry, prev, next } = Astro.props;
+const { Content } = await render(entry);
+---
+
+<Base title={entry.data.title} description={entry.data.blurb}>
+  <article class="section">
+    <div class="wrap wrap--narrow">
+      <p class="eyebrow">
+        <a href="/features/">Features</a>
+      </p>
+      <h1>{entry.data.title}</h1>
+      <p class="lede feature__lede">{entry.data.lede}</p>
+
+      <div class="prose">
+        <Content />
+      </div>
+
+      <div class="feature__actions">
+        <a class="btn" href="/demo/">
+          <Icon name="play" size={16} />
+          See it working
+        </a>
+        {
+          entry.data.docs && (
+            <a class="btn btn--ghost" href={entry.data.docs}>
+              <Icon name="book" size={16} />
+              Read the docs
+            </a>
+          )
+        }
+      </div>
+
+      <nav class="feature__nav" aria-label="More features">
+        {
+          prev ? (
+            <a class="feature__nav-link" href={`/features/${prev.id}/`}>
+              <span>Previous</span>
+              {prev.data.title}
+            </a>
+          ) : (
+            <span />
+          )
+        }
+        {
+          next && (
+            <a class="feature__nav-link feature__nav-link--next" href={`/features/${next.id}/`}>
+              <span>Next</span>
+              {next.data.title}
+            </a>
+          )
+        }
+      </nav>
+    </div>
+  </article>
+</Base>
+
+<style>
+  .eyebrow a {
+    color: inherit;
+    text-decoration: none;
+  }
+
+  .eyebrow a:hover {
+    text-decoration: underline;
+  }
+
+  .feature__lede {
+    max-width: 62ch;
+    margin-bottom: var(--space-10);
+    padding-bottom: var(--space-6);
+    border-bottom: 1px solid var(--border);
+  }
+
+  .feature__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-3);
+    margin-top: var(--space-10);
+  }
+
+  .feature__nav {
+    display: flex;
+    justify-content: space-between;
+    gap: var(--space-4);
+    margin-top: var(--space-8);
+    padding-top: var(--space-5);
+    border-top: 1px solid var(--border);
+  }
+
+  .feature__nav-link {
+    display: grid;
+    gap: 2px;
+    font: 400 var(--fs-sm) / 1.3 var(--heading);
+    color: var(--text-h);
+    text-decoration: none;
+    max-width: 20rem;
+  }
+
+  .feature__nav-link--next {
+    text-align: right;
+  }
+
+  .feature__nav-link span {
+    font: 500 var(--fs-2xs) / 1 var(--sans);
+    letter-spacing: 0.12em;
+    text-transform: uppercase;
+    color: var(--text);
+  }
+
+  .feature__nav-link:hover {
+    color: var(--accent-text);
+  }
+</style>

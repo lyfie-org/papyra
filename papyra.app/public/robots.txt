@@ -1,0 +1,8 @@
+# The demo is a copy of the app running on fake data. It is not content, its
+# deep links are served with a 404 status by design, and indexing it would put
+# a fake vault in search results next to the real documentation.
+User-agent: *
+Disallow: /demo/
+Allow: /
+
+Sitemap: https://papyra.app/sitemap-index.xml

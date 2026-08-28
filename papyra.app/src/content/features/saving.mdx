@@ -1,0 +1,68 @@
+---
+title: There is no save button
+blurb: Edits are written a second and a half after you stop typing, and the label above the note tells you the moment they are safely stored. Older versions are kept, so you can scrub back through a note as it was.
+points: ['Autosave', 'Snapshots', 'Time machine', 'Conflict resolver']
+order: 2
+lede: Saving is not a thing you do. It is a thing you are told about — and it is reversible in several different directions.
+docs: /docs/files/
+---
+
+import Shot from '../../components/Shot.astro';
+
+Papyra writes a note 1.5 seconds after you stop typing. There is no save button
+to forget, and no unsaved-changes dialog to dismiss on the way out. What there
+is instead is a label above the note that says exactly where your words are:
+
+- **Saving…** — the write is in flight
+- **Saved to local disk** — it is on the server, in the file
+- **Saved on this device — will sync** — the server was unreachable, so it is
+  queued here and will upload itself
+
+That third state is the honest one. Most apps show a spinner and hope. Papyra
+tells you the write did not land, and then makes sure it eventually does.
+
+<Shot name="editor" alt="A note open in the Papyra editor, showing a rendered table and its Linked mentions" caption="No save button anywhere in the toolbar. The note is written 1.5 seconds after you stop typing." />
+
+## The caret is sacred
+
+A note open in your editor can change underneath you: another device syncs, a
+collaborator edits a shared note, a file lands in the folder. Papyra will not
+re-hydrate the editor while you are typing in it. Remote updates are buffered
+and applied when they cannot cost you a cursor position or a half-typed
+sentence. Losing your place mid-thought is a real cost, and it is treated as one.
+
+## Every version you overwrite is kept
+
+Papyra snapshots the previous revision before each write. Two tools in the note
+toolbar use those snapshots:
+
+**File recovery** lists a note's earlier revisions and shows a line-by-line diff
+against what is there now, so you can see precisely what changed before
+restoring anything. The restore is itself snapshotted first — so undoing a
+restore is one more click, not a disaster.
+
+**Time machine** is a slider. Drag it and the note scrubs backwards through its
+own history. It is the right tool when the note still exists and is fine, but
+yesterday's wording was better.
+
+This is separate from Trash. Trash is for notes you deleted; snapshots are for
+text you overwrote.
+
+## When two versions disagree
+
+If an external edit collides with one of Papyra's — the classic case is two
+devices syncing the same note offline — Papyra does not silently pick a winner
+and does not clobber. It detects the collision, keeps both, and shows you a
+split-pane resolver: their version, your version, and the choice.
+
+The same care applies to the offline queue. When a queued edit replays over a
+server revision that moved on in the meantime, your edit wins — but the previous
+revision was snapshotted before the write, so the overwritten text is still
+recoverable, and Papyra tells you which notes that happened to rather than
+letting you find out later.
+
+## Deleting is slow on purpose
+
+A deleted note goes to Trash and stays for a period you set — 30 days by
+default, or forever, or immediately if you prefer. Until then you can put it
+back. After that it is gone for good, and Papyra will not pretend otherwise.

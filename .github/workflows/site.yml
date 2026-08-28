@@ -104,6 +104,17 @@ jobs:
       # Skipped for pull requests from forks: GitHub withholds secrets there, so
       # the deploy could only ever fail. Everything above still runs, so an
       # outside contribution is still fully built and checked.
+      # Sideways scroll is invisible until somebody opens the site on a phone,
+      # and it is caused by ordinary things: a wide table, a long URL, a grid
+      # track that will not shrink. Checking it in a real browser is the only
+      # way to know. Chromium is ~115 MB, which is worth it for a class of bug
+      # that otherwise ships.
+      - name: Install Chromium for the layout check
+        run: pnpm --filter papyra-app exec playwright install --with-deps chromium
+
+      - name: Check no page scrolls horizontally
+        run: pnpm --filter papyra-app run check:layout
+
       - name: Deploy to Cloudflare Pages
         if: >-
           github.event_name != 'pull_request' ||

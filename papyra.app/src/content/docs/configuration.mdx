@@ -1,0 +1,111 @@
+---
+title: Configuration
+summary: Every environment variable Papyra reads, what it is for, and when you actually need it. Most people need none of them.
+group: Getting started
+order: 2
+---
+
+Papyra is configured by environment variables. Every one is optional — the
+defaults are what most installations want.
+
+## The full list
+
+| Variable | Default | What it does |
+| --- | --- | --- |
+| `PAPYRA_DATA_DIR` | `/data` | Where notes, cache and keys live. |
+| `PAPYRA_ALLOW_INSECURE_COOKIES` | `false` | Allow the session cookie over plain HTTP. |
+| `PAPYRA_OLLAMA_URL` | — | Where the model server is. |
+| `PAPYRA_ALLOWED_ORIGINS` | — | Extra CORS origins, comma-separated. |
+| `PAPYRA_TRUSTED_PROXIES` | — | Proxy IPs whose forwarded headers to believe. |
+| `PAPYRA_WEBAUTHN_DOMAIN` | `localhost` | Bare hostname passkeys are bound to. |
+| `PAPYRA_WEBAUTHN_ORIGINS` | — | Full origins passkeys may be used from. |
+| `PAPYRA_WHISPER_MODEL_PATH` | — | Enables audio transcription. |
+| `PAPYRA_OCR_TESSDATA_PATH` | — | Enables OCR of images. |
+| `PUID` / `PGID` | `1000` | Who owns the files on disk. |
+
+Lists are comma-separated, as in every other container image.
+
+> Papyra also accepts .NET's own spelling — `Papyra__AllowInsecureCookies`,
+> `Cors__AllowedOrigins__0` — and anything set that way wins. The plain-English
+> names exist because the .NET convention fails silently: get the casing or the
+> doubled underscore subtly wrong and the setting is ignored with no error at
+> all, which is the worst possible failure for something you touch once.
+
+## The ones you are most likely to need
+
+### `PAPYRA_ALLOW_INSECURE_COOKIES`
+
+Set `true` only when Papyra is reached over plain HTTP on a network that is
+already private. It makes the session cookie non-`Secure`, which is exactly the
+thing HTTPS is protecting. See [HTTPS and reverse proxies](/docs/https/).
+
+### `PAPYRA_OLLAMA_URL`
+
+Points at the model server. Inside compose, that is the service name and
+Ollama's own port:
+
+```yaml
+PAPYRA_OLLAMA_URL: "http://ollama:11434"
+```
+
+`localhost` here means *the Papyra container itself*, so it is never the answer.
+
+Already running Ollama elsewhere? Delete the `ollama` service and the
+`depends_on`, then either join the other stack's network and address it by
+container name, or go through the host:
+
+```yaml
+PAPYRA_OLLAMA_URL: "http://host.docker.internal:11434"
+extra_hosts: ["host.docker.internal:host-gateway"]
+```
+
+### `PAPYRA_TRUSTED_PROXIES`
+
+Behind a reverse proxy, every request arrives from the proxy's address. Without
+this, your rate limits and logs see one client — the proxy — and a single
+visitor can exhaust everybody's budget.
+
+List the proxy's IP and Papyra will believe its forwarded headers:
+
+```yaml
+PAPYRA_TRUSTED_PROXIES: "172.18.0.1"
+```
+
+Only list proxies you control. An unlisted proxy cannot spoof a client address
+past the rate limiter, which is the point.
+
+### `PAPYRA_ALLOWED_ORIGINS`
+
+Only needed if you serve the web app from a *different* address than the API.
+The standard deployment serves both from one process at one origin, so normally
+you leave this out entirely.
+
+### `PAPYRA_WEBAUTHN_DOMAIN` and `PAPYRA_WEBAUTHN_ORIGINS`
+
+Passkeys are bound to a domain by the browser, and it must be the bare hostname
+— no scheme, no port, no path:
+
+```yaml
+PAPYRA_WEBAUTHN_DOMAIN: "notes.example.com"
+PAPYRA_WEBAUTHN_ORIGINS: "https://notes.example.com"
+```
+
+Passkeys require real HTTPS. They will not work over plain HTTP outside
+`localhost`, and no configuration flag changes that — it is the browser's rule.
+
+## Configured in the app, not the environment
+
+Deliberately **not** environment variables, because changing them should not mean
+editing a compose file and restarting a container:
+
+- **AI provider, models and API keys** — Settings → AI
+- **SSO / OIDC** — Settings → SSO, applied without a restart
+- **SMTP** — Settings → Email
+- **Trash retention** — Settings → Data & Storage
+- **Git backup** — Settings → Backup, per account
+
+## Optional extras, off unless configured
+
+`PAPYRA_WHISPER_MODEL_PATH` enables local audio transcription, and
+`PAPYRA_OCR_TESSDATA_PATH` enables OCR of images into searchable text. Both are
+no-ops until you point them at model data, and neither sends anything anywhere.
