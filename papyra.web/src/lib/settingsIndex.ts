@@ -14,6 +14,8 @@
  * scrolls to when a result is opened. `settingsIndex.test.ts` asserts both.
  */
 
+import { AI_ENABLED } from './features';
+
 export interface SettingsEntry {
   /** `?tab=` value. */
   tab: string;
@@ -74,10 +76,15 @@ export const SETTINGS_INDEX: SettingsEntry[] = [
   { tab: 'email', tabLabel: 'Email', section: 'send-a-test', sectionLabel: 'Send a test', adminOnly: true, keywords: ['test email'] },
   { tab: 'email', tabLabel: 'Email', section: 'invite', sectionLabel: 'Invite someone', adminOnly: true, keywords: ['invitation', 'new person', 'join'] },
 
-  { tab: 'ai', tabLabel: 'AI', adminOnly: true, keywords: ['assistant', 'chat'] },
-  { tab: 'ai', tabLabel: 'AI', section: 'assistant', sectionLabel: 'Assistant', adminOnly: true, keywords: ['chat', 'answers', 'semantic search'] },
-  { tab: 'ai', tabLabel: 'AI', section: 'local-models', sectionLabel: 'On this machine', adminOnly: true, keywords: ['local', 'offline', 'ollama', 'download model', 'install'] },
-  { tab: 'ai', tabLabel: 'AI', section: 'hosted-models', sectionLabel: 'Or use a paid service', adminOnly: true, keywords: ['openai', 'anthropic', 'api key', 'hosted'] },
+  // The assistant is held back for a later release. Its entries drop out of the
+  // index with it: a search hit that lands on a tab which no longer renders is a
+  // worse answer than no hit at all.
+  ...(AI_ENABLED ? [
+    { tab: 'ai', tabLabel: 'AI', adminOnly: true, keywords: ['assistant', 'chat'] },
+    { tab: 'ai', tabLabel: 'AI', section: 'assistant', sectionLabel: 'Assistant', adminOnly: true, keywords: ['chat', 'answers', 'semantic search'] },
+    { tab: 'ai', tabLabel: 'AI', section: 'local-models', sectionLabel: 'On this machine', adminOnly: true, keywords: ['local', 'offline', 'ollama', 'download model', 'install'] },
+    { tab: 'ai', tabLabel: 'AI', section: 'hosted-models', sectionLabel: 'Or use a paid service', adminOnly: true, keywords: ['openai', 'anthropic', 'api key', 'hosted'] },
+  ] : []),
 
   // Managing people moved out of Settings to its own page, so its entries carry
   // an href rather than a tab. They stay in this index because a person looking

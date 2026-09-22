@@ -27,6 +27,7 @@ public static class EnvAliases
     [
         ("PAPYRA_DATA_DIR", "Papyra:DataDir"),
         ("PAPYRA_ALLOW_INSECURE_COOKIES", "Papyra:AllowInsecureCookies"),
+        ("PAPYRA_AI_ENABLED", "Features:Ai"),
         ("PAPYRA_OLLAMA_URL", "Ollama:BaseUrl"),
         ("PAPYRA_WEBAUTHN_DOMAIN", "WebAuthn:ServerDomain"),
         ("PAPYRA_WHISPER_MODEL_PATH", "Whisper:ModelPath"),

@@ -38,25 +38,6 @@ It lives on the data volume so this does not happen. If you are restoring from
 backup, make sure that directory is in it. Nothing is damaged — everyone signs
 in again.
 
-## The assistant will not answer
-
-It tells you why. The usual causes:
-
-- **No model installed** — Settings → AI, pick a tier.
-- **`PAPYRA_OLLAMA_URL` is wrong** — most often `localhost`, which means the
-  Papyra container itself, not the Ollama container.
-- **Not enough RAM** — a Balanced model needs about 8 GB. Drop a tier.
-- **The `ollama` service was removed** — then this is expected; keyword search
-  still works.
-
-See [the assistant](/docs/ai/).
-
-## Semantic search finds nothing, keyword search works
-
-Embeddings are computed as notes are written, so notes that arrived before a
-model was configured were never embedded. **Settings → Data & Storage → rebuild
-embeddings**, once.
-
 ## Search misses a note I can see
 
 Rebuild the full-text index in **Settings → Data & Storage**. It is derived data;

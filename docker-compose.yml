@@ -14,11 +14,13 @@ services:
       - papyra-data:/data
     environment:
       Cors__AllowedOrigins__0: "http://localhost:8080"
-      # The local model engine. Papyra downloads and runs its models here, so
-      # "Ask your notes" works without an account anywhere.
-      Ollama__BaseUrl: "http://ollama:11434"
-    depends_on:
-      - ollama
+      # The assistant is held back for a later release, so nothing here talks to a
+      # model and there is no point pulling gigabytes of one. Uncomment this, the
+      # depends_on and the ollama service below when it ships — and set
+      # PAPYRA_AI_ENABLED: "true" to switch the feature back on.
+      # Ollama__BaseUrl: "http://ollama:11434"
+    # depends_on:
+    #   - ollama
     stop_grace_period: 30s
     restart: unless-stopped
     healthcheck:
@@ -30,18 +32,23 @@ services:
 
   # Runs the local language model that answers questions about your notes.
   # Nothing here talks to the internet except to download a model you picked.
-  ollama:
-    image: ollama/ollama:latest
-    # Models are gigabytes each — a named volume keeps them across upgrades so a
-    # rebuild never silently re-downloads them.
-    volumes:
-      - ollama-models:/root/.ollama
-    # Not published to the host: only Papyra needs to reach it, and exposing an
-    # unauthenticated model runner on the network is a bad default.
-    expose:
-      - "11434"
-    restart: unless-stopped
+  #
+  # Commented out while the assistant is held back for a later release: a several-
+  # gigabyte image for a feature nothing can reach is a bad first `up`.
+  # ollama:
+  #   image: ollama/ollama:latest
+  #   # Models are gigabytes each — a named volume keeps them across upgrades so a
+  #   # rebuild never silently re-downloads them.
+  #   volumes:
+  #     - ollama-models:/root/.ollama
+  #   # Not published to the host: only Papyra needs to reach it, and exposing an
+  #   # unauthenticated model runner on the network is a bad default.
+  #   expose:
+  #     - "11434"
+  #   restart: unless-stopped
 
 volumes:
   papyra-data:
+  # Kept declared so an existing stack's downloaded models survive the assistant
+  # being switched off and come back with it.
   ollama-models:

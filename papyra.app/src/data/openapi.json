@@ -114,122 +114,6 @@
         }
       }
     },
-    "/api/search/semantic": {
-      "get": {
-        "tags": [
-          "Papyra.Api"
-        ],
-        "parameters": [
-          {
-            "name": "q",
-            "in": "query",
-            "schema": {
-              "type": "string"
-            }
-          },
-          {
-            "name": "take",
-            "in": "query",
-            "schema": {
-              "pattern": "^-?(?:0|[1-9]\\d*)$",
-              "type": [
-                "integer",
-                "string"
-              ],
-              "format": "int32"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK"
-          }
-        }
-      }
-    },
-    "/api/ai/chat": {
-      "post": {
-        "tags": [
-          "Papyra.Api"
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/AiChatRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "OK"
-          }
-        }
-      }
-    },
-    "/api/ai/status": {
-      "get": {
-        "tags": [
-          "AI"
-        ],
-        "summary": "Whether the assistant can answer, and why not",
-        "responses": {
-          "200": {
-            "description": "OK"
-          }
-        }
-      }
-    },
-    "/api/ai/models": {
-      "get": {
-        "tags": [
-          "AI"
-        ],
-        "summary": "Downloadable local models",
-        "responses": {
-          "200": {
-            "description": "OK"
-          }
-        }
-      }
-    },
-    "/api/ai/pull": {
-      "post": {
-        "tags": [
-          "Admin"
-        ],
-        "summary": "Download a local model (admin)",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/AiPullRequest"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "OK"
-          }
-        }
-      }
-    },
-    "/api/system/rebuild-embeddings": {
-      "post": {
-        "tags": [
-          "Papyra.Api"
-        ],
-        "responses": {
-          "200": {
-            "description": "OK"
-          }
-        }
-      }
-    },
     "/api/system/prune-media": {
       "post": {
         "tags": [
@@ -2091,130 +1975,6 @@
         }
       }
     },
-    "/api/ai/sessions": {
-      "get": {
-        "tags": [
-          "AI"
-        ],
-        "responses": {
-          "200": {
-            "description": "OK"
-          }
-        }
-      }
-    },
-    "/api/ai/sessions/{id}": {
-      "get": {
-        "tags": [
-          "AI"
-        ],
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "pattern": "^-?(?:0|[1-9]\\d*)$",
-              "type": "integer",
-              "format": "int32"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK"
-          }
-        }
-      },
-      "patch": {
-        "tags": [
-          "AI"
-        ],
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "pattern": "^-?(?:0|[1-9]\\d*)$",
-              "type": "integer",
-              "format": "int32"
-            }
-          }
-        ],
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/ChatSessionRename"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "OK"
-          }
-        }
-      },
-      "delete": {
-        "tags": [
-          "AI"
-        ],
-        "parameters": [
-          {
-            "name": "id",
-            "in": "path",
-            "required": true,
-            "schema": {
-              "pattern": "^-?(?:0|[1-9]\\d*)$",
-              "type": "integer",
-              "format": "int32"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "description": "OK"
-          }
-        }
-      }
-    },
-    "/api/ai/config": {
-      "get": {
-        "tags": [
-          "Admin"
-        ],
-        "responses": {
-          "200": {
-            "description": "OK"
-          }
-        }
-      },
-      "put": {
-        "tags": [
-          "Admin"
-        ],
-        "summary": "Configure the AI provider (admin)",
-        "description": "Selects the chat and embedding backends and stores their API keys. Takes effect immediately — AiClient re-reads its settings when the config version bumps.",
-        "requestBody": {
-          "content": {
-            "application/json": {
-              "schema": {
-                "$ref": "#/components/schemas/AiConfigWrite"
-              }
-            }
-          },
-          "required": true
-        },
-        "responses": {
-          "200": {
-            "description": "OK"
-          }
-        }
-      }
-    },
     "/api/backups/generate": {
       "post": {
         "tags": [
@@ -2256,127 +2016,6 @@
   },
   "components": {
     "schemas": {
-      "AiChatRequest": {
-        "required": [
-          "question"
-        ],
-        "type": "object",
-        "properties": {
-          "question": {
-            "type": [
-              "null",
-              "string"
-            ]
-          },
-          "sessionId": {
-            "pattern": "^-?(?:0|[1-9]\\d*)$",
-            "type": [
-              "null",
-              "integer",
-              "string"
-            ],
-            "format": "int32"
-          }
-        }
-      },
-      "AiConfigWrite": {
-        "required": [
-          "chatProvider",
-          "embedProvider",
-          "ollamaBaseUrl",
-          "ollamaChatModel",
-          "ollamaEmbedModel",
-          "openAiBaseUrl",
-          "openAiChatModel",
-          "openAiEmbedModel",
-          "openAiKey",
-          "anthropicChatModel",
-          "anthropicKey"
-        ],
-        "type": "object",
-        "properties": {
-          "chatProvider": {
-            "type": [
-              "null",
-              "string"
-            ]
-          },
-          "embedProvider": {
-            "type": [
-              "null",
-              "string"
-            ]
-          },
-          "ollamaBaseUrl": {
-            "type": [
-              "null",
-              "string"
-            ]
-          },
-          "ollamaChatModel": {
-            "type": [
-              "null",
-              "string"
-            ]
-          },
-          "ollamaEmbedModel": {
-            "type": [
-              "null",
-              "string"
-            ]
-          },
-          "openAiBaseUrl": {
-            "type": [
-              "null",
-              "string"
-            ]
-          },
-          "openAiChatModel": {
-            "type": [
-              "null",
-              "string"
-            ]
-          },
-          "openAiEmbedModel": {
-            "type": [
-              "null",
-              "string"
-            ]
-          },
-          "openAiKey": {
-            "type": [
-              "null",
-              "string"
-            ]
-          },
-          "anthropicChatModel": {
-            "type": [
-              "null",
-              "string"
-            ]
-          },
-          "anthropicKey": {
-            "type": [
-              "null",
-              "string"
-            ]
-          }
-        }
-      },
-      "AiPullRequest": {
-        "required": [
-          "model"
-        ],
-        "type": "object",
-        "properties": {
-          "model": {
-            "type": [
-              "null",
-              "string"
-            ]
-          }
-        }
-      },
       "ApiKeyWrite": {
         "required": [
           "name"
@@ -2647,20 +2286,6 @@
             ]
           },
           "color": {
-            "type": [
-              "null",
-              "string"
-            ]
-          }
-        }
-      },
-      "ChatSessionRename": {
-        "required": [
-          "title"
-        ],
-        "type": "object",
-        "properties": {
-          "title": {
             "type": [
               "null",
               "string"
@@ -3412,12 +3037,6 @@
       "name": "Papyra.Api"
     },
     {
-      "name": "AI"
-    },
-    {
-      "name": "Admin"
-    },
-    {
       "name": "System"
     },
     {
@@ -3425,6 +3044,9 @@
     },
     {
       "name": "WebAuthn"
+    },
+    {
+      "name": "Admin"
     },
     {
       "name": "Directory"

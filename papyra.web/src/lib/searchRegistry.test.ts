@@ -30,10 +30,17 @@ describe('searchRegistry', () => {
   });
 
   it('breadcrumbs a settings section under its tab', () => {
-    const model = settingsResults('on this machine', true)
-      .find(r => r.title === 'On this machine');
-    expect(model?.breadcrumb).toEqual(['Settings', 'AI']);
-    expect(model?.to).toBe('/settings?tab=ai&s=local-models');
+    const smtp = settingsResults('outbound email', true)
+      .find(r => r.title === 'Outbound email (SMTP)');
+    expect(smtp?.breadcrumb).toEqual(['Settings', 'Email']);
+    expect(smtp?.to).toBe('/settings?tab=email&s=smtp');
+  });
+
+  // The assistant ships later; until it does, nothing may point at a tab that
+  // SettingsPage no longer renders.
+  it('does not surface the AI settings while the assistant is switched off', () => {
+    expect(settingsResults('assistant', true)).toEqual([]);
+    expect(settingsResults('ollama', true)).toEqual([]);
   });
 
   it('keeps groups in a fixed order regardless of relevance', () => {

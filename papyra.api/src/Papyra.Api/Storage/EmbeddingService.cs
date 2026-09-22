@@ -28,21 +28,34 @@ public sealed class EmbeddingService : BackgroundService
     private readonly ILogger<EmbeddingService> _logger;
     private readonly AiClient _ai;
 
+    // The assistant is held back for a later release (Features/AiFeature.cs). With
+    // it off this service accepts work and quietly drops it, so the note-write
+    // path doesn't have to know the feature exists. Removal still runs either way:
+    // vectors written before the switch was thrown must still go when their note
+    // does, or a future rollout would retrieve notes the vault no longer has.
+    private readonly bool _enabled;
+
     public EmbeddingService(
-        IServiceScopeFactory scopes, AiClient ai, VaultState state, ILogger<EmbeddingService> logger)
+        IServiceScopeFactory scopes, AiClient ai, VaultState state, ILogger<EmbeddingService> logger,
+        bool enabled = true)
     {
         _scopes = scopes;
         _ai = ai;
         _state = state;
         _logger = logger;
+        _enabled = enabled;
     }
 
     // Queue a note for (re-)embedding. Called from the note write path.
-    public void Enqueue(string userId, string noteId, string? body) =>
+    public void Enqueue(string userId, string noteId, string? body)
+    {
+        if (!_enabled) return;
         _queue.Writer.TryWrite((userId, noteId, body ?? string.Empty));
+    }
 
     protected override async Task ExecuteAsync(CancellationToken ct)
     {
+        if (!_enabled) return;
         await foreach (var job in _queue.Reader.ReadAllAsync(ct))
         {
             try { await EmbedNoteAsync(job.UserId, job.NoteId, job.Body, ct); }
@@ -89,6 +102,8 @@ public sealed class EmbeddingService : BackgroundService
     public async Task<IReadOnlyList<SemanticHit>> SearchAsync(
         string userId, string query, int take, CancellationToken ct)
     {
+        if (!_enabled) return [];
+
         var queryVector = await EmbedAsync(query, ct);
         if (queryVector is null) return [];
 

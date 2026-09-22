@@ -42,7 +42,7 @@ export default function VaultPage() {
             <EmptyState
               icon={Lock}
               title="No locked notes"
-              body="Locking a note keeps its contents hidden until you unlock it. Locked notes stay out of search results and are never sent to the assistant, so nothing can quote them back at you."
+              body="Locking a note keeps its contents hidden until you unlock it. Locked notes stay out of search results and out of anything that reads across your vault, so nothing can quote them back at you."
               hint="To lock a note, open it and choose Lock in the toolbar above it."
             />
           }

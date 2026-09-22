@@ -25,9 +25,8 @@ curl -s -X PUT "$PAPYRA/api/notes/shopping-list" \\
         "kind": "todo"
       }'`;
 
-const searchSample = `# Keyword search (Lucene), then meaning-based search over embeddings.
-curl -s "$PAPYRA/api/search?q=pricing"          -H "X-API-Key: $PAPYRA_TOKEN"
-curl -s "$PAPYRA/api/search/semantic?q=pricing" -H "X-API-Key: $PAPYRA_TOKEN"`;
+const searchSample = `# Keyword search (Lucene), ranked, with highlighted snippets.
+curl -s "$PAPYRA/api/search?q=pricing" -H "X-API-Key: $PAPYRA_TOKEN"`;
 ---
 
 <Base
@@ -73,11 +72,6 @@ curl -s "$PAPYRA/api/search/semantic?q=pricing" -H "X-API-Key: $PAPYRA_TOKEN"`;
 
           <h2 id="searching">Searching</h2>
           <CodeBlock lang="bash" label="Terminal" code={searchSample} />
-          <p>
-            Semantic search needs an embedding model configured — see
-            <a href="/docs/ai/">the assistant</a>. Keyword search always works.
-          </p>
-
           <h2 id="try-it">Trying requests</h2>
           <p>
             This page is a reference, not a console — there is no public Papyra instance for it to

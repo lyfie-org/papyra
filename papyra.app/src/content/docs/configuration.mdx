@@ -14,7 +14,6 @@ defaults are what most installations want.
 | --- | --- | --- |
 | `PAPYRA_DATA_DIR` | `/data` | Where notes, cache and keys live. |
 | `PAPYRA_ALLOW_INSECURE_COOKIES` | `false` | Allow the session cookie over plain HTTP. |
-| `PAPYRA_OLLAMA_URL` | — | Where the model server is. |
 | `PAPYRA_ALLOWED_ORIGINS` | — | Extra CORS origins, comma-separated. |
 | `PAPYRA_TRUSTED_PROXIES` | — | Proxy IPs whose forwarded headers to believe. |
 | `PAPYRA_WEBAUTHN_DOMAIN` | `localhost` | Bare hostname passkeys are bound to. |
@@ -38,26 +37,6 @@ Lists are comma-separated, as in every other container image.
 Set `true` only when Papyra is reached over plain HTTP on a network that is
 already private. It makes the session cookie non-`Secure`, which is exactly the
 thing HTTPS is protecting. See [HTTPS and reverse proxies](/docs/https/).
-
-### `PAPYRA_OLLAMA_URL`
-
-Points at the model server. Inside compose, that is the service name and
-Ollama's own port:
-
-```yaml
-PAPYRA_OLLAMA_URL: "http://ollama:11434"
-```
-
-`localhost` here means *the Papyra container itself*, so it is never the answer.
-
-Already running Ollama elsewhere? Delete the `ollama` service and the
-`depends_on`, then either join the other stack's network and address it by
-container name, or go through the host:
-
-```yaml
-PAPYRA_OLLAMA_URL: "http://host.docker.internal:11434"
-extra_hosts: ["host.docker.internal:host-gateway"]
-```
 
 ### `PAPYRA_TRUSTED_PROXIES`
 
@@ -98,7 +77,6 @@ Passkeys require real HTTPS. They will not work over plain HTTP outside
 Deliberately **not** environment variables, because changing them should not mean
 editing a compose file and restarting a container:
 
-- **AI provider, models and API keys** — Settings → AI
 - **SSO / OIDC** — Settings → SSO, applied without a restart
 - **SMTP** — Settings → Email
 - **Trash retention** — Settings → Data & Storage
