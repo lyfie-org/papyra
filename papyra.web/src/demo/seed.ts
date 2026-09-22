@@ -9,14 +9,16 @@ import type { Note } from '../types/note';
 import type { Category } from '../hooks/useCategories';
 import type { InboxEntry } from '../hooks/useInbox';
 import type { SmartCollection } from '../hooks/useCollections';
+import { AI_ENABLED } from '../lib/features';
 
 export const DEMO_USER = {
   id: 1,
   username: 'you',
   name: 'You',
   email: 'you@example.com',
-  // Admin so every Settings tab — including SSO, Email, AI and Jobs — is
-  // browsable. A demo that hides half its own settings undersells the product.
+  // Admin so every Settings tab — including SSO, Email and Jobs — is browsable.
+  // A demo that hides half its own settings undersells the product. (The AI tab
+  // is held back with the assistant itself — see lib/features.ts.)
   role: 'Admin',
 };
 
@@ -56,8 +58,7 @@ export const SEED_NOTES: Note[] = [
 - Edit this note. Watch the label above it: there is no save button.
 - Press **Ctrl+K** (or **⌘K**) and search for *revenue*.
 - Open [[revenue-model]], then look at the **Linked mentions** at the bottom.
-- Click the spark icon in the toolbar and ask *what did I decide about pricing?*
-- Drag a card to reorder it, then reload the page.
+${AI_ENABLED ? '- Click the spark icon in the toolbar and ask *what did I decide about pricing?*\n' : ''}- Drag a card to reorder it, then reload the page.
 - Switch to **To Do**, **Categories**, **Vault** and **Settings** in the sidebar.
 
 ## What is different here

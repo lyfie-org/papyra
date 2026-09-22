@@ -27,6 +27,9 @@ public sealed class AiProviderTests
         {
             b.UseEnvironment("Development");
             b.UseSetting("Papyra:DataDir", dir);
+            // The assistant ships switched off (Features/AiFeature.cs). These tests
+            // are about what it does once it is on, so they turn it on explicitly.
+            b.UseSetting("Features:Ai", "true");
             // Point Ollama at a port nothing is listening on, so the probe takes the
             // "backend unreachable" path deterministically instead of finding a real
             // Ollama on the developer's machine.

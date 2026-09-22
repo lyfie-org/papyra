@@ -27,6 +27,7 @@ import { useNotes } from '../hooks/useNotes';
 import { useCategories } from '../hooks/useCategories';
 import { useTheme, type ThemePreference } from '../hooks/useTheme';
 import { clearSessionData } from '../lib/session';
+import { AI_ENABLED } from '../lib/features';
 import { useConfirm } from '../lib/confirmContext';
 import { useToast } from '../lib/toastContext';
 import AvatarCropper from '../components/AvatarCropper';
@@ -54,6 +55,11 @@ const NAV: { id: Tab; label: string; icon: typeof UserIcon; adminOnly?: boolean 
   { id: 'jobs', label: 'Jobs', icon: Cog, adminOnly: true },
   { id: 'about', label: 'About', icon: Info },
 ];
+
+// The AI tab is hidden while the assistant is held back for a later release.
+// Filtering here also closes the back door: `?tab=ai` is no longer a valid tab,
+// so the panel cannot be reached by typing the URL.
+const VISIBLE_NAV = NAV.filter(n => n.id !== 'ai' || AI_ENABLED);
 
 /**
  * Scrolls to the heading named by `?s=`, so a search result can land on one
@@ -96,7 +102,7 @@ export default function SettingsPage() {
   const isAdmin = user?.role === 'Admin';
   const [params, setParams] = useSearchParams();
   const requested = params.get('tab') as Tab | null;
-  const valid = NAV.find(n => n.id === requested && (!n.adminOnly || isAdmin));
+  const valid = VISIBLE_NAV.find(n => n.id === requested && (!n.adminOnly || isAdmin));
   const tab: Tab = valid?.id ?? 'profile';
   // Clearing `s` on a manual tab click stops a stale section from being chased
   // after the user has navigated somewhere else themselves.
@@ -108,7 +114,7 @@ export default function SettingsPage() {
       <h1 className="page-title settings__title">Settings</h1>
       <div className="settings__shell">
         <nav className="settings__rail" aria-label="Settings sections">
-          {NAV.filter(n => !n.adminOnly || isAdmin).map(({ id, label, icon: Icon }) => (
+          {VISIBLE_NAV.filter(n => !n.adminOnly || isAdmin).map(({ id, label, icon: Icon }) => (
             <button
               key={id}
               type="button"
@@ -131,7 +137,7 @@ export default function SettingsPage() {
           {tab === 'sync' && <SyncTab />}
           {tab === 'sso' && isAdmin && <SsoTab />}
           {tab === 'email' && isAdmin && <EmailTab />}
-          {tab === 'ai' && isAdmin && <AiTab />}
+          {tab === 'ai' && isAdmin && AI_ENABLED && <AiTab />}
           {tab === 'jobs' && isAdmin && <JobsTab />}
           {tab === 'about' && <AboutTab />}
         </div>

@@ -10,6 +10,7 @@ import SearchBar from '../components/SearchBar';
 import HelpSheet from '../components/HelpSheet';
 import { useTheme } from '../hooks/useTheme';
 import { clearSessionData } from '../lib/session';
+import { AI_ENABLED } from '../lib/features';
 import { useSignalR } from '../hooks/useSignalR';
 import { useAuth } from '../hooks/useAuth';
 import { useSyncEngine } from '../hooks/useSync';
@@ -119,16 +120,19 @@ export default function WorkspaceLayout() {
           >
             <CircleQuestionMark size={18} />
           </button>
-          <button
-            type="button"
-            className="workspace__theme-toggle"
-            onClick={() => setChatOpen(o => !o)}
-            aria-label="Ask your notes"
-            title="Ask your notes"
-            aria-expanded={chatOpen}
-          >
-            <Sparkles size={18} />
-          </button>
+          {/* The assistant is held back for a later release — see lib/features.ts. */}
+          {AI_ENABLED && (
+            <button
+              type="button"
+              className="workspace__theme-toggle"
+              onClick={() => setChatOpen(o => !o)}
+              aria-label="Ask your notes"
+              title="Ask your notes"
+              aria-expanded={chatOpen}
+            >
+              <Sparkles size={18} />
+            </button>
+          )}
           <button
             type="button"
             className="workspace__theme-toggle"
@@ -243,7 +247,7 @@ export default function WorkspaceLayout() {
         </main>
       </div>
 
-      {chatOpen && <ChatPanel onClose={() => setChatOpen(false)} />}
+      {AI_ENABLED && chatOpen && <ChatPanel onClose={() => setChatOpen(false)} />}
       {helpOpen && <HelpSheet onClose={() => setHelpOpen(false)} />}
     </div>
   );

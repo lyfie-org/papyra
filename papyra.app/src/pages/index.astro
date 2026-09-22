@@ -58,7 +58,7 @@ docker compose -f docker-compose.hub.yml up -d
 
 <Base
   title="Papyra — a calm, self-hosted home for your notes"
-  description="Self-hosted notes that stay as plain Markdown files on your own server. Full-text and semantic search, an assistant that answers from your own notes, offline editing, sharing, and passkey-locked vaults. Open source, one Docker command."
+  description="Self-hosted notes that stay as plain Markdown files on your own server. Full-text search, wiki links and backlinks, offline editing, sharing, and passkey-locked vaults. Open source, one Docker command."
   bareTitle
 >
   <script type="application/ld+json" is:inline set:html={JSON.stringify(jsonLd)} />
@@ -78,8 +78,8 @@ docker compose -f docker-compose.hub.yml up -d
       <p class="hero__tagline">{TAGLINE}</p>
       <p class="hero__lede">
         Every note is an ordinary Markdown file in a folder you own. Papyra gives that folder a
-        fast, beautiful place to live — search, links, sharing, and an assistant that answers from
-        your own writing — without ever locking a word of it away.
+        fast, beautiful place to live — search, links, sharing and offline editing — without ever
+        locking a word of it away.
       </p>
       <div class="hero__actions">
         <a class="btn" href="/demo/">
@@ -144,8 +144,8 @@ docker compose -f docker-compose.hub.yml up -d
         <h2>One file, one command</h2>
         <p>
           Save the compose file, run it, open <code>http://localhost:8080</code>. The first account
-          you create is the administrator. The optional Ollama sidecar is what powers semantic
-          search and the assistant locally — leave it out and everything else still works.
+          you create is the administrator. One container, one volume — there is nothing else to
+          stand up alongside it.
         </p>
         <p class="install__links">
           <a class="btn btn--ghost" href="/docs/install/">

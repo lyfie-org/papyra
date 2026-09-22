@@ -16,6 +16,7 @@ using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
 using Papyra.Api.Data;
+using Papyra.Api.Features;
 using Papyra.Api.Hubs;
 using Papyra.Api.Models;
 using Papyra.Api.Security;
@@ -185,10 +186,23 @@ builder.Services.AddHttpClient("ai-chat").ConfigureHttpClient(c => c.Timeout = T
 builder.Services.AddHttpClient("ai-pull").ConfigureHttpClient(c => c.Timeout = Timeout.InfiniteTimeSpan);
 builder.Services.AddSingleton<AiClient>();
 
+// The assistant is held back for a later release. Everything below stays wired
+// up so it returns by flipping one setting, but with the feature off the routes
+// 404 and nothing reaches out to a model. See Features/AiFeature.cs.
+var aiEnabled = AiFeature.Enabled(builder.Configuration);
+
 // Local semantic index: chunks + embeds notes into the SQLite vector cache.
 // Singleton so the note-write endpoint enqueues onto the worker's instance.
-builder.Services.AddSingleton<EmbeddingService>();
-builder.Services.AddHostedService(sp => sp.GetRequiredService<EmbeddingService>());
+// Constructed by hand rather than by DI so the feature switch can be passed in:
+// with the assistant off the service accepts writes and drops them, which keeps
+// the note-write path free of feature checks.
+builder.Services.AddSingleton(sp => new EmbeddingService(
+    sp.GetRequiredService<IServiceScopeFactory>(),
+    sp.GetRequiredService<AiClient>(),
+    sp.GetRequiredService<VaultState>(),
+    sp.GetRequiredService<ILogger<EmbeddingService>>(),
+    aiEnabled));
+if (aiEnabled) builder.Services.AddHostedService(sp => sp.GetRequiredService<EmbeddingService>());
 
 // Retrieval-augmented chat over the vault (configured LLM + the vector cache).
 builder.Services.AddSingleton<RagChatService>();
@@ -2977,7 +2991,7 @@ app.MapGet("/api/search/semantic", async (
         var note = state.PathFor(uid, h.NoteId) is { } p && state.TryGet(uid, p, out var n) ? n : null;
         return new { id = h.NoteId, title = note?.Title ?? string.Empty, snippet = h.Text, score = h.Score };
     }));
-}).RequireAuthorization();
+}).RequireAuthorization().RequireAiFeature(aiEnabled);
 
 // ── Conversational RAG ────────────────────────────────────────────────────────
 // Ask a question of your own notes. The prompt is embedded, the closest chunks are
@@ -3115,13 +3129,13 @@ app.MapPost("/api/ai/chat", async (
     await writer.WriteLineAsync(JsonSerializer.Serialize(new { type = "done", error = failure }));
     await writer.FlushAsync(ct);
     return Results.Empty;
-}).RequireAuthorization();
+}).RequireAuthorization().RequireAiFeature(aiEnabled);
 
 // ── AI: conversations ─────────────────────────────────────────────────────────
 // A person's conversations with the assistant are a transcript of their own
 // notes, so every route here is scoped to the caller and a wrong id is "not
 // found" rather than somebody else's thread.
-var chats = app.MapGroup("/api/ai/sessions").RequireAuthorization().WithTags("AI");
+var chats = app.MapGroup("/api/ai/sessions").RequireAuthorization().WithTags("AI").RequireAiFeature(aiEnabled);
 
 chats.MapGet("/", async (ClaimsPrincipal user, AppDbContext db, CancellationToken ct) =>
 {
@@ -3206,18 +3220,23 @@ app.MapGet("/api/ai/status", async (AiClient ai, CancellationToken ct) =>
     Results.Ok(await ai.ProbeAsync(ct)))
     .RequireAuthorization()
     .WithTags("AI")
-    .WithSummary("Whether the assistant can answer, and why not");
+    .WithSummary("Whether the assistant can answer, and why not")
+    .RequireAiFeature(aiEnabled);
 
 // The models a user may download when no local model is present. Static metadata,
 // so any signed-in user can read it to render the picker; pulling is admin-only.
 app.MapGet("/api/ai/models", () => Results.Ok(AiClient.ChatModelChoices))
     .RequireAuthorization()
     .WithTags("AI")
-    .WithSummary("Downloadable local models");
+    .WithSummary("Downloadable local models")
+    .RequireAiFeature(aiEnabled);
 
 // Admin AI configuration. API keys are write-only over this API — the server says
 // whether one is stored, never what it is — the same contract as SSO and SMTP.
-var aiAdmin = app.MapGroup("/api/ai/config").RequireAuthorization(p => p.RequireRole("Admin")).WithTags("Admin");
+var aiAdmin = app.MapGroup("/api/ai/config")
+    .RequireAuthorization(p => p.RequireRole("Admin"))
+    .WithTags("Admin")
+    .RequireAiFeature(aiEnabled);
 
 aiAdmin.MapGet("/", async (AiClient ai, CancellationToken ct) =>
 {
@@ -3352,7 +3371,8 @@ app.MapPost("/api/ai/pull", async (
 })
     .RequireAuthorization(p => p.RequireRole("Admin"))
     .WithTags("Admin")
-    .WithSummary("Download a local model (admin)");
+    .WithSummary("Download a local model (admin)")
+    .RequireAiFeature(aiEnabled);
 
 // Rebuild the whole semantic index from the vault (vectors are a disposable cache).
 app.MapPost("/api/system/rebuild-embeddings", (
@@ -3366,7 +3386,7 @@ app.MapPost("/api/system/rebuild-embeddings", (
         queued++;
     }
     return Results.Ok(new { queued });
-}).RequireAuthorization();
+}).RequireAuthorization().RequireAiFeature(aiEnabled);
 
 // ── System: nuclear index rebuild ──────────────────────────────────────────────
 // Wipe the disposable caches and rebuild them from the .md files (the authority).

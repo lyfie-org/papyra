@@ -1,5 +1,6 @@
-import { FilePlus2, FolderInput, Sparkles, WifiOff } from 'lucide-react';
+import { FilePlus2, FolderInput, Search, Sparkles, WifiOff } from 'lucide-react';
 import { Link } from 'react-router-dom';
+import { AI_ENABLED } from '../lib/features';
 import './FirstRun.css';
 
 /**
@@ -41,12 +42,20 @@ export default function FirstRun({ onCreate }: { onCreate: () => void }) {
           </Link>
         </li>
 
+        {/* The assistant ships later, so until it does this card must not send
+            people looking for a spark icon that isn't in the header. */}
         <li className="firstrun__card">
-          <Sparkles className="firstrun__icon" size={20} aria-hidden="true" />
-          <h3 className="firstrun__card-title">Then ask it things</h3>
+          {AI_ENABLED
+            ? <Sparkles className="firstrun__icon" size={20} aria-hidden="true" />
+            : <Search className="firstrun__icon" size={20} aria-hidden="true" />}
+          <h3 className="firstrun__card-title">
+            {AI_ENABLED ? 'Then ask it things' : 'Then find them again'}
+          </h3>
           <p className="firstrun__card-text">
             Search with <kbd>⌘K</kbd>, link notes with <code>[[double brackets]]</code>,
-            and use the spark icon to ask questions across everything you&rsquo;ve written.
+            {AI_ENABLED
+              ? <> and use the spark icon to ask questions across everything you&rsquo;ve written.</>
+              : <> and every note you link to lists what points back at it.</>}
           </p>
         </li>
       </ul>

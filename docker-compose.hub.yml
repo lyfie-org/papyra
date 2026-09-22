@@ -32,6 +32,10 @@ services:
       PAPYRA_ALLOW_INSECURE_COOKIES: "false"
 
       # ── Where the AI assistant runs ──────────────────────────────────────────
+      # THE ASSISTANT IS HELD BACK FOR A LATER RELEASE. Everything in this block,
+      # the depends_on and the ollama service below are commented out until it
+      # ships; bring them back together with PAPYRA_AI_ENABLED: "true".
+      #
       # Points at the ollama service below. "localhost" would mean this container
       # itself, so it is never the answer here.
       #
@@ -46,7 +50,8 @@ services:
       #   On the host machine, or a stack whose port you'd rather go through:
       #     PAPYRA_OLLAMA_URL: "http://host.docker.internal:11434"
       #   and add:  extra_hosts: ["host.docker.internal:host-gateway"]
-      PAPYRA_OLLAMA_URL: "http://ollama:11434"
+      # PAPYRA_OLLAMA_URL: "http://ollama:11434"
+      # PAPYRA_AI_ENABLED: "true"
 
       # ── File ownership ───────────────────────────────────────────────────────
       # Makes the note files belong to you rather than root. Find yours with
@@ -67,8 +72,8 @@ services:
       # PAPYRA_WEBAUTHN_DOMAIN: "notes.example.com"
       # PAPYRA_WEBAUTHN_ORIGINS: "https://notes.example.com"
 
-    depends_on:
-      - ollama
+    # depends_on:
+    #   - ollama
 
     stop_grace_period: 30s
     healthcheck:
@@ -78,22 +83,24 @@ services:
       start_period: 20s
       retries: 3
 
-  # Answers "Ask your notes" questions, on your own hardware. Delete this whole
-  # service if you don't want the assistant — Papyra works fine without it, and
-  # search falls back to matching words instead of meaning.
-  ollama:
-    image: ollama/ollama:latest
-    container_name: papyra-ollama
-    restart: unless-stopped
-    volumes:
-      # Models are gigabytes each; this keeps them across upgrades.
-      - ollama-models:/root/.ollama
-    # Deliberately not published to the host: only Papyra needs to reach it.
-    expose:
-      - "11434"
+  # Answers "Ask your notes" questions, on your own hardware. Commented out while
+  # the assistant is held back for a later release — nothing reaches it, and it
+  # would pull several gigabytes on the first `up`. Uncomment it together with the
+  # PAPYRA_OLLAMA_URL and depends_on lines above when the assistant ships.
+  # ollama:
+  #   image: ollama/ollama:latest
+  #   container_name: papyra-ollama
+  #   restart: unless-stopped
+  #   volumes:
+  #     # Models are gigabytes each; this keeps them across upgrades.
+  #     - ollama-models:/root/.ollama
+  #   # Deliberately not published to the host: only Papyra needs to reach it.
+  #   expose:
+  #     - "11434"
 
 volumes:
   papyra-data:
+  # Left declared so models already downloaded outlive the pause.
   ollama-models:
 
 # Reaching a container in ANOTHER compose stack (an Ollama you already run, say)

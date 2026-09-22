@@ -1,12 +1,12 @@
 ---
 title: Install Papyra
-summary: One compose file, one command. Papyra is a single container, with an optional model sidecar for the assistant.
+summary: One compose file, one command. Papyra is a single container — no sidecars, no reverse proxy, no database to run.
 group: Getting started
 order: 1
 ---
 
 Papyra ships as a Docker image, `lyfie/papyra`. The published recipe brings up
-Papyra plus an Ollama sidecar for the assistant.
+a single container — there is nothing else to run alongside it.
 
 ```bash
 curl -O https://raw.githubusercontent.com/lyfie-org/papyra/main/docker-compose.hub.yml
@@ -21,12 +21,6 @@ Open `http://localhost:8080`. The first account you create is the administrator
 **`papyra`** — the whole application. One .NET process serves both the API and
 the web app, so there is no separate frontend container and no reverse proxy
 required to glue them together. It listens on `8080` inside the container.
-
-**`ollama`** — answers "Ask your notes" questions and powers meaning-based
-search, on your own hardware. It is deliberately **not** published to the host:
-only Papyra needs to reach it. Delete the whole service if you do not want the
-assistant; Papyra works fine without it, and search falls back to matching words
-instead of meaning.
 
 ## The data volume
 

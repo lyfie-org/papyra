@@ -26,6 +26,14 @@ public sealed class ChatSessionTests
         {
             b.UseEnvironment("Development");
             b.UseSetting("Papyra:DataDir", dir);
+            // The assistant ships switched off; these tests are about its behaviour
+            // once an instance has turned it on. See Features/AiFeature.cs.
+            b.UseSetting("Features:Ai", "true");
+            // These tests are about what survives an answer that never comes, so the
+            // backend must be unreachable — point it at a port nothing listens on
+            // rather than letting a developer's own Ollama answer and change the
+            // message counts under the assertions.
+            b.UseSetting("Ollama:BaseUrl", "http://127.0.0.1:1");
         });
         return (factory, dir);
     }
