@@ -49,6 +49,10 @@ ne  "the two accounts are different tenants" "$QA_ID" "$ADMIN_ID"
 
 check "GET /api/auth/providers is anonymous" 200 "$JAR_NONE" GET /api/auth/providers
 
+# Read the assistant's feature flag once; the checks below switch on it rather
+# than assuming an instance that has it turned on. See lib.sh.
+probe_ai "$JAR_QA"
+
 # ── Notes ────────────────────────────────────────────────────────────────────
 section "Notes"
 
@@ -149,7 +153,7 @@ section "Search"
 check "keyword search" 200 "$JAR_QA" GET "/api/search?q=rivers"
 body_has "it finds the note by a word in its body" "$NOTE"
 check "an empty query is answered, not refused" 200 "$JAR_QA" GET "/api/search?q="
-check "semantic search answers even with no model" 200 "$JAR_QA" GET "/api/search/semantic?q=rivers"
+check_ai "semantic search answers even with no model" 200 "$JAR_QA" GET "/api/search/semantic?q=rivers"
 
 # ── Settings, inbox, conflicts ───────────────────────────────────────────────
 section "Settings, inbox, conflicts"
@@ -173,9 +177,9 @@ check "an unknown public token is 404" 404 "$JAR_NONE" GET "/api/shared/no-such-
 # ── Assistant ────────────────────────────────────────────────────────────────
 section "Assistant"
 
-check "AI status" 200 "$JAR_QA" GET /api/ai/status
-check "the curated model list" 200 "$JAR_QA" GET /api/ai/models
-check "conversation history" 200 "$JAR_QA" GET /api/ai/sessions
+check_ai "AI status" 200 "$JAR_QA" GET /api/ai/status
+check_ai "the curated model list" 200 "$JAR_QA" GET /api/ai/models
+check_ai "conversation history" 200 "$JAR_QA" GET /api/ai/sessions
 check "a conversation that does not exist is 404" 404 "$JAR_QA" GET /api/ai/sessions/999999
 check "renaming one that does not exist is 404" 404 "$JAR_QA" PATCH /api/ai/sessions/999999 '{"title":"x"}'
 check "deleting one that does not exist is 404" 404 "$JAR_QA" DELETE /api/ai/sessions/999999
@@ -218,9 +222,13 @@ section "Admin surface (as admin)"
 check "the account roster" 200 "$JAR_ADMIN" GET /api/auth/users
 check "background jobs" 200 "$JAR_ADMIN" GET /api/jobs
 body_has "jobs report their last run" '"lastRun"'
-check "AI configuration" 200 "$JAR_ADMIN" GET /api/ai/config
+check_ai "AI configuration" 200 "$JAR_ADMIN" GET /api/ai/config
 body_lacks "a stored API key is never echoed back" '"openAiKey"'
-body_has "only whether one is stored" '"hasOpenAiKey"'
+if ai_on; then
+  body_has "only whether one is stored" '"hasOpenAiKey"'
+else
+  body_has "only that the assistant is not enabled here" 'not enabled'
+fi
 check "SSO configuration" 200 "$JAR_ADMIN" GET /api/auth/oidc
 check "email configuration" 200 "$JAR_ADMIN" GET /api/auth/smtp
 check "an admin cannot delete their own account" 400 "$JAR_ADMIN" DELETE "/api/auth/users/$ADMIN_ID"

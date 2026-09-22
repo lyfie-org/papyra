@@ -205,6 +205,41 @@ body_lacks() {
 
 section() { printf '\n%s%s%s\n' "$C_HEAD" "$1" "$C_OFF"; }
 
+# ── The assistant's feature flag ─────────────────────────────────────────────
+# The assistant ships behind Features:Ai (PAPYRA_AI_ENABLED) and is off by
+# default. While it is off its routes answer 404 and leave the API docs, which
+# is the deliberate behaviour the unit test AiFeatureSwitchTests asserts — so
+# the harness must not read those 404s as breakage.
+#
+# The checks are switched, never skipped: with the assistant on they assert it
+# answers, with it off they assert it is correctly hidden. Both branches run
+# exactly one assertion, so the suite's check count does not move with the flag
+# and the flag itself is under test on every instance.
+
+# Probe the target once. /api/ai/status is behind the flag and needs a session,
+# so it is a truthful read of the instance rather than of the caller's role.
+probe_ai() {
+  req "$1" GET /api/ai/status
+  if [ "$STATUS" = "404" ]; then AI_ON=0; else AI_ON=1; fi
+  if [ "$AI_ON" = "1" ]; then
+    printf '  %sthe assistant is enabled here — its routes must answer%s\n' "$C_DIM" "$C_OFF"
+  else
+    printf '  %sthe assistant is switched off here — its routes must be hidden%s\n' "$C_DIM" "$C_OFF"
+  fi
+}
+
+# True while the assistant is enabled — for a call site whose two branches need
+# different names, not just a different status.
+ai_on() { [ "${AI_ON:-0}" = "1" ]; }
+
+# check_ai <name> <status-while-on> <jar> <method> <path> [body]
+# The given status while the assistant is on; 404 while it is off.
+check_ai() {
+  local name="$1" want="$2"; shift 2
+  ai_on || want=404
+  check "$name" "$want" "$@"
+}
+
 # ── Sign-in ──────────────────────────────────────────────────────────────────
 login() {
   local jar="$1" user="$2" pass="$3"

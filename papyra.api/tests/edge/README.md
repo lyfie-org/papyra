@@ -10,6 +10,22 @@ Two suites, 239 checks.
 | `edge.sh` | The core surface: health, sign-in, notes, to-dos, trash, categories, smart collections, API keys, webhooks, search, settings, inbox, snapshots, backup, export, media, the directory, and the admin screens as an admin | 99 |
 | `edge2.sh` | The promises: anonymous access, per-tenant isolation, admin gating, the sharing rules, locked notes, the forced-password-change wall, avatar format sniffing, the path jail, conversation scoping | 140 |
 
+## The assistant's feature flag
+
+The assistant ships behind `Features:Ai` (`PAPYRA_AI_ENABLED`) and is **off by
+default**; while it is off its routes answer 404 and leave the API document.
+
+The checks that touch it are **switched, not skipped**. Each suite probes
+`/api/ai/status` once at start-up and then asserts either that the assistant
+answers or that it is correctly hidden — so the counts above hold either way,
+and the flag itself is under test on every instance. Both suites are green
+against an instance with the assistant on and against one with it off.
+
+Writing one: use `check_ai <name> <status-while-on> …` for a plain status
+check, and `if ai_on; then … else … fi` where the two branches need different
+names. Whichever branch runs must assert exactly once, or the count moves with
+the flag.
+
 ## Running
 
 Start an instance, then run the suites against it:

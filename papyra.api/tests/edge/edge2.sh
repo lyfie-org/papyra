@@ -39,6 +39,10 @@ trap teardown EXIT
 cleanup_named "$JAR_QA"
 cleanup_named "$JAR_NEWBIE"
 
+# Read the assistant's feature flag once; the checks that touch it switch on
+# this rather than assuming an instance that has it turned on. See lib.sh.
+probe_ai "$JAR_QA"
+
 # ── Anonymous callers ────────────────────────────────────────────────────────
 section "Nothing is readable without a session"
 
@@ -110,8 +114,12 @@ check "git backup is per account, open to any user" 200 "$JAR_NEWBIE" GET /api/g
 # deliberately open to any signed-in user — and it must only ever see their notes.
 check "rebuilding one's own search index" 200 "$JAR_NEWBIE" POST /api/system/rebuild-index
 eq "and it rebuilt none of somebody else's notes" "$(jget rebuilt)" "0"
-check "rebuilding one's own embeddings" 200 "$JAR_NEWBIE" POST /api/system/rebuild-embeddings
-eq "and queued none of somebody else's notes" "$(jget queued)" "0"
+check_ai "rebuilding one's own embeddings" 200 "$JAR_NEWBIE" POST /api/system/rebuild-embeddings
+if ai_on; then
+  eq "and queued none of somebody else's notes" "$(jget queued)" "0"
+else
+  body_has "and queued nothing, because the assistant is off" 'not enabled'
+fi
 
 # ── Sharing ──────────────────────────────────────────────────────────────────
 section "Sharing with a person"
