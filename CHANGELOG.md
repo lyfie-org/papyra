@@ -6,6 +6,14 @@ a Docker Hub tag and a GitHub Release.
 
 <!-- new releases are inserted directly below this line -->
 
+## [0.1.3] - 2026-09-22
+
+- feat: hold the assistant back for a later release (c205138)
+- feat: app website development (58ca194)
+- fix: cloudlare deploy fix (bbf664b)
+- fix: lint error cleanup + gitignore update (75b2a4f)
+- feat: product website at papyra.app with an in-browser demo (01bc21f)
+
 ## [0.1.2] - 2026-08-20
 
 - Update docker-compose.hub.yml (2bab849)
