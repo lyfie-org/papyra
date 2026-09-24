@@ -43,19 +43,47 @@
 
 .note-editor__bar {
   display: flex;
-  align-items: baseline;
-  flex-wrap: wrap;
-  gap: var(--space-3) var(--space-4);
   margin-bottom: var(--space-4);
 }
 
-/* On a phone the title takes the row and the toolbar drops beneath it, rather
-   than the toolbar being pushed past the right edge of the sheet. */
+/* Actions + save state under the body. Sticky, so on a long note they stay at
+   the bottom edge of the sheet instead of scrolling away. Chrome measures the
+   sticky offset from inside the sheet's padding, so the negative bottom (and
+   margins) take it flush to the sheet's edge. `inherit` picks up a
+   coloured note's inline tint, so the bar never shows a plain strip. */
+.note-editor__footer {
+  position: sticky;
+  bottom: calc(-1 * var(--space-6));
+  z-index: 3;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-4);
+  margin: var(--space-3) calc(-1 * var(--space-6)) calc(-1 * var(--space-6));
+  padding: var(--space-2) var(--space-6);
+  border-top: 1px solid var(--border);
+  background: inherit;
+}
+.note-editor__footer .note-toolbar { justify-content: flex-start; }
+.note-editor__footer .note-editor__status { margin-left: auto; }
+
+/* At the bottom of the sheet the colour palette opens upward, not off the edge. */
+.note-editor__footer .palette-picker {
+  top: auto;
+  bottom: calc(100% + 0.4rem);
+  right: auto;
+  left: 0;
+}
+
+/* On a phone the sheet's padding shrinks, and the footer's bleed with it. */
 @media (max-width: 620px) {
   .note-editor { padding: var(--space-4); }
-  .note-editor__bar { gap: var(--space-2); }
-  .note-editor__title { flex: 1 1 100%; font-size: var(--fs-lg); }
-  .note-toolbar { flex: 1 1 100%; justify-content: flex-start; }
+  .note-editor__footer {
+    bottom: calc(-1 * var(--space-4));
+    margin: var(--space-3) calc(-1 * var(--space-4)) calc(-1 * var(--space-4));
+    padding: var(--space-2) var(--space-4);
+  }
+  .note-editor__title { font-size: var(--fs-lg); }
   /* Touch: there is no hover, so the toolbar has to be visible by default. */
   .note-toolbar { opacity: 1; }
 }
@@ -109,9 +137,34 @@
   color: var(--tint-ink);
 }
 
+/* The selection toolbar takes its background from the editor surface, which a
+   coloured note makes transparent so the tint shows through — leaving the
+   buttons floating bare over the text. Give it solid paper: the tint lifted
+   toward white, so it reads as part of this note but sits clearly above it. */
+.note-editor--colored .note-editor__footer {
+  border-top-color: var(--tint-scrim);
+}
+
+.note-editor--colored .luthor-floating-toolbar {
+  background-color: color-mix(in srgb, var(--note-tint) 55%, #fff);
+}
+
 .note-editor__canvas {
   font-family: var(--sans);
 }
+
+/* Line spacing. Every Enter makes a new block, and luthor spaces blocks like
+   document paragraphs (8px above and below each line, 10px around each list and
+   again around every nested list), so a note typed line by line read almost
+   double-spaced. A note is written a line at a time: keep line-height for
+   legibility and close the gaps between blocks instead. Blank lines still work
+   for anyone who wants air. */
+/* Paragraph margin reads this offset, and so does the placeholder's position,
+   so the two stay aligned. */
+.note-editor__canvas .luthor-richtext-container { --luthor-first-block-offset: 2px; }
+.note-editor__canvas .luthor-list-li { margin: 1px 0; }
+.note-editor__canvas :is(.luthor-list-ul, .luthor-list-ol) { margin-block: 4px; }
+.note-editor__canvas .luthor-list-li :is(.luthor-list-ul, .luthor-list-ol) { margin-block: 0; }
 
 /* ── Focus (distraction-free) mode ─────────────────────────────────────────────
    The modal fills the viewport, chrome is unmounted, and the measure widens with

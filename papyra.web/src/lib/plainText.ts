@@ -30,7 +30,18 @@ export function flattenMarkdown(md: string): string {
     .replace(/^\s{0,3}(?:[-*_]\s*){3,}$/gm, ' ')        // horizontal rules
     .replace(/(\*\*|__)(.*?)\1/g, '$2')                 // bold
     .replace(/(\*|_)(.*?)\1/g, '$2')                    // italic
-    .replace(/~~(.*?)~~/g, '$2');                       // strikethrough
+    .replace(/~~(.*?)~~/g, '$1');                       // strikethrough
+}
+
+/**
+ * Drop the trailing `^id` block anchors from each line, keeping the markdown
+ * otherwise intact. For views that show a note's source to a person (the File
+ * Recovery diff) — the ids are machine bookkeeping, and a line reading
+ * `Sake ^fvapwi6k` looks like corruption. Only a trailing run is removed, so
+ * prose like `x ^2 later` survives.
+ */
+export function stripBlockAnchors(md: string): string {
+  return md.replace(/(?:[ \t]+\^[A-Za-z0-9][A-Za-z0-9_-]*)+[ \t]*$/gm, '');
 }
 
 /**

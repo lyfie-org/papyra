@@ -537,3 +537,7 @@ papyra.app/.astro/
 # in the repo if committed (a single WAL file reached 2.5 MB). No credentials
 # live here; wrangler keeps auth in the user profile, outside the project.
 .wrangler/
+/blog
+
+# Throwaway vault for the blog screenshots (see blog/assets/capture/README.md)
+.blogdata/

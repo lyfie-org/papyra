@@ -3,6 +3,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { X, RotateCcw } from 'lucide-react';
 import type { Note } from '../types/note';
 import { lineDiff } from '../lib/lineDiff';
+import { stripBlockAnchors } from '../lib/plainText';
 import './SnapshotPanel.css';
 
 interface SnapshotMeta {
@@ -92,7 +93,12 @@ export default function SnapshotPanel({ noteId, currentBody, onClose, onRestored
     }
   }, [noteId, queryClient, onRestored, selectedBody, loadSnapshots]);
 
-  const rows = selectedBody !== null ? lineDiff(selectedBody, liveBody) : null;
+  // Diffed without the hidden `^id` block anchors: they are invisible in the
+  // editor, so showing them here reads as stray characters, and a version that
+  // differs only in anchors is the same note to the person restoring it.
+  const rows = selectedBody !== null
+    ? lineDiff(stripBlockAnchors(selectedBody), stripBlockAnchors(liveBody))
+    : null;
 
   return (
     <div

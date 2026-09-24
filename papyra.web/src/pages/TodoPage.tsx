@@ -3,6 +3,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Plus, ListChecks } from 'lucide-react';
 import { useNotes } from '../hooks/useNotes';
 import TodoCard from '../components/TodoCard';
+import MasonryGrid from '../components/MasonryGrid';
 import EmptyState from '../components/EmptyState';
 import { putNote } from '../lib/notesApi';
 import './TodoPage.css';
@@ -47,7 +48,7 @@ export default function TodoPage() {
       )}
 
       <div className="todo-grid">
-        {todos.map(n => <TodoCard key={n.id} note={n} />)}
+        <MasonryGrid items={todos.map(n => ({ id: n.id, node: <TodoCard note={n} /> }))} />
       </div>
     </section>
   );
