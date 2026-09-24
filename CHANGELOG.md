@@ -6,6 +6,11 @@ a Docker Hub tag and a GitHub Release.
 
 <!-- new releases are inserted directly below this line -->
 
+## [0.1.4] - 2026-09-24
+
+- fix: masonry To Do grid, solid selection toolbar on coloured notes (e7b09f9)
+- switch the assistant's checks on the feature flag (09ed046)
+
 ## [0.1.3] - 2026-09-22
 
 - feat: hold the assistant back for a later release (c205138)
