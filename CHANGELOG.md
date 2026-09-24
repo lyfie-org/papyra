@@ -6,6 +6,11 @@ a Docker Hub tag and a GitHub Release.
 
 <!-- new releases are inserted directly below this line -->
 
+## [0.1.6] - 2026-09-24
+
+- fix: share/confirm dialogs escape the card grid; deflake observer debounce test (21cd23f)
+- feat: mandatory vault PIN, optional biometrics, and secure-note hardening (0797d57)
+
 ## [0.1.5] - 2026-09-24
 
 - feat: formatted card previews; smooth theme and colour changes (a647a4a)
