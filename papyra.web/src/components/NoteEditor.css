@@ -30,6 +30,8 @@
   font-family: var(--sans);
   box-shadow: var(--shadow);
   animation: note-editor-rise var(--dur-slow) var(--ease);
+  /* A colour pick washes over the sheet instead of snapping. */
+  transition: background-color var(--dur-slow) var(--ease-inout);
 }
 
 @keyframes note-editor-rise {
@@ -136,15 +138,14 @@
 .note-editor--colored .note-toolbar__btn:hover {
   color: var(--tint-ink);
 }
+.note-editor--colored .note-editor__footer {
+  border-top-color: var(--tint-scrim);
+}
 
 /* The selection toolbar takes its background from the editor surface, which a
    coloured note makes transparent so the tint shows through — leaving the
    buttons floating bare over the text. Give it solid paper: the tint lifted
    toward white, so it reads as part of this note but sits clearly above it. */
-.note-editor--colored .note-editor__footer {
-  border-top-color: var(--tint-scrim);
-}
-
 .note-editor--colored .luthor-floating-toolbar {
   background-color: color-mix(in srgb, var(--note-tint) 55%, #fff);
 }
@@ -284,8 +285,20 @@
   font-family: var(--sans);
   font-size: var(--fs-xs);
 }
-.note-editor--colored .note-cats__input {
+/* Category chips on a tinted note: the theme's accent pair is built for the
+   app surface, and in dark mode it put pale green on a pale tint (~1.5:1).
+   Same fix as the card tags — scrim fill, dark tint ink, in both themes. */
+.note-editor--colored .note-cats__chip {
+  background: var(--tint-scrim);
   color: var(--tint-ink);
+}
+.note-editor--colored .note-cats__input {
+  border-color: var(--tint-ink-muted);
+  color: var(--tint-ink);
+}
+.note-editor--colored .note-cats__input::placeholder {
+  color: var(--tint-ink-muted);
+  opacity: 1;
 }
 
 .note-editor__conflict {

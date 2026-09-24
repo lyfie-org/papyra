@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState, type CSSProperties } from 'react';
-import { Link, useLocation } from 'react-router-dom';
+import { memo, useEffect, useRef, useState, type CSSProperties } from 'react';
+import { Link } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   AlertTriangle, Pin, Archive, ArchiveRestore, Share2, Trash2, RotateCcw,
@@ -14,8 +14,8 @@ import ShareDialog from './ShareDialog';
 import ShareBadge from './ShareBadge';
 import ConfirmDialog from './ConfirmDialog';
 import { useToast } from '../lib/toastContext';
-import { snippet } from '../lib/plainText';
-import { originState } from '../lib/noteLink';
+import MarkdownPreview from './MarkdownPreview';
+import { patchNoteInCache } from '../lib/notesCache';
 import './NoteCard.css';
 
 
@@ -37,8 +37,7 @@ function stop(e: React.MouseEvent) {
   e.stopPropagation();
 }
 
-export default function NoteCard({ note, variant = 'active', conflictId, conflictCount, onResolveConflict }: Props) {
-  const location = useLocation();
+function NoteCard({ note, variant = 'active', conflictId, conflictCount, onResolveConflict }: Props) {
   const { toast } = useToast();
   // Only unrecoverable deletes ask. Everything else is done and reported.
   const [confirming, setConfirming] = useState<'forever' | null>(null);
@@ -74,7 +73,8 @@ export default function NoteCard({ note, variant = 'active', conflictId, conflic
   function invalidate() { queryClient.invalidateQueries({ queryKey: ['notes'] }); }
 
   // Persist a frontmatter patch, preserving every field the card isn't changing.
-  async function patchNote(patch: Partial<Note>) {
+  async function patchNote(patch: Partial<Pick<Note, 'color' | 'pinned' | 'archived' | 'tags'>>) {
+    patchNoteInCache(queryClient, note.id, patch);
     await putNote(note.id, {
       title: note.title, tags: note.tags, color: note.color,
       pinned: note.pinned, archived: note.archived, kind: note.kind, body: note.body,
@@ -154,7 +154,7 @@ export default function NoteCard({ note, variant = 'active', conflictId, conflic
           ███ ██████ ████ ███████
         </p>
       ) : note.body.trim() && (
-        <p className="note-card__snippet">{snippet(note.body)}</p>
+        <MarkdownPreview body={note.body} />
       )}
       {note.tags.length > 0 && (
         <ul className="note-card__tags">
@@ -253,7 +253,7 @@ export default function NoteCard({ note, variant = 'active', conflictId, conflic
     <>
       {variant === 'trashed'
         ? <div className="note-card__link">{card}</div>
-        : <Link to={`/note/${encodeURIComponent(note.id)}`} state={originState(location)} className="note-card__link">{card}</Link>}
+        : <Link to={`/note/${encodeURIComponent(note.id)}`} className="note-card__link">{card}</Link>}
       {confirming && (
         <ConfirmDialog
           destructive
@@ -269,3 +269,7 @@ export default function NoteCard({ note, variant = 'active', conflictId, conflic
     </>
   );
 }
+
+// Memoised: the desk renders hundreds of these, and a card only needs to redraw
+// when its own note changes — not when a sibling is recoloured or pinned.
+export default memo(NoteCard);

@@ -1,4 +1,4 @@
-import { useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
 import { Pin, PinOff } from 'lucide-react';
 import {
   DndContext, PointerSensor, useSensor, useSensors, useDraggable,
@@ -31,15 +31,20 @@ type Section = 'pinned' | 'others';
 // the pointer via dnd-kit's transform delta (delta == pointer movement from the
 // grab point), so it stays glued to the cursor. Others reflow via `box` + CSS
 // transition. dnd-kit reads no card box for layout (no droppables) → no loop.
-function AbsCard({
-  note, box, colW, onMeasure, conflictsByParent, onResolveConflict,
+//
+// Memoised on primitive props (position as x/y numbers, this card's own
+// conflicts) so a change to one note re-renders one card: a colour pick or a pin
+// used to re-render all of them, which on a few hundred notes was a visible stall.
+const AbsCard = memo(function AbsCard({
+  note, x: boxX, y: boxY, colW, onMeasure, conflicts, onResolveConflict,
 }: {
-  note: Note; box: Box | undefined; colW: number;
+  note: Note; x: number; y: number; colW: number;
   onMeasure: (id: string, h: number) => void;
-} & Pick<Props, 'conflictsByParent' | 'onResolveConflict'>) {
+  conflicts: Conflict[] | undefined;
+  onResolveConflict?: (conflictId: string) => void;
+}) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: note.id });
   const elRef = useRef<HTMLDivElement | null>(null);
-  const conflicts = conflictsByParent?.get(note.id);
 
   const setRef = useCallback((el: HTMLDivElement | null) => {
     elRef.current = el;
@@ -51,8 +56,8 @@ function AbsCard({
     if (elRef.current) onMeasure(note.id, elRef.current.offsetHeight);
   });
 
-  const x = (box?.x ?? 0) + (isDragging && transform ? transform.x : 0);
-  const y = (box?.y ?? 0) + (isDragging && transform ? transform.y : 0);
+  const x = boxX + (isDragging && transform ? transform.x : 0);
+  const y = boxY + (isDragging && transform ? transform.y : 0);
 
   return (
     <div
@@ -76,7 +81,7 @@ function AbsCard({
       />
     </div>
   );
-}
+});
 
 export default function DraggableNoteGrid({ notes, conflictsByParent, onResolveConflict }: Props) {
   const queryClient = useQueryClient();
@@ -287,18 +292,20 @@ export default function DraggableNoteGrid({ notes, conflictsByParent, onResolveC
         {showPinnedHeading && <h2 className="note-grid__heading">PINNED</h2>}
         <div className="dnd-canvas" ref={pinnedRef} style={{ height: pinnedLayout.height }}>
           {pinned.map(n => (
-            <AbsCard key={n.id} note={n} colW={colW} box={boxFor(n, pinnedLayout)}
+            <AbsCard key={n.id} note={n} colW={colW}
+              x={boxFor(n, pinnedLayout)?.x ?? 0} y={boxFor(n, pinnedLayout)?.y ?? 0}
               onMeasure={onMeasure}
-              conflictsByParent={conflictsByParent} onResolveConflict={onResolveConflict} />
+              conflicts={conflictsByParent?.get(n.id)} onResolveConflict={onResolveConflict} />
           ))}
         </div>
 
         {showOthersHeading && <h2 className="note-grid__heading">OTHERS</h2>}
         <div className="dnd-canvas" ref={othersRef} style={{ height: othersLayout.height }}>
           {others.map(n => (
-            <AbsCard key={n.id} note={n} colW={colW} box={boxFor(n, othersLayout)}
+            <AbsCard key={n.id} note={n} colW={colW}
+              x={boxFor(n, othersLayout)?.x ?? 0} y={boxFor(n, othersLayout)?.y ?? 0}
               onMeasure={onMeasure}
-              conflictsByParent={conflictsByParent} onResolveConflict={onResolveConflict} />
+              conflicts={conflictsByParent?.get(n.id)} onResolveConflict={onResolveConflict} />
           ))}
         </div>
       </div>
