@@ -17,4 +17,19 @@ internal static class TestAuth
         var res = await client.PostAsJsonAsync("/api/auth/password", new { current = password, next = password });
         Assert.Equal(HttpStatusCode.NoContent, res.StatusCode);
     }
+
+    public const string VaultPin = "480913";
+
+    /// <summary>
+    /// A note can only be locked once the account has a vault PIN. Sets one with
+    /// the account password (the first-time proof) and returns the unlock token
+    /// the server hands back.
+    /// </summary>
+    public static async Task<string> SetVaultPinAsync(HttpClient client, string password, string pin = VaultPin)
+    {
+        var res = await client.PostAsJsonAsync("/api/auth/vault/pin", new { pin, password });
+        Assert.Equal(HttpStatusCode.OK, res.StatusCode);
+        var json = await res.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
+        return json.GetProperty("unlockToken").GetString()!;
+    }
 }

@@ -161,7 +161,7 @@ public sealed class VaultObserver : BackgroundService
                 {
                     _state.Remove(userId, path);
                     _search?.RemoveNote(userId, gone.Id);
-                    await Broadcast("NoteDeleted", gone, token);
+                    await Broadcast(userId, "NoteDeleted", gone, token);
                 }
             }
             else
@@ -172,7 +172,7 @@ public sealed class VaultObserver : BackgroundService
                     var existed = _state.TryGet(userId, path, out _);
                     _state.Upsert(userId, path, note);
                     _search?.IndexNote(userId, note);
-                    await Broadcast(existed ? "NoteUpdated" : "NoteCreated", note, token);
+                    await Broadcast(userId, existed ? "NoteUpdated" : "NoteCreated", note, token);
                 }
             }
 
@@ -184,12 +184,14 @@ public sealed class VaultObserver : BackgroundService
         }
     }
 
-    // Push a metadata-only event to all clients. Body never crosses the wire —
-    // clients fetch it via REST only for the open note.
-    private Task Broadcast(string evt, Models.Note note, CancellationToken token)
+    // Push a metadata-only event to the note's owner. Body never crosses the wire —
+    // clients fetch it via REST only for the open note. Owner only: a title is
+    // content too, and broadcasting to every connection handed each tenant's
+    // titles and tags to every other signed-in user.
+    private Task Broadcast(string userId, string evt, Models.Note note, CancellationToken token)
     {
         if (_hub is null) return Task.CompletedTask;
-        return _hub.Clients.All.SendAsync(evt, NoteMetadata.From(note), token);
+        return _hub.Clients.User(userId).SendAsync(evt, NoteMetadata.From(note), token);
     }
 
     // Track a conflict copy appearing/vanishing in the vault. On appear it's read
@@ -205,7 +207,7 @@ public sealed class VaultObserver : BackgroundService
         if (deleted || !File.Exists(path))
         {
             if (_conflicts.Remove(userId, id, out var gone) && gone is not null)
-                await BroadcastConflict("ConflictResolved", gone, token);
+                await BroadcastConflict(userId, "ConflictResolved", gone, token);
             return;
         }
 
@@ -220,13 +222,13 @@ public sealed class VaultObserver : BackgroundService
 
         var info = new ConflictInfo(id, rel, parentRel, parentId ?? string.Empty, note.Title, DateTime.UtcNow);
         _conflicts.Upsert(userId, info);
-        await BroadcastConflict("NoteConflict", info, token);
+        await BroadcastConflict(userId, "NoteConflict", info, token);
     }
 
-    private Task BroadcastConflict(string evt, ConflictInfo info, CancellationToken token)
+    private Task BroadcastConflict(string userId, string evt, ConflictInfo info, CancellationToken token)
     {
         if (_hub is null) return Task.CompletedTask;
-        return _hub.Clients.All.SendAsync(evt, new { info.Id, info.ParentId }, token);
+        return _hub.Clients.User(userId).SendAsync(evt, new { info.Id, info.ParentId }, token);
     }
 
     public override void Dispose()

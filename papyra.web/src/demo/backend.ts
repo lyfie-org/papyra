@@ -183,6 +183,24 @@ const routes: Route[] = [
   // No stored avatar: 404 is what the real API answers, and Avatar falls back
   // to the initial rather than showing a broken image.
   ['GET', /^\/api\/auth\/avatar/, () => new Response(null, { status: 404 })],
+  // The demo vault has a PIN already and takes any PIN: there is no server to
+  // check it against, and the point is to show the unlock, not to guard a sample.
+  [
+    'GET',
+    /^\/api\/auth\/vault$/,
+    () => json({
+      pinSet: true, pinDisabled: false, lockedUntilUtc: null, attemptsLeft: 10,
+      pinLength: { min: 6, max: 12 }, hasPassword: true,
+      biometric: {
+        available: false,
+        problem: { code: 'demo', message: 'Biometric unlock needs a real Papyra server. Any PIN opens the demo vault.' },
+        rpId: null, usableHere: 0, registered: 0,
+      },
+    }),
+  ],
+  ['POST', /^\/api\/auth\/vault\/unlock$/, () => json({ unlockToken: 'demo' })],
+  ['POST', /^\/api\/auth\/vault\/lock$/, () => noContent()],
+  ['POST', /^\/api\/auth\/vault\/pin$/, () => serverOnly('Changing the vault PIN')],
   ['GET', /^\/api\/auth\/webauthn\/credentials$/, () => json([])],
   ['POST', /^\/api\/auth\/webauthn\//, () => serverOnly('Passkeys')],
   ['DELETE', /^\/api\/auth\/webauthn\//, () => serverOnly('Passkeys')],
@@ -325,7 +343,7 @@ const routes: Route[] = [
             ...note,
             body:
               note.body ||
-              'Passport and travel insurance numbers would live here.\n\nOn a real Papyra server this note stays sealed until a passkey — your fingerprint or face — unlocks it, and the server refuses to send the body until it has. The blur is not the lock; the server is.',
+              'Passport and travel insurance numbers would live here.\n\nOn a real Papyra server this note stays sealed until you unlock your vault with your PIN (or your fingerprint or face, on a registered device), and the server refuses to send the body until you have. The blur is not the lock; the server is.',
           })
         : json({ error: 'not found' }, 404);
     },

@@ -376,3 +376,29 @@
   border-left-color: var(--tint-ink-muted);
   color: var(--tint-ink);
 }
+
+/* Asked when taking the lock off a note after the vault's unlock has lapsed. */
+.note-editor__vault-prompt {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-2);
+  margin: var(--space-3) 0;
+  padding: var(--space-4);
+  border: 1px dashed var(--accent-border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--text-h);
+  font-family: var(--sans);
+  font-size: var(--fs-sm);
+}
+.note-editor__vault-prompt p { margin: 0; }
+.note-editor__vault-cancel {
+  border: none;
+  background: none;
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: var(--fs-xs);
+  text-decoration: underline;
+  cursor: pointer;
+}

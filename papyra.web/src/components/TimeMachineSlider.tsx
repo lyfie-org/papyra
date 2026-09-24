@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { X, RotateCcw } from 'lucide-react';
 import type { Note } from '../types/note';
+import { vaultFetch } from '../lib/vault';
 import './TimeMachineSlider.css';
 
 interface SnapshotMeta {
@@ -59,7 +60,7 @@ export default function TimeMachineSlider({ noteId, liveBody, onPreview, onResto
     const cached = bodies.current.get(snap.id);
     if (cached !== undefined) { onPreview(cached); return; }
     try {
-      const res = await fetch(`/api/notes/${encodeURIComponent(noteId)}/snapshots/${encodeURIComponent(snap.id)}`);
+      const res = await vaultFetch(`/api/notes/${encodeURIComponent(noteId)}/snapshots/${encodeURIComponent(snap.id)}`);
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const note = (await res.json()) as Note;
       bodies.current.set(snap.id, note.body);

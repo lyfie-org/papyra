@@ -5,6 +5,7 @@ using Fido2NetLib.Objects;
 using Microsoft.EntityFrameworkCore;
 using Papyra.Api.Data;
 using Papyra.Api.Models;
+using Papyra.Api.Security;
 
 namespace Papyra.Api.Storage;
 
@@ -13,38 +14,49 @@ namespace Papyra.Api.Storage;
 // challenge, origin and replay-counter checking is delegated to the library —
 // never hand-rolled.
 //
-// Request-scoped (IFido2 and the DbContext are), so the pending challenges live in
-// the singleton WebAuthnChallengeStore. Challenges are single-use: the blob issued
-// by `...ChallengeAsync` is consumed by the matching `...VerifyAsync`, so a replayed
-// or mismatched challenge can't verify.
+// The relying party is per request (see WebAuthnRelyingParty): Papyra answers on
+// whatever address its owner uses, and a passkey belongs to the host it was made
+// on. Pending challenges live in the singleton WebAuthnChallengeStore; they are
+// single-use, expire, and are verified against the same relying party they were
+// issued for.
 public sealed class BiometricAuthService
 {
-    private readonly IFido2 _fido2;
     private readonly AppDbContext _db;
     private readonly WebAuthnChallengeStore _challenges;
     private readonly UnlockTokenStore _unlockTokens;
     private readonly ILogger<BiometricAuthService> _logger;
 
     public BiometricAuthService(
-        IFido2 fido2,
         AppDbContext db,
         WebAuthnChallengeStore challenges,
         UnlockTokenStore unlockTokens,
         ILogger<BiometricAuthService> logger)
     {
-        _fido2 = fido2;
         _db = db;
         _challenges = challenges;
         _unlockTokens = unlockTokens;
         _logger = logger;
     }
 
+    private static Fido2 For(RelyingParty party) => new(new Fido2Configuration
+    {
+        ServerDomain = party.RpId,
+        ServerName = "Papyra",
+        Origins = new HashSet<string>(StringComparer.OrdinalIgnoreCase) { party.Origin },
+        Timeout = (uint)WebAuthnChallengeStore.Lifetime.TotalMilliseconds,
+    });
+
+    // A credential made before rp ids were recorded has an empty RpId; offer it
+    // everywhere and let the authenticator decide, as before.
+    private static bool UsableAt(WebAuthnCredential c, RelyingParty party) =>
+        c.RpId.Length == 0 || string.Equals(c.RpId, party.RpId, StringComparison.OrdinalIgnoreCase);
+
     // ── Registration ────────────────────────────────────────────────────────────
 
-    public async Task<CredentialCreateOptions> RegisterChallengeAsync(User user, CancellationToken ct)
+    public async Task<CredentialCreateOptions> RegisterChallengeAsync(User user, RelyingParty party, CancellationToken ct)
     {
         var existing = await _db.WebAuthnCredentials.Where(c => c.UserId == user.Id).ToListAsync(ct);
-        var options = _fido2.RequestNewCredential(new RequestNewCredentialParams
+        var options = For(party).RequestNewCredential(new RequestNewCredentialParams
         {
             User = new Fido2User
             {
@@ -67,18 +79,21 @@ public sealed class BiometricAuthService
             AttestationPreference = AttestationConveyancePreference.None,
         });
 
-        _challenges.PutCreate(user.Id.ToString(), options.ToJson());
+        _challenges.PutCreate(user.Id.ToString(), options.ToJson(), party);
         return options;
     }
 
-    public async Task<bool> RegisterVerifyAsync(
-        User user, AuthenticatorAttestationRawResponse response, string? name, CancellationToken ct)
+    /// <summary>Null on success, else why the registration was refused.</summary>
+    public async Task<string?> RegisterVerifyAsync(
+        User user, AuthenticatorAttestationRawResponse response, string? name, RelyingParty party, CancellationToken ct)
     {
-        var optionsJson = _challenges.TakeCreate(user.Id.ToString());
-        if (optionsJson is null) return false;
-        var options = CredentialCreateOptions.FromJson(optionsJson);
+        var pending = _challenges.TakeCreate(user.Id.ToString());
+        if (pending is null) return "The registration prompt expired. Try again.";
+        // Answered from a different address than it was asked on.
+        if (pending.Party != party) return "The registration was answered from a different address. Try again.";
+        var options = CredentialCreateOptions.FromJson(pending.OptionsJson);
 
-        var result = await _fido2.MakeNewCredentialAsync(new MakeNewCredentialParams
+        var result = await For(party).MakeNewCredentialAsync(new MakeNewCredentialParams
         {
             AttestationResponse = response,
             OriginalOptions = options,
@@ -89,29 +104,34 @@ public sealed class BiometricAuthService
             },
         }, ct);
 
+        var label = string.IsNullOrWhiteSpace(name) ? "Device" : name.Trim();
         _db.WebAuthnCredentials.Add(new WebAuthnCredential
         {
             UserId = user.Id,
             CredentialId = Base64Url.EncodeToString(result.Id),
             PublicKey = Convert.ToBase64String(result.PublicKey),
             SignCount = result.SignCount,
-            Name = string.IsNullOrWhiteSpace(name) ? "Device" : name.Trim(),
+            Name = label.Length > 60 ? label[..60] : label,
             CreatedUtc = DateTime.UtcNow,
+            RpId = party.RpId,
         });
         await _db.SaveChangesAsync(ct);
 
-        _logger.LogInformation("WebAuthn credential registered for user {UserId}", user.Id);
-        return true;
+        _logger.LogInformation("WebAuthn credential registered for user {UserId} at {RpId}", user.Id, party.RpId);
+        return null;
     }
 
     // ── Assertion (the unlock gesture) ──────────────────────────────────────────
 
-    public async Task<AssertionOptions?> AssertChallengeAsync(int userId, CancellationToken ct)
+    /// <summary>Null when no credential of this user can be used at this address.</summary>
+    public async Task<AssertionOptions?> AssertChallengeAsync(int userId, RelyingParty party, CancellationToken ct)
     {
-        var credentials = await _db.WebAuthnCredentials.Where(c => c.UserId == userId).ToListAsync(ct);
-        if (credentials.Count == 0) return null; // nothing enrolled → nothing to assert
+        var credentials = (await _db.WebAuthnCredentials.Where(c => c.UserId == userId).ToListAsync(ct))
+            .Where(c => UsableAt(c, party))
+            .ToList();
+        if (credentials.Count == 0) return null;
 
-        var options = _fido2.GetAssertionOptions(new GetAssertionOptionsParams
+        var options = For(party).GetAssertionOptions(new GetAssertionOptionsParams
         {
             AllowedCredentials = credentials
                 .Select(c => new PublicKeyCredentialDescriptor(Base64Url.DecodeFromChars(c.CredentialId)))
@@ -119,18 +139,18 @@ public sealed class BiometricAuthService
             UserVerification = UserVerificationRequirement.Required,
         });
 
-        _challenges.PutAssert(userId.ToString(), options.ToJson());
+        _challenges.PutAssert(userId.ToString(), options.ToJson(), party);
         return options;
     }
 
     // Verifies the assertion and, on success, mints a short-lived unlock token.
     // Returns null when verification fails for any reason.
     public async Task<string?> AssertVerifyAsync(
-        int userId, AuthenticatorAssertionRawResponse response, CancellationToken ct)
+        int userId, AuthenticatorAssertionRawResponse response, RelyingParty party, CancellationToken ct)
     {
-        var optionsJson = _challenges.TakeAssert(userId.ToString());
-        if (optionsJson is null) return null;
-        var options = AssertionOptions.FromJson(optionsJson);
+        var pending = _challenges.TakeAssert(userId.ToString());
+        if (pending is null || pending.Party != party) return null;
+        var options = AssertionOptions.FromJson(pending.OptionsJson);
 
         // The raw assertion carries its credential id already base64url-encoded —
         // the same form `Base64Url.EncodeToString` produced at registration. The
@@ -139,12 +159,12 @@ public sealed class BiometricAuthService
         var credentialId = response.Id;
         var stored = await _db.WebAuthnCredentials
             .FirstOrDefaultAsync(c => c.CredentialId == credentialId && c.UserId == userId, ct);
-        if (stored is null) return null;
+        if (stored is null || !UsableAt(stored, party)) return null;
 
         VerifyAssertionResult result;
         try
         {
-            result = await _fido2.MakeAssertionAsync(new MakeAssertionParams
+            result = await For(party).MakeAssertionAsync(new MakeAssertionParams
             {
                 AssertionResponse = response,
                 OriginalOptions = options,
@@ -160,9 +180,11 @@ public sealed class BiometricAuthService
             return null;
         }
 
-        // Advance the replay counter the library validated for us.
+        // Advance the replay counter the library validated for us, and pin a legacy
+        // credential to the host it has now proven it works on.
         stored.SignCount = result.SignCount;
         stored.LastUsedUtc = DateTime.UtcNow;
+        if (stored.RpId.Length == 0) stored.RpId = party.RpId;
         await _db.SaveChangesAsync(ct);
 
         return _unlockTokens.Issue(userId.ToString());

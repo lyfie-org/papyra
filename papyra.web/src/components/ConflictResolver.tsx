@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState, useRef} from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { X, ArrowLeft, ArrowRight, Copy } from 'lucide-react';
 import { lineDiff } from '../lib/lineDiff';
+import { vaultFetch } from '../lib/vault';
 import './ConflictResolver.css';
 import { useDialogFocus } from '../hooks/useDialogFocus';
 
@@ -39,7 +40,7 @@ export default function ConflictResolver({ conflictId, onClose }: Props) {
     let live = true;
     (async () => {
       try {
-        const res = await fetch(`/api/conflicts/${encodeURIComponent(conflictId)}`);
+        const res = await vaultFetch(`/api/conflicts/${encodeURIComponent(conflictId)}`);
         if (!res.ok) throw new Error(`HTTP ${res.status}`);
         const data = (await res.json()) as ConflictDetail;
         if (live) setDetail(data);

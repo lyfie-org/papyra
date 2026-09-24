@@ -36,6 +36,7 @@ public sealed class SecureShareTests
         var setup = await client.PostAsJsonAsync("/api/auth/setup", new SetupRequest(
             Username: "owner", Name: "Owner", Email: "o@b.c", Password: Pw));
         Assert.Equal(HttpStatusCode.OK, setup.StatusCode);
+        await TestAuth.SetVaultPinAsync(client, Pw);
         return client;
     }
 

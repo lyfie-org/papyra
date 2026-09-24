@@ -164,18 +164,10 @@ builder.Services.AddSingleton<GitSyncService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<GitSyncService>());
 
 // ── WebAuthn (biometric gatekeeper) ─────────────────────────────────────────────
-// Relying-party identity for platform authenticators. ServerDomain must be the bare
-// host (no scheme/port); Origins must list every origin the SPA is served from — in
-// dev that includes the Vite port. All signature/challenge/origin verification is
-// delegated to Fido2NetLib.
-builder.Services.AddFido2(options =>
-{
-    options.ServerDomain = builder.Configuration["WebAuthn:ServerDomain"] ?? "localhost";
-    options.ServerName = "Papyra";
-    var origins = builder.Configuration.GetSection("WebAuthn:Origins").Get<string[]>()
-        ?? ["http://localhost:5173", "http://localhost:5220"];
-    options.Origins = origins.ToHashSet();
-});
+// No fixed relying party: it is resolved per request from the address the app was
+// opened on (Security/WebAuthnRelyingParty.cs). WebAuthn:ServerDomain optionally
+// names a parent domain to share passkeys across subdomains; WebAuthn:Origins
+// lists extra origins for a split front-end. Verification is Fido2NetLib's.
 // The one door to every AI backend (Ollama / OpenAI / Anthropic). Timeouts are set
 // per purpose because the jobs differ by orders of magnitude: a status probe must
 // fail fast enough that the settings page never hangs on it, while a model pull is
@@ -212,6 +204,7 @@ builder.Services.AddSingleton<RagChatService>();
 builder.Services.AddSingleton<WebAuthnChallengeStore>();
 builder.Services.AddSingleton<UnlockTokenStore>();
 builder.Services.AddScoped<BiometricAuthService>();
+builder.Services.AddScoped<VaultPinService>();
 
 // Background import queue: drains uploaded Obsidian/Keep archives into the vault
 // off the request thread, pushing progress over SignalR. Singleton so the endpoint
@@ -930,8 +923,10 @@ auth.MapPost("/login", async (LoginRequest body, HttpContext http, AppDbContext 
     return Results.Ok(new { user!.Id, user.Username, user.Name, user.Email, user.Role });
 }).RequireRateLimiting(AuthRateLimit);
 
-auth.MapPost("/logout", async (HttpContext http) =>
+auth.MapPost("/logout", async (HttpContext http, UnlockTokenStore unlockTokens) =>
 {
+    // An open vault closes with the session.
+    if (http.User.FindFirstValue(ClaimTypes.NameIdentifier) is { } uid) unlockTokens.RevokeUser(uid);
     await http.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
     return Results.NoContent();
 });
@@ -1115,42 +1110,175 @@ auth.MapGet("/me", async (HttpContext http, AppDbContext db, CancellationToken c
     });
 });
 
-// ── WebAuthn (biometric gatekeeper) ───────────────────────────────────────────
-// Enrol a platform authenticator, then prove possession to mint a short-lived
-// unlock token (consumed by secure notes in 17.2). Verification is delegated to
-// Fido2NetLib; challenges are single-use and scoped to the signed-in user.
-var webauthn = auth.MapGroup("/webauthn").RequireAuthorization().WithTags("WebAuthn");
+// ── Vault: PIN (required) + biometrics (optional) ─────────────────────────────
+// Secure notes open with a short-lived unlock token (UnlockTokenStore). There are
+// two ways to earn one: the vault PIN, which every vault must have, and a
+// registered platform authenticator, which is an extra convenience on devices
+// that support it. Neither route accepts an API key: a key is for scripts, and a
+// script that can unlock the vault is a stolen key away from reading it.
+var vault = auth.MapGroup("/vault").RequireAuthorization().WithTags("Vault")
+    .AddEndpointFilter(async (ctx, next) =>
+        IsApiKey(ctx.HttpContext.User)
+            ? Results.Json(new { error = "The vault cannot be opened with an API key.", code = "session_required" },
+                statusCode: StatusCodes.Status403Forbidden)
+            : await next(ctx));
+
+vault.MapGet("/", async (
+    ClaimsPrincipal principal, HttpRequest request, AppDbContext db, IConfiguration config, CancellationToken ct) =>
+{
+    var uid = int.Parse(Uid(principal));
+    var user = await db.Users.FindAsync([uid], ct);
+    if (user is null) return Results.NotFound();
+    var (party, problem) = WebAuthnRelyingParty.Resolve(request, config);
+    var credentials = await db.WebAuthnCredentials.Where(c => c.UserId == uid).ToListAsync(ct);
+    var now = DateTime.UtcNow;
+    return Results.Ok(new
+    {
+        pinSet = !string.IsNullOrEmpty(user.VaultPinHash),
+        pinDisabled = VaultPin.IsHardLocked(user.VaultPinFailures),
+        // SQLite hands DateTime back unmarked; say it is UTC, or the browser reads
+        // the lockout as local time and shows it as already over.
+        lockedUntilUtc = user.VaultPinLockedUntilUtc > now
+            ? DateTime.SpecifyKind(user.VaultPinLockedUntilUtc.Value, DateTimeKind.Utc)
+            : (DateTime?)null,
+        attemptsLeft = VaultPin.AttemptsLeft(user.VaultPinFailures),
+        pinLength = new { min = VaultPin.MinLength, max = VaultPin.MaxLength },
+        hasPassword = !string.IsNullOrEmpty(user.PasswordHash),
+        biometric = new
+        {
+            available = party is not null,
+            problem,
+            rpId = party?.RpId,
+            // Credentials this address can use (a passkey belongs to one host).
+            usableHere = party is null ? 0 : credentials.Count(c => c.RpId.Length == 0 || c.RpId == party.RpId),
+            registered = credentials.Count,
+        },
+    });
+});
+
+// Set or change the PIN. Needs proof it is the owner, not just someone holding the
+// session: the current PIN, the account password (the "forgot PIN" route), or a
+// live unlock (e.g. a biometric one). The single exception is an account with no
+// local password (SSO) setting its first PIN while it has nothing locked yet.
+vault.MapPost("/pin", async (
+    VaultPinSetRequest body, ClaimsPrincipal principal, HttpRequest request, AppDbContext db,
+    VaultState state, VaultPinService pins, UnlockTokenStore unlockTokens, LoginThrottle throttle,
+    CancellationToken ct) =>
+{
+    if (VaultPin.Validate(body.Pin) is { } invalid) return Results.BadRequest(new { error = invalid, code = "pin_invalid" });
+
+    var uid = int.Parse(Uid(principal));
+    var user = await db.Users.FindAsync([uid], ct);
+    if (user is null) return Results.NotFound();
+    var pinSet = !string.IsNullOrEmpty(user.VaultPinHash);
+
+    var authorised = unlockTokens.IsValid(request.Headers["X-Unlock-Token"].ToString(), uid.ToString());
+    if (!authorised && !string.IsNullOrEmpty(body.Password))
+    {
+        if (string.IsNullOrEmpty(user.PasswordHash))
+            return Results.BadRequest(new { error = "This account signs in with SSO and has no password.", code = "no_password" });
+        if (throttle.IsLockedOut(user.Username))
+            return Results.Json(new { error = "Too many wrong passwords. Try again later.", code = "password_locked" },
+                statusCode: StatusCodes.Status429TooManyRequests);
+        if (!BCrypt.Net.BCrypt.Verify(body.Password, user.PasswordHash))
+        {
+            throttle.RecordFailure(user.Username);
+            return Results.Json(new { error = "Password is incorrect.", code = "password_wrong" },
+                statusCode: StatusCodes.Status401Unauthorized);
+        }
+        throttle.Reset(user.Username);
+        authorised = true;
+    }
+    if (!authorised && pinSet && body.CurrentPin is not null)
+    {
+        var verdict = await pins.CheckAsync(uid, body.CurrentPin, ct);
+        if (verdict.Result != PinCheck.Ok) return PinFailure(verdict);
+        authorised = true;
+    }
+    if (!authorised && !pinSet && string.IsNullOrEmpty(user.PasswordHash)
+        && !state.Snapshot(uid.ToString()).Any(n => n.Secure))
+        authorised = true;
+
+    if (!authorised)
+        return Results.Json(new
+        {
+            error = pinSet ? "Enter your current PIN or your account password." : "Confirm with your account password.",
+            code = "proof_required",
+        }, statusCode: StatusCodes.Status401Unauthorized);
+
+    await pins.SetAsync(user, body.Pin!, ct);
+    // Setting the PIN proves possession, so hand back an unlock for this session.
+    return Results.Ok(new { unlockToken = unlockTokens.Issue(uid.ToString()) });
+}).RequireRateLimiting(AuthRateLimit);
+
+vault.MapPost("/unlock", async (
+    VaultUnlockRequest body, ClaimsPrincipal principal, VaultPinService pins, UnlockTokenStore unlockTokens,
+    CancellationToken ct) =>
+{
+    var uid = Uid(principal);
+    var verdict = await pins.CheckAsync(int.Parse(uid), body.Pin, ct);
+    return verdict.Result == PinCheck.Ok
+        ? Results.Ok(new { unlockToken = unlockTokens.Issue(uid) })
+        : PinFailure(verdict);
+}).RequireRateLimiting(AuthRateLimit);
+
+// Close the vault on this session now (the lock button), rather than waiting for
+// the unlock to expire.
+vault.MapPost("/lock", (ClaimsPrincipal principal, UnlockTokenStore unlockTokens) =>
+{
+    unlockTokens.RevokeUser(Uid(principal));
+    return Results.NoContent();
+});
+
+// ── WebAuthn (optional biometric unlock) ─────────────────────────────────────
+// Enrolling or removing an authenticator needs the vault PIN to exist and a live
+// unlock: otherwise anyone holding a session could enrol their own fingerprint
+// and walk straight past the PIN. Verification is delegated to Fido2NetLib;
+// challenges are single-use, expiring, and bound to the address they were issued on.
+var webauthn = auth.MapGroup("/webauthn").RequireAuthorization().WithTags("Vault")
+    .AddEndpointFilter(async (ctx, next) =>
+        IsApiKey(ctx.HttpContext.User)
+            ? Results.Json(new { error = "The vault cannot be opened with an API key.", code = "session_required" },
+                statusCode: StatusCodes.Status403Forbidden)
+            : await next(ctx));
 
 webauthn.MapGet("/credentials", async (ClaimsPrincipal principal, AppDbContext db, CancellationToken ct) =>
 {
     var uid = int.Parse(Uid(principal));
     return Results.Ok(await db.WebAuthnCredentials
         .Where(c => c.UserId == uid)
-        .Select(c => new { c.Id, c.Name, c.CreatedUtc, c.LastUsedUtc })
+        .Select(c => new { c.Id, c.Name, c.CreatedUtc, c.LastUsedUtc, c.RpId })
         .ToListAsync(ct));
 });
 
 webauthn.MapPost("/register/challenge", async (
-    ClaimsPrincipal principal, AppDbContext db, BiometricAuthService bio, CancellationToken ct) =>
+    ClaimsPrincipal principal, HttpRequest request, AppDbContext db, IConfiguration config,
+    BiometricAuthService bio, UnlockTokenStore unlockTokens, CancellationToken ct) =>
 {
     var user = await db.Users.FindAsync([int.Parse(Uid(principal))], ct);
     if (user is null) return Results.NotFound();
-    return Results.Text((await bio.RegisterChallengeAsync(user, ct)).ToJson(), "application/json");
+    if (VaultGuard(user, request, unlockTokens) is { } refused) return refused;
+    var (party, problem) = WebAuthnRelyingParty.Resolve(request, config);
+    if (party is null) return Results.BadRequest(new { error = problem!.Message, code = problem.Code });
+    return Results.Text((await bio.RegisterChallengeAsync(user, party, ct)).ToJson(), "application/json");
 });
 
 webauthn.MapPost("/register/verify", async (
-    WebAuthnRegisterRequest body, ClaimsPrincipal principal, AppDbContext db,
-    BiometricAuthService bio, CancellationToken ct) =>
+    WebAuthnRegisterRequest body, ClaimsPrincipal principal, HttpRequest request, AppDbContext db,
+    IConfiguration config, BiometricAuthService bio, UnlockTokenStore unlockTokens, CancellationToken ct) =>
 {
     if (body.Response is null) return Results.BadRequest(new { error = "Missing attestation response." });
     var user = await db.Users.FindAsync([int.Parse(Uid(principal))], ct);
     if (user is null) return Results.NotFound();
+    if (VaultGuard(user, request, unlockTokens) is { } refused) return refused;
+    var (party, problem) = WebAuthnRelyingParty.Resolve(request, config);
+    if (party is null) return Results.BadRequest(new { error = problem!.Message, code = problem.Code });
     try
     {
-        var ok = await bio.RegisterVerifyAsync(user, body.Response, body.Name, ct);
-        return ok
+        var error = await bio.RegisterVerifyAsync(user, body.Response, body.Name, party, ct);
+        return error is null
             ? Results.Ok(new { registered = true })
-            : Results.BadRequest(new { error = "No pending registration challenge." });
+            : Results.BadRequest(new { error });
     }
     catch (Fido2NetLib.Fido2VerificationException ex)
     {
@@ -1158,29 +1286,40 @@ webauthn.MapPost("/register/verify", async (
     }
 });
 
-webauthn.MapPost("/challenge", async (ClaimsPrincipal principal, BiometricAuthService bio, CancellationToken ct) =>
+webauthn.MapPost("/challenge", async (
+    ClaimsPrincipal principal, HttpRequest request, IConfiguration config, BiometricAuthService bio,
+    CancellationToken ct) =>
 {
-    var options = await bio.AssertChallengeAsync(int.Parse(Uid(principal)), ct);
+    var (party, problem) = WebAuthnRelyingParty.Resolve(request, config);
+    if (party is null) return Results.BadRequest(new { error = problem!.Message, code = problem.Code });
+    var options = await bio.AssertChallengeAsync(int.Parse(Uid(principal)), party, ct);
     return options is null
-        ? Results.BadRequest(new { error = "No authenticator registered.", code = "no_credential" })
+        ? Results.BadRequest(new { error = "No authenticator registered for this address.", code = "no_credential" })
         : Results.Text(options.ToJson(), "application/json");
-});
+}).RequireRateLimiting(AuthRateLimit);
 
 webauthn.MapPost("/verify", async (
-    WebAuthnAssertRequest body, ClaimsPrincipal principal, BiometricAuthService bio, CancellationToken ct) =>
+    WebAuthnAssertRequest body, ClaimsPrincipal principal, HttpRequest request, IConfiguration config,
+    BiometricAuthService bio, CancellationToken ct) =>
 {
     if (body.Response is null) return Results.BadRequest(new { error = "Missing assertion response." });
-    var token = await bio.AssertVerifyAsync(int.Parse(Uid(principal)), body.Response, ct);
+    var (party, problem) = WebAuthnRelyingParty.Resolve(request, config);
+    if (party is null) return Results.BadRequest(new { error = problem!.Message, code = problem.Code });
+    var token = await bio.AssertVerifyAsync(int.Parse(Uid(principal)), body.Response, party, ct);
     // A failed assertion never explains why — don't help an attacker probe.
     return token is null
         ? Results.Json(new { error = "Verification failed." }, statusCode: StatusCodes.Status401Unauthorized)
         : Results.Ok(new { unlockToken = token });
-});
+}).RequireRateLimiting(AuthRateLimit);
 
 webauthn.MapDelete("/credentials/{id:int}", async (
-    int id, ClaimsPrincipal principal, AppDbContext db, CancellationToken ct) =>
+    int id, ClaimsPrincipal principal, HttpRequest request, AppDbContext db, UnlockTokenStore unlockTokens,
+    CancellationToken ct) =>
 {
     var uid = int.Parse(Uid(principal));
+    var user = await db.Users.FindAsync([uid], ct);
+    if (user is null) return Results.NotFound();
+    if (VaultGuard(user, request, unlockTokens) is { } refused) return refused;
     var credential = await db.WebAuthnCredentials.FirstOrDefaultAsync(c => c.Id == id && c.UserId == uid, ct);
     if (credential is null) return Results.NotFound();
     db.WebAuthnCredentials.Remove(credential);
@@ -1204,7 +1343,8 @@ auth.MapPut("/profile", async (ProfileRequest body, ClaimsPrincipal principal, A
     return Results.Ok(new { user.Id, user.Username, user.Name, user.Email, user.Role });
 }).RequireAuthorization();
 
-auth.MapPost("/password", async (PasswordRequest body, ClaimsPrincipal principal, AppDbContext db, CancellationToken ct) =>
+auth.MapPost("/password", async (
+    PasswordRequest body, ClaimsPrincipal principal, AppDbContext db, UnlockTokenStore unlockTokens, CancellationToken ct) =>
 {
     if (PasswordPolicy.Validate(body.Next) is { } weak)
         return Results.BadRequest(new { error = weak });
@@ -1220,6 +1360,7 @@ auth.MapPost("/password", async (PasswordRequest body, ClaimsPrincipal principal
     // Picking your own password is exactly what the flag was waiting for.
     user.MustChangePassword = false;
     await db.SaveChangesAsync(ct);
+    unlockTokens.RevokeUser(user.Id.ToString());
     return Results.NoContent();
 }).RequireAuthorization();
 
@@ -1802,7 +1943,7 @@ notes.MapGet("/{id}/secure", (
 {
     var uid = Uid(user);
     var token = request.Headers["X-Unlock-Token"].ToString();
-    if (!unlockTokens.IsValid(token, uid))
+    if (IsApiKey(user) || !unlockTokens.IsValid(token, uid))
         return Results.Json(new { error = "Unlock required.", code = "locked" },
             statusCode: StatusCodes.Status401Unauthorized);
 
@@ -1847,6 +1988,7 @@ notes.MapPut("/{id}", async (
     IConfiguration config,
     IHostEnvironment env,
     ILoggerFactory loggerFactory,
+    HttpContext http,
     CancellationToken ct) =>
 {
     // The id becomes the .md filename. PathGuard stops it escaping the vault, but
@@ -1864,6 +2006,24 @@ notes.MapPut("/{id}", async (
     // Resolve under the caller's vault and verify it can't escape (→ 403).
     var path = priorPath
         ?? PathGuard.ResolveAndVerify(vault.UserNotesDir(uid), $"{id}.md", loggerFactory.CreateLogger("PathGuard"));
+
+    // Locking and unlocking a note are the two moves the vault has to police.
+    // Locking needs a PIN to exist — a secure note must always have a way in that
+    // does not depend on one device. Unlocking (secure → plain) releases the body
+    // into the list, search and snapshots, so it needs the vault open right now:
+    // a stolen session alone must not be able to take the lock off.
+    var wasSecure = prior?.Secure ?? false;
+    var wantsSecure = body.Secure ?? wasSecure;
+    if (wantsSecure && !wasSecure)
+    {
+        var owner = await http.RequestServices.GetRequiredService<AppDbContext>().Users.FindAsync([int.Parse(uid)], ct);
+        if (string.IsNullOrEmpty(owner?.VaultPinHash))
+            return Results.Json(new { error = "Set a vault PIN before locking a note.", code = "pin_not_set" },
+                statusCode: StatusCodes.Status409Conflict);
+    }
+    if (wasSecure && !wantsSecure && !UnlockedNow(http, uid))
+        return Results.Json(new { error = "Unlock the vault to take the lock off a note.", code = "locked" },
+            statusCode: StatusCodes.Status401Unauthorized);
 
     var note = new Note
     {
@@ -2139,7 +2299,9 @@ notes.MapGet("/{id}/backlinks", (string id, ClaimsPrincipal user, VaultState sta
 
     var needle = $"[[{title}]]";
     var results = state.Snapshot(uid)
-        .Where(n => !n.Trashed && n.Id != id && !string.IsNullOrEmpty(n.Body)
+        // A secure note is left out entirely: even its title next to a snippet of
+        // this note would confirm what it links to.
+        .Where(n => !n.Trashed && !n.Secure && n.Id != id && !string.IsNullOrEmpty(n.Body)
                     && n.Body.Contains(needle, StringComparison.OrdinalIgnoreCase))
         .Select(n => new
         {
@@ -2330,8 +2492,10 @@ collections.MapGet("/{id:int}/notes", async (
     catch (JsonException) { return Results.BadRequest(new { error = "Stored rules are invalid." }); }
     if (rules is null) return Results.Ok(Array.Empty<Note>());
 
+    // Same rule as the note list: a secure note rides as metadata, body withheld.
     return Results.Ok(state.Snapshot(uid)
-        .Where(n => !n.Trashed && SmartCollectionEvaluator.Matches(n, rules)));
+        .Where(n => !n.Trashed && SmartCollectionEvaluator.Matches(n, rules))
+        .Select(RedactSecure));
 });
 
 // ── Webhooks (event-driven outbound) ──────────────────────────────────────────────
@@ -2494,23 +2658,34 @@ notes.MapGet("/{id}/snapshots/{snapshotId}", async (
     string snapshotId,
     ClaimsPrincipal user,
     MarkdownStorageService storage,
+    VaultState state,
+    HttpContext http,
     IConfiguration config,
     IHostEnvironment env,
     ILoggerFactory loggerFactory,
     CancellationToken ct) =>
 {
-    var snapRoot = PapyraPaths.UserSnapshotsDir(config, env.ContentRootPath, Uid(user));
+    var uid = Uid(user);
+    var snapRoot = PapyraPaths.UserSnapshotsDir(config, env.ContentRootPath, uid);
     var logger = loggerFactory.CreateLogger("PathGuard");
     var snapPath = PathGuard.ResolveAndVerify(snapRoot, Path.Combine(id, $"{snapshotId}.md"), logger);
 
     var note = await storage.ReadAsync(snapPath, ct);
-    return note is null ? Results.NotFound() : Results.Ok(note);
+    if (note is null) return Results.NotFound();
+    // An old revision of a secure note is the note: same gate as /secure. So is a
+    // plain revision of a note that has since been locked — it holds what the
+    // owner has since chosen to lock away.
+    if ((note.Secure || IsSecureNow(state, uid, id)) && !UnlockedNow(http, uid))
+        return Results.Json(new { error = "Unlock required.", code = "locked" },
+            statusCode: StatusCodes.Status401Unauthorized);
+    return Results.Ok(note);
 });
 
 notes.MapPost("/{id}/restore/{snapshotId}", async (
     string id,
     string snapshotId,
     ClaimsPrincipal user,
+    HttpContext http,
     VaultState state,
     MarkdownStorageService storage,
     SnapshotService snapshots,
@@ -2527,6 +2702,13 @@ notes.MapPost("/{id}/restore/{snapshotId}", async (
     var snapRoot = PapyraPaths.UserSnapshotsDir(config, env.ContentRootPath, uid);
     var snapPath = PathGuard.ResolveAndVerify(snapRoot, Path.Combine(id, $"{snapshotId}.md"), logger);
     if (!File.Exists(snapPath)) return Results.NotFound();
+
+    // Restoring can swap a secure note for an older, unlocked revision — taking the
+    // lock off without the vault — and the response carries the body. Gate it.
+    var snapshot = await storage.ReadAsync(snapPath, ct);
+    if ((snapshot?.Secure == true || IsSecureNow(state, uid, id)) && !UnlockedNow(http, uid))
+        return Results.Json(new { error = "Unlock required.", code = "locked" },
+            statusCode: StatusCodes.Status401Unauthorized);
 
     var path = state.PathFor(uid, id)
         ?? PathGuard.ResolveAndVerify(vault.UserNotesDir(uid), $"{id}.md", logger);
@@ -2574,6 +2756,7 @@ conflicts.MapGet("/", (ClaimsPrincipal user, ConflictState conflictState, VaultS
 conflicts.MapGet("/{id}", async (
     string id,
     ClaimsPrincipal user,
+    HttpContext http,
     ConflictState conflictState,
     VaultState state,
     MarkdownStorageService storage,
@@ -2593,6 +2776,11 @@ conflicts.MapGet("/{id}", async (
     var parentNote = state.PathFor(uid, c.ParentId) is { } p && state.TryGet(uid, p, out var pn)
         ? pn
         : await storage.ReadAsync(PathGuard.ResolveAndVerify(notesDir, c.ParentRelativePath, logger), ct);
+
+    // A sync conflict of a secure note carries two copies of its body.
+    if ((parentNote?.Secure == true || conflictNote.Secure) && !UnlockedNow(http, uid))
+        return Results.Json(new { error = "Unlock required.", code = "locked" },
+            statusCode: StatusCodes.Status401Unauthorized);
 
     return Results.Ok(new
     {
@@ -2665,7 +2853,7 @@ conflicts.MapPost("/{id}/resolve", async (
             await storage.WriteAsync(targetPath, copy, ct);
             state.Upsert(uid, targetPath, copy);
             search.IndexNote(uid, copy);
-            await hub.Clients.All.SendAsync(keep == "right" ? "NoteUpdated" : "NoteCreated", NoteMetadata.From(copy), ct);
+            await hub.Clients.User(uid).SendAsync(keep == "right" ? "NoteUpdated" : "NoteCreated", NoteMetadata.From(copy), ct);
         }
     }
 
@@ -2689,7 +2877,7 @@ conflicts.MapPost("/{id}/resolve", async (
     }
     conflictState.Remove(uid, id, out _);
 
-    await hub.Clients.All.SendAsync("ConflictResolved", new { id, parentId = c.ParentId }, ct);
+    await hub.Clients.User(uid).SendAsync("ConflictResolved", new { id, parentId = c.ParentId }, ct);
     return Results.NoContent();
 });
 
@@ -3616,9 +3804,18 @@ app.MapPost("/api/import/quick", async (
 
 app.MapGet("/api/export", (
     ClaimsPrincipal user,
+    VaultState state,
     IConfiguration config,
     IHostEnvironment env) =>
 {
+    // The export is a plain zip anyone holding the session can download, so secure
+    // notes are left out. They travel in the encrypted backup instead, which asks
+    // for the account password.
+    var secureFiles = state.Snapshot(Uid(user)).Where(n => n.Secure)
+        .Select(n => state.PathFor(Uid(user), n.Id))
+        .Where(p => p is not null)
+        .Select(p => Path.GetFullPath(p!))
+        .ToHashSet(StringComparer.OrdinalIgnoreCase);
     var notesDir = PapyraPaths.UserNotesDir(config, env.ContentRootPath, Uid(user));
     var mediaDir = PapyraPaths.UserMediaDir(config, env.ContentRootPath, Uid(user));
     Directory.CreateDirectory(notesDir);
@@ -3627,7 +3824,10 @@ app.MapGet("/api/export", (
     using (var archive = ZipFile.Open(tmp, ZipArchiveMode.Create))
     {
         foreach (var file in Directory.EnumerateFiles(notesDir, "*", SearchOption.AllDirectories))
+        {
+            if (secureFiles.Contains(Path.GetFullPath(file))) continue;
             archive.CreateEntryFromFile(file, Path.GetRelativePath(notesDir, file).Replace('\\', '/'));
+        }
 
         // Attachments too. Exporting notes without the images they embed leaves
         // every ![[file]] dangling the moment the archive is opened somewhere
@@ -3775,7 +3975,10 @@ backups.MapPost("/restore", async (
     .WithSummary("Restore from encrypted backup")
     .WithDescription("Decrypts an uploaded .papyra-vault (multipart: password + file) and replaces the caller's notes + media, then rebuilds the cache.");
 
-app.MapHub<NotesHub>("/hubs/notes");
+// Signed-in only, and events go to the owning user (Clients.User keys on the
+// NameIdentifier claim, i.e. the user id). Anonymous and cross-tenant listeners
+// used to receive every note title and tag in real time.
+app.MapHub<NotesHub>("/hubs/notes").RequireAuthorization();
 
 // An unmatched /api route must NOT fall through to the SPA: a client asking for
 // `/api/shared/` (or any typo'd endpoint) was handed 200 text/html, so `res.ok`
@@ -3811,6 +4014,55 @@ static bool SsoConfigured(InstanceConfigStore config) =>
 
 // The authenticated tenant id, lifted from the NameIdentifier claim minted at
 // sign-in. Every per-user storage path keys off this.
+// The vault is open on this request: a live unlock token for this user, from the
+// browser session (never an API key).
+static bool UnlockedNow(HttpContext http, string uid) =>
+    !IsApiKey(http.User)
+    && http.RequestServices.GetRequiredService<UnlockTokenStore>()
+        .IsValid(http.Request.Headers["X-Unlock-Token"].ToString(), uid);
+
+// Whether the live note with this id is currently secure.
+static bool IsSecureNow(VaultState state, string uid, string id) =>
+    state.PathFor(uid, id) is { } path && state.TryGet(uid, path, out var live) && live?.Secure == true;
+
+// A principal signed in with an API key rather than the browser session.
+static bool IsApiKey(ClaimsPrincipal user) => user.Identity?.AuthenticationType == "ApiKey";
+
+// Changing what can open the vault needs the vault PIN to exist and to be open
+// right now on this session. Null when allowed.
+static IResult? VaultGuard(User user, HttpRequest request, UnlockTokenStore unlockTokens)
+{
+    if (string.IsNullOrEmpty(user.VaultPinHash))
+        return Results.Json(new { error = "Set a vault PIN first.", code = "pin_not_set" },
+            statusCode: StatusCodes.Status409Conflict);
+    if (!unlockTokens.IsValid(request.Headers["X-Unlock-Token"].ToString(), user.Id.ToString()))
+        return Results.Json(new { error = "Unlock the vault first.", code = "locked" },
+            statusCode: StatusCodes.Status401Unauthorized);
+    return null;
+}
+
+// The response for a PIN that did not open the vault.
+static IResult PinFailure(PinVerdict verdict) => verdict.Result switch
+{
+    PinCheck.Locked => Results.Json(new
+    {
+        error = "Too many wrong PINs. Wait before trying again.", code = "pin_locked",
+        lockedUntilUtc = verdict.LockedUntilUtc, attemptsLeft = verdict.AttemptsLeft,
+    }, statusCode: StatusCodes.Status429TooManyRequests),
+    PinCheck.Disabled => Results.Json(new
+    {
+        error = "Your PIN is disabled after too many wrong tries. Reset it with your account password.",
+        code = "pin_disabled",
+    }, statusCode: StatusCodes.Status423Locked),
+    PinCheck.NotSet => Results.Json(new { error = "Set a vault PIN first.", code = "pin_not_set" },
+        statusCode: StatusCodes.Status409Conflict),
+    _ => Results.Json(new
+    {
+        error = "Wrong PIN.", code = "pin_wrong",
+        attemptsLeft = verdict.AttemptsLeft, lockedUntilUtc = verdict.LockedUntilUtc,
+    }, statusCode: StatusCodes.Status401Unauthorized),
+};
+
 static string Uid(ClaimsPrincipal user) =>
     user.FindFirstValue(ClaimTypes.NameIdentifier)
     ?? throw new SecurityException("Authenticated principal carries no user id.");
@@ -3959,7 +4211,7 @@ static async Task<IResult> ApplySharedEdit(
     await storage.WriteAsync(path, note, ct);
     state.Upsert(ownerUid, path, note);
     search.IndexNote(ownerUid, note);
-    await hub.Clients.All.SendAsync("NoteUpdated", NoteMetadata.From(note), ct);
+    await hub.Clients.User(ownerUid).SendAsync("NoteUpdated", NoteMetadata.From(note), ct);
     return Results.NoContent();
 }
 
@@ -4153,6 +4405,10 @@ public sealed record GitConfigWrite(string? RemoteUrl, string? Branch, string? T
 
 // Smart-collection creation: a display name + the serialized AND/OR rule set.
 public sealed record SmartCollectionWrite(string? Name, string? RulesJson);
+
+// Set/change the vault PIN, with one proof of ownership (see POST /api/auth/vault/pin).
+public sealed record VaultPinSetRequest(string? Pin, string? CurrentPin = null, string? Password = null);
+public sealed record VaultUnlockRequest(string? Pin);
 
 // WebAuthn enrolment: the browser's attestation response + a friendly device label.
 public sealed record WebAuthnRegisterRequest(

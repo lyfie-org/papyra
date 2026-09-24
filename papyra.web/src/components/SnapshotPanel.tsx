@@ -4,6 +4,7 @@ import { X, RotateCcw } from 'lucide-react';
 import type { Note } from '../types/note';
 import { lineDiff } from '../lib/lineDiff';
 import { stripBlockAnchors } from '../lib/plainText';
+import { vaultFetch } from '../lib/vault';
 import './SnapshotPanel.css';
 
 interface SnapshotMeta {
@@ -59,7 +60,9 @@ export default function SnapshotPanel({ noteId, currentBody, onClose, onRestored
     setSelectedBody(null);
     setNotice(null);
     try {
-      const res = await fetch(`/api/notes/${encodeURIComponent(noteId)}/snapshots/${encodeURIComponent(snapshotId)}`);
+      // A secure note's history is gated like the note itself.
+      const res = await vaultFetch(`/api/notes/${encodeURIComponent(noteId)}/snapshots/${encodeURIComponent(snapshotId)}`);
+      if (res.status === 401) { setError('Unlock this note to see its history.'); return; }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       const note = (await res.json()) as Note;
       setSelectedBody(note.body);
@@ -72,10 +75,11 @@ export default function SnapshotPanel({ noteId, currentBody, onClose, onRestored
     setRestoring(true);
     setError(null);
     try {
-      const res = await fetch(
+      const res = await vaultFetch(
         `/api/notes/${encodeURIComponent(noteId)}/restore/${encodeURIComponent(snapshotId)}`,
         { method: 'POST' },
       );
+      if (res.status === 401) { setError('Unlock this note to restore a version of it.'); return; }
       if (!res.ok) throw new Error(`HTTP ${res.status}`);
       await queryClient.invalidateQueries({ queryKey: ['notes'] });
       onRestored(); // editor adopts the restored body

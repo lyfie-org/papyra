@@ -10,6 +10,8 @@ import { createPapyraEditorAdapter } from '../lib/papyraEditorAdapter';
 import { registerEditorGuards } from '../lib/editorGuards';
 import { putNote } from '../lib/notesApi';
 import { patchNoteInCache } from '../lib/notesCache';
+import { vaultFetch } from '../lib/vault';
+import VaultUnlock from './VaultUnlock';
 import { closeTarget } from '../lib/noteLink';
 import { useToast } from '../lib/toastContext';
 import { useMentionShare } from '../hooks/useMentionShare';
@@ -247,7 +249,7 @@ export default function NoteEditor({ note }: { note: Note }) {
   // Toolbar frontmatter mutation: PUT the live draft plus the changed YAML field,
   // so a pin/color/archive flip never clobbers unsaved body/title. Re-baselines
   // the save state so the write doesn't immediately echo back as a dirty change.
-  const saveFrontmatter = useCallback(async (patch: Partial<Pick<Note, 'color' | 'pinned' | 'archived' | 'tags' | 'kind' | 'secure'>>) => {
+  const saveFrontmatter = useCallback(async (patch: Partial<Pick<Note, 'color' | 'pinned' | 'archived' | 'tags' | 'kind'>>) => {
     // While locked the draft body is the withheld (empty) one — writing it would
     // destroy the note's real content, so frontmatter edits wait for the unlock.
     if (isLocked) return;
@@ -263,9 +265,8 @@ export default function NoteEditor({ note }: { note: Note }) {
       archived: patch.archived !== undefined ? patch.archived : note.archived,
       kind: patch.kind !== undefined ? patch.kind : note.kind,
       body: draft.body,
-      // Only sent when the toggle was the thing that changed; the API reads an
+      // `secure` is never sent from here (see toggleSecure); the API reads an
       // absent value as "leave the lock alone".
-      ...(patch.secure !== undefined ? { secure: patch.secure } : {}),
     }, note.updated);
     reset(draft);
     // A color flip remounts the editor (theme swap, see key/style below); seed the
@@ -275,6 +276,47 @@ export default function NoteEditor({ note }: { note: Note }) {
     shown.current = { id: note.id, title: draft.title, body: draft.body };
     queryClient.invalidateQueries({ queryKey: ['notes'] });
   }, [getDraft, note, reset, queryClient, isLocked]);
+
+  // Lock or unlock the note. Not through saveFrontmatter: that path parks a failed
+  // write in the offline outbox, and the two refusals here are answers, not
+  // outages — "set a PIN first" (409) and "open the vault first" (401) would sit
+  // in the outbox retrying forever. Taking a lock off needs the vault open, so a
+  // lapsed unlock asks for the PIN and then finishes the job.
+  const [unlockToChangeLock, setUnlockToChangeLock] = useState(false);
+  const toggleSecure = useCallback(async () => {
+    if (isLocked) return;
+    const next = !(note.secure ?? false);
+    const draft = getDraft();
+    let res: Response;
+    try {
+      res = await vaultFetch(`/api/notes/${encodeURIComponent(note.id)}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: draft.title, tags: note.tags, color: note.color, pinned: note.pinned,
+          archived: note.archived, kind: note.kind, body: draft.body, secure: next,
+        }),
+      });
+    } catch {
+      toast('Couldn’t change the lock — the server is unreachable.');
+      return;
+    }
+    if (res.status === 409) {
+      toast('Set a vault PIN before locking notes.', { label: 'Set PIN', onClick: () => navigate('/settings?tab=security&s=vault-pin') });
+      return;
+    }
+    if (res.status === 401) { setUnlockToChangeLock(true); return; }
+    if (!res.ok) { toast('Couldn’t change the lock.'); return; }
+
+    setUnlockToChangeLock(false);
+    patchNoteInCache(queryClient, note.id, { secure: next });
+    reset(draft);
+    latestBody.current = draft.body;
+    setBody(draft.body);
+    shown.current = { id: note.id, title: draft.title, body: draft.body };
+    void queryClient.invalidateQueries({ queryKey: ['notes'] });
+    toast(next ? 'Note locked and moved to the Vault.' : 'Note unlocked — it is back with your other notes.');
+  }, [isLocked, note, getDraft, toast, navigate, queryClient, reset]);
 
   // Enter the time machine. Flush any unsaved edits FIRST (so the live draft is on
   // disk and the slider's "Now" matches it), then hard-disable autosave for the
@@ -300,7 +342,7 @@ export default function NoteEditor({ note }: { note: Note }) {
   // Restore a scrubbed revision: the API archives the current version first (so the
   // restore is itself reversible), then the refetched note adopts via forceAdopt.
   const restoreVersion = useCallback(async (snapshotId: string) => {
-    const res = await fetch(
+    const res = await vaultFetch(
       `/api/notes/${encodeURIComponent(note.id)}/restore/${encodeURIComponent(snapshotId)}`,
       { method: 'POST' },
     );
@@ -470,6 +512,16 @@ export default function NoteEditor({ note }: { note: Note }) {
       </div>
       )}
 
+      {unlockToChangeLock && (
+        <div className="note-editor__vault-prompt" role="dialog" aria-label="Unlock the vault">
+          <p>Unlock your vault to take the lock off this note.</p>
+          <VaultUnlock autoBiometric onUnlocked={() => void toggleSecure()} />
+          <button type="button" className="note-editor__vault-cancel" onClick={() => setUnlockToChangeLock(false)}>
+            Cancel
+          </button>
+        </div>
+      )}
+
       {!focus && !isLocked && <GhostCards noteId={note.id} />}
 
       {/* Actions and save state sit under the note body, where writing ends, and
@@ -486,13 +538,7 @@ export default function NoteEditor({ note }: { note: Note }) {
             onFocus={enterFocus}
             secure={note.secure ?? false}
             canToggleSecure={!isLocked}
-            onToggleSecure={() => {
-              const next = !(note.secure ?? false);
-              void saveFrontmatter({ secure: next });
-              toast(next
-                ? 'Note locked and moved to the Vault.'
-                : 'Note unlocked — it is back with your other notes.');
-            }}
+            onToggleSecure={() => void toggleSecure()}
             onArchive={() => { void saveFrontmatter({ archived: true }); navigate(closeTo); }}
             onShare={() => setShareOpen(true)}
             onTrash={() => {
