@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { NavLink, Outlet, useNavigate } from 'react-router-dom';
+import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   Menu, StickyNote, ListTodo, Tags, Archive, Settings, Trash2, ShieldCheck,
@@ -9,6 +9,7 @@ import ChatPanel from '../components/ChatPanel';
 import SearchBar from '../components/SearchBar';
 import HelpSheet from '../components/HelpSheet';
 import { useTheme } from '../hooks/useTheme';
+import { rememberPage } from '../lib/noteLink';
 import { clearSessionData } from '../lib/session';
 import { AI_ENABLED } from '../lib/features';
 import { useSignalR } from '../hooks/useSignalR';
@@ -36,7 +37,6 @@ const NAV_ITEMS = [
 const APP_VERSION = '0.0.1';
 
 export default function WorkspaceLayout() {
-  const { theme, toggleTheme } = useTheme();
   const { user } = useAuth();
   const unreadInbox = useUnreadInboxCount();
   const navigate = useNavigate();
@@ -133,15 +133,7 @@ export default function WorkspaceLayout() {
               <Sparkles size={18} />
             </button>
           )}
-          <button
-            type="button"
-            className="workspace__theme-toggle"
-            onClick={toggleTheme}
-            aria-label={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}
-            title={`Switch to ${theme === 'light' ? 'dark' : 'light'} mode`}
-          >
-            {theme === 'light' ? <Moon size={18} /> : <Sun size={18} />}
-          </button>
+          <ThemeToggle />
           <div className="workspace__avatar-wrap" ref={menuRef}>
             <button
               type="button"
@@ -243,6 +235,7 @@ export default function WorkspaceLayout() {
         </nav>
 
         <main className="workspace__desk">
+          <OriginTracker />
           <Outlet />
         </main>
       </div>
@@ -251,4 +244,32 @@ export default function WorkspaceLayout() {
       {helpOpen && <HelpSheet onClose={() => setHelpOpen(false)} />}
     </div>
   );
+}
+
+// The only part of the shell that shows the theme. Reading the theme context
+// here rather than in the layout keeps a theme switch from re-rendering the
+// whole workspace — and with it every card on the desk.
+function ThemeToggle() {
+  const { theme, toggleTheme } = useTheme();
+  const next = theme === 'light' ? 'dark' : 'light';
+  return (
+    <button
+      type="button"
+      className="workspace__theme-toggle"
+      onClick={toggleTheme}
+      aria-label={`Switch to ${next} mode`}
+      title={`Switch to ${next} mode`}
+    >
+      {theme === 'light' ? <Moon size={18} /> : <Sun size={18} />}
+    </button>
+  );
+}
+
+// Remembers the page a note is opened from, so closing the note returns there
+// (see noteLink.ts). Renders nothing; it is the one subscriber to the location
+// that cards would otherwise each need.
+function OriginTracker() {
+  const location = useLocation();
+  useEffect(() => { rememberPage(location); }, [location]);
+  return null;
 }

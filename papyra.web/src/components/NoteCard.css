@@ -15,7 +15,9 @@
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-card);
   cursor: pointer;
+  /* background-color: a colour pick eases in rather than snapping. */
   transition:
+    background-color var(--dur-slow) var(--ease-inout),
     box-shadow var(--dur) var(--ease),
     transform var(--dur) var(--ease),
     border-color var(--dur) var(--ease);

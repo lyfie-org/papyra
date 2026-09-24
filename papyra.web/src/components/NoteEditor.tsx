@@ -9,6 +9,7 @@ import { useTheme } from '../hooks/useTheme';
 import { createPapyraEditorAdapter } from '../lib/papyraEditorAdapter';
 import { registerEditorGuards } from '../lib/editorGuards';
 import { putNote } from '../lib/notesApi';
+import { patchNoteInCache } from '../lib/notesCache';
 import { closeTarget } from '../lib/noteLink';
 import { useToast } from '../lib/toastContext';
 import { useMentionShare } from '../hooks/useMentionShare';
@@ -251,6 +252,7 @@ export default function NoteEditor({ note }: { note: Note }) {
     // destroy the note's real content, so frontmatter edits wait for the unlock.
     if (isLocked) return;
     const draft = getDraft();
+    patchNoteInCache(queryClient, note.id, patch);
     // Same offline-safe seam as the autosave path: parks in the outbox when the
     // API is unreachable instead of throwing away the toggle.
     await putNote(note.id, {
@@ -320,8 +322,10 @@ export default function NoteEditor({ note }: { note: Note }) {
   // YAML `color` tints the canvas; fonts come from the design tokens. The palette
   // tints are always light, so a coloured note forces a light editor (dark ink)
   // in both app themes — matching the card convention. Uncoloured notes follow
-  // the live app theme. The luthor theme only applies on mount, so both the tint
-  // and the resolved theme are folded into the editor key to re-theme on change.
+  // the live app theme. The luthor theme (and the `colored` light-lock) only
+  // apply on mount, so those two go into the editor key. The tint itself does
+  // not: it is the sheet's background, so picking another colour on an already
+  // coloured note repaints without rebuilding the editor (and losing the caret).
   const colored = !!note.color;
   const editorTheme = colored ? 'light' : theme;
   // `--note-tint` lets chrome inside the sheet (the editor's floating toolbar)
@@ -421,7 +425,7 @@ export default function NoteEditor({ note }: { note: Note }) {
       {!isLocked && (
       <div className="note-editor__canvas">
         <PapyraEditor
-          key={`${note.id}-${editorKey}-${editorTheme}-${note.color ?? 'none'}`}
+          key={`${note.id}-${editorKey}-${editorTheme}-${colored ? 'tint' : 'plain'}`}
           initialTheme={theme}
           colored={colored}
           defaultEditorView="visual"

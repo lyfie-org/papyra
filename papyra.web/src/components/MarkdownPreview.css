@@ -1,0 +1,145 @@
+/* Card-sized note body. Mirrors the editor's shapes at card scale: list markers
+   step 1 → a → i (numbers) and • → ◦ → ▪ (bullets) by depth, as luthor draws
+   them. */
+.md-preview {
+  font-family: var(--sans);
+  font-size: var(--fs-sm);
+  line-height: 1.55;
+  color: var(--text);
+  overflow-wrap: anywhere;
+  max-height: 15.5em;
+  overflow: hidden;
+  /* The fade is sized to the cap, not to the content: a short note ends above
+     it and is untouched, a long one (or one whose lines wrap past the cap)
+     fades out over its last line instead of being sliced mid-glyph. No
+     measuring, so it costs nothing across a few hundred cards. */
+  -webkit-mask-image: linear-gradient(to bottom, #000 13.5em, transparent 15.5em);
+  mask-image: linear-gradient(to bottom, #000 13.5em, transparent 15.5em);
+  -webkit-mask-size: 100% 15.5em;
+  mask-size: 100% 15.5em;
+  -webkit-mask-repeat: no-repeat;
+  mask-repeat: no-repeat;
+}
+
+.md-preview > * + * { margin-top: 0.35em; }
+
+.md-preview__p { margin: 0; }
+.md-preview__line { display: block; }
+
+.md-preview__h {
+  margin: 0;
+  font-family: var(--heading);
+  color: var(--text-h);
+  line-height: 1.3;
+}
+.md-preview__h--1 { font-size: 1.2em; }
+.md-preview__h--2 { font-size: 1.1em; }
+.md-preview__h--3 { font-size: 1em; }
+
+.md-preview strong { color: var(--text-h); font-weight: 600; }
+.md-preview mark {
+  padding: 0 0.15em;
+  border-radius: 3px;
+  background: var(--accent-bg);
+  color: inherit;
+}
+.md-preview__code {
+  padding: 0 0.3em;
+  font-size: 0.9em;
+}
+.md-preview__link {
+  color: var(--accent-text);
+  text-decoration: underline;
+  text-decoration-color: color-mix(in srgb, currentColor 40%, transparent);
+  text-underline-offset: 2px;
+}
+.md-preview__embed {
+  display: inline-block;
+  padding: 0 0.4em;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-sm);
+  font-family: var(--mono);
+  font-size: 0.85em;
+}
+
+.md-preview__quote {
+  margin: 0;
+  padding-left: 0.7em;
+  border-left: 3px solid var(--accent-border);
+  font-style: italic;
+}
+
+.md-preview__pre {
+  margin: 0;
+  padding: 0.4em 0.6em;
+  border-radius: var(--radius-sm);
+  background: var(--code-bg);
+  font-family: var(--mono);
+  font-size: 0.85em;
+  white-space: pre-wrap;
+  display: block;
+}
+
+.md-preview__hr {
+  margin: 0.5em 0;
+  border: none;
+  border-top: 1px solid var(--border);
+}
+
+/* Lists */
+.md-preview__list {
+  margin: 0;
+  padding-left: 1.4em;
+}
+.md-preview__list .md-preview__list { margin-top: 0.1em; }
+.md-preview__list li { margin: 0.1em 0; }
+.md-preview__list li::marker { color: var(--text-h); }
+ol.md-preview__list--d0 { list-style-type: decimal; }
+ol.md-preview__list--d1 { list-style-type: lower-alpha; }
+ol.md-preview__list--d2 { list-style-type: lower-roman; }
+ul.md-preview__list--d0 { list-style-type: disc; }
+ul.md-preview__list--d1 { list-style-type: circle; }
+ul.md-preview__list--d2 { list-style-type: square; }
+
+/* Tasks: a drawn box instead of the bullet, struck through when done. */
+.md-preview__list li.md-preview__task {
+  list-style: none;
+  margin-left: -1.4em;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  column-gap: 0.45em;
+  align-items: start;
+}
+.md-preview__task > .md-preview__list { grid-column: 2; }
+.md-preview__box {
+  display: inline-grid;
+  place-items: center;
+  width: 0.95em;
+  height: 0.95em;
+  margin-top: 0.3em;
+  border: 1.5px solid var(--accent-border);
+  border-radius: 3px;
+  font-size: 0.75em;
+  line-height: 1;
+  color: var(--accent-fg);
+}
+.md-preview__task.is-done > .md-preview__box {
+  background: var(--accent);
+  border-color: var(--accent);
+}
+.md-preview__task.is-done > .md-preview__item-text { text-decoration: line-through; }
+
+/* Tinted cards: the tints are always light, so every ink pins to the dark tint
+   ink in both themes (same convention as the card snippet and tags). */
+.note-card--colored .md-preview { color: var(--tint-ink-muted); }
+[data-theme='dark'] .note-card--colored .md-preview { color: var(--tint-ink-soft); }
+.note-card--colored .md-preview strong,
+.note-card--colored .md-preview__h,
+.note-card--colored .md-preview__list li::marker { color: var(--tint-ink); }
+.note-card--colored .md-preview__link { color: #205c38; }
+.note-card--colored .md-preview mark,
+.note-card--colored .md-preview__pre { background: var(--tint-scrim); }
+.note-card--colored .md-preview__quote,
+.note-card--colored .md-preview__embed,
+.note-card--colored .md-preview__box { border-color: var(--tint-ink-muted); }
+.note-card--colored .md-preview__hr { border-top-color: var(--tint-scrim); }

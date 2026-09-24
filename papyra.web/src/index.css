@@ -4,16 +4,13 @@
 @import './styles/tokens.css';
 
 
-/* Only fires during the ~250ms window when useTheme adds this class */
-.theme-transitioning,
-.theme-transitioning *,
-.theme-transitioning *::before,
-.theme-transitioning *::after {
-  transition:
-    background-color var(--dur-slow) var(--ease-inout),
-    color            var(--dur)      var(--ease-inout),
-    border-color     var(--dur)      var(--ease-inout),
-    box-shadow       var(--dur)      var(--ease-inout) !important;
+/* Theme switch: ThemeProvider runs it as a view transition, so the whole page
+   cross-fades as two composited snapshots. Slightly longer and softer than UI
+   motion — it is the whole room changing its light. */
+::view-transition-old(root),
+::view-transition-new(root) {
+  animation-duration: 420ms;
+  animation-timing-function: var(--ease-inout);
 }
 
 html,
@@ -115,4 +112,7 @@ textarea {
   --papyra-text-heading:  #3d2c1e;
   --papyra-border:        rgba(61, 44, 30, 0.18);
   --papyra-code-surface:  rgba(61, 44, 30, 0.06);
+  /* Links too: dark mode's accent text is a pale sage that sank to ~2:1 on a
+     pastel tint. The light theme's deep green holds AA on every tint. */
+  --papyra-accent-text:   #205c38;
 }
