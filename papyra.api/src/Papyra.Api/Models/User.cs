@@ -32,6 +32,15 @@ public class User
     public bool NotifyOnShare { get; set; } = true;
     /// <summary>Security mail (password changed, reset requested). Cannot be disabled.</summary>
     public bool NotifyOnSecurity { get; set; } = true;
+
+    // ── Vault (secure notes) ──────────────────────────────────────────────────
+    // A PIN is required before any note can be locked; biometrics are an optional
+    // second way in. Only a BCrypt hash is stored. The failure counter and lockout
+    // live on the row (not in memory) so a restart does not hand an attacker a
+    // fresh set of guesses. See Security/VaultPin.cs for the policy.
+    public string? VaultPinHash { get; set; }
+    public int VaultPinFailures { get; set; }
+    public DateTime? VaultPinLockedUntilUtc { get; set; }
 }
 
 // A one-time token for a password reset or an invitation. Rows are short-lived

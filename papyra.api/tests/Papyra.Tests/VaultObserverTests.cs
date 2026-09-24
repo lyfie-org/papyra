@@ -17,11 +17,12 @@ public sealed class VaultObserverTests
 
     // Build an observer over a users-root and pre-create tenant "1"'s notes dir so
     // StartAsync auto-discovers and watches it.
-    private static VaultObserver NewObserver(string usersDir, out VaultState state, out WriteRing ring, out string notesDir)
+    private static VaultObserver NewObserver(
+        string usersDir, out VaultState state, out WriteRing ring, out string notesDir, int debounceMs = 150)
     {
         state = new VaultState();
         ring = new WriteRing(new MemoryCache(new MemoryCacheOptions()));
-        var options = new VaultObserverOptions { UsersDir = usersDir, DebounceMs = 150 };
+        var options = new VaultObserverOptions { UsersDir = usersDir, DebounceMs = debounceMs };
         notesDir = options.UserNotesDir(Uid);
         Directory.CreateDirectory(notesDir);
         return new VaultObserver(
@@ -31,8 +32,15 @@ public sealed class VaultObserverTests
     [Fact]
     public async Task RapidWrites_CollapseToSingleUpdate()
     {
+        // The debounce is a trailing window: a burst collapses to one flush only if
+        // no gap between two writes exceeds it. At the production-like 150ms a
+        // stalled CI runner (GC, a slow disk flush) occasionally paused longer than
+        // that mid-loop and the burst legitimately became two flushes — the test was
+        // measuring the runner, not the debounce. A 1s window is far wider than any
+        // gap inside a 20-write loop, so this asserts the behaviour itself.
+        const int debounceMs = 1000;
         var dir = NewTempDir();
-        var observer = NewObserver(dir, out var state, out _, out var notesDir);
+        var observer = NewObserver(dir, out var state, out _, out var notesDir, debounceMs);
         try
         {
             await observer.StartAsync(default);
@@ -42,10 +50,13 @@ public sealed class VaultObserverTests
                 await File.WriteAllTextAsync(path, $"---\nid: n1\ntitle: v{i}\n---\n\nbody {i}");
 
             await WaitUntil(() => observer.ProcessedEvents >= 1, WaitTimeoutMs);
-            await Task.Delay(300); // settle: prove no further flushes land
+            // Settle for longer than a whole window, so a straggling watcher event
+            // that would schedule a second flush has time to show up.
+            await Task.Delay(debounceMs + 500);
 
             Assert.Equal(1, observer.ProcessedEvents); // debounced to one update
             Assert.Equal(1, state.Count(Uid));
+            Assert.Equal("v19", state.Snapshot(Uid).Single().Title); // and it read the last write
         }
         finally
         {

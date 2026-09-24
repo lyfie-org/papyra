@@ -1,5 +1,6 @@
 import type { QueryClient } from '@tanstack/react-query';
 import { clearWrites } from './outbox';
+import { forgetUnlock } from './vault';
 
 /**
  * Wipe everything the signed-in user left behind in this browser.
@@ -20,6 +21,8 @@ export async function clearSessionData(queryClient: QueryClient): Promise<void> 
   // Synchronous and first: it's what the UI reads, so clearing it before the
   // route change means no frame can paint the previous user's notes.
   queryClient.clear();
+  // An open vault must not survive into the next person's session.
+  forgetUnlock();
 
   navigator.serviceWorker?.controller?.postMessage({ type: 'papyra-clear-data' });
 

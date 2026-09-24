@@ -40,6 +40,14 @@ public sealed class UnlockTokenStore
 
     public void Revoke(string token) => _tokens.TryRemove(token, out _);
 
+    // Drop every live unlock for this user — on sign-out, a password change, or a
+    // PIN change, so an unlock earned under the old credentials does not outlive them.
+    public void RevokeUser(string userId)
+    {
+        foreach (var (token, entry) in _tokens)
+            if (string.Equals(entry.UserId, userId, StringComparison.Ordinal)) _tokens.TryRemove(token, out _);
+    }
+
     private void Prune()
     {
         var now = DateTime.UtcNow;

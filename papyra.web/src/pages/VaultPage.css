@@ -1,0 +1,43 @@
+.vault-page__lock {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-left: auto;
+  padding: 0.45rem 0.85rem;
+  border: 1px solid var(--accent-border);
+  border-radius: var(--radius-sm);
+  background: var(--accent-bg);
+  color: var(--text-h);
+  font-family: var(--sans);
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+.vault-page__lock:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.vault-page__open {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  margin-left: 0.5rem;
+  color: var(--accent-text);
+  font-size: var(--fs-xs);
+}
+
+.vault-page__setup {
+  max-width: 30rem;
+  margin: var(--space-4) 0 var(--space-8);
+  padding: var(--space-6);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+
+.vault-page__setup-title {
+  margin: 0 0 var(--space-2);
+  font-family: var(--heading);
+  font-size: var(--fs-lg);
+  color: var(--text-h);
+}

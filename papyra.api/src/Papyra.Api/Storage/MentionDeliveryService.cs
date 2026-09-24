@@ -253,7 +253,7 @@ public sealed partial class MentionDeliveryService : BackgroundService
             await db.SaveChangesAsync(ct);
 
             await AppendToInboxAsync(recipient.Id.ToString(), job, blockId, blockText, ct);
-            await _hub.Clients.All.SendAsync("InboxDelivered", new { recipientId = recipient.Id }, ct);
+            await _hub.Clients.User(recipient.Id.ToString()).SendAsync("InboxDelivered", new { recipientId = recipient.Id }, ct);
             await NotifyByEmailAsync(recipient, job, ct);
         }
     }

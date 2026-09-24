@@ -5,7 +5,7 @@ import {
   User as UserIcon, Palette, Database, Info, Camera,
   Sun, Moon, Monitor, Upload, Download, RefreshCw, KeyRound, Copy, Trash2, Lock, ShieldAlert,
   Fingerprint, CheckCircle2, GitBranch, AlertTriangle, Bell, Mail, KeySquare, Send, UserPlus,
-  Sparkles, Play, Cog,
+  Sparkles, Play, Cog, LockOpen,
 } from 'lucide-react';
 import { useGitConfig, useSaveGitConfig, useRunGitSync } from '../hooks/useGitSync';
 import {
@@ -17,6 +17,10 @@ import {
   type AiConfig, type PullProgress,
 } from '../hooks/useAi';
 import { useWebAuthnDevices } from '../hooks/useWebAuthnDevices';
+import { useVault } from '../hooks/useVault';
+import VaultUnlock from '../components/VaultUnlock';
+import VaultPinForm from '../components/VaultPinForm';
+import { parseUtc } from '../lib/vault';
 import { useJobs, useRunJob, type Job } from '../hooks/useJobs';
 import {
   choiceFor, endpointLabel, friendlyModelName, providerLabel, sameModel,
@@ -341,11 +345,14 @@ function AppearanceTab() {
   );
 }
 
-// ── Security (biometric devices) ─────────────────────────────────────────────────
-// Enrol a platform authenticator so `secure: true` notes can be unlocked. The
-// private key never leaves the device; Papyra only stores the public key.
+// ── Security (vault PIN + biometric devices) ────────────────────────────────────
+// Locked notes open with the vault PIN, which every vault must have; a device's
+// built-in authenticator (Touch ID, Face ID, Windows Hello) is an optional
+// shortcut on top. Adding or removing a device needs the vault open, so a
+// borrowed session cannot quietly add its own fingerprint.
 function SecurityTab() {
   const confirm = useConfirm();
+  const { status, open, lock } = useVault();
   const { devices, enroll, revoke, enrolling, error, setError } = useWebAuthnDevices();
   const [name, setName] = useState('');
   const [justEnrolled, setJustEnrolled] = useState(false);
@@ -359,7 +366,13 @@ function SecurityTab() {
     return () => { cancelled = true; };
   }, []);
 
-  const supported = isWebAuthnAvailable();
+  const s = status.data;
+  const pinSet = !!s?.pinSet;
+  const bio = s?.biometric;
+  // The server knows why this address can't do biometrics (an IP, plain http);
+  // the browser only knows whether it has the API.
+  const problem = bio?.problem?.message
+    ?? (!isWebAuthnAvailable() ? 'This browser can’t use biometric keys here. It needs HTTPS (or localhost).' : null);
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
@@ -371,7 +384,7 @@ function SecurityTab() {
   async function remove(device: { id: number; name: string }) {
     if (!(await confirm({
       title: 'Remove this device?',
-      body: `“${device.name}” will no longer be able to unlock your locked notes. You can register it again later.`,
+      body: `“${device.name}” will no longer be able to unlock your vault. Your PIN still works, and you can register the device again later.`,
       confirmLabel: 'Remove',
       destructive: true,
     }))) return;
@@ -380,21 +393,48 @@ function SecurityTab() {
 
   return (
     <div className="settings__panel">
-      <h2 id="biometric-unlock" className="settings__subhead">Biometric unlock</h2>
+      <h2 id="vault-pin" className="settings__subhead">Vault PIN</h2>
       <p className="settings__hint">
-        Register this device’s built-in authenticator (Touch ID, Face ID, or Windows Hello) to unlock notes
-        marked <code>secure: true</code>. The private key never leaves your device — Papyra only stores the
-        public key, and a locked note’s contents stay on the server until you authenticate.
+        Locked notes open with your vault PIN. It is required before you can lock a note, works on every
+        device, and is separate from your account password. Too many wrong tries pause it, then switch it off
+        until you reset it here with your password.
+      </p>
+      {status.isLoading && <p>Loading…</p>}
+      {s && (
+        <>
+          {s.pinDisabled && (
+            <p className="settings__error" role="alert">
+              Your PIN is switched off after too many wrong tries. Set a new one below to turn it back on.
+            </p>
+          )}
+          <VaultPinForm />
+          {pinSet && open && (
+            <p className="settings__msg">
+              <LockOpen size={14} /> Your vault is open on this device.
+              <button type="button" className="settings__link" onClick={() => void lock()}>Lock it now</button>
+            </p>
+          )}
+        </>
+      )}
+
+      <h2 id="biometric-unlock" className="settings__subhead">Biometric unlock (optional)</h2>
+      <p className="settings__hint">
+        Register this device’s built-in authenticator (Touch ID, Face ID, or Windows Hello) as a quicker way to
+        open your vault. The private key never leaves your device — Papyra only stores the public key. A
+        registered device works at the address you registered it on; your PIN works everywhere.
       </p>
 
-      {!supported && (
+      {!pinSet && s && (
         <p className="settings__hint settings__hint--warn">
-          <ShieldAlert size={15} />
-          This browser can’t register a key here. WebAuthn needs a secure context — use{' '}
-          <code>localhost</code> or serve Papyra over HTTPS.
+          <ShieldAlert size={15} /> Set a vault PIN first — biometrics are an extra way in, not the only one.
         </p>
       )}
-      {supported && platformAvailable === false && (
+      {pinSet && problem && (
+        <p className="settings__hint settings__hint--warn">
+          <ShieldAlert size={15} /> {problem}
+        </p>
+      )}
+      {pinSet && !problem && platformAvailable === false && (
         <p className="settings__hint settings__hint--warn">
           <ShieldAlert size={15} />
           No built-in biometric sensor was detected on this device. You can still register a security key
@@ -402,38 +442,58 @@ function SecurityTab() {
         </p>
       )}
 
-      <form className="settings__row" onSubmit={submit}>
-        <input
-          className="settings__select"
-          placeholder="Device name (e.g. Work laptop)"
-          value={name}
-          onChange={e => { setName(e.target.value); setError(null); }}
-          disabled={!supported || enrolling}
-        />
-        <button type="submit" className="settings__btn" disabled={!supported || enrolling}>
-          <Fingerprint size={16} /> {enrolling ? 'Waiting for authenticator…' : 'Register this device'}
-        </button>
-      </form>
+      {pinSet && !problem && !open && (
+        <div className="settings__vault-unlock">
+          <p className="settings__hint">Unlock your vault to add or remove a device.</p>
+          <VaultUnlock onUnlocked={() => setError(null)} />
+        </div>
+      )}
+
+      {pinSet && !problem && open && (
+        <form className="settings__row" onSubmit={submit}>
+          <input
+            className="settings__select"
+            placeholder="Device name (e.g. Work laptop)"
+            value={name}
+            maxLength={60}
+            onChange={e => { setName(e.target.value); setError(null); }}
+            disabled={enrolling}
+          />
+          <button type="submit" className="settings__btn" disabled={enrolling}>
+            <Fingerprint size={16} /> {enrolling ? 'Waiting for your device…' : 'Register this device'}
+          </button>
+        </form>
+      )}
 
       {error && <p className="settings__error" role="alert">{error}</p>}
       {justEnrolled && (
-        <p className="settings__msg"><CheckCircle2 size={14} /> Device registered — you can now unlock secure notes.</p>
+        <p className="settings__msg"><CheckCircle2 size={14} /> Device registered — you can now unlock with it here.</p>
       )}
 
       {devices.isLoading && <p>Loading devices…</p>}
       {devices.data && devices.data.length > 0 && (
         <table className="settings__users">
           <thead>
-            <tr><th>Device</th><th>Registered</th><th>Last used</th><th /></tr>
+            <tr><th>Device</th><th>Works at</th><th>Registered</th><th>Last used</th><th /></tr>
           </thead>
           <tbody>
             {devices.data.map(d => (
               <tr key={d.id}>
                 <td>{d.name}</td>
-                <td>{new Date(d.createdUtc).toLocaleDateString()}</td>
-                <td>{d.lastUsedUtc ? new Date(d.lastUsedUtc).toLocaleString() : 'Never'}</td>
                 <td>
-                  <button type="button" className="settings__link settings__link--danger" onClick={() => void remove(d)}>
+                  {d.rpId || 'any address'}
+                  {bio?.rpId && (d.rpId === bio.rpId || !d.rpId) && <span className="settings__tag"> · here</span>}
+                </td>
+                <td>{parseUtc(d.createdUtc).toLocaleDateString()}</td>
+                <td>{d.lastUsedUtc ? parseUtc(d.lastUsedUtc).toLocaleString() : 'Never'}</td>
+                <td>
+                  <button
+                    type="button"
+                    className="settings__link settings__link--danger"
+                    disabled={!open}
+                    title={open ? undefined : 'Unlock your vault to remove a device'}
+                    onClick={() => void remove(d)}
+                  >
                     <Trash2 size={13} /> Remove
                   </button>
                 </td>
@@ -442,8 +502,8 @@ function SecurityTab() {
           </tbody>
         </table>
       )}
-      {devices.data && devices.data.length === 0 && (
-        <p className="settings__hint">No devices registered yet. Secure notes stay locked until you add one.</p>
+      {devices.data && devices.data.length === 0 && pinSet && (
+        <p className="settings__hint">No devices registered. Your PIN opens the vault.</p>
       )}
     </div>
   );

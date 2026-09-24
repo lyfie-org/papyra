@@ -27,7 +27,9 @@ public static class SmartCollectionEvaluator
                 "pinned" => note.Pinned == value.Equals("true", StringComparison.OrdinalIgnoreCase),
                 "kind" => string.Equals(note.Kind, value, StringComparison.OrdinalIgnoreCase),
                 "text" => (note.Title ?? string.Empty).Contains(value, StringComparison.OrdinalIgnoreCase)
-                          || (note.Body ?? string.Empty).Contains(value, StringComparison.OrdinalIgnoreCase),
+                          // Never a secure note's body: membership would answer "does the
+                          // locked text contain this?" without unlocking it.
+                          || (!note.Secure && (note.Body ?? string.Empty).Contains(value, StringComparison.OrdinalIgnoreCase)),
                 _ => false,
             };
         }

@@ -69,7 +69,7 @@ public sealed class ImportService : BackgroundService
             catch (Exception ex)
             {
                 _logger.LogError(ex, "Import job {JobId} ({Provider}) failed", job.JobId, job.Provider);
-                await _hub.Clients.All.SendAsync(
+                await _hub.Clients.User(job.UserId).SendAsync(
                     "ImportProgress",
                     new { jobId = job.JobId, done = true, error = ex.Message },
                     ct);
@@ -114,12 +114,12 @@ public sealed class ImportService : BackgroundService
                 await _storage.WriteAsync(path, note, ct);
                 _state.Upsert(job.UserId, path, note);
                 _search.IndexNote(job.UserId, note);
-                await _hub.Clients.All.SendAsync("NoteCreated", NoteMetadata.From(note), ct);
+                await _hub.Clients.User(job.UserId).SendAsync("NoteCreated", NoteMetadata.From(note), ct);
                 imported++;
             }
 
             processed++;
-            await _hub.Clients.All.SendAsync(
+            await _hub.Clients.User(job.UserId).SendAsync(
                 "ImportProgress",
                 new { jobId = job.JobId, processed, total, done = false },
                 ct);
@@ -130,7 +130,7 @@ public sealed class ImportService : BackgroundService
         if (job.Provider == "obsidian")
             await ImportAttachmentsAsync(zip, mediaDir, ct);
 
-        await _hub.Clients.All.SendAsync(
+        await _hub.Clients.User(job.UserId).SendAsync(
             "ImportProgress",
             new { jobId = job.JobId, processed, total, done = true, imported },
             ct);

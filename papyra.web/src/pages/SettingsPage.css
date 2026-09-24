@@ -739,3 +739,20 @@
 @media (max-width: 640px) {
   .settings__installed-item { flex-direction: column; align-items: stretch; }
 }
+
+/* Security tab: which address a passkey belongs to, and the inline vault unlock. */
+.settings__tag {
+  color: var(--accent-text);
+  font-size: var(--fs-xs);
+}
+.settings__vault-unlock {
+  display: grid;
+  justify-items: start;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+}
+.settings__vault-unlock .vault-unlock { align-items: flex-start; }
+.settings__link:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}

@@ -16,4 +16,9 @@ public class WebAuthnCredential
     public string Name { get; set; } = string.Empty;
     public DateTime CreatedUtc { get; set; }
     public DateTime? LastUsedUtc { get; set; }
+    // The relying-party id (host) the credential was created for. A passkey only
+    // works on that host, so the device list can say where it applies and an
+    // unlock only offers the credentials this host can use. Empty for rows created
+    // before this was recorded.
+    public string RpId { get; set; } = string.Empty;
 }

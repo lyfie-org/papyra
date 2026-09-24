@@ -87,7 +87,10 @@ public sealed class SearchIndexService : IDisposable
         new StringField("userId", userId, Field.Store.YES),
         new TextField("title", note.Title ?? string.Empty, Field.Store.YES) { Boost = 2f },
         new StringField("tags", string.Join(' ', note.Tags), Field.Store.YES),
-        new TextField("body", note.Body ?? string.Empty, Field.Store.NO),
+        // A secure note is findable by title and tags only. Indexing its body would
+        // turn search into an oracle for the locked text: a hit on a word answers
+        // "does the secret note contain this?" without ever unlocking it.
+        new TextField("body", note.Secure ? string.Empty : note.Body ?? string.Empty, Field.Store.NO),
     };
 
     // Scoped to the owning tenant: deleting by the bare id would also drop every

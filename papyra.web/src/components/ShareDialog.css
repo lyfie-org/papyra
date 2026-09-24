@@ -249,3 +249,13 @@
   cursor: pointer;
 }
 .share__revoke:hover { background: var(--danger-bg); color: var(--danger); }
+
+/* One control height across the link row (and the people row), so the select,
+   the date and number fields and the button sit on one line instead of the
+   select riding low beside the taller inputs. */
+.share__link-form select,
+.share__link-form input,
+.share__link-form button {
+  box-sizing: border-box;
+  height: 2.5rem;
+}

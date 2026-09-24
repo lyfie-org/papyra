@@ -1,4 +1,5 @@
 import { useState, useRef} from 'react';
+import { createPortal } from 'react-dom';
 import { Link2, Users, X, Trash2, Plus } from 'lucide-react';
 import type { Note } from '../types/note';
 import { useNoteShares, useCreateShare, useRevokeShare, type Share } from '../hooks/useShares';
@@ -55,8 +56,19 @@ export default function ShareDialog({ note, onClose }: { note: Note; onClose: ()
     catch { /* clipboard blocked */ }
   }
 
-  return (
-    <div className="share" onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}>
+  // Portalled to <body>. Opened from a card, this used to render inside the
+  // grid cell, and the cell is positioned with a CSS transform — which makes it
+  // the containing block for anything `position: fixed` inside it. The
+  // "full-screen" overlay was clipped to one column. Pointer events are stopped
+  // at the root because React still bubbles them up the component tree, where
+  // the card's drag handle would read a click in the dialog as a drag.
+  return createPortal(
+    <div
+      className="share"
+      onMouseDown={(e) => { if (e.target === e.currentTarget) onClose(); }}
+      onPointerDown={(e) => e.stopPropagation()}
+      onClick={(e) => e.stopPropagation()}
+    >
       <div ref={dialogRef} className="share__dialog" role="dialog" aria-modal="true" aria-label="Share note">
         <header className="share__head">
           <h2 className="share__title">Share “{note.title.trim() || 'Untitled'}”</h2>
@@ -139,6 +151,7 @@ export default function ShareDialog({ note, onClose }: { note: Note; onClose: ()
           </ul>
         </section>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
