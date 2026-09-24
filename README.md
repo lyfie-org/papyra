@@ -147,8 +147,8 @@ docker compose up --build # → :8080
 
 The edge harness needs a live instance and a throwaway vault; see
 [`papyra.api/tests/edge/README.md`](papyra.api/tests/edge/README.md).
-Its AI-surface checks currently fail by design, because the assistant is
-flag-gated off.
+Its assistant checks switch on the feature flag — with the assistant off they
+assert its routes are correctly hidden — so both suites are green either way.
 
 ---
 

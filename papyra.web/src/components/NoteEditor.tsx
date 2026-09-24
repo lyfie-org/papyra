@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { PapyraEditor, type PapyraEditorRef } from '@lyfie/luthor/presets/papyra';
@@ -7,6 +7,7 @@ import type { Note } from '../types/note';
 import { useAutoSave, type Draft } from '../hooks/useAutoSave';
 import { useTheme } from '../hooks/useTheme';
 import { createPapyraEditorAdapter } from '../lib/papyraEditorAdapter';
+import { registerEditorGuards } from '../lib/editorGuards';
 import { putNote } from '../lib/notesApi';
 import { closeTarget } from '../lib/noteLink';
 import { useToast } from '../lib/toastContext';
@@ -46,6 +47,11 @@ export default function NoteEditor({ note }: { note: Note }) {
   const closeTo = closeTarget(location);
   const queryClient = useQueryClient();
   const editorRef = useRef<PapyraEditorRef | null>(null);
+  // Unregisters the editor guards (see editorGuards.ts) of the current mount —
+  // the editor remounts on a remote adopt or theme change, each mount gets its own. No unmount
+  // cleanup: the listener dies with its Lexical instance, and a StrictMode
+  // effect replay would strip the guards from an editor that is still live.
+  const unregisterGuards = useRef<(() => void) | null>(null);
   // The scrolling editor panel — the ghost TOC measures heading offsets against it.
   const editorScrollRef = useRef<HTMLElement>(null);
   // Distraction-free focus mode (shared with the SignalR bridge, which buffers
@@ -318,7 +324,12 @@ export default function NoteEditor({ note }: { note: Note }) {
   // and the resolved theme are folded into the editor key to re-theme on change.
   const colored = !!note.color;
   const editorTheme = colored ? 'light' : theme;
-  const style = note.color ? { background: note.color } : undefined;
+  // `--note-tint` lets chrome inside the sheet (the editor's floating toolbar)
+  // derive a solid colour from the tint — the editor surface itself is
+  // transparent on a coloured note so the paper shows through.
+  const style = note.color
+    ? ({ background: note.color, '--note-tint': note.color } as CSSProperties)
+    : undefined;
 
   return (
     <div
@@ -369,36 +380,6 @@ export default function NoteEditor({ note }: { note: Note }) {
           readOnly={isLocked}
           onChange={(e) => { titleRef.current = e.target.value; setTitle(e.target.value); bump(); }}
         />
-        {!focus && (
-          <>
-            <span className="note-editor__status" role="status">
-              {STATUS_LABEL[status]}
-            </span>
-            <NoteToolbar
-              pinned={note.pinned}
-              color={note.color}
-              onTogglePin={() => void saveFrontmatter({ pinned: !note.pinned })}
-              onPickColor={(c) => void saveFrontmatter({ color: c })}
-              onRecover={() => setRecoverOpen(true)}
-              onTimeMachine={() => void openTimeMachine()}
-              onFocus={enterFocus}
-              secure={note.secure ?? false}
-              canToggleSecure={!isLocked}
-              onToggleSecure={() => {
-                const next = !(note.secure ?? false);
-                void saveFrontmatter({ secure: next });
-                toast(next
-                  ? 'Note locked and moved to the Vault.'
-                  : 'Note unlocked — it is back with your other notes.');
-              }}
-              onArchive={() => { void saveFrontmatter({ archived: true }); navigate(closeTo); }}
-              onShare={() => setShareOpen(true)}
-              onTrash={() => {
-                void trash();
-              }}
-            />
-          </>
-        )}
       </header>
 
       {!focus && <CategoryEditor tags={note.tags} onChange={(tags) => void saveFrontmatter({ tags })} />}
@@ -457,6 +438,9 @@ export default function NoteEditor({ note }: { note: Note }) {
           onDesync={(info) => console.warn('[papyra] editor DOM diverged from model', info)}
           onReady={(methods) => {
             editorRef.current = methods;
+            unregisterGuards.current?.();
+            const lexical = methods.getLexicalEditor();
+            unregisterGuards.current = lexical ? registerEditorGuards(lexical) : null;
             // defaultContent loads as plain text, so parse the markdown into the
             // visual surface explicitly — otherwise the body renders as raw source.
             methods.setMarkdown(body);
@@ -483,6 +467,39 @@ export default function NoteEditor({ note }: { note: Note }) {
       )}
 
       {!focus && !isLocked && <GhostCards noteId={note.id} />}
+
+      {/* Actions and save state sit under the note body, where writing ends, and
+          stick to the bottom of the sheet so a long note keeps them in reach. */}
+      {!focus && (
+        <footer className="note-editor__footer">
+          <NoteToolbar
+            pinned={note.pinned}
+            color={note.color}
+            onTogglePin={() => void saveFrontmatter({ pinned: !note.pinned })}
+            onPickColor={(c) => void saveFrontmatter({ color: c })}
+            onRecover={() => setRecoverOpen(true)}
+            onTimeMachine={() => void openTimeMachine()}
+            onFocus={enterFocus}
+            secure={note.secure ?? false}
+            canToggleSecure={!isLocked}
+            onToggleSecure={() => {
+              const next = !(note.secure ?? false);
+              void saveFrontmatter({ secure: next });
+              toast(next
+                ? 'Note locked and moved to the Vault.'
+                : 'Note unlocked — it is back with your other notes.');
+            }}
+            onArchive={() => { void saveFrontmatter({ archived: true }); navigate(closeTo); }}
+            onShare={() => setShareOpen(true)}
+            onTrash={() => {
+              void trash();
+            }}
+          />
+          <span className="note-editor__status" role="status">
+            {STATUS_LABEL[status]}
+          </span>
+        </footer>
+      )}
 
       {recoverOpen && (
         <SnapshotPanel

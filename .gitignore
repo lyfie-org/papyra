@@ -538,3 +538,6 @@ papyra.app/.astro/
 # live here; wrangler keeps auth in the user profile, outside the project.
 .wrangler/
 /blog
+
+# Throwaway vault for the blog screenshots (see blog/assets/capture/README.md)
+.blogdata/
