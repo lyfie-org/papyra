@@ -6,6 +6,10 @@ a Docker Hub tag and a GitHub Release.
 
 <!-- new releases are inserted directly below this line -->
 
+## [0.1.5] - 2026-09-24
+
+- feat: formatted card previews; smooth theme and colour changes (a647a4a)
+
 ## [0.1.4] - 2026-09-24
 
 - fix: masonry To Do grid, solid selection toolbar on coloured notes (e7b09f9)
