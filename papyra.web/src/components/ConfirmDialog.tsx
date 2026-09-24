@@ -1,4 +1,5 @@
 import { useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { AlertTriangle } from 'lucide-react';
 import { useDialogFocus } from '../hooks/useDialogFocus';
 import './ConfirmDialog.css';
@@ -44,8 +45,19 @@ export default function ConfirmDialog({
   // Focus Cancel, not Confirm: a stray Enter should not destroy anything.
   useEffect(() => { confirmRef.current?.focus(); }, []);
 
-  return (
-    <div className="confirm" onMouseDown={e => { if (e.target === e.currentTarget) onCancel(); }}>
+  // Portalled to <body>. Opened from a card, this used to render inside the
+  // grid cell, and the cell is positioned with a CSS transform — which makes it
+  // the containing block for anything `position: fixed` inside it. The
+  // "full-screen" overlay was clipped to one column. Pointer events are stopped
+  // at the root because React still bubbles them up the component tree, where
+  // the card's drag handle would read a click in the dialog as a drag.
+  return createPortal(
+    <div
+      className="confirm"
+      onMouseDown={e => { if (e.target === e.currentTarget) onCancel(); }}
+      onPointerDown={e => e.stopPropagation()}
+      onClick={e => e.stopPropagation()}
+    >
       <div
         ref={ref}
         className="confirm__box"
@@ -70,6 +82,7 @@ export default function ConfirmDialog({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body,
   );
 }
