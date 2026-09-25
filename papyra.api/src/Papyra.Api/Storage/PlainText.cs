@@ -21,7 +21,8 @@ public static partial class PlainText
     {
         if (string.IsNullOrWhiteSpace(markdown)) return string.Empty;
 
-        var text = markdown;
+        // CRLF (a file edited elsewhere) → LF, so Multiline `$` lands at line end.
+        var text = markdown.Replace("\r\n", "\n").Replace('\r', '\n');
         text = FencedCode().Replace(text, " ");
         text = InlineCode().Replace(text, "$1");
         text = MediaEmbed().Replace(text, " ");
@@ -42,6 +43,7 @@ public static partial class PlainText
         // Collapse the whitespace the stripping left behind, but keep single line
         // breaks so a multi-line note still reads as separate lines.
         text = IntraLineSpace().Replace(text, " ");
+        text = LineEdgeSpace().Replace(text, "\n"); // a stripped trailing anchor leaves its space
         text = BlankRun().Replace(text, "\n");
         return text.Trim();
     }
@@ -69,19 +71,22 @@ public static partial class PlainText
     [GeneratedRegex(@"\[([^\]]+)\]\([^)]*\)")]
     private static partial Regex Link();
 
-    [GeneratedRegex(@"^[ ]{0,3}#{1,6}[ ]+", RegexOptions.Multiline)]
+    // Block markers. A marker may end the line (an empty item/heading, or one
+    // whose trailing space an editor trimmed), and list markers may be indented
+    // any depth (luthor nests by 4 spaces), so neither leaves a stray "3." behind.
+    [GeneratedRegex(@"^[ \t]{0,3}#{1,6}(?:[ \t]+|$)", RegexOptions.Multiline)]
     private static partial Regex Heading();
 
-    [GeneratedRegex(@"^[ ]{0,3}>[ ]?", RegexOptions.Multiline)]
+    [GeneratedRegex(@"^[ \t]{0,3}>[ \t]?", RegexOptions.Multiline)]
     private static partial Regex Quote();
 
-    [GeneratedRegex(@"^[ ]{0,3}[-*+][ ]+\[[ xX]\][ ]+", RegexOptions.Multiline)]
+    [GeneratedRegex(@"^[ \t]*[-*+][ \t]+\[[ xX]\](?:[ \t]+|$)", RegexOptions.Multiline)]
     private static partial Regex TaskMarker();
 
-    [GeneratedRegex(@"^[ ]{0,3}[-*+][ ]+", RegexOptions.Multiline)]
+    [GeneratedRegex(@"^[ \t]*[-*+](?:[ \t]+|$)", RegexOptions.Multiline)]
     private static partial Regex BulletMarker();
 
-    [GeneratedRegex(@"^[ ]{0,3}\d+\.[ ]+", RegexOptions.Multiline)]
+    [GeneratedRegex(@"^[ \t]*\d+\.(?:[ \t]+|$)", RegexOptions.Multiline)]
     private static partial Regex OrderedMarker();
 
     [GeneratedRegex(@"^[ ]{0,3}(?:[-*_][ ]*){3,}$", RegexOptions.Multiline)]
@@ -98,6 +103,9 @@ public static partial class PlainText
 
     [GeneratedRegex(@"[ \t]+")]
     private static partial Regex IntraLineSpace();
+
+    [GeneratedRegex(@"[ \t]*\n[ \t]*")]
+    private static partial Regex LineEdgeSpace();
 
     [GeneratedRegex(@"\n[ \t]*\n[\s]*")]
     private static partial Regex BlankRun();

@@ -1,0 +1,376 @@
+/* Version history, inside the note sheet. The bar is sticky at the top edge of
+   the sheet — the mirror of the sticky footer — so the timeline stays in reach
+   while the preview below scrolls. It bleeds to the sheet's edges the same way
+   the footer does; `inherit` carries a coloured note's tint. */
+.note-history {
+  position: sticky;
+  top: calc(-1 * var(--space-6));
+  z-index: 4;
+  display: grid;
+  gap: var(--space-3);
+  margin: calc(-1 * var(--space-6)) calc(-1 * var(--space-6)) var(--space-4);
+  padding: var(--space-4) var(--space-6) var(--space-3);
+  border-bottom: 1px solid var(--border);
+  border-radius: var(--radius-lg) var(--radius-lg) 0 0;
+  background: inherit;
+  animation: note-history-in var(--dur) var(--ease);
+}
+
+@keyframes note-history-in {
+  from { opacity: 0; transform: translateY(-6px); }
+  to   { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .note-history { animation: none; }
+}
+
+@media (max-width: 620px) {
+  .note-history {
+    top: calc(-1 * var(--space-4));
+    margin: calc(-1 * var(--space-4)) calc(-1 * var(--space-4)) var(--space-3);
+    padding: var(--space-3) var(--space-4);
+  }
+}
+
+.note-history__head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 0;
+}
+
+.note-history__title {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  flex-shrink: 0;
+  font-family: var(--heading);
+  font-size: var(--fs-md);
+  color: var(--text-h);
+}
+
+.note-history__when {
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: 0.2rem var(--space-2);
+  min-width: 0;
+  margin-left: auto;
+  font-size: var(--fs-sm);
+}
+
+.note-history__stamp {
+  color: var(--text-h);
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.note-history__stamp.is-now { color: var(--accent-text); }
+
+.note-history__ago,
+.note-history__pos,
+.note-history__muted {
+  color: var(--text);
+  font-size: var(--fs-xs);
+}
+.note-history__muted { margin: 0; }
+
+.note-history__stats {
+  display: inline-flex;
+  gap: 0.3rem;
+  padding: 0.05rem 0.45rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  font-family: var(--mono);
+  font-size: var(--fs-2xs);
+  color: var(--text);
+}
+.note-history__stats .is-add { color: var(--accent-text); }
+.note-history__stats .is-del { color: var(--danger); }
+
+.note-history__icon {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 2rem;
+  height: 2rem;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+.note-history__icon:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--text) 10%, transparent);
+  color: var(--text-h);
+}
+.note-history__icon:disabled { opacity: 0.35; cursor: default; }
+
+/* ── Timeline ─────────────────────────────────────────────────────────────── */
+
+.note-history__timeline {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+}
+
+/* The hit area is tall for easy grabbing; the rail inside is a hairline. The
+   inline padding keeps the first and last stop (and their halos) inside it. */
+.note-history__track {
+  --stop: 10px;
+  position: relative;
+  flex: 1;
+  height: 2rem;
+  margin-inline: 0.5rem;
+  cursor: pointer;
+  touch-action: none;
+  border-radius: var(--radius-pill);
+}
+.note-history__track.is-dense { --stop: 5px; }
+
+.note-history__track:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
+}
+
+.note-history__rail,
+.note-history__fill {
+  position: absolute;
+  top: 50%;
+  left: 0;
+  height: 3px;
+  border-radius: var(--radius-pill);
+  transform: translateY(-50%);
+}
+.note-history__rail {
+  right: 0;
+  background: color-mix(in srgb, var(--text) 18%, transparent);
+}
+.note-history__fill {
+  background: var(--accent);
+  transition: width var(--dur-fast) var(--ease);
+}
+
+.note-history__stop {
+  position: absolute;
+  top: 50%;
+  width: var(--stop);
+  height: var(--stop);
+  border-radius: 50%;
+  background: var(--surface);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--text) 45%, transparent);
+  transform: translate(-50%, -50%);
+  transition: transform var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease);
+}
+.note-history__stop--now {
+  box-shadow: 0 0 0 2px var(--accent);
+}
+.note-history__stop.is-active {
+  background: var(--accent);
+  box-shadow:
+    0 0 0 3px var(--surface),
+    0 0 0 5px var(--accent),
+    0 2px 10px color-mix(in srgb, var(--accent) 45%, transparent);
+  transform: translate(-50%, -50%) scale(1.35);
+  z-index: 1;
+}
+.note-history__track.is-dense .note-history__stop:not(.is-active):not(.note-history__stop--now) {
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--text) 40%, transparent);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .note-history__fill, .note-history__stop { transition: none; }
+}
+
+/* ── Actions ──────────────────────────────────────────────────────────────── */
+
+.note-history__actions {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-3);
+}
+
+.note-history__seg {
+  display: inline-flex;
+  padding: 2px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--text) 5%, transparent);
+}
+.note-history__seg button {
+  padding: 0.3rem 0.8rem;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: var(--fs-xs);
+  cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+.note-history__seg button[aria-pressed='true'] {
+  background: var(--surface);
+  color: var(--text-h);
+  box-shadow: var(--shadow-card);
+}
+
+.note-history__pos { font-variant-numeric: tabular-nums; }
+
+.note-history__restore {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin-left: auto;
+  padding: 0.45rem 0.95rem;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+  color: var(--accent-fg);
+  font-family: var(--sans);
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease), opacity var(--dur-fast) var(--ease);
+}
+.note-history__restore:hover:not(:disabled) { background: var(--accent-hover); }
+.note-history__restore:disabled { opacity: 0.4; cursor: default; }
+
+.note-history__icon:focus-visible,
+.note-history__seg button:focus-visible,
+.note-history__restore:focus-visible,
+.note-history__fold:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.note-history__empty,
+.note-history__error {
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--text);
+}
+.note-history__error { color: var(--danger); }
+
+/* ── Changes view (replaces the canvas) ───────────────────────────────────── */
+
+.note-history__diff {
+  display: grid;
+  gap: var(--space-3);
+  min-height: 12rem;
+}
+
+.note-history__legend {
+  display: flex;
+  align-items: center;
+  gap: 0.4rem;
+  margin: 0;
+  font-size: var(--fs-xs);
+  color: var(--text);
+}
+.note-history__swatch {
+  width: 0.7rem;
+  height: 0.7rem;
+  margin-left: 0.4rem;
+  border-radius: 3px;
+}
+.note-history__swatch:first-child { margin-left: 0; }
+.note-history__swatch--del { background: var(--danger-bg); box-shadow: inset 0 0 0 1px var(--danger-border); }
+.note-history__swatch--add { background: var(--accent-bg); box-shadow: inset 0 0 0 1px var(--accent-border); }
+
+.note-history__titlediff {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  font-family: var(--heading);
+  font-size: var(--fs-md);
+}
+.note-history__titlediff .is-del { color: var(--danger); text-decoration: line-through; }
+.note-history__titlediff .is-add { color: var(--accent-text); }
+
+.note-history__rows {
+  overflow-x: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--code-bg);
+  font-family: var(--mono);
+  font-size: var(--fs-xs);
+  line-height: 1.65;
+}
+
+.note-history__row {
+  display: grid;
+  grid-template-columns: 1.6rem 1fr;
+  min-width: max-content;
+}
+.note-history__row code {
+  padding-right: var(--space-4);
+  white-space: pre;
+  font: inherit;
+  color: var(--text-h);
+}
+.note-history__sign {
+  text-align: center;
+  user-select: none;
+  color: var(--text);
+}
+.note-history__row--del { background: var(--danger-bg); }
+.note-history__row--add { background: var(--accent-bg); }
+.note-history__row--del .note-history__sign,
+.note-history__row--del code { color: var(--danger); }
+.note-history__row--add .note-history__sign,
+.note-history__row--add code { color: var(--accent-text); }
+
+.note-history__fold {
+  display: flex;
+  align-items: center;
+  gap: 0.35rem;
+  width: 100%;
+  padding: 0.25rem 0.6rem;
+  border: none;
+  border-block: 1px dashed var(--border);
+  background: color-mix(in srgb, var(--text) 4%, transparent);
+  color: var(--text);
+  font: inherit;
+  cursor: pointer;
+}
+.note-history__fold:hover { color: var(--text-h); }
+
+/* Read-only preview: the canvas shows a past version, so say so without words —
+   a quiet dashed frame, no caret. */
+.note-editor--history .note-editor__canvas {
+  border-radius: var(--radius-md);
+  outline: 1px dashed color-mix(in srgb, var(--accent) 55%, transparent);
+  outline-offset: 6px;
+}
+.note-editor--history-changes .note-editor__canvas { display: none; }
+
+/* Coloured notes: pastel paper keeps dark ink (see NoteEditor.css). */
+.note-editor--colored .note-history { border-bottom-color: var(--tint-scrim); }
+.note-editor--colored .note-history__title,
+.note-editor--colored .note-history__stamp { color: var(--tint-ink); }
+.note-editor--colored .note-history__ago,
+.note-editor--colored .note-history__pos,
+.note-editor--colored .note-history__icon,
+.note-editor--colored .note-history__seg button,
+.note-editor--colored .note-history__empty { color: var(--tint-ink-muted); }
+.note-editor--colored .note-history__seg button[aria-pressed='true'] { color: var(--tint-ink); }
+.note-editor--colored .note-history__stop:not(.is-active) { background: color-mix(in srgb, var(--note-tint) 60%, #fff); }
+
+/* The Changes view is the whole comparison, title included — the live title
+   and tags would only repeat below it. */
+.note-editor--history-changes .note-editor__bar,
+.note-editor--history-changes .note-cats { display: none; }
+
+@media (max-width: 620px) {
+  /* One thumb-sized primary action, full width, instead of a stray wrap. */
+  .note-history__restore {
+    order: 3;
+    justify-content: center;
+    width: 100%;
+    margin-left: 0;
+  }
+  .note-history__pos { margin-left: auto; }
+}

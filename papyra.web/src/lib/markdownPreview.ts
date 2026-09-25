@@ -71,8 +71,11 @@ export function parseInline(text: string): Inline[] {
 
 // ── Blocks ───────────────────────────────────────────────────────────────────
 
-const LIST = /^(\s*)([-*+]|\d+[.)])\s+(?:\[([ xX])\]\s+)?(.*)$/;
-const HEADING = /^\s{0,3}(#{1,6})\s+(.*)$/;
+// A marker may end the line: luthor writes an empty item as `3. `, and an editor
+// or git hook that trims trailing whitespace leaves `3.`. Both are an (empty)
+// item — as CommonMark and the editor read them — never a paragraph saying "3.".
+const LIST = /^(\s*)([-*+]|\d+[.)])(?:\s+|$)(?:\[([ xX])\](?:\s+|$))?(.*)$/;
+const HEADING = /^\s{0,3}(#{1,6})(?:\s+(.*))?$/;
 const HR = /^\s{0,3}(?:[-*_]\s*){3,}$/;
 const QUOTE = /^\s{0,3}>\s?(.*)$/;
 const FENCE = /^\s{0,3}(```|~~~)/;
@@ -113,7 +116,7 @@ export function parseBlocks(md: string, maxLines = 14): { blocks: Block[]; trunc
     }
 
     const h = HEADING.exec(line);
-    if (h) { blocks.push({ t: 'h', level: h[1].length, c: parseInline(h[2]) }); i++; used++; continue; }
+    if (h) { blocks.push({ t: 'h', level: h[1].length, c: parseInline(h[2] ?? '') }); i++; used++; continue; }
     if (HR.test(line) && !LIST.test(line)) { blocks.push({ t: 'hr' }); i++; continue; }
     const e = EMBED_LINE.exec(line);
     if (e) { blocks.push({ t: 'embed', v: e[1].split('|')[0].split('#')[0] }); i++; used++; continue; }

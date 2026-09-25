@@ -53,7 +53,7 @@ export function useAutoSave(
     // anchors onto every un-anchored block, and a never-anchored note's stamped
     // text always differs from its on-disk (unstamped) baseline — so checking
     // the stamped draft here would call a genuine no-op edit "dirty" purely
-    // because flush() ran (e.g. on close, or opening the time machine), and
+    // because flush() ran (e.g. on close, or opening version history), and
     // silently rewrite + re-date a note the user never touched.
     const raw = getDraft();
     if (raw.title === saved.current.title && raw.body === saved.current.body) {

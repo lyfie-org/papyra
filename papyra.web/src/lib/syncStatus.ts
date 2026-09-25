@@ -17,7 +17,7 @@ export interface SyncState {
   /**
    * Notes whose server revision had moved on when a queued edit replayed —
    * the local edit won (the API snapshots the previous revision first, so the
-   * overwritten text is recoverable from File Recovery).
+   * overwritten text is recoverable from version History).
    */
   conflicts: string[];
   /**

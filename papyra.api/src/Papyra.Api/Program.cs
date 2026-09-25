@@ -2680,14 +2680,21 @@ settings.MapPut("/", async (SettingsRequest body, AppDbContext db, CancellationT
 notes.MapGet("/{id}/snapshots", (
     string id,
     ClaimsPrincipal user,
+    VaultState state,
     SnapshotService snapshots,
+    VaultObserverOptions vault,
     IConfiguration config,
     IHostEnvironment env,
     ILoggerFactory loggerFactory) =>
 {
-    var snapRoot = PapyraPaths.UserSnapshotsDir(config, env.ContentRootPath, Uid(user));
-    var dir = PathGuard.ResolveAndVerify(snapRoot, id, loggerFactory.CreateLogger("PathGuard"));
-    return Results.Ok(snapshots.List(dir).Select(s => new { id = s.Id, timestamp = s.TimestampUtc }));
+    var uid = Uid(user);
+    var logger = loggerFactory.CreateLogger("PathGuard");
+    var snapRoot = PapyraPaths.UserSnapshotsDir(config, env.ContentRootPath, uid);
+    var dir = PathGuard.ResolveAndVerify(snapRoot, id, logger);
+    // Distinct versions only, and none identical to the live note (see List).
+    var live = state.PathFor(uid, id)
+        ?? PathGuard.ResolveAndVerify(vault.UserNotesDir(uid), $"{id}.md", logger);
+    return Results.Ok(snapshots.List(dir, live).Select(s => new { id = s.Id, timestamp = s.TimestampUtc }));
 });
 
 notes.MapGet("/{id}/snapshots/{snapshotId}", async (
@@ -2752,16 +2759,31 @@ notes.MapPost("/{id}/restore/{snapshotId}", async (
 
     // Archive the current revision first so the restore itself is reversible, then
     // atomically swap the snapshot in. Log the self-write so the watcher ignores it.
+    // Forced past the throttle: a restore minutes after the last snapshot used to
+    // skip the archive, and the version it replaced was simply gone.
     var noteSnapDir = PathGuard.ResolveAndVerify(snapRoot, id, logger);
-    await snapshots.CaptureAsync(noteSnapDir, path, ct);
+    var undoId = await snapshots.CaptureAsync(noteSnapDir, path, ct, force: true);
 
     writeRing.Mark(path);
     await snapshots.RestoreAsync(snapPath, path, ct);
 
     var note = await storage.ReadAsync(path, ct);
     if (note is null) return Results.NotFound();
+    // The restored file is this note, whatever the archived copy's frontmatter
+    // says. A copy without an `id` (a file last written by another editor) would
+    // otherwise come back as an id-less note the vault ignores — the note would
+    // simply vanish from the app after a restore.
+    if (note.Id != id)
+    {
+        note.Id = id;
+        writeRing.Mark(path);
+        await storage.WriteAsync(path, note, ct);
+        note = await storage.ReadAsync(path, ct) ?? note;
+    }
     state.Upsert(uid, path, note);
     search.IndexNote(uid, note);
+    // The version that holds what was just replaced — restoring it undoes this.
+    if (undoId is not null) http.Response.Headers["Papyra-Undo-Snapshot"] = undoId;
     return Results.Ok(note);
 });
 
