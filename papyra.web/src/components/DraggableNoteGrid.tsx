@@ -1,5 +1,5 @@
 import { memo, useCallback, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react';
-import { Pin, PinOff } from 'lucide-react';
+import { Check, Pin, PinOff } from 'lucide-react';
 import {
   DndContext, PointerSensor, useSensor, useSensors, useDraggable,
   type DragStartEvent, type DragMoveEvent,
@@ -8,16 +8,21 @@ import { useQueryClient } from '@tanstack/react-query';
 import type { Note } from '../types/note';
 import type { Conflict } from '../hooks/useConflicts';
 import {
-  useNoteOrder, useSaveOrder, sortNotes, effectiveKey, keyBetween,
+  useNoteOrder, useSaveOrder, sortNotes, effectiveKey, keysBetween,
   ORDER_KEY, type OrderMap,
 } from '../hooks/useNoteOrder';
 import NoteCard from './NoteCard';
+import TodoCard from './TodoCard';
+import BulkBar from './BulkBar';
 import {
-  pack, columnsFor, indexFromPoint, neighborsAt, EST_H,
+  pack, columnsFor, indexFromPoint, EST_H,
   type Box, type Placed,
 } from '../lib/noteGridLayout';
+import { bulkAction, planGroupDrop, plural } from '../lib/bulk';
 import { useFlipPosition } from '../hooks/useFlipPosition';
 import { useGridWidth } from '../hooks/useGridWidth';
+import { useSelection } from '../hooks/useSelection';
+import { useToast } from '../lib/toastContext';
 import '../components/NoteGrid.css';
 import './DraggableNoteGrid.css';
 
@@ -27,25 +32,42 @@ interface Props {
   onResolveConflict?: (conflictId: string) => void;
   /** Show to-do lists too — a smart collection can be made of them. */
   includeTodos?: boolean;
+  /** Only to-do lists, drawn as checklists (the To Do page). */
+  todosOnly?: boolean;
 }
 
 type Section = 'pinned' | 'others';
 
+// Where a card follows the dragged one while a selection is carried as a group:
+// stacked just behind it, slightly fanned.
+const STACK_STEP = 6;
+
 // One absolutely-positioned card. No DragOverlay: the dragged card itself rides
 // the pointer via dnd-kit's transform delta (delta == pointer movement from the
-// grab point), so it stays glued to the cursor. Others reflow via `box` + CSS
-// transition. dnd-kit reads no card box for layout (no droppables) → no loop.
+// grab point), so it stays glued to the cursor. Others glide to their slots
+// (useFlipPosition). dnd-kit reads no card box for layout (no droppables) → no loop.
 //
 // Memoised on primitive props (position as x/y numbers, this card's own
-// conflicts) so a change to one note re-renders one card: a colour pick or a pin
-// used to re-render all of them, which on a few hundred notes was a visible stall.
+// conflicts, its own selected flag) so a change to one note — or ticking one
+// card — re-renders one card, not hundreds.
 const AbsCard = memo(function AbsCard({
   note, x: boxX, y: boxY, colW, cols, resizedAt, onMeasure, conflicts, onResolveConflict,
+  todo, selected, selecting, onToggle, following, stackIndex, carrying,
 }: {
   note: Note; x: number; y: number; colW: number; cols: number; resizedAt: RefObject<number>;
   onMeasure: (id: string, h: number) => void;
   conflicts: Conflict[] | undefined;
   onResolveConflict?: (conflictId: string) => void;
+  todo: boolean;
+  selected: boolean;
+  /** The grid is in selection mode: a click anywhere on a card toggles it. */
+  selecting: boolean;
+  onToggle: (id: string, shift: boolean) => void;
+  /** Riding behind the dragged card as part of a group. */
+  following: boolean;
+  stackIndex: number;
+  /** How many cards the dragged card carries (itself included); 0 when alone. */
+  carrying: number;
 }) {
   const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: note.id });
   const elRef = useRef<HTMLDivElement | null>(null);
@@ -66,31 +88,62 @@ const AbsCard = memo(function AbsCard({
   // window is merely widening a column (see useFlipPosition).
   useFlipPosition(elRef, x, y, { cols, colW, frozen: isDragging, resizedAt });
 
+  const title = note.title.trim() || 'Untitled';
+  const cls = ['dnd-card', selected && 'is-selected', following && 'is-following', isDragging && 'is-dragging']
+    .filter(Boolean).join(' ');
+
   return (
     <div
       ref={setRef}
-      className="dnd-card"
+      className={cls}
       style={{
         position: 'absolute', top: 0, left: 0, width: colW,
         transform: `translate3d(${x}px, ${y}px, 0)`,
-        zIndex: isDragging ? 30 : 1,
+        zIndex: isDragging ? 30 : following ? 29 - stackIndex : 1,
       }}
+      // In selection mode the whole card is the checkbox: a click selects
+      // instead of opening, ticking a to-do item, or pressing a card button.
+      onClickCapture={selecting ? (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        onToggle(note.id, e.shiftKey);
+      } : undefined}
       {...attributes}
       {...listeners}
     >
-      <NoteCard
-        note={note}
-        variant="active"
-        conflictId={conflicts?.[0]?.id}
-        conflictCount={conflicts?.length}
-        onResolveConflict={onResolveConflict}
-      />
+      <button
+        type="button"
+        className="select-tick"
+        aria-pressed={selected}
+        aria-label={`${selected ? 'Deselect' : 'Select'} “${title}”`}
+        title={selecting ? undefined : 'Select'}
+        // Never the start of a drag.
+        onPointerDown={(e) => e.stopPropagation()}
+        onClick={(e) => { e.preventDefault(); e.stopPropagation(); onToggle(note.id, e.shiftKey); }}
+      >
+        <Check size={14} strokeWidth={3} aria-hidden="true" />
+      </button>
+      {carrying > 1 && <span className="dnd-card__carry" aria-hidden="true">{carrying}</span>}
+      {todo ? (
+        <TodoCard note={note} />
+      ) : (
+        <NoteCard
+          note={note}
+          variant="active"
+          conflictId={conflicts?.[0]?.id}
+          conflictCount={conflicts?.length}
+          onResolveConflict={onResolveConflict}
+        />
+      )}
     </div>
   );
 });
 
-export default function DraggableNoteGrid({ notes, conflictsByParent, onResolveConflict, includeTodos = false }: Props) {
+export default function DraggableNoteGrid({
+  notes, conflictsByParent, onResolveConflict, includeTodos = false, todosOnly = false,
+}: Props) {
   const queryClient = useQueryClient();
+  const { toast } = useToast();
   const { data: order } = useNoteOrder();
   const saveOrder = useSaveOrder();
 
@@ -114,14 +167,23 @@ export default function DraggableNoteGrid({ notes, conflictsByParent, onResolveC
   const pointerStart = useRef<{ x: number; y: number } | null>(null);
   // Where the dragged card would land: which section + index. Drives make-room.
   const [drop, setDrop] = useState<{ section: Section; index: number } | null>(null);
+  // Cards carried together (the dragged one first, then the rest of the
+  // selection in display order). Just the dragged card for a plain drag.
+  const [group, setGroup] = useState<string[]>([]);
+  // Live drag offset + the vertical distance from each canvas to the other, so
+  // followers in the other section can stack under the dragged card.
+  const [drag, setDrag] = useState<{ dx: number; dy: number; pinToOthers: number } | null>(null);
 
   // 'todo' lives on the To Do page and 'inbox' on /inbox — neither belongs on
   // the notes desk, which is for notes the user wrote here.
-  const active = notes.filter(n => !n.archived && !n.trashed && n.kind !== 'inbox' && (includeTodos || n.kind !== 'todo'));
+  const active = notes.filter(n => !n.archived && !n.trashed && n.kind !== 'inbox'
+    && (todosOnly ? n.kind === 'todo' : includeTodos || n.kind !== 'todo'));
   const pinned = useMemo(() => sortNotes(active.filter(n => n.pinned), order), [active, order]);
   const others = useMemo(() => sortNotes(active.filter(n => !n.pinned), order), [active, order]);
   const byId = useMemo(() => new Map(active.map(n => [n.id, n])), [active]);
+  const ordered = useMemo(() => [...pinned, ...others].map(n => n.id), [pinned, others]);
   const { width, resizedAt, sticky, recordColumns } = useGridWidth(wrapRef, active.length > 0);
+  const selection = useSelection(ordered);
 
   const onMeasure = useCallback((id: string, h: number) => {
     if (dragging.current) return; // heights are frozen mid-drag
@@ -133,11 +195,12 @@ export default function DraggableNoteGrid({ notes, conflictsByParent, onResolveC
 
   const { cols, colW } = columnsFor(width);
 
-  // Section id lists, minus the dragged card; the gap goes in the target section.
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
 
-  const pinnedIds = pinned.map(n => n.id).filter(id => id !== activeId);
-  const othersIds = others.map(n => n.id).filter(id => id !== activeId);
+  // Section id lists, minus everything being carried; the gap goes in the target section.
+  const carried = useMemo(() => new Set(group), [group]);
+  const pinnedIds = pinned.map(n => n.id).filter(id => !carried.has(id));
+  const othersIds = others.map(n => n.id).filter(id => !carried.has(id));
   const activeH = activeId ? (heights.current.get(activeId) ?? EST_H) : 0;
 
   // BASE = resting layout of the non-dragged cards (no gap). Hit-testing uses this
@@ -159,24 +222,45 @@ export default function DraggableNoteGrid({ notes, conflictsByParent, onResolveC
     recordColumns(new Map([...pinnedBase.columns, ...othersBase.columns]));
   });
 
+  // Stable across renders (changes only with the card list), so ticking one
+  // card doesn't re-render every memoised card.
+  const onToggle = selection.toggle;
+
+  function canvasGap(): number {
+    const pin = pinnedRef.current?.getBoundingClientRect();
+    const oth = othersRef.current?.getBoundingClientRect();
+    return pin && oth ? oth.top - pin.top : 0;
+  }
+
   function onDragStart(e: DragStartEvent) {
     const id = String(e.active.id);
     const o: Section = byId.get(id)?.pinned ? 'pinned' : 'others';
     // Resting box of the card in its full (idle) section layout — the baseline the
     // pointer delta is added to so the card tracks the cursor exactly.
-    const idle = pack((o === 'pinned' ? pinned : others).map(n => n.id), heights.current, cols, colW);
+    const idle = pack((o === 'pinned' ? pinned : others).map(n => n.id), heights.current, cols, colW, undefined, prefer);
     setStartBox(idle.boxes.get(id) ?? { x: 0, y: 0 });
     const ev = e.activatorEvent as PointerEvent;
     pointerStart.current = { x: ev.clientX ?? 0, y: ev.clientY ?? 0 };
     dragging.current = true;
+    // Dragging a selected card carries the whole selection with it.
+    const carry = selection.selected.has(id) && selection.selected.size > 1
+      ? [id, ...ordered.filter(x => x !== id && selection.selected.has(x))]
+      : [id];
+    setGroup(carry);
     setActiveId(id);
     setOrigin(o);
-    setDrop({ section: o, index: (o === 'pinned' ? pinned : others).findIndex(n => n.id === id) });
+    setDrag({ dx: 0, dy: 0, pinToOthers: canvasGap() });
+    const rest = (o === 'pinned' ? pinned : others).map(n => n.id).filter(x => !carry.includes(x));
+    // Start where the first carried card sat among what's left.
+    const firstIdx = (o === 'pinned' ? pinned : others).findIndex(n => n.id === id);
+    const index = (o === 'pinned' ? pinned : others).slice(0, firstIdx).filter(n => !carry.includes(n.id)).length;
+    setDrop({ section: o, index: Math.min(index, rest.length) });
   }
 
   function onDragMove(e: DragMoveEvent) {
     const p = pointerStart.current;
     if (!p) return;
+    if (group.length > 1) setDrag({ dx: e.delta.x, dy: e.delta.y, pinToOthers: canvasGap() });
     // Track the actual pointer (grab point + delta), not the card centre — a tall
     // card's centre lags the cursor and would drop notes in the wrong slot.
     const cx = p.x + e.delta.x;
@@ -199,37 +283,46 @@ export default function DraggableNoteGrid({ notes, conflictsByParent, onResolveC
 
   function reset() {
     dragging.current = false; pointerStart.current = null;
-    setActiveId(null); setOrigin(null); setDrop(null); setStartBox(null);
+    setActiveId(null); setOrigin(null); setDrop(null); setStartBox(null); setGroup([]); setDrag(null);
   }
 
-  // Armed the moment a drag ends so the trailing click can be swallowed (see the
-  // grid's onClickCapture). Cleared on a timer as well as on consumption: if the
-  // browser ever declines to emit that click, a stale flag must not eat the
-  // user's next real one.
+  // Armed the moment a drag ends so the trailing click can be swallowed. Two
+  // layers: the grid's onClickCapture, and a native listener on window capture.
+  // The native one is what actually holds: dnd-kit stops that click's
+  // propagation at document level, so React never sees it — and a stopped but
+  // not prevented click on a card's <a> is a full page navigation into the note,
+  // which also threw away the drop's order save. Window capture runs before
+  // dnd-kit's listener and prevents the default. Cleared on a timer as well as
+  // on consumption: if the browser never emits that click, a stale guard must
+  // not eat the user's next real one.
   function armClickSuppression() {
     suppressClick.current = true;
-    setTimeout(() => { suppressClick.current = false; }, 300);
+    const swallow = (e: MouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      suppressClick.current = false;
+    };
+    window.addEventListener('click', swallow, { capture: true, once: true });
+    setTimeout(() => {
+      suppressClick.current = false;
+      window.removeEventListener('click', swallow, { capture: true });
+    }, 300);
   }
 
   // Drop handler — dnd-kit passes the event, but the committed position comes from
-  // our own hit-testing state (activeId/origin/drop), so the event isn't needed.
+  // our own hit-testing state (group/drop), so the event isn't needed.
   async function onDragEnd() {
     // Arm first: a drag that ends outside a valid drop target still produced the
     // pointerup whose click would otherwise open the note.
     armClickSuppression();
-    const id = activeId;
-    const o = origin;
     const d = drop;
-    if (!id || !o || !d) { reset(); return; }
+    // The group lands in display order, whichever card was grabbed.
+    const moving = ordered.filter(id => carried.has(id));
+    if (!activeId || !d || moving.length === 0) { reset(); return; }
 
     const targetIds = d.section === 'pinned' ? pinnedIds : othersIds;
-    const { aboveId, belowId } = neighborsAt(targetIds, d.index);
-    const above = aboveId ? byId.get(aboveId) : undefined;
-    const below = belowId ? byId.get(belowId) : undefined;
-    const newKey = keyBetween(
-      above ? effectiveKey(above, order) : null,
-      below ? effectiveKey(below, order) : null,
-    );
+    const keys = planGroupDrop(moving, targetIds, d.index,
+      id => { const n = byId.get(id); return n ? effectiveKey(n, order) : 0; }, keysBetween);
 
     // `setAt` stamps when the drag was committed (bookkeeping; a placed note keeps
     // its position until dragged again — see effectiveKey). Reading the clock is impure, but this runs only from
@@ -237,37 +330,74 @@ export default function DraggableNoteGrid({ notes, conflictsByParent, onResolveC
     // component-body function is event-only, so silence it here deliberately.
     // eslint-disable-next-line react-hooks/purity
     const droppedAt = Date.now();
-    const nextOrder: OrderMap = { ...(order ?? {}), [id]: { key: newKey, setAt: droppedAt } };
-    const crossed = d.section !== o;
-    const note = byId.get(id);
+    const nextOrder: OrderMap = { ...(order ?? {}) };
+    for (const [id, key] of keys) nextOrder[id] = { key, setAt: droppedAt };
+
+    // Carried across the PINNED/OTHERS line: every card that isn't already on
+    // that side gets pinned (or unpinned) with it — flag only, never the body.
+    const toPinned = d.section === 'pinned';
+    const flip = moving.filter(id => byId.get(id)?.pinned !== toPinned);
 
     queryClient.setQueryData(ORDER_KEY, nextOrder);
-    if (crossed && note) {
+    if (flip.length) {
+      const set = new Set(flip);
       queryClient.setQueryData<Note[]>(['notes'], prev =>
-        prev?.map(n => n.id === id ? { ...n, pinned: d.section === 'pinned' } : n));
-      await fetch(`/api/notes/${encodeURIComponent(id)}`, {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          title: note.title, tags: note.tags, color: note.color,
-          pinned: d.section === 'pinned', archived: note.archived, kind: note.kind, body: note.body,
-        }),
-      });
+        prev?.map(n => set.has(n.id) ? { ...n, pinned: toPinned } : n));
     }
-
     reset();
     saveOrder.mutate(nextOrder);
-    if (crossed) await queryClient.invalidateQueries({ queryKey: ['notes'] });
+    if (flip.length) {
+      try {
+        await bulkAction(flip, toPinned ? 'pin' : 'unpin');
+      } catch (e) {
+        toast(`Couldn't ${toPinned ? 'pin' : 'unpin'} ${plural(flip.length, 'note')}: ${(e as Error).message}`);
+      }
+      await queryClient.invalidateQueries({ queryKey: ['notes'] });
+    }
   }
 
   if (active.length === 0) return <p className="note-grid__empty">No notes yet.</p>;
 
   const crossing = drop !== null && origin !== null && drop.section !== origin;
-  const boxFor = (n: Note, layout: Placed): Box | undefined =>
-    n.id === activeId ? (startBox ?? undefined) : layout.boxes.get(n.id);
+  const carrying = group.length;
+
+  // Followers stack behind the dragged card, fanned a few pixels each; one in
+  // the other section converts through the distance between the two canvases.
+  const followBox = (n: Note, index: number): Box | undefined => {
+    if (!startBox || !drag || !origin) return undefined;
+    const section: Section = n.pinned ? 'pinned' : 'others';
+    const shift = section === origin ? 0 : section === 'others' ? -drag.pinToOthers : drag.pinToOthers;
+    return {
+      x: startBox.x + drag.dx + STACK_STEP * index,
+      y: startBox.y + drag.dy + STACK_STEP * index + shift,
+    };
+  };
+
+  const renderCard = (n: Note, layout: Placed) => {
+    const stackIndex = group.indexOf(n.id);
+    const following = stackIndex > 0;
+    const box = n.id === activeId
+      ? startBox ?? undefined
+      : following ? followBox(n, stackIndex) : layout.boxes.get(n.id);
+    return (
+      <AbsCard key={n.id} note={n} colW={colW} cols={cols} resizedAt={resizedAt}
+        x={box?.x ?? 0} y={box?.y ?? 0}
+        onMeasure={onMeasure}
+        conflicts={conflictsByParent?.get(n.id)} onResolveConflict={onResolveConflict}
+        todo={todosOnly}
+        selected={selection.selected.has(n.id)}
+        selecting={selection.active}
+        onToggle={onToggle}
+        following={following}
+        stackIndex={Math.max(0, stackIndex)}
+        carrying={n.id === activeId ? carrying : 0}
+      />
+    );
+  };
 
   const showPinnedHeading = pinned.length > 0;
   const showOthersHeading = pinned.length > 0 && others.length > 0;
+  const noun = todosOnly ? 'list' : 'note';
 
   return (
     <DndContext
@@ -283,7 +413,7 @@ export default function DraggableNoteGrid({ notes, conflictsByParent, onResolveC
           before a drag starts, so reaching here guarantees a real drag happened
           and never a plain click-to-open. */}
       <div
-        className="note-grid-wrap"
+        className={`note-grid-wrap${selection.active ? ' is-selecting' : ''}`}
         ref={wrapRef}
         onClickCapture={(e) => {
           if (!suppressClick.current) return;
@@ -294,30 +424,31 @@ export default function DraggableNoteGrid({ notes, conflictsByParent, onResolveC
       >
         {showPinnedHeading && <h2 className="note-grid__heading">PINNED</h2>}
         <div className="dnd-canvas" ref={pinnedRef} style={{ height: pinnedLayout.height }}>
-          {pinned.map(n => (
-            <AbsCard key={n.id} note={n} colW={colW} cols={cols} resizedAt={resizedAt}
-              x={boxFor(n, pinnedLayout)?.x ?? 0} y={boxFor(n, pinnedLayout)?.y ?? 0}
-              onMeasure={onMeasure}
-              conflicts={conflictsByParent?.get(n.id)} onResolveConflict={onResolveConflict} />
-          ))}
+          {pinned.map(n => renderCard(n, pinnedLayout))}
         </div>
 
         {showOthersHeading && <h2 className="note-grid__heading">OTHERS</h2>}
         <div className="dnd-canvas" ref={othersRef} style={{ height: othersLayout.height }}>
-          {others.map(n => (
-            <AbsCard key={n.id} note={n} colW={colW} cols={cols} resizedAt={resizedAt}
-              x={boxFor(n, othersLayout)?.x ?? 0} y={boxFor(n, othersLayout)?.y ?? 0}
-              onMeasure={onMeasure}
-              conflicts={conflictsByParent?.get(n.id)} onResolveConflict={onResolveConflict} />
-          ))}
+          {others.map(n => renderCard(n, othersLayout))}
         </div>
       </div>
 
       {crossing && (
         <div className="dnd-banner" role="status">
           {drop?.section === 'pinned' ? <Pin size={18} /> : <PinOff size={18} />}
-          {drop?.section === 'pinned' ? 'Pin this note' : 'Unpin this note'}
+          {drop?.section === 'pinned'
+            ? `Pin ${carrying > 1 ? plural(carrying, noun) : `this ${noun}`}`
+            : `Unpin ${carrying > 1 ? plural(carrying, noun) : `this ${noun}`}`}
         </div>
+      )}
+
+      {selection.active && (
+        <BulkBar
+          notes={ordered.filter(id => selection.selected.has(id)).map(id => byId.get(id)!)}
+          total={ordered.length}
+          onClear={selection.clear}
+          onSelectAll={selection.selectAll}
+        />
       )}
     </DndContext>
   );

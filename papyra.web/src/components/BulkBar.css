@@ -1,0 +1,117 @@
+/* Selection toolbar: a floating pill at the bottom centre of the window. */
+.bulk-bar {
+  position: fixed;
+  left: 50%;
+  bottom: max(20px, env(safe-area-inset-bottom));
+  z-index: 70;
+  display: flex;
+  align-items: center;
+  gap: 0.25rem;
+  max-width: calc(100vw - 24px);
+  padding: 0.4rem 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  -webkit-backdrop-filter: blur(12px) saturate(1.2);
+  backdrop-filter: blur(12px) saturate(1.2);
+  box-shadow: var(--shadow-card-hover), 0 12px 32px -12px rgba(0, 0, 0, 0.25);
+  color: var(--text-h);
+  font-family: var(--sans);
+  font-size: var(--fs-sm);
+  transform: translateX(-50%);
+  animation: bulk-bar-in var(--dur-slow) var(--ease) both;
+}
+
+@keyframes bulk-bar-in {
+  from { opacity: 0; transform: translate(-50%, 16px) scale(0.97); }
+  to { opacity: 1; transform: translate(-50%, 0); }
+}
+
+.bulk-bar__count {
+  padding: 0 0.5rem 0 0.15rem;
+  white-space: nowrap;
+  color: var(--text);
+}
+
+/* The number re-mounts per change (keyed), so it ticks rather than swaps. */
+.bulk-bar__num {
+  display: inline-block;
+  min-width: 1ch;
+  color: var(--text-h);
+  font-variant-numeric: tabular-nums;
+  animation: bulk-bar-tick var(--dur) var(--ease) both;
+}
+@keyframes bulk-bar-tick {
+  from { opacity: 0.2; transform: translateY(-5px); }
+}
+
+.bulk-bar__sep {
+  width: 1px;
+  height: 22px;
+  margin: 0 0.25rem;
+  background: var(--border);
+}
+
+.bulk-bar__close,
+.bulk-bar__btn,
+.bulk-bar__text {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease);
+}
+
+.bulk-bar__close {
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border-radius: 50%;
+}
+
+.bulk-bar__btn,
+.bulk-bar__text {
+  height: 34px;
+  padding: 0 0.8rem;
+  border-radius: var(--radius-pill);
+  white-space: nowrap;
+}
+
+.bulk-bar__text { color: var(--accent-text); }
+
+.bulk-bar__close:hover,
+.bulk-bar__btn:hover:not(:disabled),
+.bulk-bar__text:hover { background: var(--accent-bg); }
+
+.bulk-bar__btn:active:not(:disabled),
+.bulk-bar__close:active { transform: scale(0.95); }
+
+.bulk-bar__btn--danger { color: var(--danger); }
+.bulk-bar__btn--danger:hover:not(:disabled) { background: var(--danger-bg); }
+
+.bulk-bar__btn:disabled { opacity: 0.45; cursor: not-allowed; }
+
+.bulk-bar :focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+/* Narrow screens: icons only; the aria/title still name each action. */
+@media (max-width: 640px) {
+  .bulk-bar__btn span { display: none; }
+  .bulk-bar__btn { padding: 0 0.6rem; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bulk-bar, .bulk-bar__num { animation: none; }
+}
+
+/* Toasts share the bottom centre; while the bar is up they stack above it. */
+body:has(.bulk-bar) .toasts {
+  bottom: calc(max(20px, env(safe-area-inset-bottom)) + 64px);
+  transition: bottom var(--dur) var(--ease);
+}

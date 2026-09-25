@@ -2100,7 +2100,15 @@ notes.MapPut("/{id}", async (
         Color = body.Color,
         Pinned = body.Pinned,
         Archived = body.Archived,
-        Body = body.Body ?? string.Empty,
+        // A locked note's body never rides the note list, so a save built from the
+        // list (an older client's card pin/archive toggle) carries an empty body it
+        // never saw — and writing that through erased the note. Only that exact
+        // shape is caught: the open editor's autosave carries no unlock token
+        // either, so any non-empty body must still land as written.
+        Body = wasSecure && wantsSecure && string.IsNullOrEmpty(body.Body)
+               && !UnlockedNow(http, uid) && prior is not null
+            ? prior.Body
+            : body.Body ?? string.Empty,
         Kind = string.Equals(body.Kind, "todo", StringComparison.OrdinalIgnoreCase) ? "todo" : "note",
         // Omitted `secure` keeps whatever the note already had — a client that
         // doesn't know about the flag must never silently unlock a secure note.
@@ -2214,6 +2222,80 @@ notes.MapPost("/{id}/untrash", async (
     if (!note.Secure) embeddings.Enqueue(uid, id, note.Body);
     return Results.NoContent();
 });
+
+// ── Bulk flags (multi-select) ─────────────────────────────────────────────────────
+// One request for a selection: pin/unpin, archive/unarchive, trash/untrash. Only
+// the flag moves — the body is never sent or rewritten, so a locked note in the
+// selection is as safe as any other. Every id gets its own verdict, and one bad
+// id never sinks the rest: "changed", "unchanged" (already in that state) or
+// "notFound" (not the caller's, or gone).
+notes.MapPost("/bulk", async (
+    BulkNoteAction body, ClaimsPrincipal user, VaultState state,
+    MarkdownStorageService storage, WriteRing writeRing, SearchIndexService search,
+    EmbeddingService embeddings, WebhookDispatcherService webhooks,
+    IHubContext<NotesHub> hub, CancellationToken ct) =>
+{
+    var action = body.Action?.Trim().ToLowerInvariant();
+    if (action is not ("pin" or "unpin" or "archive" or "unarchive" or "trash" or "untrash"))
+        return Results.BadRequest(new { error = "action must be pin, unpin, archive, unarchive, trash or untrash." });
+    var ids = (body.Ids ?? []).Where(i => !string.IsNullOrWhiteSpace(i)).Distinct(StringComparer.Ordinal).ToList();
+    if (ids.Count == 0) return Results.BadRequest(new { error = "No notes selected." });
+    if (ids.Count > BulkNoteAction.MaxIds)
+        return Results.BadRequest(new { error = $"Select at most {BulkNoteAction.MaxIds} notes at a time." });
+
+    var uid = Uid(user);
+    var results = new List<object>(ids.Count);
+    var changed = 0;
+    foreach (var id in ids)
+    {
+        var path = state.PathFor(uid, id);
+        if (path is null || !state.TryGet(uid, path, out var note) || note is null)
+        {
+            results.Add(new { id, status = "notFound" });
+            continue;
+        }
+
+        var before = (note.Pinned, note.Archived, note.Trashed);
+        switch (action)
+        {
+            case "pin": note.Pinned = true; break;
+            case "unpin": note.Pinned = false; break;
+            case "archive": note.Archived = true; break;
+            case "unarchive": note.Archived = false; break;
+            case "trash": note.Trashed = true; note.TrashedAt ??= DateTime.UtcNow; break;
+            case "untrash": note.Trashed = false; note.TrashedAt = null; break;
+        }
+        if (before == (note.Pinned, note.Archived, note.Trashed))
+        {
+            results.Add(new { id, status = "unchanged" });
+            continue;
+        }
+
+        writeRing.Mark(path);
+        await storage.WriteAsync(path, note, ct);
+        note.Updated = File.GetLastWriteTimeUtc(path);
+        state.Upsert(uid, path, note);
+        if (action == "trash")
+        {
+            search.RemoveNote(uid, id);
+            await embeddings.RemoveNoteAsync(uid, id, ct);
+        }
+        else
+        {
+            search.IndexNote(uid, note);
+            if (action == "untrash" && !note.Secure) embeddings.Enqueue(uid, id, note.Body);
+        }
+        if (before.Pinned != note.Pinned)
+            webhooks.Enqueue(uid, WebhookEvents.PinToggled, WebhookPayload(WebhookEvents.PinToggled, note));
+        await hub.Clients.User(uid).SendAsync("NoteUpdated", NoteMetadata.From(note), ct);
+
+        results.Add(new { id, status = "changed" });
+        changed++;
+    }
+
+    return Results.Ok(new { changed, results });
+})
+.WithSummary("Pin, archive or trash many notes at once");
 
 // ── Backlinks (ghost cards) ──────────────────────────────────────────────────────
 // Notes that link to this one via a `[[Title]]` wikilink. Detection runs against
@@ -3107,6 +3189,72 @@ shares.MapDelete("/{shareId:int}", async (int shareId, ClaimsPrincipal user, App
     await db.SaveChangesAsync(ct);
     return Results.NoContent();
 });
+
+// Owner: share a selection of notes with one person. Same rules as the per-note
+// share — locked notes refuse, an existing grant is reused (upgraded to edit if
+// asked, never downgraded) — with a verdict per note: "shared", "upgraded",
+// "alreadyShared", "locked", or "notFound" (not yours, gone, or in Trash).
+shares.MapPost("/bulk", async (
+    BulkShareWrite body, ClaimsPrincipal user, AppDbContext db, VaultState state,
+    CancellationToken ct) =>
+{
+    var uid = int.Parse(Uid(user));
+    var access = body.Access?.Trim().ToLowerInvariant() == "edit" ? "edit" : "view";
+    var ids = (body.NoteIds ?? []).Where(i => !string.IsNullOrWhiteSpace(i)).Distinct(StringComparer.Ordinal).ToList();
+    if (ids.Count == 0) return Results.BadRequest(new { error = "No notes selected." });
+    if (ids.Count > BulkNoteAction.MaxIds)
+        return Results.BadRequest(new { error = $"Select at most {BulkNoteAction.MaxIds} notes at a time." });
+
+    var uname = body.GranteeUsername?.Trim();
+    if (string.IsNullOrWhiteSpace(uname)) return Results.BadRequest(new { error = "Who should these be shared with?" });
+    var grantee = await db.Users.FirstOrDefaultAsync(u => u.Username == uname, ct);
+    if (grantee is null) return Results.NotFound(new { error = $"There's no one called “{uname}” here." });
+    if (grantee.Id == uid) return Results.BadRequest(new { error = "These are already yours." });
+
+    var existing = await db.Shares
+        .Where(s => s.OwnerId == uid && s.Kind == "user" && s.GranteeUserId == grantee.Id && ids.Contains(s.NoteId))
+        .ToDictionaryAsync(s => s.NoteId, ct);
+
+    var results = new List<object>(ids.Count);
+    var shared = 0;
+    foreach (var id in ids)
+    {
+        var path = state.PathFor(uid.ToString(), id);
+        if (path is null || !state.TryGet(uid.ToString(), path, out var note) || note is null || note.Trashed)
+        {
+            results.Add(new { id, status = "notFound" });
+            continue;
+        }
+        if (note.Secure)
+        {
+            results.Add(new { id, status = "locked" });
+            continue;
+        }
+        if (existing.TryGetValue(id, out var have))
+        {
+            if (access == "edit" && have.Access != "edit")
+            {
+                have.Access = "edit";
+                results.Add(new { id, status = "upgraded" });
+                shared++;
+            }
+            else results.Add(new { id, status = "alreadyShared" });
+            continue;
+        }
+
+        db.Shares.Add(new Share
+        {
+            NoteId = id, OwnerId = uid, Kind = "user", Access = access,
+            GranteeUserId = grantee.Id, CreatedUtc = DateTime.UtcNow,
+        });
+        results.Add(new { id, status = "shared" });
+        shared++;
+    }
+
+    await db.SaveChangesAsync(ct);
+    return Results.Ok(new { grantee = grantee.Username, shared, results });
+})
+.WithSummary("Share many notes with one person");
 
 // Owner: who can see what, across every note at once.
 //
@@ -4599,3 +4747,13 @@ public sealed record ResolveConflictRequest(
 
 // Makes the implicit top-level Program class visible to WebApplicationFactory in integration tests.
 public partial class Program { }
+
+// Multi-select: a flag change applied to many notes at once.
+public sealed record BulkNoteAction(List<string>? Ids, string? Action)
+{
+    // Generous for a person selecting cards; a guard against a runaway client.
+    public const int MaxIds = 1000;
+}
+
+// Multi-select: share many notes with one user.
+public sealed record BulkShareWrite(List<string>? NoteIds, string? GranteeUsername, string? Access);

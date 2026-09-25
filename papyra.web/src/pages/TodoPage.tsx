@@ -2,8 +2,7 @@ import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { Plus, ListChecks } from 'lucide-react';
 import { useNotes } from '../hooks/useNotes';
-import TodoCard from '../components/TodoCard';
-import MasonryGrid from '../components/MasonryGrid';
+import DraggableNoteGrid from '../components/DraggableNoteGrid';
 import EmptyState from '../components/EmptyState';
 import { putNote } from '../lib/notesApi';
 import './TodoPage.css';
@@ -48,9 +47,12 @@ export default function TodoPage() {
         />
       )}
 
-      <div className="todo-grid">
-        <MasonryGrid items={todos.map(n => ({ id: n.id, node: <TodoCard note={n} /> }))} />
-      </div>
+      {/* Same desk as Notes: drag to arrange, tick to select many, pin to the top. */}
+      {todos.length > 0 && (
+        <div className="todo-grid">
+          <DraggableNoteGrid notes={notes ?? []} todosOnly />
+        </div>
+      )}
     </section>
   );
 }
