@@ -6,6 +6,15 @@ a Docker Hub tag and a GitHub Release.
 
 <!-- new releases are inserted directly below this line -->
 
+## [0.1.9] - 2026-09-25
+
+- fix(import): set creation time before mtime; skip it on Linux (bf02e74)
+- feat: app-wide progress feedback + smooth grid reflow on resize (a9d313b)
+- feat: Keep/Obsidian import with re-import dedupe + resumable progress (2388882)
+- chore: sync design tokens (--on-photo) (99bba76)
+- fix: opening a note no longer re-saves it; one-click delete; sticky manual order (04426fe)
+- feat: editable username/name/email; personal ring-free avatars; free-framing cropper (a833893)
+
 ## [0.1.8] - 2026-09-25
 
 - feat: unified in-editor version History; distinct versions only; luthor 2.9.7 (c4e7f03)
