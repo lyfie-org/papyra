@@ -12,6 +12,7 @@
 
 import type { Note } from '../types/note';
 import { setSync } from '../lib/syncStatus';
+import { stripBlockAnchors } from '../lib/plainText';
 import { getState, loadState, mutate, nextId, recountCategories } from './store';
 import { CHAT_FALLBACK, CHAT_SCRIPT, DEMO_USER } from './seed';
 
@@ -32,6 +33,10 @@ const json = (data: unknown, status = 200): Response =>
   });
 
 const noContent = (): Response => new Response(null, { status: 204 });
+
+/** A body as History compares versions: anchors, trailing whitespace and newlines ignored (mirrors SnapshotService.Fingerprint). */
+const sameContent = (body: string): string =>
+  stripBlockAnchors(body.replace(/\r\n?/g, '\n')).replace(/[ \t]+$/gm, '').replace(/\n+$/, '');
 
 /** For the parts that genuinely cannot exist without a server. */
 const serverOnly = (what: string): Response =>
@@ -282,7 +287,20 @@ const routes: Route[] = [
   [
     'GET',
     /^\/api\/notes\/([^/]+)\/snapshots$/,
-    ({ match }) => json((getState().snapshots[decodeURIComponent(match[1])] ?? []).map(({ id, timestamp }) => ({ id, timestamp }))),
+    ({ match }) => {
+      // Distinct versions only, as the API lists them: no run of identical
+      // versions, and none identical to the note as it is now.
+      const id = decodeURIComponent(match[1]);
+      const live = getState().notes.find((n) => n.id === id);
+      let previous = live ? sameContent(live.body) : null;
+      const distinct = (getState().snapshots[id] ?? []).filter((snap) => {
+        const key = sameContent(snap.body);
+        const keep = key !== previous;
+        previous = key;
+        return keep;
+      });
+      return json(distinct.map(({ id: snapId, timestamp }) => ({ id: snapId, timestamp })));
+    },
   ],
   [
     'GET',
@@ -303,11 +321,15 @@ const routes: Route[] = [
         const note = s.notes.find((n) => n.id === id);
         const snap = (s.snapshots[id] ?? []).find((x) => x.id === snapId);
         if (!note || !snap) return json({ error: 'not found' }, 404);
-        // A restore is itself snapshotted, so it can be undone — same as the API.
-        s.snapshots[id] = [{ id: `snap-${nextId()}`, timestamp: now(), body: note.body }, ...(s.snapshots[id] ?? [])];
+        // A restore is itself snapshotted, so it can be undone — same as the API,
+        // which names that version in a header for the editor's Undo.
+        const undo = { id: `snap-${nextId()}`, timestamp: now(), body: note.body };
+        s.snapshots[id] = [undo, ...(s.snapshots[id] ?? [])];
         note.body = snap.body;
         note.updated = now();
-        return json(note);
+        const res = json(note);
+        res.headers.set('Papyra-Undo-Snapshot', undo.id);
+        return res;
       });
     },
   ],
@@ -387,9 +409,9 @@ const routes: Route[] = [
       return mutate((s) => {
         const existing = s.notes.find((n) => n.id === id);
         if (existing) {
-          // Snapshot the previous revision before overwriting, so File Recovery
-          // and the Time machine have something real to scrub through.
-          if (typeof payload.body === 'string' && payload.body !== existing.body) {
+          // Snapshot the previous revision before overwriting, so History has
+          // something real to scrub through — only when the text really changed.
+          if (typeof payload.body === 'string' && sameContent(payload.body) !== sameContent(existing.body)) {
             s.snapshots[id] = [
               { id: `snap-${nextId()}`, timestamp: existing.updated, body: existing.body },
               ...(s.snapshots[id] ?? []),

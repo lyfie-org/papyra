@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Pin, Palette, History, Archive, Trash2, Rewind, Maximize2, Lock, LockOpen, Share2 } from 'lucide-react';
+import { Pin, Palette, History, Archive, Trash2, Maximize2, Lock, LockOpen, Share2 } from 'lucide-react';
 import PalettePicker from './PalettePicker';
 import './NoteToolbar.css';
 import { useSyncState } from '../hooks/useSync';
@@ -12,8 +12,9 @@ interface Props {
   color: string | null;
   onTogglePin: () => void;
   onPickColor: (color: string | null) => void;
-  onRecover: () => void;
-  onTimeMachine: () => void;
+  /** Version history — one mode that replaced "time machine" + "file recovery". */
+  historyOpen: boolean;
+  onHistory: () => void;
   onFocus: () => void;
   onArchive: () => void;
   onShare: () => void;
@@ -34,8 +35,8 @@ export default function NoteToolbar({
   color,
   onTogglePin,
   onPickColor,
-  onRecover,
-  onTimeMachine,
+  historyOpen,
+  onHistory,
   onFocus,
   onArchive,
   onShare,
@@ -88,20 +89,13 @@ export default function NoteToolbar({
 
       <button
         type="button"
-        className="note-toolbar__btn"
-        aria-label="File recovery"
-        onClick={onRecover}
+        className={`note-toolbar__btn${historyOpen ? ' is-active' : ''}`}
+        aria-label="Version history"
+        aria-pressed={historyOpen}
+        title="Version history"
+        onClick={onHistory}
       >
         <History size={18} />
-      </button>
-
-      <button
-        type="button"
-        className="note-toolbar__btn"
-        aria-label="Time machine"
-        onClick={onTimeMachine}
-      >
-        <Rewind size={18} />
       </button>
 
       <button

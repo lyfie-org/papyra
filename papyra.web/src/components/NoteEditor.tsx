@@ -8,7 +8,6 @@ import type { Note } from '../types/note';
 import { useAutoSave, type Draft } from '../hooks/useAutoSave';
 import { useTheme } from '../hooks/useTheme';
 import { createPapyraEditorAdapter } from '../lib/papyraEditorAdapter';
-import { registerEditorGuards } from '../lib/editorGuards';
 import { putNote } from '../lib/notesApi';
 import { patchNoteInCache } from '../lib/notesCache';
 import { vaultFetch } from '../lib/vault';
@@ -18,10 +17,9 @@ import { useToast } from '../lib/toastContext';
 import { useMentionShare } from '../hooks/useMentionShare';
 import { useTrashNote } from '../hooks/useTrashNote';
 import NoteToolbar from './NoteToolbar';
-import SnapshotPanel from './SnapshotPanel';
 import TagEditor from './TagEditor';
 import GhostCards from './GhostCards';
-import TimeMachineSlider from './TimeMachineSlider';
+import NoteHistory, { type HistoryVersion, type HistoryView } from './NoteHistory';
 import NoteToc from './NoteToc';
 import SecureNoteGate from './SecureNoteGate';
 import ShareDialog from './ShareDialog';
@@ -56,11 +54,6 @@ export default function NoteEditor({ note }: { note: Note }) {
   const closeTo = closeTarget(location);
   const queryClient = useQueryClient();
   const editorRef = useRef<PapyraEditorRef | null>(null);
-  // Unregisters the editor guards (see editorGuards.ts) of the current mount —
-  // the editor remounts on a remote adopt or theme change, each mount gets its own. No unmount
-  // cleanup: the listener dies with its Lexical instance, and a StrictMode
-  // effect replay would strip the guards from an editor that is still live.
-  const unregisterGuards = useRef<(() => void) | null>(null);
   // The scrolling editor panel — the ghost TOC measures heading offsets against it.
   const editorScrollRef = useRef<HTMLElement>(null);
   // Distraction-free focus mode (shared with the SignalR bridge, which buffers
@@ -110,11 +103,22 @@ export default function NoteEditor({ note }: { note: Note }) {
   // a flush on close/unmount read the draft even after Luthor's ref tears down.
   const latestBody = useRef(note.body);
 
+  // True while history shows a past version: autosave is off and the canvas is
+  // not the draft (see getDraft and NoteHistory).
+  const suppressSave = useRef(false);
+
   // Read the live draft on demand: title from the ref, body from Luthor's ref
   // (falling back to the last value mirrored on input when the ref is gone).
+  //
+  // While history is open the canvas holds a *past* version, not the draft. Every
+  // writer reads the draft through here — tag/pin/colour/archive/lock saves, the
+  // unmount flush — so this is where a preview is kept from ever being mistaken
+  // for the note: the live body is the one mirrored before history opened.
   const getDraft = useCallback((): Draft => ({
     title: titleRef.current,
-    body: editorRef.current?.getMarkdown() ?? latestBody.current,
+    body: suppressSave.current
+      ? latestBody.current
+      : editorRef.current?.getMarkdown() ?? latestBody.current,
   }), []);
 
   // A `secure: true` note arrives with an empty body — the API withholds it until a
@@ -135,7 +139,8 @@ export default function NoteEditor({ note }: { note: Note }) {
   const getSaveDraft = useCallback((): Draft => {
     // A to-do body is a checklist (lists are not stampable) and a locked note's
     // body is withheld — neither should be stamped.
-    if (note.kind === 'todo' || isLocked) return getDraft();
+    // Nor is a preview: stamping would write anchors into a past version.
+    if (note.kind === 'todo' || isLocked || suppressSave.current) return getDraft();
     const md = editorRef.current?.ensureBlockAnchors() ?? latestBody.current;
     latestBody.current = md;
     return { title: titleRef.current, body: md };
@@ -156,58 +161,29 @@ export default function NoteEditor({ note }: { note: Note }) {
   // Sharing from inside the open note — the same dialog the card opens.
   const [shareOpen, setShareOpen] = useState(false);
 
-  // Time-machine scrub bar. While open, autosave is hard-disabled (suppressSave)
-  // so previewing a historical revision never overwrites the live file — only an
-  // explicit "Restore this version" writes to disk.
-  const [timeMachine, setTimeMachine] = useState(false);
-  const suppressSave = useRef(false);
+  // History mode (NoteHistory): a timeline bar over the note, with past versions
+  // shown read-only in the canvas. While open, autosave is hard-disabled
+  // (suppressSave) so previewing a version never overwrites the live file — only
+  // an explicit "Restore this version" writes to disk.
+  const [history, setHistory] = useState(false);
+  const [historyView, setHistoryView] = useState<HistoryView>('preview');
+  // The live note as it was on entering history — the "Now" end of the timeline.
+  const [historyLive, setHistoryLive] = useState<HistoryVersion>({ title: note.title, body: note.body });
+  // A previewed version's title, shown in the (read-only) title field.
+  const [previewTitle, setPreviewTitle] = useState<string | null>(null);
   // Asking for the vault PIN before a lock can come off (see toggleSecure).
   const [unlockToChangeLock, setUnlockToChangeLock] = useState(false);
-
-  // Close the editor modal: persist the draft first so closing never loses edits,
-  // then return to the grid. Backdrop click and Escape both route here.
-  const close = useCallback(async () => {
-    // If the time machine is open, the editor is showing a historical preview —
-    // restore the live draft before flushing so closing never writes an old
-    // revision to disk.
-    if (timeMachine) {
-      editorRef.current?.setMarkdown(latestBody.current);
-      forgetHistory(editorRef.current?.getLexicalEditor());
-      suppressSave.current = false;
-      setTimeMachine(false);
-    }
-    // A still-locked note holds an empty body (withheld server-side) — flushing
-    // would write that emptiness over the real content on disk.
-    if (!isLocked) await flush();
-    navigate(closeTo);
-  }, [flush, navigate, timeMachine, isLocked, closeTo]);
-
-  // Escape closes the note (or leaves focus mode first). It stands down when
-  // something on top owns the key — another modal (share, file recovery, a
-  // confirm), the time machine, the vault prompt — or when the editor already
-  // used it (closing a slash menu or a typeahead marks the event handled).
-  useEffect(() => {
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape' || e.defaultPrevented) return;
-      if (focus) { exitFocus(); return; }
-      if (timeMachine || unlockToChangeLock) return;
-      if (document.querySelectorAll('[aria-modal="true"]').length > 1) return;
-      void close();
-    };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
-  }, [close, focus, exitFocus, timeMachine, unlockToChangeLock]);
 
   // What the editor currently displays — the yardstick for detecting that the
   // server snapshot (refreshed by SignalR invalidation) carries a new revision.
   const shown = useRef({ id: note.id, title: note.title, body: note.body });
   // A remote revision held back because the local draft is dirty (caret guard).
   const [pending, setPending] = useState<{ title: string; body: string } | null>(null);
-  // File-recovery overlay; while open the live draft body feeds the diff.
-  const [recoverOpen, setRecoverOpen] = useState(false);
-  // A restore is a deliberate adopt — override the dirty caret-guard for the
-  // refetched (restored) revision so it lands even over unsaved edits.
-  const forceAdopt = useRef(false);
+  // A remote revision that arrived while history was open. The canvas is showing
+  // a past version then, so it can neither be adopted (the remount would drop the
+  // read-only preview) nor judged against the draft (the "draft" is the preview,
+  // which would read as unsaved edits and raise a false conflict). Applied on leave.
+  const deferredRemote = useRef<{ title: string; body: string } | null>(null);
 
   // Force the editor to display a remote revision, re-baselining the save state
   // so the adopted content isn't immediately written back.
@@ -222,15 +198,65 @@ export default function NoteEditor({ note }: { note: Note }) {
     setPending(null);
   }, [reset, note.id]);
 
+  // Leave history without restoring: put the live note back in an editable
+  // canvas, forget the preview undo steps, and re-enable saving.
+  const leaveHistory = useCallback(() => {
+    suppressSave.current = false;
+    setPreviewTitle(null);
+    setHistory(false);
+    const remote = deferredRemote.current;
+    deferredRemote.current = null;
+    if (remote) { applyRemote(remote); return; } // fresh, editable mount
+    const lexical = editorRef.current?.getLexicalEditor();
+    editorRef.current?.setMarkdown(latestBody.current);
+    // Each previewed version was an undo step; undoing into one afterwards would
+    // put an old version back on screen and autosave it over the note.
+    forgetHistory(lexical);
+    lexical?.setEditable(true);
+  }, [applyRemote]);
+
+  // Close the editor modal: persist the draft first so closing never loses edits,
+  // then return to the grid. Backdrop click and Escape both route here.
+  const close = useCallback(async () => {
+    // If history is open, the editor is showing a past version — put the live
+    // draft back before flushing so closing never writes an old revision to disk.
+    if (history) leaveHistory();
+    // A still-locked note holds an empty body (withheld server-side) — flushing
+    // would write that emptiness over the real content on disk.
+    if (!isLocked) await flush();
+    navigate(closeTo);
+  }, [flush, navigate, history, isLocked, closeTo, leaveHistory]);
+
+  // Escape closes the note (or leaves focus mode first). It stands down when
+  // something on top owns the key — another modal (share, a confirm), history
+  // (it leaves history first), the vault prompt — or when the editor already
+  // used it (closing a slash menu or a typeahead marks the event handled).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || e.defaultPrevented) return;
+      if (focus) { exitFocus(); return; }
+      if (history || unlockToChangeLock) return;
+      if (document.querySelectorAll('[aria-modal="true"]').length > 1) return;
+      void close();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [close, focus, exitFocus, history, unlockToChangeLock]);
+
   // React to a fresh server snapshot. SignalR's NoteUpdated invalidates the
   // notes query, so an external edit to the open note arrives here as a changed
   // `note` prop. Clean draft → apply instantly; dirty draft → hold + warn.
   useEffect(() => {
     const incoming = { title: note.title, body: note.body };
     if (note.id !== shown.current.id) { applyRemote(incoming); return; }
-    // A just-restored revision: adopt it even if the draft was dirty.
-    if (forceAdopt.current) { forceAdopt.current = false; applyRemote(incoming); return; }
     if (incoming.title === shown.current.title && incoming.body === shown.current.body) return;
+    if (history) {
+      // Nothing unsaved can be lost: history is only entered after a flush, and
+      // the canvas is read-only while it is open.
+      deferredRemote.current = incoming;
+      shown.current = { id: note.id, ...incoming };
+      return;
+    }
     // Our own save echoing back through the cache — adopt silently, no remount.
     if (incoming.title === savedRef.current.title && incoming.body === savedRef.current.body) {
       shown.current = { id: note.id, ...incoming };
@@ -250,7 +276,7 @@ export default function NoteEditor({ note }: { note: Note }) {
     // Dirty: protect the caret, surface the conflict for the user to resolve.
     shown.current = { id: note.id, ...incoming };
     setPending(incoming);
-  }, [note, isDirty, applyRemote, savedRef, getDraft]);
+  }, [note, isDirty, applyRemote, savedRef, getDraft, history]);
 
   // Keep my local edits and let the next save overwrite the remote revision.
   const keepLocal = useCallback(() => { setPending(null); bump(); }, [bump]);
@@ -366,43 +392,69 @@ export default function NoteEditor({ note }: { note: Note }) {
     toast(next ? 'Note locked and moved to the Vault.' : 'Note unlocked — it is back with your other notes.');
   }, [isLocked, note, getDraft, toast, navigate, queryClient, reset]);
 
-  // Enter the time machine. Flush any unsaved edits FIRST (so the live draft is on
-  // disk and the slider's "Now" matches it), then hard-disable autosave for the
-  // duration. Without the upfront flush a pending debounce could fire mid-scrub and
-  // write a historical revision over the live file.
-  const openTimeMachine = useCallback(async () => {
+  // Enter history. Flush any unsaved edits FIRST, so the live draft is on disk:
+  // the server leaves out versions identical to the live file, and "Now" on the
+  // timeline has to be what the person was just looking at. Then hard-disable
+  // autosave and make the canvas read-only — a preview is not a draft.
+  const openHistory = useCallback(async () => {
+    if (history) return;
     await flush();
     // Cancel any still-pending debounce from edits made just before opening —
-    // otherwise it could fire mid-scrub and flush the previewed (old) body. reset
-    // clears the timer and re-baselines to the now-saved live draft.
-    reset(getDraft());
+    // otherwise it could fire mid-preview and flush the previewed (old) body.
+    const draft = getDraft();
+    reset(draft);
     suppressSave.current = true;
-    setTimeMachine(true);
-  }, [flush, reset, getDraft]);
+    editorRef.current?.getLexicalEditor()?.setEditable(false);
+    setHistoryLive(draft);
+    setHistoryView('preview');
+    setHistory(true);
+    // The timeline pins to the top of the sheet; start there, title in view.
+    if (editorScrollRef.current) editorScrollRef.current.scrollTop = 0;
+  }, [history, flush, reset, getDraft]);
 
-  // Exit without restoring: put the live draft back on screen and re-enable saving.
-  const closeTimeMachine = useCallback(() => {
-    editorRef.current?.setMarkdown(latestBody.current);
-    // Each scrubbed revision was an undo step; undoing into one after leaving
-    // would put an old revision back on screen and autosave it over the note.
-    forgetHistory(editorRef.current?.getLexicalEditor());
-    suppressSave.current = false;
-    setTimeMachine(false);
+  // Put one version (or the live note, for null) into the canvas.
+  const previewVersion = useCallback((version: HistoryVersion | null) => {
+    editorRef.current?.setMarkdown(version ? version.body : latestBody.current);
+    setPreviewTitle(version ? version.title : null);
   }, []);
 
-  // Restore a scrubbed revision: the API archives the current version first (so the
-  // restore is itself reversible), then the refetched note adopts via forceAdopt.
-  const restoreVersion = useCallback(async (snapshotId: string) => {
+  // Restore a version through the API, which archives the current version first,
+  // so a restore is itself reversible: the response names the version holding
+  // what was replaced, and the toast's Undo restores that. The restored note is
+  // adopted straight from the response rather than waiting for the refetch, so
+  // the editor never sits read-only on a stale preview if the refetch is slow.
+  const postRestore = useCallback(async (snapshotId: string): Promise<string | null> => {
+    // An Undo clicked from the toast can come after new typing: save it first, so
+    // the server archives it before swapping the old version in.
+    if (!suppressSave.current) await flush();
     const res = await vaultFetch(
       `/api/notes/${encodeURIComponent(note.id)}/restore/${encodeURIComponent(snapshotId)}`,
       { method: 'POST' },
     );
     if (!res.ok) throw new Error(`POST restore failed: ${res.status}`);
-    forceAdopt.current = true; // adopt the restored body even over the scrubbed view
+    const restored = (await res.json()) as Note;
+
     suppressSave.current = false;
-    setTimeMachine(false);
-    await queryClient.invalidateQueries({ queryKey: ['notes'] });
-  }, [note.id, queryClient]);
+    setPreviewTitle(null);
+    setHistory(false);
+    // The restore's own write may already have echoed back as a deferred remote
+    // update; the response is newer than anything it could hold.
+    deferredRemote.current = null;
+    applyRemote({ title: restored.title, body: restored.body });
+    void queryClient.invalidateQueries({ queryKey: ['notes'] });
+    return res.headers.get('Papyra-Undo-Snapshot');
+  }, [note.id, queryClient, applyRemote, flush]);
+
+  const restoreVersion = useCallback(async (snapshotId: string, label: string) => {
+    const undoId = await postRestore(snapshotId);
+    toast(`Restored the version from ${label}.`, undoId ? {
+      label: 'Undo',
+      onClick: () => void postRestore(undoId).then(
+        () => toast('Restore undone.'),
+        () => toast('Couldn’t undo the restore.'),
+      ),
+    } : undefined);
+  }, [postRestore, toast]);
 
   // Trash, through the shared rule: soft-delete with an Undo normally, and a
   // confirmed permanent delete when Trash is set to remove notes immediately.
@@ -435,7 +487,7 @@ export default function NoteEditor({ note }: { note: Note }) {
     >
     <section
       ref={editorScrollRef}
-      className={`note-editor${colored ? ' note-editor--colored' : ''}${focus ? ' note-editor--focus' : ''}`}
+      className={`note-editor${colored ? ' note-editor--colored' : ''}${focus ? ' note-editor--focus' : ''}${history ? ` note-editor--history note-editor--history-${historyView}` : ''}`}
       style={style}
       role="dialog"
       aria-modal="true"
@@ -464,17 +516,29 @@ export default function NoteEditor({ note }: { note: Note }) {
         </div>
       )}
 
+      {history && (
+        <NoteHistory
+          noteId={note.id}
+          live={historyLive}
+          onPreview={previewVersion}
+          onRestore={restoreVersion}
+          onClose={leaveHistory}
+          view={historyView}
+          onViewChange={setHistoryView}
+        />
+      )}
+
       {!focus && <NoteToc scrollRef={editorScrollRef} />}
 
       <header className="note-editor__bar">
         <input
           className="note-editor__title"
-          value={title}
+          value={previewTitle ?? title}
           placeholder="Untitled"
           aria-label="Note title"
           // Locked notes are read-only until unlocked: a title edit would schedule a
-          // save whose (withheld) body is empty.
-          readOnly={isLocked}
+          // save whose (withheld) body is empty. History shows a past version.
+          readOnly={isLocked || history}
           onChange={(e) => { titleRef.current = e.target.value; setTitle(e.target.value); bump(); }}
         />
       </header>
@@ -489,16 +553,6 @@ export default function NoteEditor({ note }: { note: Note }) {
             <button type="button" onClick={keepLocal}>Overwrite with Local</button>
           </div>
         </div>
-      )}
-
-      {timeMachine && (
-        <TimeMachineSlider
-          noteId={note.id}
-          liveBody={latestBody.current}
-          onPreview={(b) => editorRef.current?.setMarkdown(b)}
-          onRestore={restoreVersion}
-          onClose={closeTimeMachine}
-        />
       )}
 
       {isLocked && (
@@ -535,9 +589,7 @@ export default function NoteEditor({ note }: { note: Note }) {
           onDesync={(info) => console.warn('[papyra] editor DOM diverged from model', info)}
           onReady={(methods) => {
             editorRef.current = methods;
-            unregisterGuards.current?.();
             const lexical = methods.getLexicalEditor();
-            unregisterGuards.current = lexical ? registerEditorGuards(lexical) : null;
             // defaultContent loads as plain text, so parse the markdown into the
             // visual surface explicitly — otherwise the body renders as raw source.
             methods.setMarkdown(body);
@@ -546,6 +598,15 @@ export default function NoteEditor({ note }: { note: Note }) {
             // whole note flattened into one paragraph of raw `1. … ^id` source,
             // which autosave then wrote to disk. Opening a note is not an edit.
             forgetHistory(lexical);
+            // A remount while history is open (a colour pick that tints the note,
+            // an app theme switch) builds a fresh, editable canvas from the live
+            // body — so history is over; leave it rather than leave its bar over
+            // an editor that is no longer showing a preview.
+            if (suppressSave.current) {
+              suppressSave.current = false;
+              setPreviewTitle(null);
+              setHistory(false);
+            }
             // onReady fires post-reconciliation as of luthor 2.9.1, so the editor's
             // own (normalised) serialization is a stable baseline right here — no
             // settle timer. Baselining against our input instead would make every
@@ -578,7 +639,7 @@ export default function NoteEditor({ note }: { note: Note }) {
         </div>
       )}
 
-      {!focus && !isLocked && <GhostCards noteId={note.id} />}
+      {!focus && !isLocked && !history && <GhostCards noteId={note.id} />}
 
       {/* Actions and save state sit under the note body, where writing ends, and
           stick to the bottom of the sheet so a long note keeps them in reach. */}
@@ -589,8 +650,8 @@ export default function NoteEditor({ note }: { note: Note }) {
             color={note.color}
             onTogglePin={() => void saveFrontmatter({ pinned: !note.pinned })}
             onPickColor={(c) => void saveFrontmatter({ color: c })}
-            onRecover={() => setRecoverOpen(true)}
-            onTimeMachine={() => void openTimeMachine()}
+            historyOpen={history}
+            onHistory={() => (history ? leaveHistory() : void openHistory())}
             onFocus={enterFocus}
             secure={note.secure ?? false}
             canToggleSecure={!isLocked}
@@ -605,15 +666,6 @@ export default function NoteEditor({ note }: { note: Note }) {
             {STATUS_LABEL[status]}
           </span>
         </footer>
-      )}
-
-      {recoverOpen && (
-        <SnapshotPanel
-          noteId={note.id}
-          currentBody={getDraft().body}
-          onClose={() => setRecoverOpen(false)}
-          onRestored={() => { forceAdopt.current = true; }}
-        />
       )}
 
       {shareOpen && <ShareDialog note={note} onClose={() => setShareOpen(false)} />}
