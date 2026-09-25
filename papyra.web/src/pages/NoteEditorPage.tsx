@@ -1,11 +1,11 @@
-import { Link, useParams } from 'react-router-dom';
+import { Link } from 'react-router-dom';
 import NoteEditor from '../components/NoteEditor';
 import { useNotes } from '../hooks/useNotes';
 
 // Mounts the editor for /note/:id. The body lives in the notes snapshot the grid
-// already fetched, so we read the open note straight from that cache.
-export default function NoteEditorPage() {
-  const { id } = useParams<{ id: string }>();
+// already fetched, so we read the open note straight from that cache. Rendered by
+// the workspace shell as an overlay over whichever page it was opened from.
+export default function NoteEditorPage({ id }: { id: string }) {
   const { data: notes, isLoading, isError } = useNotes();
 
   if (isLoading) return <p className="notes-page__status">Loading note…</p>;

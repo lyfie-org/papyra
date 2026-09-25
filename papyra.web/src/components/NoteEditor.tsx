@@ -18,7 +18,7 @@ import { useMentionShare } from '../hooks/useMentionShare';
 import { useTrashNote } from '../hooks/useTrashNote';
 import NoteToolbar from './NoteToolbar';
 import SnapshotPanel from './SnapshotPanel';
-import CategoryEditor from './CategoryEditor';
+import TagEditor from './TagEditor';
 import GhostCards from './GhostCards';
 import TimeMachineSlider from './TimeMachineSlider';
 import NoteToc from './NoteToc';
@@ -155,6 +155,8 @@ export default function NoteEditor({ note }: { note: Note }) {
   // explicit "Restore this version" writes to disk.
   const [timeMachine, setTimeMachine] = useState(false);
   const suppressSave = useRef(false);
+  // Asking for the vault PIN before a lock can come off (see toggleSecure).
+  const [unlockToChangeLock, setUnlockToChangeLock] = useState(false);
 
   // Close the editor modal: persist the draft first so closing never loses edits,
   // then return to the grid. Backdrop click and Escape both route here.
@@ -172,6 +174,22 @@ export default function NoteEditor({ note }: { note: Note }) {
     if (!isLocked) await flush();
     navigate(closeTo);
   }, [flush, navigate, timeMachine, isLocked, closeTo]);
+
+  // Escape closes the note (or leaves focus mode first). It stands down when
+  // something on top owns the key — another modal (share, file recovery, a
+  // confirm), the time machine, the vault prompt — or when the editor already
+  // used it (closing a slash menu or a typeahead marks the event handled).
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape' || e.defaultPrevented) return;
+      if (focus) { exitFocus(); return; }
+      if (timeMachine || unlockToChangeLock) return;
+      if (document.querySelectorAll('[aria-modal="true"]').length > 1) return;
+      void close();
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [close, focus, exitFocus, timeMachine, unlockToChangeLock]);
 
   // What the editor currently displays — the yardstick for detecting that the
   // server snapshot (refreshed by SignalR invalidation) carries a new revision.
@@ -249,40 +267,63 @@ export default function NoteEditor({ note }: { note: Note }) {
   // Toolbar frontmatter mutation: PUT the live draft plus the changed YAML field,
   // so a pin/color/archive flip never clobbers unsaved body/title. Re-baselines
   // the save state so the write doesn't immediately echo back as a dirty change.
-  const saveFrontmatter = useCallback(async (patch: Partial<Pick<Note, 'color' | 'pinned' | 'archived' | 'tags' | 'kind'>>) => {
+  // Frontmatter writes (tags, colour, pin, archive) go out one at a time, in the
+  // order they were made, each carrying every field's latest value. Fired
+  // concurrently they raced: two quick tag adds each built on the note as it was
+  // before either landed, a refetch in between put the older list back, and tags
+  // went missing. `fm` is the latest intended frontmatter; it only re-reads the
+  // note from the server once nothing is in flight.
+  const fm = useRef({ tags: note.tags, color: note.color, pinned: note.pinned, archived: note.archived, kind: note.kind });
+  const fmChain = useRef<Promise<void>>(Promise.resolve());
+  const fmInFlight = useRef(0);
+  useEffect(() => {
+    if (fmInFlight.current === 0) {
+      fm.current = { tags: note.tags, color: note.color, pinned: note.pinned, archived: note.archived, kind: note.kind };
+    }
+  }, [note]);
+
+  const saveFrontmatter = useCallback((patch: Partial<Pick<Note, 'color' | 'pinned' | 'archived' | 'tags' | 'kind'>>): Promise<void> => {
     // While locked the draft body is the withheld (empty) one — writing it would
     // destroy the note's real content, so frontmatter edits wait for the unlock.
-    if (isLocked) return;
-    const draft = getDraft();
+    if (isLocked) return Promise.resolve();
+    fm.current = { ...fm.current, ...patch };
+    const intended = fm.current;
     patchNoteInCache(queryClient, note.id, patch);
-    // Same offline-safe seam as the autosave path: parks in the outbox when the
-    // API is unreachable instead of throwing away the toggle.
-    await putNote(note.id, {
-      title: draft.title,
-      tags: patch.tags !== undefined ? patch.tags : note.tags,
-      color: patch.color !== undefined ? patch.color : note.color,
-      pinned: patch.pinned !== undefined ? patch.pinned : note.pinned,
-      archived: patch.archived !== undefined ? patch.archived : note.archived,
-      kind: patch.kind !== undefined ? patch.kind : note.kind,
-      body: draft.body,
-      // `secure` is never sent from here (see toggleSecure); the API reads an
-      // absent value as "leave the lock alone".
-    }, note.updated);
-    reset(draft);
-    // A color flip remounts the editor (theme swap, see key/style below); seed the
-    // fresh mount with the live text so unsaved edits survive the remount.
-    latestBody.current = draft.body;
-    setBody(draft.body);
-    shown.current = { id: note.id, title: draft.title, body: draft.body };
-    queryClient.invalidateQueries({ queryKey: ['notes'] });
-  }, [getDraft, note, reset, queryClient, isLocked]);
+    fmInFlight.current++;
+    const run = fmChain.current.then(async () => {
+      const draft = getDraft();
+      // Same offline-safe seam as the autosave path: parks in the outbox when the
+      // API is unreachable instead of throwing away the toggle.
+      await putNote(note.id, {
+        title: draft.title,
+        ...intended,
+        body: draft.body,
+        // `secure` is never sent from here (see toggleSecure); the API reads an
+        // absent value as "leave the lock alone".
+      }, note.updated);
+      reset(draft);
+      // A color flip remounts the editor (theme swap, see key/style below); seed the
+      // fresh mount with the live text so unsaved edits survive the remount.
+      latestBody.current = draft.body;
+      setBody(draft.body);
+      shown.current = { id: note.id, title: draft.title, body: draft.body };
+    }).catch(() => {
+      toast('Couldn’t save that change.');
+    }).finally(() => {
+      fmInFlight.current--;
+      // Refetch once the queue drains, so the cache settles on the final state
+      // rather than flickering back through each intermediate one.
+      if (fmInFlight.current === 0) void queryClient.invalidateQueries({ queryKey: ['notes'] });
+    });
+    fmChain.current = run;
+    return run;
+  }, [getDraft, note.id, note.updated, reset, queryClient, isLocked, toast]);
 
   // Lock or unlock the note. Not through saveFrontmatter: that path parks a failed
   // write in the offline outbox, and the two refusals here are answers, not
   // outages — "set a PIN first" (409) and "open the vault first" (401) would sit
   // in the outbox retrying forever. Taking a lock off needs the vault open, so a
   // lapsed unlock asks for the PIN and then finishes the job.
-  const [unlockToChangeLock, setUnlockToChangeLock] = useState(false);
   const toggleSecure = useCallback(async () => {
     if (isLocked) return;
     const next = !(note.secure ?? false);
@@ -428,7 +469,7 @@ export default function NoteEditor({ note }: { note: Note }) {
         />
       </header>
 
-      {!focus && <CategoryEditor tags={note.tags} onChange={(tags) => void saveFrontmatter({ tags })} />}
+      {!focus && <TagEditor tags={note.tags} onChange={(tags) => saveFrontmatter({ tags })} />}
 
       {pending && (
         <div className="note-editor__conflict" role="alert">

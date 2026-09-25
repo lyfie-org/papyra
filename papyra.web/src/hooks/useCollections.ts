@@ -1,21 +1,13 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
-import type { Note } from '../types/note';
+import type { SmartRules } from '../lib/smartCollections';
+
+export type { SmartRule, SmartRules } from '../lib/smartCollections';
 
 export interface SmartCollection {
   id: number;
   name: string;
   rulesJson: string;
   createdUtc: string;
-}
-
-export interface SmartRule {
-  field: 'tag' | 'color' | 'pinned' | 'kind' | 'text';
-  value: string;
-}
-
-export interface SmartRules {
-  match: 'all' | 'any';
-  conditions: SmartRule[];
 }
 
 const KEY = ['collections'];
@@ -26,19 +18,6 @@ export function useCollections() {
     queryFn: async () => {
       const res = await fetch('/api/collections');
       if (!res.ok) throw new Error(`GET /api/collections failed: ${res.status}`);
-      return res.json();
-    },
-  });
-}
-
-// The notes a saved collection currently matches (evaluated server-side, live).
-export function useCollectionNotes(id: number | null) {
-  return useQuery<Note[]>({
-    queryKey: ['collection-notes', id],
-    enabled: id !== null,
-    queryFn: async () => {
-      const res = await fetch(`/api/collections/${id}/notes`);
-      if (!res.ok) throw new Error(`GET collection notes failed: ${res.status}`);
       return res.json();
     },
   });

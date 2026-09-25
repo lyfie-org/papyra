@@ -6,7 +6,7 @@
 // trashed — so a visitor who pokes at anything finds it actually works.
 
 import type { Note } from '../types/note';
-import type { Category } from '../hooks/useCategories';
+import type { TagEntry as Category } from '../hooks/useTags';
 import type { InboxEntry } from '../hooks/useInbox';
 import type { SmartCollection } from '../hooks/useCollections';
 import { AI_ENABLED } from '../lib/features';

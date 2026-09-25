@@ -1,11 +1,9 @@
 import { useEffect, useRef } from 'react';
-import { Routes, Route, Navigate } from 'react-router-dom';
+import { Routes, Route, Navigate, matchPath, useLocation } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import WorkspaceLayout from './layout/WorkspaceLayout';
 import NotesPage from './pages/NotesPage';
-import NoteEditorPage from './pages/NoteEditorPage';
 import TodoPage from './pages/TodoPage';
-import CategoriesPage from './pages/CategoriesPage';
 import CollectionsPage from './pages/CollectionsPage';
 import ArchivePage from './pages/ArchivePage';
 import VaultPage from './pages/VaultPage';
@@ -23,6 +21,8 @@ import { clearSessionData } from './lib/session';
 import { FocusProvider } from './hooks/FocusProvider';
 import './App.css';
 import InboxPage from './pages/InboxPage';
+import { backgroundPage } from './lib/noteLink';
+import { RealLocationContext } from './lib/realLocation';
 
 // Gate the workspace behind a live session. The /me probe decides where an
 // unauthenticated visitor lands: /setup before any admin exists, else /login.
@@ -77,8 +77,16 @@ function RequireAdmin() {
 }
 
 export default function App() {
+  // While a note is open the URL is /note/:id, but the page behind it should be the
+  // one it was opened from. Routing the main outlet by that page — and letting the
+  // shell draw the editor over it — keeps To Do behind a to-do, the Vault behind a
+  // vault note, and so on.
+  const location = useLocation();
+  const onNote = matchPath('/note/:id', location.pathname) !== null;
+  const mainLocation = onNote ? { ...location, ...backgroundPage(), hash: '' } : location;
   return (
-    <Routes>
+    <RealLocationContext.Provider value={location}>
+    <Routes location={mainLocation}>
       <Route path="/login" element={<LoginPage />} />
       <Route path="/setup" element={<SetupPage />} />
       {/* One-time emailed links. Outside the auth guard: whoever follows a
@@ -88,14 +96,11 @@ export default function App() {
       {/* Public tokenised share link — no session required. */}
       <Route path="/shared/:token" element={<SharedNotePage />} />
       <Route element={<RequireAuth />}>
-        {/* The editor renders as a modal over the grid, so note/:id is a child of
-            NotesPage (which keeps the grid mounted behind it via <Outlet />). */}
-        <Route path="/" element={<NotesPage />}>
-          <Route path="note/:id" element={<NoteEditorPage />} />
-        </Route>
+        <Route path="/" element={<NotesPage />} />
         <Route path="todo" element={<TodoPage />} />
         <Route path="inbox" element={<InboxPage />} />
-        <Route path="categories" element={<CategoriesPage />} />
+        {/* Tags now live on the Collections page. */}
+        <Route path="categories" element={<Navigate to="/collections" replace />} />
         <Route path="collections" element={<CollectionsPage />} />
         <Route path="shared-with-me" element={<SharedWithMePage />} />
         <Route path="vault" element={<VaultPage />} />
@@ -108,5 +113,6 @@ export default function App() {
         <Route path="admin" element={<RequireAdmin />} />
       </Route>
     </Routes>
+    </RealLocationContext.Provider>
   );
 }

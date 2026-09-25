@@ -241,7 +241,7 @@
   outline-offset: 2px;
 }
 
-/* Inline category (tag) editor under the title bar. */
+/* Inline tag editor under the title bar. */
 .note-cats {
   display: flex;
   flex-wrap: wrap;
@@ -285,7 +285,7 @@
   font-family: var(--sans);
   font-size: var(--fs-xs);
 }
-/* Category chips on a tinted note: the theme's accent pair is built for the
+/* Tag chips on a tinted note: the theme's accent pair is built for the
    app surface, and in dark mode it put pale green on a pale tint (~1.5:1).
    Same fix as the card tags — scrim fill, dark tint ink, in both themes. */
 .note-editor--colored .note-cats__chip {
@@ -402,3 +402,10 @@
   text-decoration: underline;
   cursor: pointer;
 }
+
+.note-cats__problem {
+  color: var(--danger);
+  font-family: var(--sans);
+  font-size: var(--fs-xs);
+}
+.note-cats__input:disabled { opacity: 0.6; cursor: not-allowed; }

@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react';
-import { Outlet, useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { Plus, UploadCloud } from 'lucide-react';
 import DraggableNoteGrid from '../components/DraggableNoteGrid';
@@ -9,6 +9,8 @@ import ConflictResolver from '../components/ConflictResolver';
 import FirstRun from '../components/FirstRun';
 import { useNotes } from '../hooks/useNotes';
 import { useConflicts, type Conflict } from '../hooks/useConflicts';
+import { useCollections } from '../hooks/useCollections';
+import { matchesRules, parseRules } from '../lib/smartCollections';
 import { putNote } from '../lib/notesApi';
 import './NotesPage.css';
 
@@ -20,14 +22,28 @@ export default function NotesPage() {
   const [resolving, setResolving] = useState<string | null>(null);
   const [dragging, setDragging] = useState(false);
   const [importMsg, setImportMsg] = useState<string | null>(null);
-  // Heatmap cell → filter the grid to notes last modified that day (YYYY-MM-DD).
-  // Desk filters (see NotesFilterBar). Kept here rather than in the URL: they are
-  // a transient way to look at the desk, and putting them in the query string
-  // would fight the `/note/:id` child route the editor opens over this page.
-  const [scope, setScope] = useState<NotesScope>('all');
-  const [selectedTags, setSelectedTags] = useState<string[]>([]);
+  const { data: collections } = useCollections();
+  // Desk filters (see NotesFilterBar) live in the URL: Collections links straight
+  // to "notes tagged X" or "notes in collection Y", a filtered desk survives a
+  // reload, and an open note keeps the filtered desk behind it (the editor now
+  // opens over whatever page you came from, not as a child of this one).
+  const [params, setParams] = useSearchParams();
+  const scope: NotesScope = params.get('scope') === 'pinned' ? 'pinned' : 'all';
+  const selectedTags = useMemo(() => params.getAll('tag'), [params]);
+  const collectionId = Number(params.get('collection')) || null;
+  const setFilter = (mutate: (p: URLSearchParams) => void) => {
+    const next = new URLSearchParams(params);
+    mutate(next);
+    setParams(next, { replace: true });
+  };
+  const setScope = (v: NotesScope) => setFilter((p) => { if (v === 'pinned') p.set('scope', 'pinned'); else p.delete('scope'); });
+  const setSelectedTags = (tags: string[]) => setFilter((p) => { p.delete('tag'); for (const t of tags) p.append('tag', t); });
+  const setCollection = (id: number | null) => setFilter((p) => { if (id === null) p.delete('collection'); else p.set('collection', String(id)); });
 
-  // Every tag in the vault, for the category dropdown. Built from the notes the
+  const activeCollection = collections?.find((c) => c.id === collectionId) ?? null;
+  const activeRules = useMemo(() => (activeCollection ? parseRules(activeCollection.rulesJson) : null), [activeCollection]);
+
+  // Every tag in the vault, for the tag dropdown. Built from the notes the
   // desk can actually show, so a tag that only exists on an archived or trashed
   // note never offers a filter that yields nothing.
   const allTags = useMemo(() => {
@@ -45,14 +61,18 @@ export default function NotesPage() {
     // Any selected tag matches — intersecting them would empty the grid almost
     // every time, since notes rarely carry several tags at once.
     if (selectedTags.length > 0) {
-      list = list.filter((n) => (n.tags ?? []).some((t) => selectedTags.includes(t)));
+      const want = new Set(selectedTags.map((t) => t.toLowerCase()));
+      list = list.filter((n) => (n.tags ?? []).some((t) => want.has(t.toLowerCase())));
     }
+    // A smart collection is evaluated here, over the live notes, so it follows
+    // every edit (tag added, colour changed, pinned) without a refetch.
+    if (activeRules) list = list.filter((n) => matchesRules(n, activeRules));
     return list;
-  }, [notes, scope, selectedTags]);
+  }, [notes, scope, selectedTags, activeRules]);
 
   // A genuinely empty vault (not just an empty filter or an all-archived one)
   // gets the first-run explainer instead of the grid.
-  const isFirstRun = scope === 'all' && selectedTags.length === 0
+  const isFirstRun = scope === 'all' && selectedTags.length === 0 && collectionId === null
     && (notes ?? []).every(n => n.trashed);
 
   // Quick-import: drop .md/.txt onto the grid → new notes (native DnD, no lib).
@@ -140,6 +160,9 @@ export default function NotesPage() {
           allTags={allTags}
           selectedTags={selectedTags}
           onSelectedTagsChange={setSelectedTags}
+          collections={collections ?? []}
+          selectedCollection={collectionId}
+          onCollectionChange={setCollection}
         />
       )}
 
@@ -154,6 +177,7 @@ export default function NotesPage() {
               notes={visibleNotes}
               conflictsByParent={conflictsByParent}
               onResolveConflict={setResolving}
+              includeTodos={activeRules !== null}
             />
           </div>
           <SharedRail />
@@ -164,8 +188,6 @@ export default function NotesPage() {
         <ConflictResolver conflictId={resolving} onClose={() => setResolving(null)} />
       )}
 
-      {/* /note/:id renders the editor modal over this grid. */}
-      <Outlet />
     </section>
   );
 }

@@ -4,11 +4,11 @@ import { Search, X } from 'lucide-react';
 import { useNotes } from '../hooks/useNotes';
 import { useSyncState } from '../hooks/useSync';
 import { useAuth } from '../hooks/useAuth';
-import { useCategories } from '../hooks/useCategories';
+import { useTags } from '../hooks/useTags';
 import { useCollections } from '../hooks/useCollections';
 import { flattenMarkdown, normaliseLines } from '../lib/plainText';
 import {
-  GROUP_LABEL, categoryResults, collectionResults, noteResult, orderResults, settingsResults,
+  GROUP_LABEL, tagResults, collectionResults, noteResult, orderResults, settingsResults,
   type SearchResult,
 } from '../lib/searchRegistry';
 import type { Note } from '../types/note';
@@ -54,7 +54,7 @@ function searchLocally(notes: Note[], query: string): Array<Hit & { rank: number
  * Search over everything the app holds, not only notes.
  *
  * Notes and to-dos come from the Lucene endpoint (with a local substring
- * fallback); settings pages, categories and collections are matched client-side
+ * fallback); settings pages, tags and collections are matched client-side
  * against data already in the cache — see `lib/searchRegistry.ts`. Results are
  * grouped by what they are and labelled with a breadcrumb, so "Model" reads as
  * `Settings › AI` rather than as a mysterious bare word.
@@ -64,7 +64,7 @@ function searchLocally(notes: Note[], query: string): Array<Hit & { rank: number
 export default function SearchBar() {
   const navigate = useNavigate();
   const { data: notes } = useNotes();
-  const { data: categories } = useCategories();
+  const { data: tags } = useTags();
   const { data: collections } = useCollections();
   const { user } = useAuth();
   const { online } = useSyncState();
@@ -122,7 +122,7 @@ export default function SearchBar() {
   }, [query, cached, online]);
 
   // Everything the client can answer for itself is matched here — no debounce,
-  // no network, so settings and categories appear the instant a key lands.
+  // no network, so settings and tags appear the instant a key lands.
   const results: SearchResult[] = useMemo(() => {
     const q = query.trim();
     if (!q) return [];
@@ -130,10 +130,10 @@ export default function SearchBar() {
     return orderResults([
       ...noteHits.map(hit => noteResult(hit, kinds.get(hit.id) ?? 'note', hit.rank)),
       ...settingsResults(q, isAdmin),
-      ...categoryResults(categories ?? [], q),
+      ...tagResults(tags ?? [], q),
       ...collectionResults(collections ?? [], q),
     ]);
-  }, [query, noteHits, cached, isAdmin, categories, collections]);
+  }, [query, noteHits, cached, isAdmin, tags, collections]);
 
   // The keyboard walks a flat list; the headings are drawn from it, not around
   // it. Clamp on read rather than in an effect — the list shrinks on every

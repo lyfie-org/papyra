@@ -1,8 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-import { NavLink, Outlet, useLocation, useNavigate } from 'react-router-dom';
+import { NavLink, Outlet, matchPath, useLocation, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import {
-  Menu, StickyNote, ListTodo, Tags, Archive, Settings, Trash2, ShieldCheck,
+  Menu, StickyNote, ListTodo, Archive, Settings, Trash2, ShieldCheck,
   User, Shield, LogOut, Sun, Moon, Layers, Sparkles, CircleQuestionMark, Inbox,
 } from 'lucide-react';
 import ChatPanel from '../components/ChatPanel';
@@ -10,6 +10,8 @@ import SearchBar from '../components/SearchBar';
 import HelpSheet from '../components/HelpSheet';
 import { useTheme } from '../hooks/useTheme';
 import { rememberPage } from '../lib/noteLink';
+import NoteEditorPage from '../pages/NoteEditorPage';
+import { useRealLocation } from '../lib/realLocation';
 import { clearSessionData } from '../lib/session';
 import { AI_ENABLED } from '../lib/features';
 import { useSignalR } from '../hooks/useSignalR';
@@ -27,7 +29,6 @@ const NAV_ITEMS = [
   { to: '/', label: 'Notes', icon: StickyNote, end: true },
   { to: '/todo', label: 'To Do', icon: ListTodo, end: false },
   { to: '/inbox', label: 'Inbox', icon: Inbox, end: false },
-  { to: '/categories', label: 'Categories', icon: Tags, end: false },
   { to: '/collections', label: 'Collections', icon: Layers, end: false },
   { to: '/vault', label: 'Vault', icon: ShieldCheck, end: false },
   { to: '/archive', label: 'Archive', icon: Archive, end: false },
@@ -237,6 +238,7 @@ export default function WorkspaceLayout() {
         <main className="workspace__desk">
           <OriginTracker />
           <Outlet />
+          <NoteOverlay />
         </main>
       </div>
 
@@ -272,4 +274,14 @@ function OriginTracker() {
   const location = useLocation();
   useEffect(() => { rememberPage(location); }, [location]);
   return null;
+}
+
+// The open note, over whatever page it was opened from. App keeps rendering that
+// page as the main route while the URL is /note/:id (see backgroundPage), so
+// opening a list from To Do no longer flashes the Notes desk in behind it.
+function NoteOverlay() {
+  const real = useRealLocation();
+  const match = real ? matchPath('/note/:id', real.pathname) : null;
+  if (!match?.params.id) return null;
+  return <NoteEditorPage key={match.params.id} id={match.params.id} />;
 }

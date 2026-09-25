@@ -1,18 +1,5 @@
+import { NOTE_SWATCHES as SWATCHES } from '../lib/noteColors';
 import './PalettePicker.css';
-
-// Premium note palette — muted, editorial tints that sit on the warm paper bg.
-// `value` is the literal hex written into the note's YAML `color:` frontmatter
-// (null clears it back to the default surface).
-const SWATCHES: { name: string; value: string | null }[] = [
-  { name: 'Default', value: null },
-  { name: 'Sage', value: '#dfe9df' },
-  { name: 'Clay', value: '#ecdcd0' },
-  { name: 'Sand', value: '#ece3cf' },
-  { name: 'Rose', value: '#ecd9da' },
-  { name: 'Sky', value: '#d8e3ea' },
-  { name: 'Lilac', value: '#e2dcec' },
-  { name: 'Moss', value: '#dde7d4' },
-];
 
 export default function PalettePicker({
   active,

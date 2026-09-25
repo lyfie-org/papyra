@@ -30,6 +30,16 @@ export function rememberPage(location: Pick<Location, 'pathname' | 'search'>): v
 }
 
 /**
+ * The page to keep showing behind an open note: the last page visited (so a list
+ * opened from To Do keeps To Do behind it, not the Notes desk), else Notes.
+ */
+export function backgroundPage(): { pathname: string; search: string } {
+  const page = lastPage ?? '/';
+  const q = page.indexOf('?');
+  return q < 0 ? { pathname: page, search: '' } : { pathname: page.slice(0, q), search: page.slice(q) };
+}
+
+/**
  * Where closing the editor should land: the origin a link carried, else the
  * last page visited, else Notes.
  */

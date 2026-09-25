@@ -6,7 +6,7 @@ import './HelpSheet.css';
 const SHORTCUTS: Array<[string, string]> = [
   ['⌘K / Ctrl+K', 'Search every note'],
   ['Esc', 'Close the note, a panel, or focus mode'],
-  ['Enter', 'Add the category / to-do item you just typed'],
+  ['Enter', 'Add the tag / to-do item you just typed'],
   ['Drag a text file onto the grid', 'Import it as a note'],
 ];
 

@@ -120,3 +120,12 @@
 .notes-filters__clear:hover {
   color: var(--text-h);
 }
+
+/* Smart collections sit after the tag filters, set off by a hairline, so the
+   row reads "how to slice the desk" left to right. */
+.notes-filters__divider {
+  width: 1px;
+  height: 1.3rem;
+  margin: 0 var(--space-1);
+  background: var(--border);
+}

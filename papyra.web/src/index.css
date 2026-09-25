@@ -42,7 +42,7 @@ h1 {
   }
 }
 
-/* The heading at the top of a workspace page (Notes, Inbox, Categories…).
+/* The heading at the top of a workspace page (Notes, Inbox, Collections…).
    The bare h1 above is the splash/marketing size; inside the app every page
    must read at one size. Pages used to set this themselves and had drifted to
    three different values, so it lives here instead — add the class to a new

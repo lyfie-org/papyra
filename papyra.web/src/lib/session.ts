@@ -10,7 +10,7 @@ import { forgetUnlock } from './vault';
  * one. The server is correctly partitioned per user, but three client-side
  * stores outlive a sign-out and each leaks across accounts on their own:
  *
- *   - the React Query cache, which holds notes, categories, inbox and shares;
+ *   - the React Query cache, which holds notes, tags, inbox and shares;
  *   - the service worker's cached API responses, readable offline;
  *   - the IndexedDB outbox, whose entries are keyed by note id with no owner,
  *     so a pending write would replay into whoever signs in next.
