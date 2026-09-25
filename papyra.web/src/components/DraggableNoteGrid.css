@@ -47,90 +47,7 @@
   pointer-events: none;
 }
 
-/* ── Multi-select ─────────────────────────────────────────────────────────── */
-
-/* Tick: hangs off the top-left corner, mirroring the pin on the right. Shown on
-   hover/focus, and on every card once a selection exists. */
-.select-tick {
-  position: absolute;
-  top: -10px;
-  left: -10px;
-  z-index: 3;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 26px;
-  height: 26px;
-  padding: 0;
-  border: 1.5px solid var(--border);
-  border-radius: 50%;
-  background: var(--surface);
-  color: transparent;
-  box-shadow: var(--shadow-card);
-  cursor: pointer;
-  opacity: 0;
-  transform: scale(0.85);
-  transition:
-    opacity var(--dur-fast) var(--ease),
-    transform var(--dur-fast) var(--ease),
-    background var(--dur-fast) var(--ease),
-    border-color var(--dur-fast) var(--ease),
-    color var(--dur-fast) var(--ease),
-    translate var(--dur) var(--ease);
-}
-
-.dnd-card:hover .select-tick,
-.dnd-card:focus-within .select-tick,
-.note-grid-wrap.is-selecting .select-tick {
-  opacity: 1;
-  transform: scale(1);
-}
-
-/* Follows the card's own hover lift so the two stay together. */
-.dnd-card:hover .select-tick { translate: 0 -2px; }
-
-.select-tick:hover { border-color: var(--accent); color: var(--accent-text); }
-
-.select-tick:focus-visible {
-  opacity: 1;
-  outline: 2px solid var(--accent);
-  outline-offset: 2px;
-}
-
-.select-tick[aria-pressed="true"] {
-  border-color: var(--accent);
-  background: var(--accent);
-  color: var(--accent-fg);
-  animation: select-tick-pop var(--dur) var(--ease);
-}
-
-@keyframes select-tick-pop {
-  40% { transform: scale(1.18); }
-}
-
-/* Selected: a ring drawn outside the card (the card keeps its own colour),
-   and a slight settle inward, like a pressed-in page. */
-.dnd-card::after {
-  content: '';
-  position: absolute;
-  inset: -4px;
-  border: 2px solid var(--accent);
-  border-radius: calc(var(--radius-md) + 4px);
-  opacity: 0;
-  transform: scale(0.98);
-  pointer-events: none;
-  transition: opacity var(--dur-fast) var(--ease), transform var(--dur) var(--ease);
-}
-.dnd-card.is-selected::after { opacity: 1; transform: none; }
-.dnd-card > .note-card__link,
-.dnd-card > .todo-card { transition: scale var(--dur) var(--ease); }
-.dnd-card.is-selected > .note-card__link,
-.dnd-card.is-selected > .todo-card { scale: 0.975; }
-
-/* In selection mode every click selects, so say so with the cursor. */
-.note-grid-wrap.is-selecting .dnd-card { cursor: default; }
-.note-grid-wrap.is-selecting .dnd-card * { cursor: inherit; }
-.note-grid-wrap.is-selecting .select-tick { cursor: pointer; }
+/* Multi-select look lives in Selection.css; this is only the group drag. */
 
 /* Carried as part of a group: a fanned stack under the dragged card. */
 .dnd-card.is-following {
@@ -162,12 +79,7 @@
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .select-tick, .dnd-card::after { transition: none; }
-  .select-tick[aria-pressed="true"], .dnd-card__carry { animation: none; }
+  .dnd-card__carry { animation: none; }
   .dnd-card.is-following { rotate: none; }
 }
 
-/* Touch screens have no hover: keep the tick findable at rest. */
-@media (hover: none) {
-  .select-tick { opacity: 0.85; transform: scale(1); }
-}

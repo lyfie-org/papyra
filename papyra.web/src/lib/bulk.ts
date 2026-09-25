@@ -3,8 +3,8 @@
 
 import { fetchWithProgress } from './progress';
 
-export type BulkAction = 'pin' | 'unpin' | 'archive' | 'unarchive' | 'trash' | 'untrash';
-export type BulkStatus = 'changed' | 'unchanged' | 'notFound';
+export type BulkAction = 'pin' | 'unpin' | 'archive' | 'unarchive' | 'trash' | 'untrash' | 'delete';
+export type BulkStatus = 'changed' | 'unchanged' | 'notFound' | 'notTrashed';
 export type ShareStatus = 'shared' | 'upgraded' | 'alreadyShared' | 'locked' | 'notFound';
 
 export interface BulkResult<S extends string> {

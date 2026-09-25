@@ -1,4 +1,10 @@
 import { stripBlockAnchors } from './plainText';
+import { finishCode, finishText, protectEscapes } from './markdownText';
+
+// A code span's content, minus the one space of padding CommonMark strips from
+// each side when both are present (how a span holding backticks is written).
+const unpad = (v: string): string =>
+  v.length > 2 && v.startsWith(' ') && v.endsWith(' ') && v.trim() ? v.slice(1, -1) : v;
 
 // A note body parsed into the handful of block shapes a card preview draws.
 // Deliberately a subset: enough that a card reads like the open note (lists and
@@ -41,10 +47,11 @@ export type Block =
 // Earliest-match scanner over the inline syntaxes a note uses. Order matters only
 // for ties at the same index (`**` before `*`).
 const INLINE: { re: RegExp; make: (m: RegExpExecArray) => Inline }[] = [
-  { re: /`([^`]+)`/, make: (m) => ({ t: 'code', v: m[1] }) },
-  { re: /!\[\[([^\]]+)\]\]/, make: (m) => ({ t: 'embed', v: m[1].split('|')[0].split('#')[0] }) },
-  { re: /!\[([^\]]*)\]\([^)]*\)/, make: (m) => ({ t: 'embed', v: m[1] || 'image' }) },
-  { re: /\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/, make: (m) => ({ t: 'link', c: [{ t: 'text', v: m[2] ?? m[1] }] }) },
+  // A span of N backticks closes at the next run of exactly N.
+  { re: /(`+)(?!`)([\s\S]+?)(?<!`)\1(?!`)/, make: (m) => ({ t: 'code', v: finishCode(unpad(m[2])) }) },
+  { re: /!\[\[([^\]]+)\]\]/, make: (m) => ({ t: 'embed', v: finishText(m[1].split('|')[0].split('#')[0]) }) },
+  { re: /!\[([^\]]*)\]\([^)]*\)/, make: (m) => ({ t: 'embed', v: finishText(m[1]) || 'image' }) },
+  { re: /\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/, make: (m) => ({ t: 'link', c: [{ t: 'text', v: finishText(m[2] ?? m[1]) }] }) },
   { re: /\[([^\]]+)\]\(([^)]*)\)/, make: (m) => ({ t: 'link', c: parseInline(m[1]) }) },
   { re: /\*\*(.+?)\*\*|__(.+?)__/, make: (m) => ({ t: 'strong', c: parseInline(m[1] ?? m[2]) }) },
   { re: /~~(.+?)~~/, make: (m) => ({ t: 'del', c: parseInline(m[1]) }) },
@@ -61,8 +68,8 @@ export function parseInline(text: string): Inline[] {
       const m = re.exec(rest);
       if (m && (best === null || m.index < best.i)) best = { i: m.index, m, make };
     }
-    if (!best) { out.push({ t: 'text', v: rest }); break; }
-    if (best.i > 0) out.push({ t: 'text', v: rest.slice(0, best.i) });
+    if (!best) { out.push({ t: 'text', v: finishText(rest) }); break; }
+    if (best.i > 0) out.push({ t: 'text', v: finishText(rest.slice(0, best.i)) });
     out.push(best.make(best.m));
     rest = rest.slice(best.i + best.m[0].length);
   }
@@ -95,7 +102,8 @@ function indentOf(s: string): number {
  * clip anyway. Returns whether it stopped early (the card fades its bottom edge).
  */
 export function parseBlocks(md: string, maxLines = 14): { blocks: Block[]; truncated: boolean } {
-  const lines = stripBlockAnchors(md).replace(/\r\n?/g, '\n').split('\n');
+  // Escapes become stand-ins before any pattern runs, so \# or \* is never markup.
+  const lines = protectEscapes(stripBlockAnchors(md).replace(/\r\n?/g, '\n')).split('\n');
   const blocks: Block[] = [];
   let used = 0;
   let i = 0;
@@ -111,7 +119,7 @@ export function parseBlocks(md: string, maxLines = 14): { blocks: Block[]; trunc
       i++;
       while (i < lines.length && !lines[i].trimStart().startsWith(fence) && !full()) { body.push(lines[i]); i++; used++; }
       i++; // closing fence
-      blocks.push({ t: 'code', v: body.join('\n') });
+      blocks.push({ t: 'code', v: finishCode(body.join('\n')) });
       continue;
     }
 

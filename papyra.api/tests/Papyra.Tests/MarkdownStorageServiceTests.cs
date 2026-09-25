@@ -30,6 +30,36 @@ public sealed class MarkdownStorageServiceTests
         Assert.Equal(note.Body.TrimEnd(), back.Body.TrimEnd());
     }
 
+    // The editor writes blank lines as newlines — including a blank first or
+    // last line — and literal syntax as character references. The body has to
+    // come back from disk byte for byte, or a note loses its blank lines on
+    // every open.
+    [Theory]
+    [InlineData("body")]
+    [InlineData("\nstarts with one blank line")]
+    [InlineData("\n\n\nstarts with three")]
+    [InlineData("ends with blank lines\n\n\n")]
+    [InlineData("a\n\n\n\nb")]
+    [InlineData("&#35; not a heading\n\n1&#46; not a list\n&#8203;\nx")]
+    [InlineData("")]
+    [InlineData("\n")]
+    [InlineData("---\nnot frontmatter, a rule inside the body")]
+    public void RoundTrip_KeepsTheBodyExactly(string body)
+    {
+        var note = new Note { Id = "n1", Title = "T", Body = body };
+        Assert.Equal(body, _svc.Deserialize(_svc.Serialize(note)).Body);
+    }
+
+    [Theory]
+    [InlineData("---\ntitle: X\n---\nbody", "body")]              // written by another tool, no blank line
+    [InlineData("---\ntitle: X\n---\n\nbody", "body")]            // the usual separator
+    [InlineData("---\r\ntitle: X\r\n---\r\n\r\nbody", "body")]    // CRLF
+    [InlineData("---\ntitle: X\n---\n\n\nbody", "\nbody")]        // a blank first line of the note
+    public void Deserialize_StripsOnlyTheSeparatorAfterFrontmatter(string file, string body)
+    {
+        Assert.Equal(body, _svc.Deserialize(file).Body);
+    }
+
     [Fact]
     public void Deserialize_UnknownYamlKeys_DoNotCrash()
     {

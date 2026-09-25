@@ -1,3 +1,5 @@
+import { finishText, protectEscapes } from './markdownText';
+
 const SNIPPET_LEN = 220;
 
 /**
@@ -12,8 +14,9 @@ const SNIPPET_LEN = 220;
  * which does the same job for Lucene snippets.
  */
 export function flattenMarkdown(md: string): string {
-  return md
-    .replace(/\r\n?/g, '\n')                            // CRLF files (edited elsewhere)
+  // Escaped characters (\*) are literal, never markup; character references
+  // (&#35;) are decoded once the markup is gone — see markdownText.ts.
+  return finishText(protectEscapes(md.replace(/\r\n?/g, '\n')) // CRLF files (edited elsewhere)
     .replace(/```[\s\S]*?```/g, ' ')                    // fenced code blocks
     .replace(/`([^`]+)`/g, '$1')                        // inline code
     .replace(/!\[\[[^\]]*\]\]/g, ' ')                   // media embeds ![[file]]
@@ -34,7 +37,7 @@ export function flattenMarkdown(md: string): string {
     .replace(/^\s{0,3}(?:[-*_]\s*){3,}$/gm, ' ')        // horizontal rules
     .replace(/(\*\*|__)(.*?)\1/g, '$2')                 // bold
     .replace(/(\*|_)(.*?)\1/g, '$2')                    // italic
-    .replace(/~~(.*?)~~/g, '$1');                       // strikethrough
+    .replace(/~~(.*?)~~/g, '$1'));                      // strikethrough
 }
 
 /**

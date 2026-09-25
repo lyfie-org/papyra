@@ -23,6 +23,9 @@ public static partial class PlainText
 
         // CRLF (a file edited elsewhere) → LF, so Multiline `$` lands at line end.
         var text = markdown.Replace("\r\n", "\n").Replace('\r', '\n');
+        // Escaped characters (\*) are literal, never markup: park them in stand-ins
+        // the patterns below don't match, and put them back at the end.
+        text = Escape().Replace(text, m => ((char)(EscapeBase + m.Groups[1].Value[0])).ToString());
         text = FencedCode().Replace(text, " ");
         text = InlineCode().Replace(text, "$1");
         text = MediaEmbed().Replace(text, " ");
@@ -40,6 +43,12 @@ public static partial class PlainText
         text = Italic().Replace(text, "$2");
         text = Strikethrough().Replace(text, "$1");
 
+        // The editor writes text that would read as syntax ("1. " typed as
+        // words) as character references, and an empty line in a paragraph as
+        // &#8203; — decoded only now, after the markup is gone.
+        text = Reference().Replace(text, DecodeReference).Replace("​", string.Empty);
+        text = RestoreEscapes(text);
+
         // Collapse the whitespace the stripping left behind, but keep single line
         // breaks so a multi-line note still reads as separate lines.
         text = IntraLineSpace().Replace(text, " ");
@@ -47,6 +56,34 @@ public static partial class PlainText
         text = BlankRun().Replace(text, "\n");
         return text.Trim();
     }
+
+    private const int EscapeBase = 0xF800;
+
+    private static string RestoreEscapes(string text)
+    {
+        if (!text.Any(c => c >= EscapeBase && c < EscapeBase + 0x80)) return text;
+        var chars = text.ToCharArray();
+        for (var i = 0; i < chars.Length; i++)
+            if (chars[i] >= EscapeBase && chars[i] < EscapeBase + 0x80) chars[i] = (char)(chars[i] - EscapeBase);
+        return new string(chars);
+    }
+
+    private static string DecodeReference(Match m)
+    {
+        var ok = m.Groups[1].Success
+            ? int.TryParse(m.Groups[1].Value, out var code)
+            : int.TryParse(m.Groups[2].Value, System.Globalization.NumberStyles.HexNumber, null, out code);
+        return ok && code > 0 && code <= 0x10FFFF && (code < 0xD800 || code > 0xDFFF)
+            ? char.ConvertFromUtf32(code)
+            : m.Value;
+    }
+
+    // CommonMark backslash escape: `\` before any ASCII punctuation.
+    [GeneratedRegex(@"\\([!-/:-@\[-`{-~])")]
+    private static partial Regex Escape();
+
+    [GeneratedRegex(@"&#(?:(\d{1,7})|[xX]([0-9a-fA-F]{1,6}));")]
+    private static partial Regex Reference();
 
     // Luthor stamps every block with a trailing `^id` so transclusion can address
     // it. Purely machine-facing — never shown.

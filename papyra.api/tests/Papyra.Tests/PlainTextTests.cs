@@ -34,4 +34,22 @@ public sealed class PlainTextTests
     {
         Assert.Equal("1.5 kg rice #tag", PlainText.Flatten("1.5 kg rice #tag"));
     }
+
+    // The editor writes text that would read as syntax as character references
+    // and escapes; a snippet shows what the person typed.
+    [Theory]
+    [InlineData("&#35; not a heading", "# not a heading")]
+    [InlineData("1&#46; not a list", "1. not a list")]
+    [InlineData("see &#91;x](y)", "see [x](y)")]
+    [InlineData(@"a \*not italic\* b", "a *not italic* b")]
+    [InlineData(@"snake\_case\_name", "snake_case_name")]
+    [InlineData("&#38;#35; literally", "&#35; literally")]
+    [InlineData("one\n&#8203;\nthree", "one\nthree")]
+    [InlineData("a\n\n\n\nb", "a\nb")]
+    [InlineData("&amp; &#0; &#xZZ;", "&amp; &#0; &#xZZ;")]
+    [InlineData(@"C:\path\to", @"C:\path\to")]
+    public void Flatten_ResolvesEscapesAndReferences(string md, string expected)
+    {
+        Assert.Equal(expected, PlainText.Flatten(md));
+    }
 }

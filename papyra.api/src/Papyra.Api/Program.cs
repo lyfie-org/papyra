@@ -2236,8 +2236,8 @@ notes.MapPost("/bulk", async (
     IHubContext<NotesHub> hub, CancellationToken ct) =>
 {
     var action = body.Action?.Trim().ToLowerInvariant();
-    if (action is not ("pin" or "unpin" or "archive" or "unarchive" or "trash" or "untrash"))
-        return Results.BadRequest(new { error = "action must be pin, unpin, archive, unarchive, trash or untrash." });
+    if (action is not ("pin" or "unpin" or "archive" or "unarchive" or "trash" or "untrash" or "delete"))
+        return Results.BadRequest(new { error = "action must be pin, unpin, archive, unarchive, trash, untrash or delete." });
     var ids = (body.Ids ?? []).Where(i => !string.IsNullOrWhiteSpace(i)).Distinct(StringComparer.Ordinal).ToList();
     if (ids.Count == 0) return Results.BadRequest(new { error = "No notes selected." });
     if (ids.Count > BulkNoteAction.MaxIds)
@@ -2252,6 +2252,27 @@ notes.MapPost("/bulk", async (
         if (path is null || !state.TryGet(uid, path, out var note) || note is null)
         {
             results.Add(new { id, status = "notFound" });
+            continue;
+        }
+
+        // Permanent delete empties Trash, and only Trash: a note that isn't in it
+        // is refused ("notTrashed"), so no selection mistake can skip the
+        // recoverable step.
+        if (action == "delete")
+        {
+            if (!note.Trashed)
+            {
+                results.Add(new { id, status = "notTrashed" });
+                continue;
+            }
+            writeRing.Mark(path);
+            if (File.Exists(path)) File.Delete(path);
+            state.Remove(uid, path);
+            search.RemoveNote(uid, id);
+            await embeddings.RemoveNoteAsync(uid, id, ct);
+            await hub.Clients.User(uid).SendAsync("NoteDeleted", new { id }, ct);
+            results.Add(new { id, status = "changed" });
+            changed++;
             continue;
         }
 

@@ -1,0 +1,97 @@
+/* Multi-select, shared by every card grid (Notes, To Do, Archive, Trash).
+   A .selectable cell wraps one card; its tick hangs off the top-left corner. */
+
+.select-cell { position: relative; }
+
+/* Tick: hangs off the top-left corner, mirroring the pin on the right. Shown on
+   hover/focus, and on every card once a selection exists. */
+.select-tick {
+  position: absolute;
+  top: -10px;
+  left: -10px;
+  z-index: 3;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 26px;
+  height: 26px;
+  padding: 0;
+  border: 1.5px solid var(--border);
+  border-radius: 50%;
+  background: var(--surface);
+  color: transparent;
+  box-shadow: var(--shadow-card);
+  cursor: pointer;
+  opacity: 0;
+  transform: scale(0.85);
+  transition:
+    opacity var(--dur-fast) var(--ease),
+    transform var(--dur-fast) var(--ease),
+    background var(--dur-fast) var(--ease),
+    border-color var(--dur-fast) var(--ease),
+    color var(--dur-fast) var(--ease),
+    translate var(--dur) var(--ease);
+}
+
+.selectable:hover .select-tick,
+.selectable:focus-within .select-tick,
+.note-grid-wrap.is-selecting .select-tick {
+  opacity: 1;
+  transform: scale(1);
+}
+
+/* Follows the card's own hover lift so the two stay together. */
+.selectable:hover .select-tick { translate: 0 -2px; }
+
+.select-tick:hover { border-color: var(--accent); color: var(--accent-text); }
+
+.select-tick:focus-visible {
+  opacity: 1;
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.select-tick[aria-pressed="true"] {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: var(--accent-fg);
+  animation: select-tick-pop var(--dur) var(--ease);
+}
+
+@keyframes select-tick-pop {
+  40% { transform: scale(1.18); }
+}
+
+/* Selected: a ring drawn outside the card (the card keeps its own colour),
+   and a slight settle inward, like a pressed-in page. */
+.selectable::after {
+  content: '';
+  position: absolute;
+  inset: -4px;
+  border: 2px solid var(--accent);
+  border-radius: calc(var(--radius-md) + 4px);
+  opacity: 0;
+  transform: scale(0.98);
+  pointer-events: none;
+  transition: opacity var(--dur-fast) var(--ease), transform var(--dur) var(--ease);
+}
+.selectable.is-selected::after { opacity: 1; transform: none; }
+.selectable > .note-card__link,
+.selectable > .todo-card { transition: scale var(--dur) var(--ease); }
+.selectable.is-selected > .note-card__link,
+.selectable.is-selected > .todo-card { scale: 0.975; }
+
+/* In selection mode every click selects, so say so with the cursor. */
+.note-grid-wrap.is-selecting .selectable { cursor: default; }
+.note-grid-wrap.is-selecting .selectable * { cursor: inherit; }
+.note-grid-wrap.is-selecting .select-tick { cursor: pointer; }
+
+@media (prefers-reduced-motion: reduce) {
+  .select-tick, .selectable::after { transition: none; }
+  .select-tick[aria-pressed="true"] { animation: none; }
+}
+
+/* Touch screens have no hover: keep the tick findable at rest. */
+@media (hover: none) {
+  .select-tick { opacity: 0.85; transform: scale(1); }
+}
