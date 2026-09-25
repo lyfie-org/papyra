@@ -6,6 +6,11 @@ a Docker Hub tag and a GitHub Release.
 
 <!-- new releases are inserted directly below this line -->
 
+## [0.1.11] - 2026-09-25
+
+- chore: bump @lyfie/luthor to 2.9.8 (a56690e)
+- feat: multi-select in Archive and Trash; keep blank lines and literal text (d622c6c)
+
 ## [0.1.10] - 2026-09-25
 
 - feat: multi-select with bulk pin, archive, share, delete and group drag (1fdad4c)
