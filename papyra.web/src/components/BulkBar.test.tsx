@@ -209,6 +209,72 @@ describe('BulkBar', () => {
   });
 });
 
+describe('BulkBar in the Archive and Trash', () => {
+  function renderMode(mode: 'archived' | 'trashed', notes: Note[]) {
+    client.setQueryData(['notes'], notes);
+    client.setQueryData(['settings'], { trashRetentionDays: 30 });
+    render(wrap(<BulkBar mode={mode} notes={notes} total={notes.length} onClear={vi.fn()} onSelectAll={vi.fn()} />));
+  }
+  const names = () => screen.getAllByRole('button').map((b) => b.getAttribute('aria-label'));
+
+  it('the Archive offers unarchive, share and delete — no pin or archive', () => {
+    renderMode('archived', [mk('a', { archived: true })]);
+    expect(names()).toEqual(['Clear selection', 'Unarchive', 'Share', 'Delete']);
+  });
+
+  it('unarchiving is one request with Undo', async () => {
+    renderMode('archived', [mk('a', { archived: true }), mk('b', { archived: true })]);
+    fireEvent.click(screen.getByRole('button', { name: 'Unarchive' }));
+    await waitFor(() => expect(toast).toHaveBeenCalled());
+    expect(bulkCalls()).toEqual([{ ids: ['a', 'b'], action: 'unarchive' }]);
+    expect(toast.mock.calls[0][0]).toBe('Unarchived 2 notes.');
+    expect(toast.mock.calls[0][1]?.label).toBe('Undo');
+  });
+
+  it('Trash offers restore and delete forever only', () => {
+    renderMode('trashed', [mk('a', { trashed: true })]);
+    expect(names()).toEqual(['Clear selection', 'Restore', 'Delete forever']);
+  });
+
+  it('restoring is undoable', async () => {
+    renderMode('trashed', [mk('a', { trashed: true })]);
+    fireEvent.click(screen.getByRole('button', { name: 'Restore' }));
+    await waitFor(() => expect(toast).toHaveBeenCalled());
+    expect(bulkCalls()).toEqual([{ ids: ['a'], action: 'untrash' }]);
+    expect(toast.mock.calls[0][0]).toBe('Restored 1 note.');
+  });
+
+  it('delete forever always asks, then erases in one request with no Undo', async () => {
+    renderMode('trashed', [mk('a', { trashed: true }), mk('b', { trashed: true })]);
+    fireEvent.click(screen.getByRole('button', { name: 'Delete forever' }));
+    await waitFor(() => expect(toast).toHaveBeenCalled());
+    expect(confirm).toHaveBeenCalledTimes(1);
+    expect(confirm.mock.calls[0][0]).toMatchObject({ title: 'Delete 2 notes for good?', destructive: true });
+    expect(bulkCalls()).toEqual([{ ids: ['a', 'b'], action: 'delete' }]);
+    expect(toast.mock.calls[0][0]).toBe('Deleted 2 notes for good.');
+    expect(toast.mock.calls[0][1]).toBeUndefined();
+    expect(client.getQueryData<Note[]>(['notes'])).toEqual([]);
+  });
+
+  it('backing out of delete forever erases nothing', async () => {
+    confirm.mockResolvedValue(false);
+    renderMode('trashed', [mk('a', { trashed: true })]);
+    fireEvent.click(screen.getByRole('button', { name: 'Delete forever' }));
+    await waitFor(() => expect(confirm).toHaveBeenCalled());
+    expect(bulkCalls()).toEqual([]);
+  });
+
+  it('a note restored elsewhere meanwhile is kept, and the toast says so', async () => {
+    fetchMock.mockImplementationOnce(async () => json({
+      changed: 1, results: [{ id: 'a', status: 'changed' }, { id: 'b', status: 'notTrashed' }],
+    }));
+    renderMode('trashed', [mk('a', { trashed: true }), mk('b', { trashed: true })]);
+    fireEvent.click(screen.getByRole('button', { name: 'Delete forever' }));
+    await waitFor(() => expect(toast).toHaveBeenCalled());
+    expect(toast.mock.calls[0][0]).toBe('Deleted 1 note for good. 1 note is no longer in Trash, so it was kept.');
+  });
+});
+
 describe('BulkShareDialog', () => {
   function renderDialog(notes: Note[], onClose = vi.fn()) {
     render(wrap(<BulkShareDialog notes={notes} onClose={onClose} />));

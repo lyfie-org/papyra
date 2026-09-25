@@ -28,6 +28,7 @@ export default function TrashPage() {
         <NoteGrid
           notes={notes ?? []}
           variant="trashed"
+          selectable
           empty={
             <EmptyState
               icon={Trash2}

@@ -1,5 +1,5 @@
 import { memo, useCallback, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react';
-import { Check, Pin, PinOff } from 'lucide-react';
+import { Pin, PinOff } from 'lucide-react';
 import {
   DndContext, PointerSensor, useSensor, useSensors, useDraggable,
   type DragStartEvent, type DragMoveEvent,
@@ -14,6 +14,7 @@ import {
 import NoteCard from './NoteCard';
 import TodoCard from './TodoCard';
 import BulkBar from './BulkBar';
+import SelectTick from './SelectTick';
 import {
   pack, columnsFor, indexFromPoint, EST_H,
   type Box, type Placed,
@@ -89,7 +90,7 @@ const AbsCard = memo(function AbsCard({
   useFlipPosition(elRef, x, y, { cols, colW, frozen: isDragging, resizedAt });
 
   const title = note.title.trim() || 'Untitled';
-  const cls = ['dnd-card', selected && 'is-selected', following && 'is-following', isDragging && 'is-dragging']
+  const cls = ['dnd-card selectable', selected && 'is-selected', following && 'is-following', isDragging && 'is-dragging']
     .filter(Boolean).join(' ');
 
   return (
@@ -111,18 +112,8 @@ const AbsCard = memo(function AbsCard({
       {...attributes}
       {...listeners}
     >
-      <button
-        type="button"
-        className="select-tick"
-        aria-pressed={selected}
-        aria-label={`${selected ? 'Deselect' : 'Select'} “${title}”`}
-        title={selecting ? undefined : 'Select'}
-        // Never the start of a drag.
-        onPointerDown={(e) => e.stopPropagation()}
-        onClick={(e) => { e.preventDefault(); e.stopPropagation(); onToggle(note.id, e.shiftKey); }}
-      >
-        <Check size={14} strokeWidth={3} aria-hidden="true" />
-      </button>
+      <SelectTick title={title} selected={selected} selecting={selecting}
+        onToggle={(shift) => onToggle(note.id, shift)} />
       {carrying > 1 && <span className="dnd-card__carry" aria-hidden="true">{carrying}</span>}
       {todo ? (
         <TodoCard note={note} />

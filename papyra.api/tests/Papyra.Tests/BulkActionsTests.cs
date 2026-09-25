@@ -147,6 +147,54 @@ public sealed class BulkActionsTests
     }
 
     [Fact]
+    public async Task BulkDelete_EmptiesOnlyWhatIsInTrash()
+    {
+        var (factory, dir) = NewApp();
+        try
+        {
+            var client = await OwnerAsync(factory);
+            var uid = "1";
+            await WriteAsync(client, "binned1");
+            await WriteAsync(client, "binned2");
+            await WriteAsync(client, "live");
+            await BulkAsync(client, "trash", "binned1", "binned2");
+
+            var result = await BulkAsync(client, "delete", "binned1", "binned2", "live", "ghost");
+            var s = Statuses(result);
+            Assert.Equal("changed", s["binned1"]);
+            Assert.Equal("changed", s["binned2"]);
+            Assert.Equal("notTrashed", s["live"]); // never purged without passing through Trash
+            Assert.Equal("notFound", s["ghost"]);
+
+            var notes = await NotesAsync(client);
+            Assert.Equal(["live"], notes.Select(n => n.Id).ToArray());
+            Assert.False(File.Exists(Path.Combine(dir, "users", uid, "notes", "binned1.md")));
+            Assert.True(File.Exists(Path.Combine(dir, "users", uid, "notes", "live.md")));
+
+            // Deleting again is just "not found", not an error.
+            Assert.Equal("notFound", Statuses(await BulkAsync(client, "delete", "binned1"))["binned1"]);
+        }
+        finally { Cleanup(factory, dir); }
+    }
+
+    [Fact]
+    public async Task BulkDelete_CannotReachAnotherUsersTrash()
+    {
+        var (factory, dir) = NewApp();
+        try
+        {
+            var owner = await OwnerAsync(factory);
+            await WriteAsync(owner, "mine");
+            await BulkAsync(owner, "trash", "mine");
+            var eve = await MemberAsync(factory, owner, "eve");
+
+            Assert.Equal("notFound", Statuses(await BulkAsync(eve, "delete", "mine"))["mine"]);
+            Assert.True(Assert.Single(await NotesAsync(owner)).Trashed);
+        }
+        finally { Cleanup(factory, dir); }
+    }
+
+    [Fact]
     public async Task BulkArchive_RoundTrips()
     {
         var (factory, dir) = NewApp();

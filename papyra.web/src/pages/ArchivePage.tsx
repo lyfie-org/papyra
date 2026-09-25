@@ -20,6 +20,7 @@ export default function ArchivePage() {
         <NoteGrid
           notes={notes ?? []}
           variant="archived"
+          selectable
           empty={
             <EmptyState
               icon={Archive}

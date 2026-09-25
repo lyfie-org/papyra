@@ -189,7 +189,11 @@ public sealed class MarkdownStorageService
         if (lines.Count > 0 && lines[^1].TrimEnd() == "---") lines.RemoveAt(lines.Count - 1);
         var yamlText = string.Join('\n', lines);
 
-        var body = content.Substring(block.Span.End + 1).TrimStart('\r', '\n');
+        // Drop the fence's own line ending and the one blank line Serialize writes
+        // after it — no more. Blank lines beyond that are the note's own: the
+        // editor stores a blank first line as a leading newline, and trimming
+        // every newline here deleted it on each read.
+        var body = StripOneLineBreak(StripOneLineBreak(content.Substring(block.Span.End + 1)));
 
         Dictionary<string, object?> fm;
         try
@@ -204,6 +208,11 @@ public sealed class MarkdownStorageService
 
         return (fm, body);
     }
+
+    private static string StripOneLineBreak(string s) =>
+        s.StartsWith("\r\n", StringComparison.Ordinal) ? s[2..]
+        : s.StartsWith('\n') || s.StartsWith('\r') ? s[1..]
+        : s;
 
     private static string? GetString(IDictionary<string, object?> fm, string key)
         => fm.TryGetValue(key, out var v) && v is not null ? v.ToString() : null;

@@ -384,11 +384,18 @@ const routes: Route[] = [
       };
       const fn = action ? apply[action] : undefined;
       const unique = [...new Set(ids.filter((i) => i && i.trim()))];
-      if (!fn || unique.length === 0) return json({ error: 'Nothing to do.' }, 400);
+      if ((!fn && action !== 'delete') || unique.length === 0) return json({ error: 'Nothing to do.' }, 400);
       return mutate((s) => {
         const results = unique.map((id) => {
           const note = s.notes.find((n) => n.id === id);
           if (!note) return { id, status: 'notFound' };
+          if (action === 'delete') {
+            // Only what is already in Trash is erased, as on the real server.
+            if (!note.trashed) return { id, status: 'notTrashed' };
+            s.notes = s.notes.filter((n) => n.id !== id);
+            return { id, status: 'changed' };
+          }
+          if (!fn) return { id, status: 'unchanged' };
           const before = JSON.stringify([note.pinned, note.archived, note.trashed]);
           fn(note);
           return { id, status: before === JSON.stringify([note.pinned, note.archived, note.trashed]) ? 'unchanged' : 'changed' };

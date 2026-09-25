@@ -35,3 +35,12 @@
   font-family: var(--sans);
   color: var(--text);
 }
+
+/* Selectable grids (Archive, Trash) wrap each card for its tick; the gap moves
+   to the wrapper. */
+.note-grid__col > .select-cell {
+  margin-bottom: 16px;
+}
+.note-grid__col > .select-cell > .note-card__link {
+  display: block;
+}
