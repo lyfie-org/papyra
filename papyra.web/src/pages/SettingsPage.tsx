@@ -28,7 +28,6 @@ import {
 import { hasPlatformAuthenticator, isWebAuthnAvailable } from '../lib/webauthn';
 import { useAuth, type AuthUser } from '../hooks/useAuth';
 import { useNotes } from '../hooks/useNotes';
-import { useCategories } from '../hooks/useCategories';
 import { useTheme, type ThemePreference } from '../hooks/useTheme';
 import { clearSessionData } from '../lib/session';
 import { AI_ENABLED } from '../lib/features';
@@ -153,7 +152,6 @@ export default function SettingsPage() {
 // ── Profile ───────────────────────────────────────────────────────────────────
 function ProfileTab({ user }: { user: AuthUser | null }) {
   const { data: notes } = useNotes();
-  const { data: categories } = useCategories();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const fileRef = useRef<HTMLInputElement | null>(null);
@@ -175,7 +173,6 @@ function ProfileTab({ user }: { user: AuthUser | null }) {
 
   const noteCount = notes?.filter(n => !n.trashed).length ?? 0;
   const tagCount = new Set((notes ?? []).flatMap(n => n.tags ?? [])).size;
-  const catCount = categories?.length ?? 0;
 
   async function saveProfile(e: React.FormEvent) {
     e.preventDefault();
@@ -264,7 +261,6 @@ function ProfileTab({ user }: { user: AuthUser | null }) {
       <div className="settings__stats">
         <div className="settings__stat"><span className="settings__stat-num">{noteCount}</span> notes</div>
         <div className="settings__stat"><span className="settings__stat-num">{tagCount}</span> tags</div>
-        <div className="settings__stat"><span className="settings__stat-num">{catCount}</span> categories</div>
       </div>
 
       <h2 id="activity" className="settings__subhead">Your writing, day by day</h2>

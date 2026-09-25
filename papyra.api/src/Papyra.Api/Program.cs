@@ -2025,11 +2025,16 @@ notes.MapPut("/{id}", async (
         return Results.Json(new { error = "Unlock the vault to take the lock off a note.", code = "locked" },
             statusCode: StatusCodes.Status401Unauthorized);
 
+    // Tags: normalised (trimmed, de-duplicated) and capped — see TagPolicy.
+    var tags = TagPolicy.Normalize(body.Tags);
+    if (TagPolicy.Validate(tags, prior?.Tags.Count ?? 0) is { } badTags)
+        return Results.BadRequest(new { error = badTags, code = "tags_invalid" });
+
     var note = new Note
     {
         Id = id,
         Title = body.Title ?? string.Empty,
-        Tags = body.Tags ?? [],
+        Tags = tags,
         Color = body.Color,
         Pinned = body.Pinned,
         Archived = body.Archived,
@@ -2317,8 +2322,9 @@ notes.MapGet("/{id}/backlinks", (string id, ClaimsPrincipal user, VaultState sta
     .WithSummary("List backlinks")
     .WithDescription("Notes that reference this note through a [[Title]] wikilink, each with a highlighted snippet.");
 
-// ── Categories (promoted tags) ───────────────────────────────────────────────────
-// A category is a curated note tag. The notes' own `tags` frontmatter is the
+// ── Tags (the /api/categories routes) ─────────────────────────────────────────────
+// The path keeps its original name so existing clients and scripts keep working;
+// everywhere a person reads it, it is a tag. A registered tag is a curated note tag. The notes' own `tags` frontmatter is the
 // authority for membership; the registry (.papyra/categories.json) only adds a
 // colour and lets an empty category exist before any note uses it. GET unions the
 // registry with every tag live on the user's notes, attaching a count to each.
@@ -2362,15 +2368,46 @@ categories.MapPost("/", (CategoryWrite body, ClaimsPrincipal user, CategoryStore
 {
     var name = body.Name?.Trim();
     if (string.IsNullOrWhiteSpace(name))
-        return Results.BadRequest(new { error = "Category name is required." });
+        return Results.BadRequest(new { error = "Tag name is required." });
+    if (name.Length > TagPolicy.MaxTagLength)
+        return Results.BadRequest(new { error = $"A tag can be at most {TagPolicy.MaxTagLength} characters." });
     store.Upsert(Uid(user), name, string.IsNullOrWhiteSpace(body.Color) ? null : body.Color);
     return Results.Ok(new { name, color = body.Color });
 });
 
-categories.MapDelete("/{name}", (string name, ClaimsPrincipal user, CategoryStore store) =>
+// Delete a tag. Removing it from the registry alone left it on every note that
+// carried it, so it reappeared at once — "delete" did nothing anyone could see.
+// With ?fromNotes=true the tag is also taken off each of the caller's notes
+// (snapshotted first, like any edit, so it can be recovered from history).
+categories.MapDelete("/{name}", async (
+    string name, bool? fromNotes, ClaimsPrincipal user, CategoryStore store, VaultState state,
+    MarkdownStorageService storage, WriteRing writeRing, SearchIndexService search, SnapshotService snapshots,
+    IHubContext<NotesHub> hub, IConfiguration config, IHostEnvironment env, ILoggerFactory loggerFactory,
+    CancellationToken ct) =>
 {
-    store.Remove(Uid(user), name);
-    return Results.NoContent();
+    var uid = Uid(user);
+    store.Remove(uid, name);
+    var updated = 0;
+    if (fromNotes == true)
+    {
+        var snapRoot = PapyraPaths.UserSnapshotsDir(config, env.ContentRootPath, uid);
+        var logger = loggerFactory.CreateLogger("PathGuard");
+        foreach (var note in state.Snapshot(uid).Where(n => n.Tags.Any(t => string.Equals(t, name, StringComparison.OrdinalIgnoreCase))))
+        {
+            var path = state.PathFor(uid, note.Id);
+            if (path is null) continue;
+            await snapshots.CaptureAsync(PathGuard.ResolveAndVerify(snapRoot, note.Id, logger), path, ct);
+            note.Tags = note.Tags.Where(t => !string.Equals(t, name, StringComparison.OrdinalIgnoreCase)).ToList();
+            note.Updated = DateTime.UtcNow;
+            writeRing.Mark(path);
+            await storage.WriteAsync(path, note, ct);
+            state.Upsert(uid, path, note);
+            search.IndexNote(uid, note);
+            await hub.Clients.User(uid).SendAsync("NoteUpdated", NoteMetadata.From(note), ct);
+            updated++;
+        }
+    }
+    return Results.Ok(new { removed = name, notesUpdated = updated });
 });
 
 // ── API keys (personal access tokens) ────────────────────────────────────────────

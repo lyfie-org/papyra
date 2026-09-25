@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  GROUP_ORDER, categoryResults, collectionResults, noteResult, orderResults, settingsResults,
+  GROUP_ORDER, tagResults, collectionResults, noteResult, orderResults, settingsResults,
   type SearchResult,
 } from './searchRegistry';
 
@@ -69,8 +69,8 @@ describe('searchRegistry', () => {
     expect(orderResults(many, 2).length).toBe(2);
   });
 
-  it('matches categories and collections by name, prefix first', () => {
-    const cats = categoryResults(
+  it('matches tags and collections by name, prefix first', () => {
+    const cats = tagResults(
       [
         { name: 'Recipes', color: null, count: 3 },
         { name: 'Work recipes', color: null, count: 1 },
@@ -81,23 +81,23 @@ describe('searchRegistry', () => {
     expect(cats[0].rank).toBe(0);
     expect(cats[1].rank).toBe(1);
     expect(cats[0].snippet).toBe('3 notes');
-    expect(cats[0].to).toBe('/categories?name=Recipes');
+    expect(cats[0].to).toBe('/?tag=Recipes');
 
     const cols = collectionResults(
       [{ id: 7, name: 'Pinned ideas', rulesJson: '{}', createdUtc: '' }],
       'ideas',
     );
-    expect(cols[0].to).toBe('/collections?id=7');
+    expect(cols[0].to).toBe('/?collection=7');
     expect(cols[0].breadcrumb).toEqual(['Collection']);
   });
 
-  it('singularises a one-note category', () => {
-    const cats = categoryResults([{ name: 'Solo', color: null, count: 1 }], 'solo');
+  it('singularises a one-note tag', () => {
+    const cats = tagResults([{ name: 'Solo', color: null, count: 1 }], 'solo');
     expect(cats[0].snippet).toBe('1 note');
   });
 
   it('returns nothing for a blank query', () => {
-    expect(categoryResults([{ name: 'Any', color: null, count: 1 }], '  ')).toEqual([]);
+    expect(tagResults([{ name: 'Any', color: null, count: 1 }], '  ')).toEqual([]);
     expect(collectionResults([{ id: 1, name: 'Any', rulesJson: '{}', createdUtc: '' }], '')).toEqual([]);
   });
 

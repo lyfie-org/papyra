@@ -58,7 +58,7 @@
 .rule-builder__actions {
   display: flex;
   align-items: center;
-  justify-content: space-between;
+  justify-content: flex-start;
   gap: 0.5rem;
   margin-top: 0.2rem;
 }
@@ -94,4 +94,71 @@
   margin: 0;
   color: var(--danger);
   font-size: 0.8rem;
+}
+
+/* ── Value pickers ─────────────────────────────────────────────────────── */
+.rule-builder__seg {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+}
+.rule-builder__pill {
+  padding: 0.35rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+.rule-builder__pill.is-on {
+  border-color: var(--accent);
+  background: var(--accent-bg);
+  color: var(--text-h);
+}
+
+.rule-builder__swatches {
+  display: inline-flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+}
+.rule-builder__swatch {
+  display: grid;
+  place-items: center;
+  width: 1.9rem;
+  height: 1.9rem;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  color: var(--tint-ink);
+  cursor: pointer;
+}
+.rule-builder__swatch.is-on {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--accent);
+}
+
+.rule-builder__empty {
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 0.8rem;
+}
+
+.rule-builder__spacer { flex: 1; }
+.rule-builder__cancel {
+  padding: 0.45rem 0.8rem;
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.rule-builder__pill:focus-visible,
+.rule-builder__swatch:focus-visible,
+.rule-builder__cancel:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }

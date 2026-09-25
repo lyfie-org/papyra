@@ -29,8 +29,8 @@ const notes: Note[] = [
 let role = 'Admin';
 vi.mock('../hooks/useNotes', () => ({ useNotes: () => ({ data: notes }) }));
 vi.mock('../hooks/useAuth', () => ({ useAuth: () => ({ state: 'authed', user: { id: 1, username: 'a', name: 'A', email: '', role } }) }));
-vi.mock('../hooks/useCategories', () => ({
-  useCategories: () => ({ data: [{ name: 'Recipes', color: null, count: 4 }] }),
+vi.mock('../hooks/useTags', () => ({
+  useTags: () => ({ data: [{ name: 'Recipes', color: null, count: 4 }] }),
 }));
 vi.mock('../hooks/useCollections', () => ({
   useCollections: () => ({ data: [{ id: 7, name: 'Recipes to try', rulesJson: '{}', createdUtc: '' }] }),
@@ -56,7 +56,7 @@ describe('SearchBar', () => {
     type('recipes');
     // By class, not by text: "To Do" is also a breadcrumb inside its own rows.
     const headings = [...document.querySelectorAll('.search__group')].map(el => el.textContent);
-    expect(headings).toEqual(['Notes', 'To Do', 'Categories', 'Collections']);
+    expect(headings).toEqual(['Notes', 'To Do', 'Tags', 'Collections']);
   });
 
   it('labels each hit with the trail to where it lives', () => {
@@ -66,7 +66,7 @@ describe('SearchBar', () => {
 
     expect(within(titled('Roast recipes')!).getByText('Note')).toBeTruthy();
     expect(within(titled('Shopping list')!).getByText('To Do')).toBeTruthy();
-    expect(within(titled('Recipes')!).getByText('Category')).toBeTruthy();
+    expect(within(titled('Recipes')!).getByText('Tag')).toBeTruthy();
     expect(within(titled('Recipes to try')!).getByText('Collection')).toBeTruthy();
   });
 

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
-import { Check, ChevronDown, Pin, Tags, X } from 'lucide-react';
+import { Check, ChevronDown, Layers, Pin, Tags, X } from 'lucide-react';
+import type { SmartCollection } from '../hooks/useCollections';
 import './NotesFilterBar.css';
 
 export type NotesScope = 'all' | 'pinned';
@@ -7,25 +8,30 @@ export type NotesScope = 'all' | 'pinned';
 interface Props {
   scope: NotesScope;
   onScopeChange: (scope: NotesScope) => void;
-  /** Every tag present in the vault, for the category dropdown. */
+  /** Every tag present in the vault, for the tag dropdown. */
   allTags: string[];
   /** Currently selected tags; empty means "no tag filter". */
   selectedTags: string[];
   onSelectedTagsChange: (tags: string[]) => void;
+  /** Saved smart collections, shown as pills; one can be active at a time. */
+  collections: SmartCollection[];
+  selectedCollection: number | null;
+  onCollectionChange: (id: number | null) => void;
 }
 
 /**
- * Filter pills above the notes grid: a scope toggle (All / Pinned) and a
- * multi-select category dropdown. Filtering happens on the desk itself rather
+ * Filter pills above the notes grid: a scope toggle (All / Pinned), a
+ * multi-select tag dropdown, and one pill per smart collection. Filtering happens on the desk itself rather
  * than by navigating to a separate page, so the grid — and the drag order the
  * user arranged — stays put while they narrow it down.
  *
- * Selecting several categories widens the result (a note matching any selected
+ * Selecting several tags widens the result (a note matching any selected
  * tag shows). Intersecting them would produce an empty grid almost every time,
  * since notes rarely carry three tags at once.
  */
 export default function NotesFilterBar({
   scope, onScopeChange, allTags, selectedTags, onSelectedTagsChange,
+  collections, selectedCollection, onCollectionChange,
 }: Props) {
   const [tagsOpen, setTagsOpen] = useState(false);
   const tagsRef = useRef<HTMLDivElement | null>(null);
@@ -77,7 +83,7 @@ export default function NotesFilterBar({
             onClick={() => setTagsOpen((o) => !o)}
           >
             <Tags size={13} aria-hidden="true" />
-            Categories
+            Tags
             {selectedTags.length > 0 && (
               <span className="notes-filters__count">{selectedTags.length}</span>
             )}
@@ -85,7 +91,7 @@ export default function NotesFilterBar({
           </button>
 
           {tagsOpen && (
-            <div className="notes-filters__menu" role="group" aria-label="Filter by category">
+            <div className="notes-filters__menu" role="group" aria-label="Filter by tag">
               {allTags.map((tag) => {
                 const on = selectedTags.includes(tag);
                 return (
@@ -115,9 +121,28 @@ export default function NotesFilterBar({
           className="notes-filters__clear"
           onClick={() => onSelectedTagsChange([])}
         >
-          <X size={13} aria-hidden="true" /> Clear categories
+          <X size={13} aria-hidden="true" /> Clear tags
         </button>
       )}
+
+      {collections.length > 0 && (
+        <span className="notes-filters__divider" aria-hidden="true" />
+      )}
+      {collections.map((c) => {
+        const on = selectedCollection === c.id;
+        return (
+          <button
+            key={c.id}
+            type="button"
+            className={`notes-filters__pill notes-filters__pill--collection${on ? ' is-active' : ''}`}
+            aria-pressed={on}
+            title={`Show the ${c.name} collection`}
+            onClick={() => onCollectionChange(on ? null : c.id)}
+          >
+            <Layers size={13} aria-hidden="true" /> {c.name}
+          </button>
+        );
+      })}
     </div>
   );
 }

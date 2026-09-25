@@ -12,14 +12,14 @@
  */
 
 import type { Note } from '../types/note';
-import type { Category } from '../hooks/useCategories';
+import type { TagEntry } from '../hooks/useTags';
 import type { SmartCollection } from '../hooks/useCollections';
 import { searchSettings, settingsHref } from './settingsIndex';
 
-export type ResultSource = 'note' | 'todo' | 'inbox' | 'settings' | 'page' | 'category' | 'collection';
+export type ResultSource = 'note' | 'todo' | 'inbox' | 'settings' | 'page' | 'tag' | 'collection';
 
 export interface SearchResult {
-  /** Unique across sources — a note and a category may share a name. */
+  /** Unique across sources — a note and a tag may share a name. */
   key: string;
   source: ResultSource;
   title: string;
@@ -38,7 +38,7 @@ export interface SearchResult {
  * group, never between them — mixing a settings page in among notes by score
  * makes the list feel arbitrary, and the note is nearly always what was wanted.
  */
-export const GROUP_ORDER: ResultSource[] = ['note', 'todo', 'inbox', 'settings', 'page', 'category', 'collection'];
+export const GROUP_ORDER: ResultSource[] = ['note', 'todo', 'inbox', 'settings', 'page', 'tag', 'collection'];
 
 export const GROUP_LABEL: Record<ResultSource, string> = {
   note: 'Notes',
@@ -46,7 +46,7 @@ export const GROUP_LABEL: Record<ResultSource, string> = {
   inbox: 'Inbox',
   settings: 'Settings',
   page: 'Pages',
-  category: 'Categories',
+  tag: 'Tags',
   collection: 'Collections',
 };
 
@@ -94,17 +94,18 @@ export function settingsResults(query: string, isAdmin: boolean): SearchResult[]
   }));
 }
 
-export function categoryResults(categories: Category[], query: string): SearchResult[] {
+export function tagResults(tags: TagEntry[], query: string): SearchResult[] {
   const q = query.trim().toLowerCase();
   if (!q) return [];
-  return categories
+  return tags
     .filter(c => c.name.toLowerCase().includes(q))
     .map(c => ({
-      key: `category:${c.name}`,
-      source: 'category' as const,
+      key: `tag:${c.name}`,
+      source: 'tag' as const,
       title: c.name,
-      breadcrumb: ['Category'],
-      to: `/categories?name=${encodeURIComponent(c.name)}`,
+      breadcrumb: ['Tag'],
+      // Tags and collections open the Notes desk, filtered.
+      to: `/?tag=${encodeURIComponent(c.name)}`,
       snippet: `${c.count} ${c.count === 1 ? 'note' : 'notes'}`,
       rank: c.name.toLowerCase().startsWith(q) ? 0 : 1,
     }));
@@ -120,7 +121,7 @@ export function collectionResults(collections: SmartCollection[], query: string)
       source: 'collection' as const,
       title: c.name,
       breadcrumb: ['Collection'],
-      to: `/collections?id=${c.id}`,
+      to: `/?collection=${c.id}`,
       rank: c.name.toLowerCase().startsWith(q) ? 0 : 1,
     }));
 }

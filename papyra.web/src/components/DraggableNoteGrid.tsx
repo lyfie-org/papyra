@@ -23,6 +23,8 @@ interface Props {
   notes: Note[];
   conflictsByParent?: Map<string, Conflict[]>;
   onResolveConflict?: (conflictId: string) => void;
+  /** Show to-do lists too — a smart collection can be made of them. */
+  includeTodos?: boolean;
 }
 
 type Section = 'pinned' | 'others';
@@ -83,7 +85,7 @@ const AbsCard = memo(function AbsCard({
   );
 });
 
-export default function DraggableNoteGrid({ notes, conflictsByParent, onResolveConflict }: Props) {
+export default function DraggableNoteGrid({ notes, conflictsByParent, onResolveConflict, includeTodos = false }: Props) {
   const queryClient = useQueryClient();
   const { data: order } = useNoteOrder();
   const saveOrder = useSaveOrder();
@@ -112,7 +114,7 @@ export default function DraggableNoteGrid({ notes, conflictsByParent, onResolveC
 
   // 'todo' lives on the To Do page and 'inbox' on /inbox — neither belongs on
   // the notes desk, which is for notes the user wrote here.
-  const active = notes.filter(n => !n.archived && !n.trashed && n.kind !== 'todo' && n.kind !== 'inbox');
+  const active = notes.filter(n => !n.archived && !n.trashed && n.kind !== 'inbox' && (includeTodos || n.kind !== 'todo'));
   const pinned = useMemo(() => sortNotes(active.filter(n => n.pinned), order), [active, order]);
   const others = useMemo(() => sortNotes(active.filter(n => !n.pinned), order), [active, order]);
   const byId = useMemo(() => new Map(active.map(n => [n.id, n])), [active]);

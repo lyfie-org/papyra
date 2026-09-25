@@ -8,7 +8,7 @@
 // Nothing here ever leaves the browser.
 
 import type { Note } from '../types/note';
-import type { Category } from '../hooks/useCategories';
+import type { TagEntry as Category } from '../hooks/useTags';
 import type { SmartCollection } from '../hooks/useCollections';
 import type { InboxEntry } from '../hooks/useInbox';
 import type { ChatMessage, ChatSessionSummary } from '../hooks/useChatSessions';

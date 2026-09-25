@@ -1,73 +1,295 @@
-.collections__hint {
-  margin: 0 0 1rem;
-  max-width: 42rem;
+.collections {
+  padding: var(--space-2) var(--space-1) var(--space-12);
   font-family: var(--sans);
-  font-size: 0.85rem;
+}
+
+.collections__lede {
+  margin: var(--space-2) 0 var(--space-6);
+  max-width: 42rem;
   color: var(--text);
+  font-size: var(--fs-sm);
 }
 
 .collections__status {
-  font-family: var(--sans);
-  font-size: 0.85rem;
   color: var(--text);
+  font-size: var(--fs-sm);
 }
 
-.collections__list {
+.collections__section-head {
   display: flex;
-  flex-wrap: wrap;
-  gap: 0.5rem;
-  margin: 0 0 1rem;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  margin-bottom: var(--space-3);
+}
+.collections__section-head--tags { margin-top: var(--space-10); }
+
+.collections__subhead {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.45rem;
+  margin: 0;
+  font-family: var(--heading);
+  font-size: var(--fs-lg);
+  font-weight: 400;
+  color: var(--text-h);
+}
+
+.collections__new {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.4rem 0.8rem;
+  border: 1px solid var(--accent-border);
+  border-radius: var(--radius-sm);
+  background: var(--accent-bg);
+  color: var(--text-h);
+  font-family: var(--sans);
+  font-size: var(--fs-xs);
+  cursor: pointer;
+}
+.collections__new:hover { border-color: var(--accent); }
+
+/* ── Smart collection cards ─────────────────────────────────────────── */
+.collections__grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(250px, 1fr));
+  gap: var(--space-4);
+  margin: 0;
   padding: 0;
   list-style: none;
 }
 
-.collections__list li {
-  display: inline-flex;
-  align-items: center;
+.collection-card {
+  position: relative;
 }
 
-.collections__chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.35rem;
-  padding: 0.4rem 0.75rem;
+.collection-card__open {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-2);
+  width: 100%;
+  height: 100%;
+  padding: var(--space-4);
   border: 1px solid var(--border);
-  border-radius: 999px 0 0 999px;
+  border-radius: var(--radius-md);
   background: var(--surface);
-  color: var(--text-h);
+  box-shadow: var(--shadow-card);
+  color: var(--text);
   font-family: var(--sans);
-  font-size: 0.85rem;
+  text-align: left;
   cursor: pointer;
+  transition: box-shadow var(--dur) var(--ease), transform var(--dur) var(--ease), border-color var(--dur) var(--ease);
+}
+.collection-card__open:hover {
+  box-shadow: var(--shadow-card-hover);
+  border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
+  transform: translateY(-2px);
+}
+@media (prefers-reduced-motion: reduce) {
+  .collection-card__open, .collection-card__open:hover { transform: none; }
 }
 
-.collections__chip.is-active {
-  border-color: var(--accent);
-  background: color-mix(in srgb, var(--accent) 22%, var(--surface));
+.collection-card__name {
+  padding-right: 1.8rem; /* room for the delete button */
+  font-family: var(--heading);
+  font-size: var(--fs-lg);
+  line-height: 1.25;
+  color: var(--text-h);
 }
 
-.collections__remove {
+.collection-card__rules {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.3rem;
+  font-size: var(--fs-xs);
+}
+.collection-card__rule { display: inline-flex; align-items: center; gap: 0.3rem; }
+.collection-card__join { color: var(--text); font-style: italic; }
+.collection-card__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.1rem 0.5rem;
+  border-radius: var(--radius-pill);
+  background: var(--accent-bg);
+  color: var(--text-h);
+}
+.collection-card__dot {
+  width: 0.7rem;
+  height: 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+}
+
+.collection-card__preview {
+  display: flex;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-height: 3.6em;
+  font-size: var(--fs-sm);
+}
+.collection-card__note {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.collection-card__note::before { content: '— '; color: var(--border); }
+.collection-card__none { font-style: italic; }
+
+.collection-card__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-top: auto;
+  color: var(--accent-text);
+}
+.collection-card__count {
+  font-family: var(--mono);
+  font-size: var(--fs-2xs);
+  color: var(--text);
+}
+
+.collection-card__del {
+  position: absolute;
+  top: var(--space-3);
+  right: var(--space-3);
   display: grid;
   place-items: center;
-  width: 1.9rem;
-  height: 100%;
-  min-height: 2rem;
+  width: 1.8rem;
+  height: 1.8rem;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--dur) var(--ease);
+}
+.collection-card:hover .collection-card__del,
+.collection-card:focus-within .collection-card__del { opacity: 1; }
+.collection-card__del:hover { background: var(--danger-bg); color: var(--danger); }
+@media (hover: none) { .collection-card__del { opacity: 1; } }
+
+/* ── Tags ───────────────────────────────────────────────────────────── */
+.collections__tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.tag-pill {
+  --tag-tint: var(--accent-bg);
+  display: inline-flex;
+  align-items: stretch;
   border: 1px solid var(--border);
-  border-left: none;
-  border-radius: 0 999px 999px 0;
+  border-radius: var(--radius-pill);
   background: var(--surface);
+  overflow: hidden;
+}
+
+.tag-pill__open {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.35rem 0.4rem 0.35rem 0.7rem;
+  border: none;
+  background: transparent;
+  color: var(--text-h);
+  font-family: var(--sans);
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+.tag-pill__open svg { color: var(--text); }
+.tag-pill__open:hover { background: color-mix(in srgb, var(--tag-tint) 60%, transparent); }
+
+/* The tag's colour, as a small well behind the count. */
+.tag-pill__count {
+  min-width: 1.4rem;
+  padding: 0 0.35rem;
+  border-radius: var(--radius-pill);
+  background: var(--tag-tint);
+  color: var(--tint-ink);
+  font-family: var(--mono);
+  font-size: var(--fs-2xs);
+  line-height: 1.4rem;
+  text-align: center;
+}
+
+.tag-pill__del {
+  display: grid;
+  place-items: center;
+  width: 1.7rem;
+  border: none;
+  border-left: 1px solid var(--border);
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+.tag-pill__del:hover { background: var(--danger-bg); color: var(--danger); }
+
+.collections__tag-form {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-4);
+}
+.collections__tag-input {
+  min-width: 12rem;
+  padding: 0.45rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--text-h);
+  font-family: var(--sans);
+  font-size: var(--fs-sm);
+}
+.collections__swatches { display: inline-flex; gap: 0.35rem; }
+.collections__swatch {
+  width: 1.5rem;
+  height: 1.5rem;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  cursor: pointer;
+}
+.collections__swatch.is-on { box-shadow: 0 0 0 2px var(--surface), 0 0 0 4px var(--accent); }
+.collections__save {
+  padding: 0.45rem 0.9rem;
+  border: 1px solid var(--accent);
+  border-radius: var(--radius-sm);
+  background: var(--accent);
+  color: var(--accent-fg);
+  font-family: var(--sans);
+  font-size: var(--fs-sm);
+  cursor: pointer;
+}
+.collections__save:disabled { opacity: 0.6; cursor: default; }
+.collections__cancel {
+  display: grid;
+  place-items: center;
+  width: 2rem;
+  height: 2rem;
+  border: none;
+  background: transparent;
   color: var(--text);
   cursor: pointer;
 }
 
-.collections__chip:focus-visible,
-.collections__remove:focus-visible {
+.collections__new:focus-visible,
+.collection-card__open:focus-visible,
+.collection-card__del:focus-visible,
+.tag-pill__open:focus-visible,
+.tag-pill__del:focus-visible,
+.collections__swatch:focus-visible,
+.collections__save:focus-visible,
+.collections__cancel:focus-visible,
+.collections__tag-input:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
-}
-
-.collections__rules {
-  margin: 0 0 0.8rem;
-  font-family: var(--mono);
-  font-size: 0.75rem;
-  color: var(--text);
 }
