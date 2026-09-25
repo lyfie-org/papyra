@@ -276,11 +276,12 @@ public sealed class ImportService : BackgroundService
         _writeRing.Mark(path); // our write — the watcher must ignore the echo
         await _storage.WriteAsync(path, note, ct, mergeExisting: false);
 
-        // Last-modified is the file's mtime — stamp the source's, not "now".
+        // Last-modified is the file's mtime — stamp the source's, not "now". The
+        // creation time goes first: where it can't be stored it lands on mtime.
+        if (incoming.Created is { } created) TrySetCreationTime(path, created);
         note.Updated = incoming.Modified ?? DateTime.UtcNow;
         _writeRing.Mark(path);
         File.SetLastWriteTimeUtc(path, note.Updated);
-        if (incoming.Created is { } created) TrySetCreationTime(path, created);
 
         _state.Upsert(job.UserId, path, note);
         _search.IndexNote(job.UserId, note);
@@ -705,8 +706,11 @@ public sealed class ImportService : BackgroundService
     }
 
     // Creation time is best-effort: not every filesystem keeps a settable one.
+    // Linux has none — .NET's SetCreationTime there rewrites the mtime instead,
+    // which would replace the note's last-modified with its creation date.
     private void TrySetCreationTime(string path, DateTime created)
     {
+        if (!OperatingSystem.IsWindows() && !OperatingSystem.IsMacOS()) return;
         try
         {
             _writeRing.Mark(path);
