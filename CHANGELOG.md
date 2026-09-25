@@ -6,6 +6,10 @@ a Docker Hub tag and a GitHub Release.
 
 <!-- new releases are inserted directly below this line -->
 
+## [0.1.7] - 2026-09-25
+
+- feat: Collections page absorbs tags; live smart collections on the desk (94dea76)
+
 ## [0.1.6] - 2026-09-24
 
 - fix: share/confirm dialogs escape the card grid; deflake observer debounce test (21cd23f)
