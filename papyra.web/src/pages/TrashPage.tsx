@@ -4,6 +4,7 @@ import EmptyState from '../components/EmptyState';
 import { useNotes } from '../hooks/useNotes';
 import { useSettings, RETENTION_OPTIONS } from '../hooks/useSettings';
 import './NotesPage.css';
+import LoadingBar from '../components/LoadingBar';
 
 export default function TrashPage() {
   const { data: notes, isLoading, isError } = useNotes();
@@ -21,7 +22,7 @@ export default function TrashPage() {
         {hint && <span className="notes-page__hint">{hint}</span>}
       </header>
 
-      {isLoading && <p className="notes-page__status">Loading…</p>}
+      {isLoading && <LoadingBar label="Loading trash" />}
       {isError && <p className="notes-page__status">Couldn’t reach the server.</p>}
       {!isLoading && !isError && (
         <NoteGrid

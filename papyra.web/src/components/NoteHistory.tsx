@@ -8,6 +8,7 @@ import {
   chronological, diffStats, foldUnchanged, formatStamp, relativeTime, type VersionMeta,
 } from '../lib/history';
 import './NoteHistory.css';
+import LoadingBar from './LoadingBar';
 
 export type HistoryView = 'preview' | 'changes';
 
@@ -204,7 +205,7 @@ export default function NoteHistory({ noteId, live, onPreview, onRestore, onClos
           <span className="note-history__title"><History size={15} aria-hidden="true" /> History</span>
 
           <div className="note-history__when" aria-live="polite">
-            {versions === null && !error && <span className="note-history__muted">Loading versions…</span>}
+            {versions === null && !error && <LoadingBar label="Loading versions" className="loading-bar--inline" />}
             {versions !== null && (
               <>
                 <span className={`note-history__stamp${atNow ? ' is-now' : ''}`}>
@@ -362,7 +363,7 @@ function HistoryDiff({ atNow, loading, rows, titleChange }: {
     return <div className="note-history__diff"><p className="note-history__muted">This is the note as it is now. Pick an earlier version to compare.</p></div>;
   }
   if (loading || !rows) {
-    return <div className="note-history__diff"><p className="note-history__muted">Loading changes…</p></div>;
+    return <div className="note-history__diff"><LoadingBar label="Loading changes" /></div>;
   }
 
   const folded = foldUnchanged(rows);

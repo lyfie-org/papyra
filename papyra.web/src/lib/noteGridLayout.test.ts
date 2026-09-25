@@ -43,6 +43,22 @@ describe('pack', () => {
     expect(withGap.boxes.get('a')).toEqual({ x: 0, y: 116 });
     expect(withGap.boxes.get('b')).toEqual({ x: 0, y: 232 });
   });
+
+  it('prefer holds cards in their column while heights shift (no hopping mid-resize)', () => {
+    const before = pack(['a', 'b', 'c'], h([['a', 300], ['b', 100], ['c', 100]]), 2, 200);
+    expect(before.columns.get('c')).toBe(1);
+    // a re-wraps shorter: a fresh pack would hop c over to column 0...
+    const shorter = h([['a', 80], ['b', 100], ['c', 100]]);
+    expect(pack(['a', 'b', 'c'], shorter, 2, 200).columns.get('c')).toBe(0);
+    // ...but held, it stays put and only slides vertically.
+    const held = pack(['a', 'b', 'c'], shorter, 2, 200, undefined, before.columns);
+    expect(held.boxes.get('c')).toEqual({ x: 216, y: 116 });
+  });
+
+  it('ignores a preferred column the layout no longer has', () => {
+    const held = pack(['a'], h([['a', 100]]), 1, 200, undefined, new Map([['a', 2]]));
+    expect(held.boxes.get('a')).toEqual({ x: 0, y: 0 });
+  });
 });
 
 describe('indexFromPoint', () => {

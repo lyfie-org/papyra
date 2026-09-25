@@ -7,6 +7,7 @@ import { useAuth } from '../hooks/useAuth';
 import { useConfirm } from '../lib/confirmContext';
 import { useToast } from '../lib/toastContext';
 import './ManageUsersPage.css';
+import LoadingBar from '../components/LoadingBar';
 
 // Accounts on this instance. Split out of Settings because managing other people
 // is not a preference: everything under Settings changes what happens to *you*,
@@ -110,7 +111,7 @@ export default function ManageUsersPage() {
         an admin can create and remove accounts, but cannot read anyone else’s notes.
       </p>
 
-      {isLoading && <p className="users-page__status">Loading…</p>}
+      {isLoading && <LoadingBar label="Loading people" />}
       {isError && <p className="users-page__status">Couldn’t load the list of accounts.</p>}
 
       {users && users.length === 0 && (

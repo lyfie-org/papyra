@@ -1,0 +1,70 @@
+/* Sidebar import indicator: a quiet row + hairline bar above the status footer. */
+.sidebar-import {
+  display: flex;
+  flex-direction: column;
+  gap: 0.35rem;
+  margin: 0 var(--space-2) var(--space-2);
+  padding: 0.5rem 0.65rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--text);
+  text-decoration: none;
+  font-size: var(--fs-2xs);
+  animation: sidebar-import-in var(--dur) var(--ease) both;
+  transition: border-color var(--dur-fast) var(--ease);
+}
+
+.sidebar-import:hover { border-color: var(--accent-border); }
+
+.sidebar-import:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
+.sidebar-import__row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  white-space: nowrap;
+}
+
+.sidebar-import__icon { color: var(--accent-text); flex: none; }
+
+.sidebar-import__bar {
+  position: relative;
+  display: block;
+  height: 3px;
+  border-radius: var(--radius-pill);
+  background: var(--border);
+  overflow: hidden;
+}
+
+.sidebar-import__bar::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  background: var(--accent);
+  transform: scaleX(var(--frac, 0));
+  transform-origin: 0 50%;
+  transition: transform var(--dur) var(--ease);
+}
+
+/* Collapsed rail: just the icon over the bar. */
+.workspace--collapsed .sidebar-import {
+  align-items: center;
+  margin-inline: 6px;
+  padding: 0.45rem 0.35rem;
+}
+.workspace--collapsed .sidebar-import__bar { width: 100%; }
+
+@keyframes sidebar-import-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sidebar-import { animation: none; }
+  .sidebar-import__bar::after { transition: none; }
+}

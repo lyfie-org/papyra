@@ -3,6 +3,7 @@ import NoteGrid from '../components/NoteGrid';
 import EmptyState from '../components/EmptyState';
 import { useNotes } from '../hooks/useNotes';
 import './NotesPage.css';
+import LoadingBar from '../components/LoadingBar';
 
 export default function ArchivePage() {
   const { data: notes, isLoading, isError } = useNotes();
@@ -13,7 +14,7 @@ export default function ArchivePage() {
         <h1 className="page-title notes-page__title">Archive</h1>
       </header>
 
-      {isLoading && <p className="notes-page__status">Loading…</p>}
+      {isLoading && <LoadingBar label="Loading archive" />}
       {isError && <p className="notes-page__status">Couldn’t reach the server.</p>}
       {!isLoading && !isError && (
         <NoteGrid

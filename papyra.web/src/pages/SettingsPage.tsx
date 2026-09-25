@@ -42,6 +42,8 @@ import { usernameRule } from '../lib/profileRules';
 import { useSettings, useUpdateSettings, RETENTION_OPTIONS } from '../hooks/useSettings';
 import { useImportStatus, importSummary, IMPORT_STATUS_KEY, type ImportStatus } from '../hooks/useImportStatus';
 import './SettingsPage.css';
+import LoadingBar from '../components/LoadingBar';
+import { fetchWithProgress } from '../lib/progress';
 
 const APP_VERSION = '0.0.1';
 
@@ -237,7 +239,7 @@ function ProfileTab({ user }: { user: AuthUser | null }) {
   async function uploadAvatar(square: Blob) {
     const form = new FormData();
     form.append('file', square, 'avatar.png');
-    const res = await fetch('/api/auth/avatar', { method: 'POST', body: form });
+    const res = await fetchWithProgress('/api/auth/avatar', { method: 'POST', body: form });
     if (!res.ok) {
       // Keep the cropper open so the framing isn't lost; let it show the error.
       const data = await res.json().catch(() => null);
@@ -512,7 +514,7 @@ function SecurityTab() {
         device, and is separate from your account password. Too many wrong tries pause it, then switch it off
         until you reset it here with your password.
       </p>
-      {status.isLoading && <p>Loading…</p>}
+      {status.isLoading && <LoadingBar label="Loading" />}
       {s && (
         <>
           {s.pinDisabled && (
@@ -583,7 +585,7 @@ function SecurityTab() {
         <p className="settings__msg"><CheckCircle2 size={14} /> Device registered — you can now unlock with it here.</p>
       )}
 
-      {devices.isLoading && <p>Loading devices…</p>}
+      {devices.isLoading && <LoadingBar label="Loading devices" />}
       {devices.data && devices.data.length > 0 && (
         <table className="settings__users">
           <thead>
@@ -642,7 +644,10 @@ function DataTab() {
     try {
       const form = new FormData();
       form.append('file', file);
-      const res = await fetch(`/api/import/${provider}`, { method: 'POST', body: form });
+      const res = await fetchWithProgress(`/api/import/${provider}`, {
+        method: 'POST', body: form,
+        onProgress: (f) => setImportMsg(`Uploading… ${Math.round(f * 100)}%`),
+      });
       const data = await res.json().catch(() => null);
       if (res.ok) {
         queryClient.setQueryData(IMPORT_STATUS_KEY, data as ImportStatus);
@@ -805,7 +810,7 @@ function EncryptedBackupSection() {
       const form = new FormData();
       form.append('password', restorePw);
       form.append('file', file);
-      const res = await fetch('/api/backups/restore', { method: 'POST', body: form });
+      const res = await fetchWithProgress('/api/backups/restore', { method: 'POST', body: form });
       const data = await res.json().catch(() => null);
       if (!res.ok) { setRestoreMsg(data?.error ?? 'Restore failed.'); return; }
       setRestorePw('');
@@ -939,7 +944,7 @@ function KeysTab() {
         <button type="submit" className="settings__btn"><KeyRound size={15} /> Generate key</button>
       </form>
 
-      {isLoading && <p>Loading keys…</p>}
+      {isLoading && <LoadingBar label="Loading API keys" />}
       {keys && keys.length > 0 && (
         <table className="settings__users">
           <thead>
@@ -1018,7 +1023,7 @@ function JobsTab() {
     }
   }
 
-  if (isLoading) return <div className="settings__panel"><p className="settings__hint">Loading…</p></div>;
+  if (isLoading) return <div className="settings__panel"><LoadingBar label="Loading settings" /></div>;
   if (isError) return <div className="settings__panel"><p className="settings__error">Couldn’t load the list of jobs.</p></div>;
 
   const scheduled = (jobs ?? []).filter(j => j.kind === 'periodic');
@@ -1135,7 +1140,7 @@ function SyncTab() {
     );
   }
 
-  if (isLoading) return <div className="settings__panel"><p className="settings__hint">Loading…</p></div>;
+  if (isLoading) return <div className="settings__panel"><LoadingBar label="Loading settings" /></div>;
   if (isError) return <div className="settings__panel"><p className="settings__error">Couldn’t load the git configuration.</p></div>;
 
   return (
@@ -1239,7 +1244,7 @@ function NotificationsTab() {
   const { data, isLoading } = useNotificationPrefs();
   const save = useSaveNotificationPrefs();
 
-  if (isLoading) return <div className="settings__panel"><p className="settings__hint">Loading…</p></div>;
+  if (isLoading) return <div className="settings__panel"><LoadingBar label="Loading settings" /></div>;
 
   return (
     <div className="settings__panel">
@@ -1330,7 +1335,7 @@ function SsoTab() {
     );
   }
 
-  if (isLoading) return <div className="settings__panel"><p className="settings__hint">Loading…</p></div>;
+  if (isLoading) return <div className="settings__panel"><LoadingBar label="Loading settings" /></div>;
   if (isError) return <div className="settings__panel"><p className="settings__error">Couldn’t load the SSO configuration.</p></div>;
 
   return (
@@ -1445,7 +1450,7 @@ function EmailTab() {
     );
   }
 
-  if (isLoading) return <div className="settings__panel"><p className="settings__hint">Loading…</p></div>;
+  if (isLoading) return <div className="settings__panel"><LoadingBar label="Loading settings" /></div>;
   if (isError) return <div className="settings__panel"><p className="settings__error">Couldn’t load the email configuration.</p></div>;
 
   return (
@@ -1658,7 +1663,7 @@ function AiTab() {
     });
   }
 
-  if (isLoading) return <div className="settings__panel"><p className="settings__hint">Loading…</p></div>;
+  if (isLoading) return <div className="settings__panel"><LoadingBar label="Loading settings" /></div>;
   if (isError) return <div className="settings__panel"><p className="settings__error">Couldn’t load the assistant settings.</p></div>;
 
   const usingCloud = v('chatProvider') !== 'ollama';

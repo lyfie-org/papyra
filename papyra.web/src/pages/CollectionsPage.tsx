@@ -11,6 +11,7 @@ import { NOTE_SWATCHES } from '../lib/noteColors';
 import { MAX_TAG_LENGTH } from '../lib/tags';
 import { describeRule, matchesRules, parseRules, type SmartRules } from '../lib/smartCollections';
 import './CollectionsPage.css';
+import LoadingBar from '../components/LoadingBar';
 
 const TAG_COLOURS = NOTE_SWATCHES.filter((s) => s.value).map((s) => s.value!);
 
@@ -98,7 +99,7 @@ export default function CollectionsPage() {
 
       {building && <RuleBuilder onSaved={() => setBuilding(false)} onCancel={() => setBuilding(false)} />}
 
-      {loadingCollections && <p className="collections__status">Loading collections…</p>}
+      {loadingCollections && <LoadingBar label="Loading collections" />}
       {!loadingCollections && cards.length === 0 && !building && (
         <EmptyState
           icon={Layers}
@@ -189,7 +190,7 @@ export default function CollectionsPage() {
         </form>
       )}
 
-      {loadingTags && <p className="collections__status">Loading tags…</p>}
+      {loadingTags && <LoadingBar label="Loading tags" />}
       {!loadingTags && (tags?.length ?? 0) === 0 && newTag === null && (
         <EmptyState
           icon={Tags}

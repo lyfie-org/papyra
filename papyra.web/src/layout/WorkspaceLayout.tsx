@@ -15,6 +15,7 @@ import { useRealLocation } from '../lib/realLocation';
 import { clearSessionData } from '../lib/session';
 import { AI_ENABLED } from '../lib/features';
 import { useSignalR } from '../hooks/useSignalR';
+import SidebarImportProgress from '../components/SidebarImportProgress';
 import { useAuth } from '../hooks/useAuth';
 import { useSyncEngine } from '../hooks/useSync';
 import { useUnreadInboxCount } from '../hooks/useInbox';
@@ -210,6 +211,7 @@ export default function WorkspaceLayout() {
           </ul>
 
           <div className="workspace__sidebar-bottom">
+            <SidebarImportProgress />
             <NavLink
               to="/trash"
               title="Trash"

@@ -2,6 +2,7 @@ import type { QueryClient } from '@tanstack/react-query';
 import type { NavigateFunction } from 'react-router-dom';
 import type { PapyraEditorAdapter } from '@lyfie/luthor/presets/papyra';
 import type { Note } from '../types/note';
+import { fetchWithProgress } from './progress';
 
 // Inputs the adapter closes over: the open note (uploads tag against it), the
 // router push, and the query client (the notes cache is the search/navigation
@@ -36,7 +37,7 @@ export function createPapyraEditorAdapter(
     uploadMedia: async (file) => {
       const form = new FormData();
       form.append('file', file);
-      const res = await fetch(`/api/media/upload?noteId=${encodeURIComponent(noteId)}`, {
+      const res = await fetchWithProgress(`/api/media/upload?noteId=${encodeURIComponent(noteId)}`, {
         method: 'POST',
         body: form,
       });

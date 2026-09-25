@@ -17,6 +17,7 @@ import { ToastProvider } from './components/ToastProvider.tsx';
 import { ConfirmProvider } from './components/ConfirmProvider.tsx';
 import './index.css';
 import App from './App.tsx';
+import TopProgressBar from './components/TopProgressBar.tsx';
 
 // Demo mode: stand up the in-browser fake server BEFORE React mounts, so the
 // very first request the app makes (the /api/auth/me session probe) is already
@@ -52,6 +53,7 @@ createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
+        <TopProgressBar />
         <ToastProvider>
           <ConfirmProvider>
             <BrowserRouter basename={import.meta.env.BASE_URL}>

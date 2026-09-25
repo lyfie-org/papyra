@@ -9,6 +9,7 @@ import {
   pendingWrites, queueWrite, removeWrite, type NoteWritePayload, type OutboxEntry,
 } from './outbox';
 import { refreshPending, setSync, getSyncState } from './syncStatus';
+import { fetchWithProgress } from './progress';
 
 export type SaveOutcome = 'saved' | 'queued';
 
@@ -86,7 +87,7 @@ export async function putNote(
 export async function fetchNotesMerged(): Promise<Note[]> {
   let notes: Note[];
   try {
-    const res = await fetch('/api/notes');
+    const res = await fetchWithProgress('/api/notes');
     if (!res.ok) throw new Error(`GET /api/notes failed: ${res.status}`);
     notes = await res.json();
     // The service worker tags a cached replay, so a 200 that never touched the
