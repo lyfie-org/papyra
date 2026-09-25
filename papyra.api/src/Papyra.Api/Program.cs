@@ -3859,11 +3859,22 @@ app.MapPost("/api/import/{provider}", async (
         await fs.FlushAsync(ct);
     }
 
-    var jobId = import.Enqueue(Uid(user), provider, tmp);
-    return Results.Accepted(value: new { jobId });
+    var status = import.Enqueue(Uid(user), provider, tmp);
+    if (status is null)
+    {
+        File.Delete(tmp);
+        return Results.Conflict(new { error = "An import is already running. Wait for it to finish." });
+    }
+    return Results.Accepted(value: status);
 })
 .RequireAuthorization()
 .DisableAntiforgery();
+
+// The caller's running import (or the last one's summary) — lets the Settings page
+// resume the progress bar after navigating away. 204 when there's never been one.
+app.MapGet("/api/import/status", (ClaimsPrincipal user, ImportService import) =>
+    import.StatusFor(Uid(user)) is { } status ? Results.Ok(status) : Results.NoContent())
+.RequireAuthorization();
 
 // Dashboard quick-import: drag one or more .md/.txt files onto the grid. Each becomes
 // a new note immediately (synchronous, small files) — sanitized, titled from the

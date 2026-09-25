@@ -40,6 +40,7 @@ import Avatar from '../components/Avatar';
 import { bumpAvatarVersion, useAvatarVersion } from '../lib/avatarVersion';
 import { usernameRule } from '../lib/profileRules';
 import { useSettings, useUpdateSettings, RETENTION_OPTIONS } from '../hooks/useSettings';
+import { useImportStatus, importSummary, IMPORT_STATUS_KEY, type ImportStatus } from '../hooks/useImportStatus';
 import './SettingsPage.css';
 
 const APP_VERSION = '0.0.1';
@@ -627,16 +628,38 @@ function DataTab() {
   const update = useUpdateSettings();
   const [provider, setProvider] = useState<'obsidian' | 'keep'>('obsidian');
   const [importMsg, setImportMsg] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
   const [rebuildMsg, setRebuildMsg] = useState<string | null>(null);
   const importRef = useRef<HTMLInputElement | null>(null);
+  const queryClient = useQueryClient();
+  // Server-tracked, so the bar is back when this tab remounts mid-import.
+  const { data: importStatus } = useImportStatus();
+  const importing = uploading || (!!importStatus && !importStatus.done);
 
   async function runImport(file: File) {
+    setUploading(true);
     setImportMsg('Uploading…');
-    const form = new FormData();
-    form.append('file', file);
-    const res = await fetch(`/api/import/${provider}`, { method: 'POST', body: form });
-    setImportMsg(res.ok ? 'Import started — notes will appear as they’re processed.' : 'Import failed.');
+    try {
+      const form = new FormData();
+      form.append('file', file);
+      const res = await fetch(`/api/import/${provider}`, { method: 'POST', body: form });
+      const data = await res.json().catch(() => null);
+      if (res.ok) {
+        queryClient.setQueryData(IMPORT_STATUS_KEY, data as ImportStatus);
+        setImportMsg(null);
+      } else {
+        setImportMsg(data?.error ?? 'Import failed.');
+        // 409: one is already running — pick its bar up.
+        if (res.status === 409) void queryClient.invalidateQueries({ queryKey: IMPORT_STATUS_KEY });
+      }
+    } finally {
+      setUploading(false);
+      if (importRef.current) importRef.current.value = '';
+    }
   }
+
+  const pct = importStatus && importStatus.total > 0
+    ? Math.round((importStatus.processed / importStatus.total) * 100) : 0;
 
   async function rebuild() {
     setRebuildMsg('Rebuilding…');
@@ -648,19 +671,46 @@ function DataTab() {
   return (
     <div className="settings__panel">
       <h2 id="import" className="settings__subhead">Import</h2>
-      <p className="settings__hint">Bring notes in from another app. Existing notes are never overwritten.</p>
+      <p className="settings__hint">
+        Bring notes in from another app, with their colours, pins, labels and last-edited dates.
+        Importing the same archive again never duplicates a note: identical notes are left alone,
+        and notes changed since are updated to the imported version (the old one stays in History).
+      </p>
       <div className="settings__row">
-        <select className="settings__select" value={provider} onChange={e => setProvider(e.target.value as 'obsidian' | 'keep')}>
+        <select className="settings__select" disabled={importing}
+          value={importStatus && !importStatus.done ? importStatus.provider : provider}
+          onChange={e => setProvider(e.target.value as 'obsidian' | 'keep')}>
           <option value="obsidian">Obsidian vault (.zip)</option>
           <option value="keep">Google Keep (.zip)</option>
         </select>
-        <button type="button" className="settings__btn" onClick={() => importRef.current?.click()}>
+        <button type="button" className="settings__btn" disabled={importing}
+          title={importing ? 'An import is already running' : undefined}
+          onClick={() => importRef.current?.click()}>
           <Upload size={16} /> Choose archive
         </button>
         <input ref={importRef} type="file" accept=".zip" hidden
           onChange={e => { const f = e.target.files?.[0]; if (f) void runImport(f); }} />
       </div>
+      {importStatus && !importStatus.done && (
+        <div className="settings__import-progress" role="status">
+          <div
+            className="settings__progress-bar"
+            role="progressbar"
+            aria-label="Import progress"
+            aria-valuemin={0}
+            aria-valuemax={100}
+            aria-valuenow={pct}
+            style={{ '--pct': `${pct}%` } as React.CSSProperties}
+          />
+          <span>
+            {importStatus.total > 0
+              ? `Importing ${importStatus.provider === 'keep' ? 'Google Keep' : 'Obsidian'} notes… ${importStatus.processed} of ${importStatus.total}`
+              : 'Import queued…'}
+          </span>
+        </div>
+      )}
       {importMsg && <p className="settings__msg">{importMsg}</p>}
+      {!importMsg && importStatus?.done && <p className="settings__msg" role="status">{importSummary(importStatus)}</p>}
 
       <h2 id="export" className="settings__subhead">Export</h2>
       <p className="settings__hint">Download every note as a zip of plain text files you can open anywhere.</p>

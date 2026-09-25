@@ -19,17 +19,41 @@ to, and it preserves everything, because nothing is being converted.
 brings the notes across, keeping frontmatter and `[[wiki links]]`, which mean the
 same thing in both apps.
 
-Import runs as a background job with live progress, so a large vault does not tie
-up the page.
+Each note keeps its filename as its title and its last-modified time. If the note
+has a `modified:`/`updated:` or `created:` frontmatter date, Papyra uses that
+instead, because zip timestamps carry no time zone. Bookmarked (or starred) notes
+come in pinned. Attachments land in `media/`. The `.obsidian/` config folder and
+`.trash/` are skipped.
+
+Import runs as a background job with a progress bar. You can leave Settings and
+come back, and the bar will still be there. Only one import runs at a time.
 
 ## Google Keep
 
 Export from [Google Takeout](https://takeout.google.com), selecting Keep. Then
 **Settings → Data & Storage → Import → Google Keep** with the archive.
 
-Papyra maps what has an equivalent: title, body, colours, pinned state, labels
-become categories, and checklists become Markdown checklists. Keep's reminders
-have no equivalent and are not imported.
+Papyra maps what has an equivalent. Title and body carry over. Checklists become
+to-dos. Labels become tags. Pinned and archived state carry over. Colours map to
+the nearest Papyra swatch. The last-edited time becomes the note's last-modified
+time. Web links and images carry over too. Takeout does not include Keep's drag
+order, so notes are arranged newest-created first, as Keep shows them by default.
+Notes in Keep's trash and reminders are not imported.
+
+## Importing the same archive again
+
+Re-importing never duplicates a note. Papyra recognises each note it imported
+before and handles it one of two ways:
+
+- **Identical** (same content, colour, pins, labels and last-modified): left
+  alone.
+- **Changed since** (in the source, or edited here): overwritten with the
+  imported version and all of its metadata. The version it replaces stays in the
+  note's History. If you locked a note or moved it to Trash in Papyra, it keeps
+  that state.
+
+When the import finishes, Papyra shows how many notes were new, updated, already
+identical or skipped.
 
 ## Drag a file in
 

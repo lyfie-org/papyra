@@ -3,6 +3,8 @@ import { HubConnectionBuilder, HubConnectionState, type HubConnection } from '@m
 import { useQueryClient } from '@tanstack/react-query';
 import { useFocus } from './useFocus';
 import { setSync } from '../lib/syncStatus';
+import { IMPORT_STATUS_KEY, type ImportStatus } from './useImportStatus';
+import { ORDER_KEY } from './useNoteOrder';
 
 export type ServerStatus = 'online' | 'offline';
 
@@ -53,6 +55,14 @@ export function useSignalR(): ServerStatus {
     // Sync conflict copies appear/resolve out of band; refresh the grid banners.
     connection.on('NoteConflict', invalidateConflicts);
     connection.on('ConflictResolved', invalidateConflicts);
+    // Import progress lives in the query cache (not the Settings page) so the bar
+    // survives navigating away. A finished import has rewritten drag positions too:
+    // refetch them, or the next drag would PUT a stale map over the import's.
+    connection.on('ImportProgress', (status: ImportStatus) => {
+      queryClient.setQueryData(IMPORT_STATUS_KEY, status);
+      // (Notes themselves refresh via NoteCreated/NoteUpdated, through the focus buffer.)
+      if (status.done) void queryClient.invalidateQueries({ queryKey: ORDER_KEY });
+    });
 
     // The hub is the most sensitive reachability signal we have — it notices the
     // API dying while the browser still thinks it has a network. Mirror it into

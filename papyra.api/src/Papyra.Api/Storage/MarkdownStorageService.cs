@@ -130,10 +130,12 @@ public sealed class MarkdownStorageService
 
     // Atomically persist a note: write a uuid.tmp sibling, fsync, then replace the
     // target in one move. Never leaves a 0-byte .md behind. Foreign frontmatter on
-    // the existing file is preserved.
-    public async Task WriteAsync(string path, Note note, CancellationToken ct = default)
+    // the existing file is preserved — unless `mergeExisting` is false, when the
+    // note's own ExtraFrontmatter is the whole story (an import overwrite, whose
+    // caller has already merged the old keys under the incoming ones).
+    public async Task WriteAsync(string path, Note note, CancellationToken ct = default, bool mergeExisting = true)
     {
-        var existing = File.Exists(path)
+        var existing = mergeExisting && File.Exists(path)
             ? SplitFrontmatter(await WithBackoff(() => File.ReadAllTextAsync(path, ct))).Frontmatter
             : null;
 

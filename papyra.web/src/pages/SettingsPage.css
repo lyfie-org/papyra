@@ -707,6 +707,34 @@
   transition: width var(--dur) var(--ease);
 }
 
+/* Background import: server-tracked, so it reappears when the tab remounts. */
+.settings__import-progress {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  max-width: 24rem;
+  margin-top: 0.6rem;
+  font-size: var(--fs-2xs);
+  color: var(--text);
+}
+
+.settings__progress-bar {
+  height: 4px;
+  border-radius: var(--radius-pill);
+  background: var(--border);
+  overflow: hidden;
+}
+
+.settings__progress-bar::after {
+  content: '';
+  display: block;
+  width: var(--pct, 0%);
+  height: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  transition: width var(--dur) var(--ease);
+}
+
 .settings__advanced {
   max-width: 38rem;
   margin: 0.5rem 0 1rem;
