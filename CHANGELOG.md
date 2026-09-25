@@ -6,6 +6,11 @@ a Docker Hub tag and a GitHub Release.
 
 <!-- new releases are inserted directly below this line -->
 
+## [0.1.8] - 2026-09-25
+
+- feat: unified in-editor version History; distinct versions only; luthor 2.9.7 (c4e7f03)
+- fix: undo no longer reverts a note to raw source; previews read empty list items (71f54c7)
+
 ## [0.1.7] - 2026-09-25
 
 - feat: Collections page absorbs tags; live smart collections on the desk (94dea76)
