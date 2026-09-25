@@ -2018,8 +2018,8 @@ notes.MapGet("/{id}/secure", (
 
 // ── Manual ordering (drag-and-drop) ──────────────────────────────────────────
 // The grid default-sorts by `updated` (recency); a manual drag overrides that by
-// pinning a note to a fractional Key. `SetAt` is the note's mtime at drag time, so
-// the client can ignore a stale Key once the note is edited again (edit → top).
+// pinning a note to a fractional Key, kept until the note is dragged again (an
+// edit no longer resets it). `SetAt` records when the drag happened.
 // Literal "/order" outranks the "/{id}" param route, so there's no collision.
 notes.MapGet("/order", (ClaimsPrincipal user, OrderStore order) =>
     Results.Ok(order.Read(Uid(user))));
@@ -2105,6 +2105,12 @@ notes.MapPut("/{id}", async (
         // Omitted `secure` keeps whatever the note already had — a client that
         // doesn't know about the flag must never silently unlock a secure note.
         Secure = body.Secure ?? prior?.Secure ?? false,
+        // Trash state belongs to /trash and /untrash, never to a content save. A
+        // save used to rebuild the note without it, so an editor's last autosave
+        // landing just after "Delete" (or an offline save replayed later) quietly
+        // pulled the note back out of Trash — and re-dated it to the top.
+        Trashed = prior?.Trashed ?? false,
+        TrashedAt = prior?.TrashedAt,
         Updated = DateTime.UtcNow,
     };
 

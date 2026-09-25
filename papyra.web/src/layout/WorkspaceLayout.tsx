@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { NavLink, Outlet, matchPath, useLocation, useNavigate } from 'react-router-dom';
+import { Link, NavLink, Outlet, matchPath, useLocation, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   Menu, StickyNote, ListTodo, Archive, Settings, Trash2, ShieldCheck,
@@ -106,8 +106,12 @@ export default function WorkspaceLayout() {
           >
             <Menu size={18} />
           </button>
-          <img className="workspace__logo" src={logo} alt="" aria-hidden="true" />
-          <span className="workspace__wordmark">Papyra</span>
+          {/* The brand is the way home: Notes is the home page. A plain link, so
+              middle-click / open-in-new-tab work as people expect. */}
+          <Link to="/" className="workspace__home" aria-label="Papyra — go to Notes">
+            <img className="workspace__logo" src={logo} alt="" aria-hidden="true" />
+            <span className="workspace__wordmark" aria-hidden="true">Papyra</span>
+          </Link>
         </div>
         <SearchBar />
 

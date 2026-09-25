@@ -43,6 +43,41 @@ public sealed class OverwriteSafetyTests
         => Path.Combine(dataDir, "users", uid, ".papyra", "snapshots", noteId);
 
     [Fact]
+    public async Task ASaveLandingAfterTrash_DoesNotPullTheNoteBackOut()
+    {
+        // The editor's last autosave can reach the server just after "Delete" (or
+        // an offline save can replay later). A content save is not an untrash.
+        var (factory, dir) = NewApp();
+        try
+        {
+            var client = factory.CreateClient();
+            await SeedAdminAsync(client);
+            var write = new NoteWrite(Title: "Doc", Tags: null, Color: null, Pinned: true, Archived: false, Body: "v1");
+            await client.PutAsJsonAsync("/api/notes/t1", write);
+            Assert.Equal(HttpStatusCode.NoContent, (await client.PostAsync("/api/notes/t1/trash", null)).StatusCode);
+
+            var late = await client.PutAsJsonAsync("/api/notes/t1", write with { Body = "v1 + last keystroke" });
+            Assert.Equal(HttpStatusCode.OK, late.StatusCode);
+
+            var note = (await client.GetFromJsonAsync<List<Note>>("/api/notes"))!.Single(n => n.Id == "t1");
+            Assert.True(note.Trashed);
+            Assert.NotNull(note.TrashedAt);
+            Assert.Equal("v1 + last keystroke", note.Body.Trim()); // the edit is kept, in Trash
+
+            // Untrash is still the way back.
+            Assert.Equal(HttpStatusCode.NoContent, (await client.PostAsync("/api/notes/t1/untrash", null)).StatusCode);
+            note = (await client.GetFromJsonAsync<List<Note>>("/api/notes"))!.Single(n => n.Id == "t1");
+            Assert.False(note.Trashed);
+        }
+        finally
+        {
+            factory.Dispose();
+            SqliteConnection.ClearAllPools();
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task KeepRight_WithinTheSnapshotThrottle_StillArchivesTheReplacedRevision()
     {
         var (factory, dir) = NewApp();

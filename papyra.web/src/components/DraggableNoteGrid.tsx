@@ -230,8 +230,8 @@ export default function DraggableNoteGrid({ notes, conflictsByParent, onResolveC
       below ? effectiveKey(below, order) : null,
     );
 
-    // `setAt` stamps when the drag was committed, so a later edit can retire a stale
-    // manual position. Reading the clock is impure, but this runs only from
+    // `setAt` stamps when the drag was committed (bookkeeping; a placed note keeps
+    // its position until dragged again — see effectiveKey). Reading the clock is impure, but this runs only from
     // DndContext's onDragEnd — never during render. The lint rule can't prove a
     // component-body function is event-only, so silence it here deliberately.
     // eslint-disable-next-line react-hooks/purity

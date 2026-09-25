@@ -1,9 +1,8 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type { Note } from '../types/note';
 
-// One manual drag position: a fractional sort `key` plus the note's mtime (epoch
-// ms) at drag time. The key is honoured only while the note hasn't been edited
-// since — see effectiveKey — so an edit always wins over a stale drag.
+// One manual drag position: a fractional sort `key` plus when it was set (epoch
+// ms). A note placed by hand stays where it was placed — see effectiveKey.
 export interface OrderEntry {
   key: number;
   setAt: number;
@@ -41,14 +40,18 @@ export function useSaveOrder() {
   });
 }
 
-// The sort value for a note: its manual drag key while still valid, else its
-// last-modified epoch. Editing a note (updated > setAt) discards the stale key,
-// so the note jumps back to the top by recency.
+// The sort value for a note: its manual drag key when it has one, else its
+// last-modified epoch.
+//
+// A position someone chose by dragging is kept until they drag it again. It
+// used to be dropped the moment the note's mtime passed the drag time, so any
+// write — including ones the person never made, like the editor re-saving a
+// note on open — sent a carefully placed note back to the top. Notes nobody has
+// placed still float by recency, which is what puts a new note first.
 export function effectiveKey(note: Note, order: OrderMap | undefined): number {
-  const updatedMs = Date.parse(note.updated) || 0;
   const e = order?.[note.id];
-  if (e && updatedMs <= e.setAt) return e.key;
-  return updatedMs;
+  if (e) return e.key;
+  return Date.parse(note.updated) || 0;
 }
 
 // Recency-or-manual order, highest key first.
