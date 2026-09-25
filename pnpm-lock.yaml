@@ -64,8 +64,8 @@ importers:
         specifier: ^3.2.2
         version: 3.2.2(react@19.2.6)
       '@lyfie/luthor':
-        specifier: ^2.9.7
-        version: 2.9.7(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(yjs@13.6.31)
+        specifier: ^2.9.8
+        version: 2.9.8(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(yjs@13.6.31)
       '@microsoft/signalr':
         specifier: ^10.0.0
         version: 10.0.0
@@ -1355,8 +1355,8 @@ packages:
     peerDependencies:
       yjs: '>=13.5.22'
 
-  '@lyfie/luthor-headless@2.9.7':
-    resolution: {integrity: sha512-fd6Z2nCirUkUM9SEdb/ch61/Sj/Cbd4CvKzDv/nj4Y3Uph8qsvACn2zrehF2gzrZ5p7ORtJ/2ga4bnmqESGExA==}
+  '@lyfie/luthor-headless@2.9.8':
+    resolution: {integrity: sha512-wiFl0z4gAhZ2rdQ7zfyQzM2QE/4G2fAvBhX7b3xbRZ1ySsc+Ouj1Yi+NbdO/qgHZUAWZEFHP6g4JaQuje5A+8w==}
     peerDependencies:
       '@lexical/code': '>=0.40.0'
       '@lexical/html': '>=0.40.0'
@@ -1372,8 +1372,8 @@ packages:
       react: ^18.0.0 || ^19.0.0
       react-dom: ^18.0.0 || ^19.0.0
 
-  '@lyfie/luthor@2.9.7':
-    resolution: {integrity: sha512-9lHVUrc1YcXFDxt6Tso8LqPp04FBHNO3we7xxLMO2ekPVQP79cKn6AM673QmwLGCyB35cdItdwoyoo7TPm645w==}
+  '@lyfie/luthor@2.9.8':
+    resolution: {integrity: sha512-h/3x2Sd9nYvGHiOEzepFeU9eLrkpBShJH8i2sjuhxBoQC5Cz9RyxcFjjsVEZoqq5FZaxr/6xHanVuzRlUgjAkQ==}
     peerDependencies:
       react: ^18.0.0 || ^19.0.0
       react-dom: ^18.0.0 || ^19.0.0
@@ -4737,7 +4737,7 @@ snapshots:
       lexical: 0.40.0
       yjs: 13.6.31
 
-  '@lyfie/luthor-headless@2.9.7(@lexical/code@0.40.0)(@lexical/html@0.40.0)(@lexical/link@0.40.0)(@lexical/list@0.40.0)(@lexical/markdown@0.40.0)(@lexical/react@0.40.0(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(yjs@13.6.31))(@lexical/rich-text@0.40.0)(@lexical/selection@0.40.0)(@lexical/table@0.40.0)(@lexical/utils@0.40.0)(lexical@0.40.0)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)':
+  '@lyfie/luthor-headless@2.9.8(@lexical/code@0.40.0)(@lexical/html@0.40.0)(@lexical/link@0.40.0)(@lexical/list@0.40.0)(@lexical/markdown@0.40.0)(@lexical/react@0.40.0(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(yjs@13.6.31))(@lexical/rich-text@0.40.0)(@lexical/selection@0.40.0)(@lexical/table@0.40.0)(@lexical/utils@0.40.0)(lexical@0.40.0)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)':
     dependencies:
       '@lexical/code': 0.40.0
       '@lexical/html': 0.40.0
@@ -4755,7 +4755,7 @@ snapshots:
     optionalDependencies:
       '@emoji-mart/data': 1.2.1
 
-  '@lyfie/luthor@2.9.7(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(yjs@13.6.31)':
+  '@lyfie/luthor@2.9.8(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(yjs@13.6.31)':
     dependencies:
       '@lexical/code': 0.40.0
       '@lexical/html': 0.40.0
@@ -4767,7 +4767,7 @@ snapshots:
       '@lexical/selection': 0.40.0
       '@lexical/table': 0.40.0
       '@lexical/utils': 0.40.0
-      '@lyfie/luthor-headless': 2.9.7(@lexical/code@0.40.0)(@lexical/html@0.40.0)(@lexical/link@0.40.0)(@lexical/list@0.40.0)(@lexical/markdown@0.40.0)(@lexical/react@0.40.0(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(yjs@13.6.31))(@lexical/rich-text@0.40.0)(@lexical/selection@0.40.0)(@lexical/table@0.40.0)(@lexical/utils@0.40.0)(lexical@0.40.0)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
+      '@lyfie/luthor-headless': 2.9.8(@lexical/code@0.40.0)(@lexical/html@0.40.0)(@lexical/link@0.40.0)(@lexical/list@0.40.0)(@lexical/markdown@0.40.0)(@lexical/react@0.40.0(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(yjs@13.6.31))(@lexical/rich-text@0.40.0)(@lexical/selection@0.40.0)(@lexical/table@0.40.0)(@lexical/utils@0.40.0)(lexical@0.40.0)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)
       lexical: 0.40.0
       react: 19.2.6
       react-dom: 19.2.6(react@19.2.6)
