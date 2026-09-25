@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { PapyraEditor, type PapyraEditorRef } from '@lyfie/luthor/presets/papyra';
 import '@lyfie/luthor/styles.css';
+import { CLEAR_HISTORY_COMMAND, type LexicalEditor } from 'lexical';
 import type { Note } from '../types/note';
 import { useAutoSave, type Draft } from '../hooks/useAutoSave';
 import { useTheme } from '../hooks/useTheme';
@@ -29,6 +30,11 @@ import { useFocus } from '../hooks/useFocus';
 import { useDialogFocus } from '../hooks/useDialogFocus';
 import { useAmbient } from '../hooks/useAmbient';
 import './NoteEditor.css';
+
+/** Drop the undo stack — for content the host put there, which the user never typed. */
+function forgetHistory(editor: LexicalEditor | null | undefined) {
+  editor?.dispatchCommand(CLEAR_HISTORY_COMMAND, undefined);
+}
 
 const STATUS_LABEL = {
   idle: '',
@@ -166,6 +172,7 @@ export default function NoteEditor({ note }: { note: Note }) {
     // revision to disk.
     if (timeMachine) {
       editorRef.current?.setMarkdown(latestBody.current);
+      forgetHistory(editorRef.current?.getLexicalEditor());
       suppressSave.current = false;
       setTimeMachine(false);
     }
@@ -376,6 +383,9 @@ export default function NoteEditor({ note }: { note: Note }) {
   // Exit without restoring: put the live draft back on screen and re-enable saving.
   const closeTimeMachine = useCallback(() => {
     editorRef.current?.setMarkdown(latestBody.current);
+    // Each scrubbed revision was an undo step; undoing into one after leaving
+    // would put an old revision back on screen and autosave it over the note.
+    forgetHistory(editorRef.current?.getLexicalEditor());
     suppressSave.current = false;
     setTimeMachine(false);
   }, []);
@@ -531,6 +541,11 @@ export default function NoteEditor({ note }: { note: Note }) {
             // defaultContent loads as plain text, so parse the markdown into the
             // visual surface explicitly — otherwise the body renders as raw source.
             methods.setMarkdown(body);
+            // Both loads land on the undo stack, so the first Ctrl+Z after an edit
+            // walked back past the note itself into that plain-text load — the
+            // whole note flattened into one paragraph of raw `1. … ^id` source,
+            // which autosave then wrote to disk. Opening a note is not an edit.
+            forgetHistory(lexical);
             // onReady fires post-reconciliation as of luthor 2.9.1, so the editor's
             // own (normalised) serialization is a stable baseline right here — no
             // settle timer. Baselining against our input instead would make every

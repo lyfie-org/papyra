@@ -43,6 +43,30 @@ describe('parseBlocks', () => {
     expect(blocks.map((b) => (b as ListBlock).ordered)).toEqual([false, true]);
   });
 
+  it('reads an empty item — with or without its trailing space — as an item, not text', () => {
+    // The shape that used to drift on save: a new empty sub-item under "Whiskey".
+    for (const empty of ['    3. ', '    3.', '    3. ^0b9vdhib']) {
+      const md = ['1. Whiskey ^w1', '    1. Yamazaki ^y1', '    2. Hibiki ^h1', empty].join('\n');
+      const list = parseBlocks(md).blocks[0] as ListBlock;
+      expect(list.items).toHaveLength(1);
+      const sub = list.items[0].children!;
+      expect(sub.items).toHaveLength(3);
+      expect(sub.items[2].content).toEqual([]);
+    }
+  });
+
+  it('reads empty task items and headings', () => {
+    const { blocks } = parseBlocks('#\n- [ ]\n- [x] done');
+    expect(blocks[0]).toMatchObject({ t: 'h', level: 1, c: [] });
+    const list = blocks[1] as ListBlock;
+    expect(list.items.map((i) => i.task)).toEqual([false, true]);
+  });
+
+  it('does not mistake numbers, hashtags or rules for markers', () => {
+    const { blocks } = parseBlocks('1.5 kg rice\n#tag\n\n---');
+    expect(blocks.map((b) => b.t)).toEqual(['p', 'hr']);
+  });
+
   it('stops after the line budget and reports truncation', () => {
     const md = Array.from({ length: 40 }, (_, i) => `line ${i}`).join('\n');
     const { blocks, truncated } = parseBlocks(md, 5);

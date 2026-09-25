@@ -13,6 +13,7 @@ const SNIPPET_LEN = 220;
  */
 export function flattenMarkdown(md: string): string {
   return md
+    .replace(/\r\n?/g, '\n')                            // CRLF files (edited elsewhere)
     .replace(/```[\s\S]*?```/g, ' ')                    // fenced code blocks
     .replace(/`([^`]+)`/g, '$1')                        // inline code
     .replace(/!\[\[[^\]]*\]\]/g, ' ')                   // media embeds ![[file]]
@@ -22,11 +23,14 @@ export function flattenMarkdown(md: string): string {
     .replace(/\[\[([^\]|]+)(?:\|[^\]]+)?\]\]/g, '$1')   // wikilinks [[a|b]] → a
     .replace(/!\[[^\]]*\]\([^)]*\)/g, ' ')              // images ![alt](url)
     .replace(/\[([^\]]+)\]\([^)]*\)/g, '$1')            // links [text](url) → text
-    .replace(/^\s{0,3}#{1,6}\s+/gm, '')                 // headings
-    .replace(/^\s{0,3}>\s?/gm, '')                      // blockquotes
-    .replace(/^\s{0,3}[-*+]\s+\[[ xX]\]\s+/gm, '')      // task list markers
-    .replace(/^\s{0,3}[-*+]\s+/gm, '')                  // bullet list markers
-    .replace(/^\s{0,3}\d+\.\s+/gm, '')                  // ordered list markers
+    // Block markers. A marker may end the line (an empty item/heading, or one
+    // whose trailing space an editor trimmed), and list markers may be indented
+    // any depth (luthor nests by 4 spaces), so neither leaves a stray `3.` behind.
+    .replace(/^[ \t]{0,3}#{1,6}(?:[ \t]+|$)/gm, '')           // headings
+    .replace(/^[ \t]{0,3}>[ \t]?/gm, '')                      // blockquotes
+    .replace(/^[ \t]*[-*+][ \t]+\[[ xX]\](?:[ \t]+|$)/gm, '') // task list markers
+    .replace(/^[ \t]*[-*+](?:[ \t]+|$)/gm, '')                // bullet list markers
+    .replace(/^[ \t]*\d+\.(?:[ \t]+|$)/gm, '')                // ordered list markers
     .replace(/^\s{0,3}(?:[-*_]\s*){3,}$/gm, ' ')        // horizontal rules
     .replace(/(\*\*|__)(.*?)\1/g, '$2')                 // bold
     .replace(/(\*|_)(.*?)\1/g, '$2')                    // italic
