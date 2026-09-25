@@ -67,3 +67,20 @@ export function keyBetween(aboveKey: number | null, belowKey: number | null): nu
   if (belowKey == null) return aboveKey - ORDER_STEP;             // dropped at bottom
   return (aboveKey + belowKey) / 2;
 }
+
+// Keys for `count` notes dropped together into one slot, first-to-last in
+// display order (highest key first). Spread evenly between the neighbours so
+// the group lands contiguous and in the order it had — and a later single drop
+// still has room between any two of them.
+export function keysBetween(aboveKey: number | null, belowKey: number | null, count: number): number[] {
+  if (count <= 0) return [];
+  if (count === 1) return [keyBetween(aboveKey, belowKey)];
+  if (aboveKey != null && belowKey != null) {
+    const step = (aboveKey - belowKey) / (count + 1);
+    return Array.from({ length: count }, (_, i) => aboveKey - step * (i + 1));
+  }
+  if (aboveKey != null) return Array.from({ length: count }, (_, i) => aboveKey - ORDER_STEP * (i + 1));
+  if (belowKey != null) return Array.from({ length: count }, (_, i) => belowKey + ORDER_STEP * (count - i));
+  const top = Date.now();
+  return Array.from({ length: count }, (_, i) => top - ORDER_STEP * i);
+}

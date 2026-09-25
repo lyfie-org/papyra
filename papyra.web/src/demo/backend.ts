@@ -370,8 +370,37 @@ const routes: Route[] = [
         : json({ error: 'not found' }, 404);
     },
   ],
+  // Multi-select flags: same verdicts as the real server, per note.
+  [
+    'POST',
+    /^\/api\/notes\/bulk$/,
+    async ({ body }) => {
+      const { ids = [], action } = (await body()) as { ids?: string[]; action?: string };
+      const apply: Record<string, (n: Note) => void> = {
+        pin: (n) => { n.pinned = true; }, unpin: (n) => { n.pinned = false; },
+        archive: (n) => { n.archived = true; }, unarchive: (n) => { n.archived = false; },
+        trash: (n) => { if (!n.trashed) { n.trashed = true; n.trashedAt = now(); } },
+        untrash: (n) => { n.trashed = false; n.trashedAt = null; },
+      };
+      const fn = action ? apply[action] : undefined;
+      const unique = [...new Set(ids.filter((i) => i && i.trim()))];
+      if (!fn || unique.length === 0) return json({ error: 'Nothing to do.' }, 400);
+      return mutate((s) => {
+        const results = unique.map((id) => {
+          const note = s.notes.find((n) => n.id === id);
+          if (!note) return { id, status: 'notFound' };
+          const before = JSON.stringify([note.pinned, note.archived, note.trashed]);
+          fn(note);
+          return { id, status: before === JSON.stringify([note.pinned, note.archived, note.trashed]) ? 'unchanged' : 'changed' };
+        });
+        recountCategories(s);
+        return json({ changed: results.filter((r) => r.status === 'changed').length, results });
+      });
+    },
+  ],
   ['GET', /^\/api\/notes\/([^/]+)\/shares$/, () => json([])],
   ['POST', /^\/api\/notes\/([^/]+)\/shares$/, () => serverOnly('Sharing a note')],
+  ['POST', /^\/api\/shares\/bulk$/, () => serverOnly('Sharing notes')],
   [
     'POST',
     /^\/api\/notes\/([^/]+)\/trash$/,

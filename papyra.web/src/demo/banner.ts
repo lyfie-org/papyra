@@ -67,6 +67,12 @@ export function mountDemoBanner(): void {
       .demo-banner { border-radius: var(--radius-md, 12px); width: auto; }
       .demo-banner__actions { margin-left: 0; width: 100%; }
     }
+    /* A selection's action bar sits in the same spot; it wins while it is up. */
+    body:has(.bulk-bar) .demo-banner { display: none; }
+    /* Toasts (and their Undo) share the bottom centre: keep them above the strip. */
+    body:has(.demo-banner) .toasts { bottom: calc(var(--space-6, 24px) + 72px); }
+    @media (max-width: 40rem) { body:has(.demo-banner) .toasts { bottom: calc(var(--space-6, 24px) + 132px); } }
+    body:has(.bulk-bar) .toasts { bottom: calc(max(20px, env(safe-area-inset-bottom)) + 64px); }
     @media print { .demo-banner { display: none; } }
   `;
   document.head.append(style);
