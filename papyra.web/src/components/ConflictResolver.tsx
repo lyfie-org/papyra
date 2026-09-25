@@ -5,6 +5,7 @@ import { lineDiff } from '../lib/lineDiff';
 import { vaultFetch } from '../lib/vault';
 import './ConflictResolver.css';
 import { useDialogFocus } from '../hooks/useDialogFocus';
+import LoadingBar from './LoadingBar';
 
 // One conflict's two sides, fetched on open. Left = the parent note as Papyra has
 // it; right = the sync tool's conflicting copy.
@@ -84,7 +85,7 @@ export default function ConflictResolver({ conflictId, onClose }: Props) {
         {error && <p className="conflict-resolver__error" role="alert">{error}</p>}
 
         <div className="conflict-resolver__body">
-          {detail === null && !error && <p className="conflict-resolver__muted">Loading…</p>}
+          {detail === null && !error && <LoadingBar label="Loading the conflicting copy" />}
           {rows !== null && (
             <>
               <p className="conflict-resolver__legend">

@@ -21,6 +21,15 @@
     box-shadow var(--dur) var(--ease),
     transform var(--dur) var(--ease),
     border-color var(--dur) var(--ease);
+  /* Cards settle in rather than pop. backwards (not both): once landed the
+     animation lets go, so hover lift still works. */
+  animation: note-card-in var(--dur-slow) var(--ease) backwards;
+}
+@keyframes note-card-in {
+  from { opacity: 0; transform: translateY(6px) scale(0.985); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .note-card { animation: none; }
 }
 .note-card:hover {
   box-shadow: var(--shadow-card-hover);

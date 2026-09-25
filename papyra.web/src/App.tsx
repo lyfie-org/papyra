@@ -23,6 +23,7 @@ import './App.css';
 import InboxPage from './pages/InboxPage';
 import { backgroundPage } from './lib/noteLink';
 import { RealLocationContext } from './lib/realLocation';
+import LoadingBar from './components/LoadingBar';
 
 // Gate the workspace behind a live session. The /me probe decides where an
 // unauthenticated visitor lands: /setup before any admin exists, else /login.
@@ -43,7 +44,7 @@ function RequireAuth() {
     }
   }, [state, queryClient]);
 
-  if (state === 'loading') return <div className="app-bootstrap">Loading…</div>;
+  if (state === 'loading') return <div className="app-bootstrap"><LoadingBar label="Loading Papyra" /></div>;
   if (state === 'setup') return <Navigate to="/setup" replace />;
   if (state === 'login') return <Navigate to="/login" replace />;
   if (state === 'error') {
@@ -71,7 +72,7 @@ function RequireAuth() {
 // you" for a beat while /me is still in flight.
 function RequireAdmin() {
   const { state, user } = useAuth();
-  if (state === 'loading') return <div className="app-bootstrap">Loading…</div>;
+  if (state === 'loading') return <div className="app-bootstrap"><LoadingBar label="Loading Papyra" /></div>;
   if (user?.role !== 'Admin') return <Navigate to="/settings" replace />;
   return <ManageUsersPage />;
 }

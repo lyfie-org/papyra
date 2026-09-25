@@ -13,6 +13,8 @@ import { useCollections } from '../hooks/useCollections';
 import { matchesRules, parseRules } from '../lib/smartCollections';
 import { putNote } from '../lib/notesApi';
 import './NotesPage.css';
+import LoadingBar from '../components/LoadingBar';
+import { fetchWithProgress } from '../lib/progress';
 
 export default function NotesPage() {
   const { data: notes, isLoading, isError } = useNotes();
@@ -84,7 +86,7 @@ export default function NotesPage() {
     files.forEach((f) => form.append('files', f));
     let res: Response;
     try {
-      res = await fetch('/api/import/quick', { method: 'POST', body: form });
+      res = await fetchWithProgress('/api/import/quick', { method: 'POST', body: form });
     } catch {
       // Import needs the server: the files are on the user's disk already, and
       // queueing a multipart upload in the outbox would be a different feature.
@@ -166,7 +168,7 @@ export default function NotesPage() {
         />
       )}
 
-      {isLoading && <p className="notes-page__status">Loading notes…</p>}
+      {isLoading && <LoadingBar label="Loading notes" />}
       {isError && <p className="notes-page__status">Couldn’t reach the server.</p>}
       {/* A brand-new vault gets an explanation, not the word "empty". */}
       {!isLoading && !isError && isFirstRun && <FirstRun onCreate={() => void createNote()} />}

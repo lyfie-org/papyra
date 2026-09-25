@@ -2,18 +2,12 @@
 .masonry-grid {
   position: relative;
   width: 100%;
-  transition: height var(--dur) var(--ease);
 }
 
 .masonry-grid__cell {
   position: absolute;
   top: 0;
   left: 0;
-  transition: transform var(--dur) var(--ease);
-}
-
-@media (prefers-reduced-motion: reduce) {
-  .masonry-grid, .masonry-grid__cell { transition: none; }
 }
 
 /* A card's own popovers (colour palette, menus) paint over its neighbours. */

@@ -5,6 +5,7 @@ import { useVault } from '../hooks/useVault';
 import { isWebAuthnAvailable } from '../lib/webauthn';
 import { parseUtc, unlockWithBiometric, unlockWithPin, VaultError } from '../lib/vault';
 import './VaultUnlock.css';
+import LoadingBar from './LoadingBar';
 
 function useCountdown(until: Date | null): number {
   const [now, setNow] = useState(() => Date.now());
@@ -121,7 +122,7 @@ export default function VaultUnlock({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [autoBiometric, biometricHere]);
 
-  if (status.isLoading) return <p className="vault-unlock__muted">Checking the vault…</p>;
+  if (status.isLoading) return <LoadingBar label="Checking the vault" />;
 
   if (pinDisabled) {
     return (

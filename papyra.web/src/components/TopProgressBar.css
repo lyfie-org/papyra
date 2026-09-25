@@ -1,0 +1,20 @@
+/* App-wide activity line, pinned to the top edge above everything. */
+.top-progress {
+  position: fixed;
+  inset: 0 0 auto 0;
+  height: 3px;
+  z-index: 1000;
+  pointer-events: none;
+}
+
+.top-progress__bar {
+  height: 100%;
+  width: 100%;
+  transform: scaleX(0);
+  transform-origin: 0 50%;
+  opacity: 0;
+  background: var(--accent);
+  border-radius: 0 var(--radius-pill) var(--radius-pill) 0;
+  box-shadow: 0 0 10px color-mix(in srgb, var(--accent) 55%, transparent);
+  will-change: transform, opacity;
+}

@@ -4,13 +4,17 @@
   flex: none;
   overflow: hidden;
   border-radius: var(--radius-pill);
-  background: var(--accent);
+  /* Neutral while the picture loads, so no accent ring peeks out around a photo's
+     anti-aliased edge; the accent belongs to the initial fallback only. */
+  background: var(--code-bg);
   color: var(--accent-fg);
   font-family: var(--sans);
   font-weight: 500;
   line-height: 1;
   user-select: none;
 }
+
+.avatar--initial { background: var(--accent); }
 
 /* The upload is already a square, so the image fills the circle without CSS
    having to guess which part of a portrait to keep. */

@@ -1,4 +1,4 @@
-import { memo, useCallback, useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { memo, useCallback, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { Pin, PinOff } from 'lucide-react';
 import {
   DndContext, PointerSensor, useSensor, useSensors, useDraggable,
@@ -16,6 +16,8 @@ import {
   pack, columnsFor, indexFromPoint, neighborsAt, EST_H,
   type Box, type Placed,
 } from '../lib/noteGridLayout';
+import { useFlipPosition } from '../hooks/useFlipPosition';
+import { useGridWidth } from '../hooks/useGridWidth';
 import '../components/NoteGrid.css';
 import './DraggableNoteGrid.css';
 
@@ -38,9 +40,9 @@ type Section = 'pinned' | 'others';
 // conflicts) so a change to one note re-renders one card: a colour pick or a pin
 // used to re-render all of them, which on a few hundred notes was a visible stall.
 const AbsCard = memo(function AbsCard({
-  note, x: boxX, y: boxY, colW, onMeasure, conflicts, onResolveConflict,
+  note, x: boxX, y: boxY, colW, cols, resizedAt, onMeasure, conflicts, onResolveConflict,
 }: {
-  note: Note; x: number; y: number; colW: number;
+  note: Note; x: number; y: number; colW: number; cols: number; resizedAt: RefObject<number>;
   onMeasure: (id: string, h: number) => void;
   conflicts: Conflict[] | undefined;
   onResolveConflict?: (conflictId: string) => void;
@@ -60,6 +62,9 @@ const AbsCard = memo(function AbsCard({
 
   const x = boxX + (isDragging && transform ? transform.x : 0);
   const y = boxY + (isDragging && transform ? transform.y : 0);
+  // Glide to a new slot from wherever the card visibly is; snap while the
+  // window is merely widening a column (see useFlipPosition).
+  useFlipPosition(elRef, x, y, { cols, colW, frozen: isDragging, resizedAt });
 
   return (
     <div
@@ -68,7 +73,6 @@ const AbsCard = memo(function AbsCard({
       style={{
         position: 'absolute', top: 0, left: 0, width: colW,
         transform: `translate3d(${x}px, ${y}px, 0)`,
-        transition: isDragging ? 'none' : 'transform 0.22s cubic-bezier(0.2, 0, 0, 1)',
         zIndex: isDragging ? 30 : 1,
       }}
       {...attributes}
@@ -94,7 +98,6 @@ export default function DraggableNoteGrid({ notes, conflictsByParent, onResolveC
   const pinnedRef = useRef<HTMLDivElement | null>(null);
   const othersRef = useRef<HTMLDivElement | null>(null);
 
-  const [width, setWidth] = useState(0);
   const heights = useRef<Map<string, number>>(new Map());
   const [, forceTick] = useState(0);
   // While dragging, heights are fixed — re-measuring mid-drag would re-pack and
@@ -118,16 +121,7 @@ export default function DraggableNoteGrid({ notes, conflictsByParent, onResolveC
   const pinned = useMemo(() => sortNotes(active.filter(n => n.pinned), order), [active, order]);
   const others = useMemo(() => sortNotes(active.filter(n => !n.pinned), order), [active, order]);
   const byId = useMemo(() => new Map(active.map(n => [n.id, n])), [active]);
-
-  // Track wrap width (drives column count).
-  useLayoutEffect(() => {
-    const el = wrapRef.current;
-    if (!el) return;
-    const ro = new ResizeObserver(([e]) => setWidth(e.contentRect.width));
-    ro.observe(el);
-    setWidth(el.clientWidth);
-    return () => ro.disconnect();
-  }, []);
+  const { width, resizedAt, sticky, recordColumns } = useGridWidth(wrapRef, active.length > 0);
 
   const onMeasure = useCallback((id: string, h: number) => {
     if (dragging.current) return; // heights are frozen mid-drag
@@ -148,15 +142,22 @@ export default function DraggableNoteGrid({ notes, conflictsByParent, onResolveC
 
   // BASE = resting layout of the non-dragged cards (no gap). Hit-testing uses this
   // so inserting the gap never shifts the centres we test against (no oscillation).
-  const pinnedBase = pack(pinnedIds, heights.current, cols, colW);
-  const othersBase = pack(othersIds, heights.current, cols, colW);
+  // Mid-resize, cards hold their columns (see useGridWidth).
+  const prefer = sticky.current ?? undefined;
+  const pinnedBase = pack(pinnedIds, heights.current, cols, colW, undefined, prefer);
+  const othersBase = pack(othersIds, heights.current, cols, colW, undefined, prefer);
   // DISPLAY = base, plus the make-room gap at the drop index (what we render).
   const pinnedLayout = drop?.section === 'pinned'
-    ? pack(pinnedIds, heights.current, cols, colW, { index: drop.index, h: activeH })
+    ? pack(pinnedIds, heights.current, cols, colW, { index: drop.index, h: activeH }, prefer)
     : pinnedBase;
   const othersLayout = drop?.section === 'others'
-    ? pack(othersIds, heights.current, cols, colW, { index: drop.index, h: activeH })
+    ? pack(othersIds, heights.current, cols, colW, { index: drop.index, h: activeH }, prefer)
     : othersBase;
+
+  // Hand the current column assignment back, for the next resize to hold.
+  useLayoutEffect(() => {
+    recordColumns(new Map([...pinnedBase.columns, ...othersBase.columns]));
+  });
 
   function onDragStart(e: DragStartEvent) {
     const id = String(e.active.id);
@@ -230,8 +231,8 @@ export default function DraggableNoteGrid({ notes, conflictsByParent, onResolveC
       below ? effectiveKey(below, order) : null,
     );
 
-    // `setAt` stamps when the drag was committed, so a later edit can retire a stale
-    // manual position. Reading the clock is impure, but this runs only from
+    // `setAt` stamps when the drag was committed (bookkeeping; a placed note keeps
+    // its position until dragged again — see effectiveKey). Reading the clock is impure, but this runs only from
     // DndContext's onDragEnd — never during render. The lint rule can't prove a
     // component-body function is event-only, so silence it here deliberately.
     // eslint-disable-next-line react-hooks/purity
@@ -294,7 +295,7 @@ export default function DraggableNoteGrid({ notes, conflictsByParent, onResolveC
         {showPinnedHeading && <h2 className="note-grid__heading">PINNED</h2>}
         <div className="dnd-canvas" ref={pinnedRef} style={{ height: pinnedLayout.height }}>
           {pinned.map(n => (
-            <AbsCard key={n.id} note={n} colW={colW}
+            <AbsCard key={n.id} note={n} colW={colW} cols={cols} resizedAt={resizedAt}
               x={boxFor(n, pinnedLayout)?.x ?? 0} y={boxFor(n, pinnedLayout)?.y ?? 0}
               onMeasure={onMeasure}
               conflicts={conflictsByParent?.get(n.id)} onResolveConflict={onResolveConflict} />
@@ -304,7 +305,7 @@ export default function DraggableNoteGrid({ notes, conflictsByParent, onResolveC
         {showOthersHeading && <h2 className="note-grid__heading">OTHERS</h2>}
         <div className="dnd-canvas" ref={othersRef} style={{ height: othersLayout.height }}>
           {others.map(n => (
-            <AbsCard key={n.id} note={n} colW={colW}
+            <AbsCard key={n.id} note={n} colW={colW} cols={cols} resizedAt={resizedAt}
               x={boxFor(n, othersLayout)?.x ?? 0} y={boxFor(n, othersLayout)?.y ?? 0}
               onMeasure={onMeasure}
               conflicts={conflictsByParent?.get(n.id)} onResolveConflict={onResolveConflict} />

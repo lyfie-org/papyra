@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { NavLink, Outlet, matchPath, useLocation, useNavigate } from 'react-router-dom';
+import { Link, NavLink, Outlet, matchPath, useLocation, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   Menu, StickyNote, ListTodo, Archive, Settings, Trash2, ShieldCheck,
@@ -15,6 +15,7 @@ import { useRealLocation } from '../lib/realLocation';
 import { clearSessionData } from '../lib/session';
 import { AI_ENABLED } from '../lib/features';
 import { useSignalR } from '../hooks/useSignalR';
+import SidebarImportProgress from '../components/SidebarImportProgress';
 import { useAuth } from '../hooks/useAuth';
 import { useSyncEngine } from '../hooks/useSync';
 import { useUnreadInboxCount } from '../hooks/useInbox';
@@ -106,8 +107,12 @@ export default function WorkspaceLayout() {
           >
             <Menu size={18} />
           </button>
-          <img className="workspace__logo" src={logo} alt="" aria-hidden="true" />
-          <span className="workspace__wordmark">Papyra</span>
+          {/* The brand is the way home: Notes is the home page. A plain link, so
+              middle-click / open-in-new-tab work as people expect. */}
+          <Link to="/" className="workspace__home" aria-label="Papyra — go to Notes">
+            <img className="workspace__logo" src={logo} alt="" aria-hidden="true" />
+            <span className="workspace__wordmark" aria-hidden="true">Papyra</span>
+          </Link>
         </div>
         <SearchBar />
 
@@ -144,10 +149,18 @@ export default function WorkspaceLayout() {
               aria-expanded={menuOpen}
               onClick={() => setMenuOpen(o => !o)}
             >
-              <Avatar name={user?.name || user?.username} size={30} />
+              <Avatar name={user?.name || user?.username} size={38} />
             </button>
             {menuOpen && (
               <div className="workspace__avatar-menu" role="menu">
+                <div className="workspace__avatar-who" aria-hidden="true">
+                  <Avatar name={user?.name || user?.username} size={44} />
+                  <div className="workspace__avatar-names">
+                    <span className="workspace__avatar-name">{user?.name || user?.username}</span>
+                    <span className="workspace__avatar-handle">@{user?.username}</span>
+                  </div>
+                </div>
+                <div className="workspace__avatar-sep" />
                 <button type="button" role="menuitem" onClick={() => go('/settings?tab=profile')}>
                   <User size={15} /> Profile
                 </button>
@@ -198,6 +211,7 @@ export default function WorkspaceLayout() {
           </ul>
 
           <div className="workspace__sidebar-bottom">
+            <SidebarImportProgress />
             <NavLink
               to="/trash"
               title="Trash"

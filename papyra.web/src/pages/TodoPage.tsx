@@ -7,6 +7,7 @@ import MasonryGrid from '../components/MasonryGrid';
 import EmptyState from '../components/EmptyState';
 import { putNote } from '../lib/notesApi';
 import './TodoPage.css';
+import LoadingBar from '../components/LoadingBar';
 
 export default function TodoPage() {
   const { data: notes, isLoading, isError } = useNotes();
@@ -35,7 +36,7 @@ export default function TodoPage() {
         </button>
       </header>
 
-      {isLoading && <p className="todo-page__status">Loading…</p>}
+      {isLoading && <LoadingBar label="Loading to-dos" />}
       {isError && <p className="todo-page__status">Couldn’t reach the server.</p>}
       {!isLoading && !isError && todos.length === 0 && (
         <EmptyState

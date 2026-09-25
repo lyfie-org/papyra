@@ -3,7 +3,8 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { PapyraEditor, type PapyraEditorRef } from '@lyfie/luthor/presets/papyra';
 import '@lyfie/luthor/styles.css';
-import { CLEAR_HISTORY_COMMAND, type LexicalEditor } from 'lexical';
+import { $getRoot, CLEAR_HISTORY_COMMAND, type LexicalEditor } from 'lexical';
+import { hasBridgePlaceholder } from '../lib/bridgePlaceholder';
 import type { Note } from '../types/note';
 import { useAutoSave, type Draft } from '../hooks/useAutoSave';
 import { useTheme } from '../hooks/useTheme';
@@ -28,6 +29,27 @@ import { useFocus } from '../hooks/useFocus';
 import { useDialogFocus } from '../hooks/useDialogFocus';
 import { useAmbient } from '../hooks/useAmbient';
 import './NoteEditor.css';
+
+/*
+ * luthor ≤2.9.7 serializes a just-adopted document without the Papyra preset's
+ * bridge extras, so until the next commit getMarkdown() returns
+ * `[Unsupported blockAnchor preserved in markdown metadata]` where every `^id`
+ * (and wikilink, and embed) should be. Papyra baselined autosave on that, so the
+ * first real serialization after opening looked like an edit: an untouched note
+ * was re-saved on open — re-dated to the top of its list, and if Delete was
+ * clicked first, the late save pulled it straight back out of Trash. A read in
+ * that window (a pin or tag save) could even have written the placeholder text
+ * to disk. Fixed at the source in luthor (hydrateSourceSnapshots); these guards
+ * (see lib/bridgePlaceholder) make Papyra safe on any version.
+ */
+/**
+ * After a setMarkdown on a mounted editor, force luthor to re-serialize (a no-op
+ * dirtying update marks its canonical markdown stale). Only effective once the
+ * editor's own listeners are attached — i.e. not inside onReady.
+ */
+function settleMarkdown(editor: LexicalEditor | null | undefined) {
+  editor?.update(() => { $getRoot().markDirty(); }, { discrete: true, tag: 'history-merge' });
+}
 
 /** Drop the undo stack — for content the host put there, which the user never typed. */
 function forgetHistory(editor: LexicalEditor | null | undefined) {
@@ -114,12 +136,22 @@ export default function NoteEditor({ note }: { note: Note }) {
   // writer reads the draft through here — tag/pin/colour/archive/lock saves, the
   // unmount flush — so this is where a preview is kept from ever being mistaken
   // for the note: the live body is the one mirrored before history opened.
-  const getDraft = useCallback((): Draft => ({
-    title: titleRef.current,
-    body: suppressSave.current
-      ? latestBody.current
-      : editorRef.current?.getMarkdown() ?? latestBody.current,
-  }), []);
+  //
+  // Nor may placeholder text (see hasBridgePlaceholder) ever reach a writer:
+  // then the last good body mirrored from the editor stands in.
+  const getDraft = useCallback((): Draft => {
+    if (suppressSave.current) return { title: titleRef.current, body: latestBody.current };
+    const md = editorRef.current?.getMarkdown();
+    return {
+      title: titleRef.current,
+      body: md === undefined || hasBridgePlaceholder(md) ? latestBody.current : md,
+    };
+  }, []);
+
+  // Set when the editor opened on a placeholder serialization: the next
+  // luthor-reported change is its first honest serialization of the note just
+  // loaded — the baseline — not something the person typed.
+  const awaitingBaseline = useRef(false);
 
   // A `secure: true` note arrives with an empty body — the API withholds it until a
   // biometric unlock. Until then the canvas is replaced by the gate, so the editor
@@ -209,6 +241,7 @@ export default function NoteEditor({ note }: { note: Note }) {
     if (remote) { applyRemote(remote); return; } // fresh, editable mount
     const lexical = editorRef.current?.getLexicalEditor();
     editorRef.current?.setMarkdown(latestBody.current);
+    settleMarkdown(lexical);
     // Each previewed version was an undo step; undoing into one afterwards would
     // put an old version back on screen and autosave it over the note.
     forgetHistory(lexical);
@@ -289,13 +322,21 @@ export default function NoteEditor({ note }: { note: Note }) {
   // mutation can no longer masquerade as one.
   const onEditorChange = useCallback(({ markdown, source }: { markdown: string; source: 'user' | 'programmatic' }) => {
     if (source !== 'user') return;
+    if (awaitingBaseline.current) {
+      awaitingBaseline.current = false;
+      if (!hasBridgePlaceholder(markdown)) {
+        latestBody.current = markdown;
+        reset({ title: titleRef.current, body: markdown });
+        return;
+      }
+    }
     // Belt and braces: while scrubbing history the canvas is showing a preview,
     // and nothing it emits may schedule a save over the live file.
     if (suppressSave.current) return;
     if (markdown === latestBody.current) return;
     latestBody.current = markdown;
     bump();
-  }, [bump]);
+  }, [bump, reset]);
 
   // Toolbar frontmatter mutation: PUT the live draft plus the changed YAML field,
   // so a pin/color/archive flip never clobbers unsaved body/title. Re-baselines
@@ -415,6 +456,7 @@ export default function NoteEditor({ note }: { note: Note }) {
   // Put one version (or the live note, for null) into the canvas.
   const previewVersion = useCallback((version: HistoryVersion | null) => {
     editorRef.current?.setMarkdown(version ? version.body : latestBody.current);
+    settleMarkdown(editorRef.current?.getLexicalEditor());
     setPreviewTitle(version ? version.title : null);
   }, []);
 
@@ -460,9 +502,30 @@ export default function NoteEditor({ note }: { note: Note }) {
   // confirmed permanent delete when Trash is set to remove notes immediately.
   // Leave the editor only if the note actually went — backing out of the confirm
   // should leave the person where they were, still editing.
+  //
+  // Order matters. A pending autosave is flushed *first*, so a real last edit is
+  // kept (in the trashed note). Then, once the note is gone, the save state is
+  // re-baselined so the editor's unmount has nothing left to flush — a save that
+  // lands after the trash would write the note back out of Trash.
   const trash = useCallback(async () => {
-    if (await trashNote(note)) navigate(closeTo);
-  }, [trashNote, note, navigate, closeTo]);
+    if (history) leaveHistory();
+    if (!isLocked) await flush();
+    if (await trashNote(note)) {
+      reset(getDraft());
+      navigate(closeTo);
+    }
+  }, [trashNote, note, navigate, closeTo, flush, reset, getDraft, isLocked, history, leaveHistory]);
+
+  // Archive: the frontmatter save carries the live draft, so nothing is left to
+  // flush afterwards — cancel the debounce so a stale save (with archived: false
+  // from the props it closed over) can't un-archive the note on unmount.
+  const archive = useCallback(async () => {
+    if (history) leaveHistory();
+    const done = saveFrontmatter({ archived: true });
+    reset(getDraft());
+    navigate(closeTo);
+    await done;
+  }, [history, leaveHistory, saveFrontmatter, reset, getDraft, navigate, closeTo]);
 
   // YAML `color` tints the canvas; fonts come from the design tokens. The palette
   // tints are always light, so a coloured note forces a light editor (dark ink)
@@ -611,7 +674,12 @@ export default function NoteEditor({ note }: { note: Note }) {
             // own (normalised) serialization is a stable baseline right here — no
             // settle timer. Baselining against our input instead would make every
             // note look edited the moment it opened.
-            const normalised = methods.getMarkdown();
+            // A placeholder serialization is not the note: baseline on the body
+            // from disk and take luthor's first real serialization as the
+            // baseline when it arrives (see onEditorChange).
+            const read = methods.getMarkdown();
+            awaitingBaseline.current = hasBridgePlaceholder(read);
+            const normalised = awaitingBaseline.current ? body : read;
             latestBody.current = normalised;
             // Re-baseline the *save* baseline too, not just the mirror. It starts
             // life as the raw bytes from disk, and markdown that Papyra didn't
@@ -656,7 +724,7 @@ export default function NoteEditor({ note }: { note: Note }) {
             secure={note.secure ?? false}
             canToggleSecure={!isLocked}
             onToggleSecure={() => void toggleSecure()}
-            onArchive={() => { void saveFrontmatter({ archived: true }); navigate(closeTo); }}
+            onArchive={() => void archive()}
             onShare={() => setShareOpen(true)}
             onTrash={() => {
               void trash();

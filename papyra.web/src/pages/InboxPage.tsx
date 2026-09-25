@@ -7,6 +7,7 @@ import EmptyState from '../components/EmptyState';
 import Avatar from '../components/Avatar';
 import { useInbox, useMarkInboxRead, INBOX_KEY } from '../hooks/useInbox';
 import './InboxPage.css';
+import LoadingBar from '../components/LoadingBar';
 
 /**
  * Blocks other people have mentioned you in. Read-only by design: an entry is a
@@ -55,7 +56,7 @@ export default function InboxPage() {
         </p>
       </header>
 
-      {isLoading && <p className="inbox__status">Loading…</p>}
+      {isLoading && <LoadingBar label="Loading inbox" />}
       {isError && <p className="inbox__status">Couldn’t reach the server.</p>}
 
       {!isLoading && !isError && (entries ?? []).length === 0 && (

@@ -5,6 +5,7 @@ import SharedNoteView, { type SharedNote } from '../components/SharedNoteView';
 import { SharedByBadge } from '../components/ShareBadge';
 import EmptyState from '../components/EmptyState';
 import './SharedWithMePage.css';
+import LoadingBar from '../components/LoadingBar';
 
 export default function SharedWithMePage() {
   const { data: incoming, isLoading } = useIncomingShares();
@@ -31,7 +32,7 @@ export default function SharedWithMePage() {
   return (
     <section className="shared-with">
       <h1 className="page-title shared-with__title">Shared with me</h1>
-      {isLoading && <p className="shared-with__status">Loading…</p>}
+      {isLoading && <LoadingBar label="Loading shared notes" />}
       {!isLoading && (incoming?.length ?? 0) === 0 && (
         <EmptyState
           icon={Users}
@@ -62,7 +63,7 @@ export default function SharedWithMePage() {
                 onSave={save}
                 mediaUrl={(f) => `/api/shares/incoming/${openId}/media/${encodeURIComponent(f)}`}
               />
-            ) : <p className="shared-with__status">Loading…</p>}
+            ) : <LoadingBar label="Loading shared notes" />}
           </div>
         </div>
       )}

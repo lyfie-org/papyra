@@ -3,6 +3,7 @@ import { useParams } from 'react-router-dom';
 import logo from '../assets/papyra_logo.png';
 import SharedNoteView, { type SharedNote } from '../components/SharedNoteView';
 import './SharedNotePage.css';
+import LoadingBar from '../components/LoadingBar';
 
 // Public landing for a tokenised share link. No session required — the token is
 // the authorisation. Expired/limit-reached links return a friendly message.
@@ -45,7 +46,7 @@ export default function SharedNotePage() {
         <span className="shared-page__wordmark">Papyra</span>
       </header>
       <main className="shared-page__main">
-        {loading && <p className="shared-page__status">Loading…</p>}
+        {loading && <LoadingBar label="Loading shared note" />}
         {error && <p className="shared-page__status">{error}</p>}
         {note && (
           <SharedNoteView

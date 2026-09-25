@@ -6,6 +6,7 @@ import { useNotes } from '../hooks/useNotes';
 import { useVault } from '../hooks/useVault';
 import './NotesPage.css';
 import './VaultPage.css';
+import LoadingBar from '../components/LoadingBar';
 
 /**
  * The locked vault: every note marked `secure: true`.
@@ -49,7 +50,7 @@ export default function VaultPage() {
         </div>
       )}
 
-      {isLoading && <p className="notes-page__status">Loading…</p>}
+      {isLoading && <LoadingBar label="Loading vault" />}
       {isError && <p className="notes-page__status">Couldn’t reach the server.</p>}
       {!isLoading && !isError && pinSet !== false && (
         <NoteGrid

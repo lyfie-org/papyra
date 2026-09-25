@@ -7,7 +7,7 @@ export const EST_H = 200; // fallback height before a card is measured
 
 export interface Box { x: number; y: number }
 export interface Center { id: string; cx: number; cy: number }
-export interface Placed { boxes: Map<string, Box>; centers: Center[]; height: number }
+export interface Placed { boxes: Map<string, Box>; centers: Center[]; height: number; columns: Map<string, number> }
 
 // Columns + column width for a container width (~MIN_COL per column).
 export function columnsFor(width: number): { cols: number; colW: number } {
@@ -17,20 +17,27 @@ export function columnsFor(width: number): { cols: number; colW: number } {
 }
 
 // Shortest-column masonry packing. `gapAt` reserves a slot (the dragged card's
-// height) at an index so neighbours visibly part to make room.
+// height) at an index so neighbours visibly part to make room. `prefer` pins
+// cards to the column they already occupy: while a window resizes between
+// breakpoints, text re-wraps and heights shift every frame, and a fresh
+// shortest-column pass would hop cards between columns on each one.
 export function pack(
   ids: string[], heights: Map<string, number>, cols: number, colW: number,
   gapAt?: { index: number; h: number },
+  prefer?: Map<string, number>,
 ): Placed {
   const colH = new Array(Math.max(1, cols)).fill(0);
   const boxes = new Map<string, Box>();
   const centers: Center[] = [];
+  const columns = new Map<string, number>();
   const place = (h: number, id?: string) => {
     let c = 0;
     for (let i = 1; i < colH.length; i++) if (colH[i] < colH[c]) c = i;
+    const pinned = id !== undefined ? prefer?.get(id) : undefined;
+    if (pinned !== undefined && pinned < colH.length) c = pinned;
     const x = c * (colW + GAP);
     const y = colH[c];
-    if (id) { boxes.set(id, { x, y }); centers.push({ id, cx: x + colW / 2, cy: y + h / 2 }); }
+    if (id) { boxes.set(id, { x, y }); columns.set(id, c); centers.push({ id, cx: x + colW / 2, cy: y + h / 2 }); }
     colH[c] += h + GAP;
   };
   ids.forEach((id, i) => {
@@ -38,7 +45,7 @@ export function pack(
     place(heights.get(id) ?? EST_H, id);
   });
   if (gapAt && gapAt.index >= ids.length) place(gapAt.h);
-  return { boxes, centers, height: Math.max(0, ...colH) - GAP };
+  return { boxes, centers, height: Math.max(0, ...colH) - GAP, columns };
 }
 
 // Insertion index for a point (container-relative) given the laid-out centers:

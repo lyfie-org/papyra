@@ -1,0 +1,65 @@
+/* Inline loading track: appears with a soft fade so a fast load never flashes. */
+.loading-bar {
+  position: relative;
+  width: min(220px, 60%);
+  height: 4px;
+  margin: 3rem auto;
+  border-radius: var(--radius-pill);
+  background: var(--border);
+  overflow: hidden;
+  animation: loading-bar-in var(--dur) var(--ease) both;
+}
+
+.loading-bar__fill {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 100%;
+  border-radius: inherit;
+  background: var(--accent);
+  transform-origin: 0 50%;
+  /* No measurable progress: ease toward 90% — fast at first, then patient. */
+  animation: loading-bar-trickle 6s cubic-bezier(0.08, 0.82, 0.17, 1) forwards;
+}
+
+/* A soft sheen travelling along the fill keeps a long wait feeling alive. */
+.loading-bar__fill::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--surface) 55%, transparent), transparent);
+  transform: translateX(-100%);
+  animation: loading-bar-sheen 1.3s var(--ease-inout) infinite;
+}
+
+.loading-bar__fill--known {
+  animation: none;
+  transform: scaleX(var(--frac, 0));
+  transition: transform var(--dur) var(--ease);
+}
+
+@keyframes loading-bar-in {
+  from { opacity: 0; transform: scaleY(0.4); }
+  to { opacity: 1; transform: none; }
+}
+
+@keyframes loading-bar-trickle {
+  from { transform: scaleX(0.04); }
+  to { transform: scaleX(0.9); }
+}
+
+@keyframes loading-bar-sheen {
+  to { transform: translateX(100%); }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .loading-bar,
+  .loading-bar__fill::after { animation: none; }
+  .loading-bar__fill { animation: none; transform: scaleX(0.6); }
+}
+
+/* Compact variant for a toolbar or header row. */
+.loading-bar--inline {
+  width: 96px;
+  height: 3px;
+  margin: 0;
+}

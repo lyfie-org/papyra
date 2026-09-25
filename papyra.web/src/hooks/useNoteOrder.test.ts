@@ -30,13 +30,13 @@ describe('effectiveKey', () => {
   it('uses last-modified when there is no manual entry', () => {
     expect(effectiveKey(note('a', 1000), {})).toBe(1000);
   });
-  it('honours the manual key while the note has not been edited since the drag', () => {
+  it('honours the manual key', () => {
     const order: OrderMap = { a: { key: 9_000_000, setAt: 5000 } };
-    expect(effectiveKey(note('a', 4000), order)).toBe(9_000_000); // updated(4000) <= setAt(5000)
+    expect(effectiveKey(note('a', 4000), order)).toBe(9_000_000);
   });
-  it('discards a stale manual key once the note is edited again', () => {
+  it('keeps the manual key after the note is edited (a placed note stays put)', () => {
     const order: OrderMap = { a: { key: 9_000_000, setAt: 5000 } };
-    expect(effectiveKey(note('a', 6000), order)).toBe(6000); // updated(6000) > setAt(5000)
+    expect(effectiveKey(note('a', 6000), order)).toBe(9_000_000);
   });
 });
 
@@ -52,11 +52,26 @@ describe('sortNotes', () => {
     expect(ids).toEqual(['a', 'b']);
   });
 
-  it('an edit bumps a note above any manual drag position', () => {
-    // a was dragged to the top; then b is edited (updated newer than a's drag) →
-    // b must overtake a.
+  it('an edit to a note nobody placed floats it above older positions', () => {
     const order: OrderMap = { a: { key: 9_999_999, setAt: 2000 } };
     const ids = sortNotes([note('a', 1000), note('b', 10_000_000)], order).map(n => n.id);
     expect(ids).toEqual(['b', 'a']);
+  });
+
+  it('an edit to a placed note does not move it (opening a pinned note must not reorder it)', () => {
+    // a placed second of three by hand, then edited (or re-saved) much later.
+    const order: OrderMap = {
+      top: { key: 3000, setAt: 1 },
+      a: { key: 2000, setAt: 1 },
+      bottom: { key: 1000, setAt: 1 },
+    };
+    const ids = sortNotes([note('top', 10), note('a', 99_999_999), note('bottom', 10)], order).map(n => n.id);
+    expect(ids).toEqual(['top', 'a', 'bottom']);
+  });
+
+  it('a new note goes first', () => {
+    const order: OrderMap = { a: { key: 5_000, setAt: 1 } };
+    const ids = sortNotes([note('a', 1), note('new', Date.now())], order).map(n => n.id);
+    expect(ids[0]).toBe('new');
   });
 });

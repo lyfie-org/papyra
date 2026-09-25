@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useAvatarVersion } from '../lib/avatarVersion';
 import './Avatar.css';
 
 interface Props {
@@ -27,14 +28,17 @@ export default function Avatar({ username, name, size = 32, version = 0, classNa
   // different person in the same slot then retries by itself, with no effect to
   // reset the flag.
   const [failedSrc, setFailedSrc] = useState<string | null>(null);
+  // App-wide bump after an upload/removal, so every face refreshes at once.
+  const globalVersion = useAvatarVersion();
   const base = username ? `/api/auth/avatar/${encodeURIComponent(username)}` : '/api/auth/avatar';
-  const src = version ? `${base}?v=${version}` : base;
+  const v = version + globalVersion;
+  const src = v ? `${base}?v=${v}` : base;
   const failed = failedSrc === src;
   const initial = (name || username || '?').trim().charAt(0).toUpperCase();
 
   return (
     <span
-      className={`avatar${className ? ` ${className}` : ''}`}
+      className={`avatar${failed ? ' avatar--initial' : ''}${className ? ` ${className}` : ''}`}
       style={{ width: size, height: size, fontSize: Math.round(size * 0.42) }}
     >
       {failed
