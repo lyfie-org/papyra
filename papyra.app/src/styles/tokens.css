@@ -37,6 +37,9 @@
   /* Modal backdrop. Warm near-black rather than pure black, so the dim reads as
      paper in shadow instead of a grey wash. */
   --scrim: #14100c;
+  /* Ink laid over a photograph (crop guides). Theme-invariant on purpose: a
+     photo is not themed, so its overlay must read the same in light and dark. */
+  --on-photo: #fff;
 
   --shadow-nav: 0 1px 4px rgba(61, 44, 30, 0.06);
   --shadow-card:
