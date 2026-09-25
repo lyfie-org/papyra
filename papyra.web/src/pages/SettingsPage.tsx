@@ -37,6 +37,8 @@ import AvatarCropper from '../components/AvatarCropper';
 import KnowledgeHeatmap from '../components/KnowledgeHeatmap';
 import DayNotesOverlay from '../components/DayNotesOverlay';
 import Avatar from '../components/Avatar';
+import { bumpAvatarVersion, useAvatarVersion } from '../lib/avatarVersion';
+import { usernameRule } from '../lib/profileRules';
 import { useSettings, useUpdateSettings, RETENTION_OPTIONS } from '../hooks/useSettings';
 import './SettingsPage.css';
 
@@ -156,10 +158,22 @@ function ProfileTab({ user }: { user: AuthUser | null }) {
   const queryClient = useQueryClient();
   const fileRef = useRef<HTMLInputElement | null>(null);
 
+  const [username, setUsername] = useState(user?.username ?? '');
   const [name, setName] = useState(user?.name ?? '');
   const [email, setEmail] = useState(user?.email ?? '');
   const [savedMsg, setSavedMsg] = useState<string | null>(null);
-  const [avatarV, setAvatarV] = useState(0); // cache-bust after upload
+  const [saving, setSaving] = useState(false);
+  // A server refusal names the field it is about, so it is shown under that field.
+  const [fieldError, setFieldError] = useState<{ field: string; error: string } | null>(null);
+  const [photoMsg, setPhotoMsg] = useState<string | null>(null);
+  const avatarVersion = useAvatarVersion();
+  // Whether there is a picture to remove. Probed rather than stored: the avatar
+  // file is the source of truth, and it changes under us on upload/remove.
+  const { data: hasPhoto } = useQuery({
+    queryKey: ['avatar-exists', user?.id, avatarVersion],
+    queryFn: async () => (await fetch(`/api/auth/avatar?v=${avatarVersion}`)).ok,
+    enabled: !!user,
+  });
   // The file the user picked, held while they frame it. Nothing is uploaded
   // until they say the crop is right.
   const [picking, setPicking] = useState<File | null>(null);
@@ -174,18 +188,47 @@ function ProfileTab({ user }: { user: AuthUser | null }) {
   const noteCount = notes?.filter(n => !n.trashed).length ?? 0;
   const tagCount = new Set((notes ?? []).flatMap(n => n.tags ?? [])).size;
 
+  const usernameProblem = usernameRule(username.trim());
+  const dirty = username.trim() !== (user?.username ?? '')
+    || name.trim() !== (user?.name ?? '')
+    || email.trim() !== (user?.email ?? '');
+
   async function saveProfile(e: React.FormEvent) {
     e.preventDefault();
+    if (usernameProblem) { setFieldError({ field: 'username', error: usernameProblem }); return; }
     setSavedMsg(null);
-    const res = await fetch('/api/auth/profile', {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, email }),
-    });
-    if (res.ok) {
-      await queryClient.invalidateQueries({ queryKey: ['auth'] });
-      setSavedMsg('Profile saved.');
-    } else setSavedMsg('Couldn’t save profile.');
+    setFieldError(null);
+    setSaving(true);
+    try {
+      const res = await fetch('/api/auth/profile', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: username.trim(), name: name.trim(), email: email.trim() }),
+      });
+      if (res.ok) {
+        const saved = (await res.json()) as AuthUser;
+        setUsername(saved.username);
+        setName(saved.name);
+        setEmail(saved.email);
+        await queryClient.invalidateQueries({ queryKey: ['auth'] });
+        setSavedMsg('Saved.');
+      } else {
+        const data = (await res.json().catch(() => null)) as { error?: string; field?: string } | null;
+        if (data?.field && data.error) setFieldError({ field: data.field, error: data.error });
+        else setSavedMsg('Couldn’t save your profile.');
+      }
+    } catch {
+      setSavedMsg('Couldn’t reach the server.');
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  async function removePhoto() {
+    setPhotoMsg(null);
+    const res = await fetch('/api/auth/avatar', { method: 'DELETE' });
+    if (res.ok) bumpAvatarVersion();
+    else setPhotoMsg('Couldn’t remove the photo.');
   }
 
   // The cropper hands back a square PNG; the file the user picked never leaves
@@ -194,9 +237,14 @@ function ProfileTab({ user }: { user: AuthUser | null }) {
     const form = new FormData();
     form.append('file', square, 'avatar.png');
     const res = await fetch('/api/auth/avatar', { method: 'POST', body: form });
+    if (!res.ok) {
+      // Keep the cropper open so the framing isn't lost; let it show the error.
+      const data = await res.json().catch(() => null);
+      throw new Error(data?.error ?? 'upload failed');
+    }
     setPicking(null);
-    if (res.ok) setAvatarV(v => v + 1);
-    else setSavedMsg('Couldn’t save that picture.');
+    setPhotoMsg(null);
+    bumpAvatarVersion();
   }
 
   async function changePassword(e: React.FormEvent) {
@@ -223,15 +271,18 @@ function ProfileTab({ user }: { user: AuthUser | null }) {
 
   return (
     <div className="settings__panel">
-      <div className="settings__profile-head">
+      <section className="profile-hero" aria-label="Your profile">
         <button
           type="button"
-          className="settings__avatar"
+          className="profile-hero__photo"
           onClick={() => fileRef.current?.click()}
-          aria-label="Change profile picture"
+          aria-label={hasPhoto ? 'Change profile photo' : 'Add a profile photo'}
         >
-          <Avatar name={name || user?.username} size={64} version={avatarV} />
-          <span className="settings__avatar-edit"><Camera size={14} /></span>
+          <Avatar name={user?.name || user?.username} size={120} />
+          <span className="profile-hero__overlay" aria-hidden="true">
+            <Camera size={20} />
+            <span>{hasPhoto ? 'Change' : 'Add photo'}</span>
+          </span>
         </button>
         <input
           ref={fileRef}
@@ -252,11 +303,25 @@ function ProfileTab({ user }: { user: AuthUser | null }) {
             onCropped={square => uploadAvatar(square)}
           />
         )}
-        <div>
-          <div className="settings__profile-name">{user?.name || user?.username}</div>
-          <div className="settings__profile-sub">@{user?.username} · {user?.role}</div>
+        <div className="profile-hero__who">
+          <h1 className="profile-hero__name">{user?.name || user?.username}</h1>
+          <p className="profile-hero__handle">
+            @{user?.username}
+            <span className="profile-hero__role">{user?.role}</span>
+          </p>
+          <div className="profile-hero__actions">
+            <button type="button" className="profile-hero__btn" onClick={() => fileRef.current?.click()}>
+              <Camera size={14} /> {hasPhoto ? 'Change photo' : 'Add photo'}
+            </button>
+            {hasPhoto && (
+              <button type="button" className="profile-hero__btn profile-hero__btn--quiet" onClick={() => void removePhoto()}>
+                <Trash2 size={14} /> Remove
+              </button>
+            )}
+          </div>
+          {photoMsg && <p className="settings__error" role="alert">{photoMsg}</p>}
         </div>
-      </div>
+      </section>
 
       <div className="settings__stats">
         <div className="settings__stat"><span className="settings__stat-num">{noteCount}</span> notes</div>
@@ -280,15 +345,66 @@ function ProfileTab({ user }: { user: AuthUser | null }) {
 
       <form className="settings__form" onSubmit={saveProfile}>
         <h2 id="account" className="settings__subhead">Account</h2>
+        <label className="settings__field">Username
+          <span className="settings__affix">
+            <span className="settings__affix-pre" aria-hidden="true">@</span>
+            <input
+              value={username}
+              autoComplete="username"
+              spellCheck={false}
+              autoCapitalize="none"
+              maxLength={64}
+              aria-invalid={fieldError?.field === 'username' || (!!usernameProblem && username !== user?.username)}
+              aria-describedby="username-help"
+              onChange={e => { setUsername(e.target.value); setFieldError(null); setSavedMsg(null); }}
+            />
+          </span>
+          <span id="username-help" className={
+            fieldError?.field === 'username' || (usernameProblem && username !== user?.username)
+              ? 'settings__field-error' : 'settings__hint'}>
+            {fieldError?.field === 'username'
+              ? fieldError.error
+              : usernameProblem && username !== user?.username
+                ? usernameProblem
+                : 'How people @mention you and how you sign in. Existing @mentions of an old name keep their text.'}
+          </span>
+        </label>
         <label className="settings__field">Display name
-          <input value={name} onChange={e => setName(e.target.value)} />
+          <input
+            value={name}
+            maxLength={100}
+            autoComplete="name"
+            aria-invalid={fieldError?.field === 'name'}
+            onChange={e => { setName(e.target.value); setFieldError(null); setSavedMsg(null); }}
+          />
+          {fieldError?.field === 'name' && <span className="settings__field-error">{fieldError.error}</span>}
         </label>
         <label className="settings__field">Email
-          <input type="email" value={email} onChange={e => setEmail(e.target.value)} />
+          <input
+            type="email"
+            value={email}
+            autoComplete="email"
+            aria-invalid={fieldError?.field === 'email'}
+            onChange={e => { setEmail(e.target.value); setFieldError(null); setSavedMsg(null); }}
+          />
+          <span className={fieldError?.field === 'email' ? 'settings__field-error' : 'settings__hint'}>
+            {fieldError?.field === 'email' ? fieldError.error : 'For password resets and the notifications you choose.'}
+          </span>
         </label>
         <div className="settings__form-actions">
-          <button type="submit" className="settings__btn">Save changes</button>
-          {savedMsg && <span className="settings__msg">{savedMsg}</span>}
+          <button type="submit" className="settings__btn" disabled={!dirty || saving}>
+            {saving ? 'Saving…' : 'Save changes'}
+          </button>
+          {dirty && !saving && (
+            <button
+              type="button"
+              className="settings__btn settings__btn--quiet"
+              onClick={() => { setUsername(user?.username ?? ''); setName(user?.name ?? ''); setEmail(user?.email ?? ''); setFieldError(null); }}
+            >
+              Discard
+            </button>
+          )}
+          {savedMsg && <span className="settings__msg" role="status">{savedMsg}</span>}
         </div>
       </form>
 

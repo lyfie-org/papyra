@@ -43,6 +43,52 @@ public sealed class OverwriteSafetyTests
         => Path.Combine(dataDir, "users", uid, ".papyra", "snapshots", noteId);
 
     [Fact]
+    public async Task KeepRight_WithinTheSnapshotThrottle_StillArchivesTheReplacedRevision()
+    {
+        var (factory, dir) = NewApp();
+        try
+        {
+            var client = factory.CreateClient();
+            var uid = await SeedAdminAsync(client);
+
+            // Two writes: the second archives the first and starts the 5-minute
+            // throttle window, so an unforced capture would skip "second".
+            await client.PutAsJsonAsync("/api/notes/c2", new NoteWrite(
+                Title: "Doc", Tags: null, Color: null, Pinned: false, Archived: false, Body: "first"));
+            await client.PutAsJsonAsync("/api/notes/c2", new NoteWrite(
+                Title: "Doc", Tags: null, Color: null, Pinned: false, Archived: false, Body: "second"));
+
+            var notesDir = Path.Combine(dir, "users", uid, "notes");
+            await File.WriteAllTextAsync(
+                Path.Combine(notesDir, "c2.sync-conflict-20260811-090000-K7XQ2R4.md"),
+                "---\nid: c2\ntitle: Doc\n---\n\nthe other device's text\n");
+
+            ConflictDto? conflict = null;
+            for (var i = 0; i < 40 && conflict is null; i++)
+            {
+                var list = await client.GetFromJsonAsync<List<ConflictDto>>("/api/conflicts");
+                conflict = list?.FirstOrDefault();
+                if (conflict is null) await Task.Delay(100);
+            }
+            Assert.NotNull(conflict);
+
+            var resolve = await client.PostAsJsonAsync(
+                $"/api/conflicts/{conflict!.Id}/resolve", new ResolveConflictRequest("right"));
+            Assert.Equal(HttpStatusCode.NoContent, resolve.StatusCode);
+
+            var texts = Directory.GetFiles(SnapshotDir(dir, uid, "c2")).Select(File.ReadAllText).ToList();
+            Assert.Contains(texts, t => t.Contains("second"));
+            Assert.Contains(texts, t => t.Contains("first"));
+        }
+        finally
+        {
+            factory.Dispose();
+            SqliteConnection.ClearAllPools();
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
     public async Task KeepRight_ArchivesTheRevisionItReplaces_AndTrashesTheRejectedCopy()
     {
         var (factory, dir) = NewApp();

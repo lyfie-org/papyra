@@ -5,9 +5,10 @@
   display: grid;
   place-items: center;
   padding: var(--space-4);
-  background: color-mix(in srgb, var(--scrim) 55%, transparent);
-  -webkit-backdrop-filter: blur(6px);
-  backdrop-filter: blur(6px);
+  background: color-mix(in srgb, var(--scrim) 60%, transparent);
+  -webkit-backdrop-filter: blur(8px);
+  backdrop-filter: blur(8px);
+  animation: cropper-fade var(--dur) var(--ease);
 }
 
 .cropper {
@@ -15,12 +16,27 @@
   flex-direction: column;
   align-items: center;
   gap: var(--space-4);
-  max-width: min(360px, 100%);
+  width: min(400px, 100%);
+  max-height: calc(100dvh - 2 * var(--space-4));
+  overflow-y: auto;
   padding: var(--space-6);
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   background: var(--surface);
+  box-shadow: var(--shadow);
+  animation: cropper-rise var(--dur-slow) var(--ease);
 }
+
+@keyframes cropper-fade { from { opacity: 0; } to { opacity: 1; } }
+@keyframes cropper-rise {
+  from { opacity: 0; transform: translateY(10px) scale(0.985); }
+  to   { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .cropper__scrim, .cropper { animation: none; }
+}
+
+.cropper__head { display: grid; gap: var(--space-1); text-align: center; }
 
 .cropper__title {
   margin: 0;
@@ -30,58 +46,181 @@
 
 .cropper__hint {
   margin: 0;
-  text-align: center;
   font: 400 var(--fs-xs) / 1.5 var(--sans);
   color: var(--text);
 }
 
-/* The picture sits behind a mask whose hole is the circle people will see, so
-   what is inside the ring is exactly what gets uploaded. */
+/* The stage. The photo sits over a blurred copy of itself; the mask dims all but
+   the circle people will see, so the circle reads as the photo and the rest as
+   "cropped away". */
 .cropper__frame {
   position: relative;
+  flex: none;
   overflow: hidden;
-  border-radius: var(--radius-md);
-  background: var(--code-bg);
+  border-radius: var(--radius-lg);
+  background: var(--scrim);
   cursor: grab;
   touch-action: none;
+  user-select: none;
+}
+.cropper__frame.is-dragging { cursor: grabbing; }
+.cropper__frame:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
 }
 
-.cropper__frame:active { cursor: grabbing; }
-
+.cropper__backdrop,
 .cropper__image {
   position: absolute;
   top: 50%;
   left: 50%;
   max-width: none;
-  user-select: none;
+  pointer-events: none;
+}
+.cropper__backdrop {
+  transform: translate(-50%, -50%);
+  filter: blur(14px) saturate(1.1) brightness(0.88);
+}
+.cropper__image { will-change: transform; }
+
+.cropper__loading {
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font: 400 var(--fs-sm) / 1 var(--sans);
+  color: var(--on-photo);
+  opacity: 0.8;
 }
 
 .cropper__mask {
   position: absolute;
   inset: 0;
-  border-radius: var(--radius-md);
-  /* A ring of dimmed surface around the circle: the corners are still cropped
-     to a square, but the circle is what the app actually draws. */
+  pointer-events: none;
   background: radial-gradient(
     circle at 50% 50%,
     transparent 0,
     transparent calc(50% - 1px),
-    color-mix(in srgb, var(--scrim) 45%, transparent) calc(50% - 1px)
+    color-mix(in srgb, var(--scrim) 60%, transparent) calc(50% + 0.5px)
   );
-  box-shadow: inset 0 0 0 1px var(--border);
-  pointer-events: none;
 }
+/* The circle's edge: a crisp hairline so the crop is unmistakable. */
+.cropper__mask::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  box-shadow: inset 0 0 0 1.5px color-mix(in srgb, var(--on-photo) 85%, transparent);
+}
+/* Rule-of-thirds guides, shown only while moving the photo. */
+.cropper__grid {
+  --guide: color-mix(in srgb, var(--on-photo) 35%, transparent);
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  opacity: 0;
+  transition: opacity var(--dur-fast) var(--ease);
+  background:
+    linear-gradient(to right, transparent calc(33.33% - 0.5px), var(--guide) calc(33.33% - 0.5px), var(--guide) calc(33.33% + 0.5px), transparent calc(33.33% + 0.5px), transparent calc(66.66% - 0.5px), var(--guide) calc(66.66% - 0.5px), var(--guide) calc(66.66% + 0.5px), transparent calc(66.66% + 0.5px)),
+    linear-gradient(to bottom, transparent calc(33.33% - 0.5px), var(--guide) calc(33.33% - 0.5px), var(--guide) calc(33.33% + 0.5px), transparent calc(33.33% + 0.5px), transparent calc(66.66% - 0.5px), var(--guide) calc(66.66% - 0.5px), var(--guide) calc(66.66% + 0.5px), transparent calc(66.66% + 0.5px));
+}
+.cropper__frame.is-dragging .cropper__grid { opacity: 1; }
+
+/* ── Zoom ─────────────────────────────────────────────────────────────────── */
 
 .cropper__zoom {
   display: flex;
   align-items: center;
   gap: var(--space-2);
   width: 100%;
-  font: 500 var(--fs-xs) / 1.3 var(--sans);
-  color: var(--text);
 }
 
-.cropper__zoom input { flex: 1; accent-color: var(--accent); }
+.cropper__icon {
+  display: grid;
+  place-items: center;
+  flex: none;
+  width: 2rem;
+  height: 2rem;
+  border: none;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--text-h);
+  cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease);
+}
+.cropper__icon:hover:not(:disabled) { background: color-mix(in srgb, var(--text) 10%, transparent); }
+.cropper__icon:disabled { opacity: 0.35; cursor: default; }
+
+.cropper__zoom input {
+  --fill: 0%;
+  flex: 1;
+  height: 4px;
+  appearance: none;
+  -webkit-appearance: none;
+  border-radius: var(--radius-pill);
+  background: linear-gradient(to right, var(--accent) var(--fill), color-mix(in srgb, var(--text) 18%, transparent) var(--fill));
+  cursor: pointer;
+}
+.cropper__zoom input::-webkit-slider-thumb {
+  -webkit-appearance: none;
+  width: 18px;
+  height: 18px;
+  border: 2px solid var(--surface);
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 1px 4px color-mix(in srgb, var(--scrim) 30%, transparent);
+}
+.cropper__zoom input::-moz-range-thumb {
+  width: 16px;
+  height: 16px;
+  border: 2px solid var(--surface);
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 1px 4px color-mix(in srgb, var(--scrim) 30%, transparent);
+}
+.cropper__zoom input:focus-visible { outline: 2px solid var(--accent); outline-offset: 6px; }
+
+/* ── Preview + reset ──────────────────────────────────────────────────────── */
+
+.cropper__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+}
+
+.cropper__previews {
+  display: flex;
+  align-items: flex-end;
+  gap: var(--space-3);
+}
+.cropper__preview {
+  border-radius: 50%;
+  background: var(--code-bg);
+  box-shadow: 0 0 0 1px var(--border);
+}
+.cropper__preview--lg { width: 56px; height: 56px; }
+.cropper__preview--sm { width: 38px; height: 38px; }
+
+.cropper__reset {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  padding: 0.35rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--text-h);
+  font: 500 var(--fs-xs) / 1 var(--sans);
+  cursor: pointer;
+}
+.cropper__reset:disabled { opacity: 0.4; cursor: default; }
+
+.cropper__error {
+  margin: 0;
+  font: 400 var(--fs-sm) / 1.4 var(--sans);
+  color: var(--danger);
+}
 
 .cropper__actions {
   display: flex;
@@ -91,19 +230,21 @@
 }
 
 .cropper__btn {
-  padding: var(--space-2) var(--space-4);
+  padding: 0.6rem 1.1rem;
   border: 1px solid var(--border);
   border-radius: var(--radius-pill);
-  background: var(--bg);
+  background: transparent;
   color: var(--text-h);
   font: 500 var(--fs-sm) / 1 var(--sans);
   cursor: pointer;
 }
-
 .cropper__btn--primary {
-  border-color: var(--accent-border);
+  border-color: var(--accent);
   background: var(--accent);
   color: var(--accent-fg);
 }
-
+.cropper__btn--primary:hover:not(:disabled) { background: var(--accent-hover); }
 .cropper__btn:disabled { opacity: 0.6; cursor: default; }
+.cropper__btn:focus-visible,
+.cropper__reset:focus-visible,
+.cropper__icon:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }

@@ -330,55 +330,169 @@
 }
 
 /* ── Profile ─────────────────────────────────────────────────────── */
-.settings__profile-head {
+/* ── Profile hero ──────────────────────────────────────────────────────────
+   The person first: a large, ring-free photo you can click to change, their
+   name in the heading face, and the photo actions right beside it. The photo
+   used to be a 64px disc inside an accent-coloured button, whose padding showed
+   as a thick green crescent around the face. */
+.profile-hero {
   display: flex;
   align-items: center;
-  gap: 1rem;
+  gap: var(--space-6);
+  padding: var(--space-2) 0 var(--space-4);
 }
-.settings__avatar {
+
+.profile-hero__photo {
   position: relative;
-  width: 64px;
-  height: 64px;
+  flex: none;
+  padding: 0;
   border: none;
-  border-radius: var(--radius-pill);
-  background: var(--accent);
-  color: var(--accent-fg);
-  font-family: var(--heading);
-  font-size: var(--fs-xl);
+  border-radius: 50%;
+  background: transparent;
   cursor: pointer;
-  overflow: hidden;
-  flex-shrink: 0;
+  /* A soft lift instead of an outline — the photo sits on the page, it isn't framed. */
+  box-shadow: 0 6px 22px color-mix(in srgb, var(--scrim) 16%, transparent);
+  transition: transform var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
 }
-.settings__avatar img {
-  width: 100%;
-  height: 100%;
-  object-fit: cover;
-  display: block;
+.profile-hero__photo:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 28px color-mix(in srgb, var(--scrim) 22%, transparent);
 }
-.settings__avatar-edit {
+.profile-hero__photo:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 4px;
+}
+
+/* "Change" appears over the photo on hover/focus rather than as a badge that
+   covers part of the face all the time. */
+.profile-hero__overlay {
   position: absolute;
-  right: 0;
-  bottom: 0;
-  display: inline-flex;
+  inset: 0;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 0.2rem;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--scrim) 48%, transparent);
+  color: var(--on-photo);
+  font: 500 var(--fs-xs) / 1 var(--sans);
+  opacity: 0;
+  transition: opacity var(--dur-fast) var(--ease);
+}
+.profile-hero__photo:hover .profile-hero__overlay,
+.profile-hero__photo:focus-visible .profile-hero__overlay { opacity: 1; }
+
+@media (hover: none) {
+  /* No hover on touch: the buttons beside the photo carry the actions. */
+  .profile-hero__overlay { display: none; }
+}
+
+.profile-hero__who {
+  display: grid;
+  gap: var(--space-2);
+  min-width: 0;
+}
+
+.profile-hero__name {
+  margin: 0;
+  overflow-wrap: anywhere;
+  font: 400 var(--fs-2xl) / 1.1 var(--heading);
+  color: var(--text-h);
+}
+
+.profile-hero__handle {
+  display: flex;
   align-items: center;
-  justify-content: center;
-  width: 22px;
-  height: 22px;
-  border-radius: var(--radius-pill);
-  background: var(--surface);
-  color: var(--text-h);
-  box-shadow: var(--shadow-card);
-}
-.settings__profile-name {
-  font-family: var(--heading);
-  font-size: 1.2rem;
-  color: var(--text-h);
-}
-.settings__profile-sub {
-  font-family: var(--mono);
-  font-size: 0.8rem;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin: 0;
+  font: 400 var(--fs-sm) / 1.3 var(--mono);
   color: var(--text);
 }
+
+.profile-hero__role {
+  padding: 0.15rem 0.55rem;
+  border-radius: var(--radius-pill);
+  background: var(--accent-bg);
+  color: var(--text-h);
+  font: 500 var(--fs-2xs) / 1.4 var(--sans);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.profile-hero__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+  margin-top: var(--space-1);
+}
+
+.profile-hero__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  padding: 0.4rem 0.85rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--bg);
+  color: var(--text-h);
+  font: 500 var(--fs-xs) / 1 var(--sans);
+  cursor: pointer;
+  transition: border-color var(--dur-fast) var(--ease), background-color var(--dur-fast) var(--ease);
+}
+.profile-hero__btn:hover { border-color: var(--accent); }
+.profile-hero__btn--quiet { background: transparent; }
+.profile-hero__btn--quiet:hover { border-color: var(--danger-border); color: var(--danger); }
+.profile-hero__btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+@media (max-width: 560px) {
+  .profile-hero {
+    flex-direction: column;
+    text-align: center;
+    gap: var(--space-4);
+  }
+  .profile-hero__handle,
+  .profile-hero__actions { justify-content: center; }
+}
+
+/* An input with a fixed prefix (the @ of a username). */
+.settings__affix {
+  display: flex;
+  align-items: stretch;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  overflow: hidden;
+}
+.settings__affix:focus-within { outline: 2px solid var(--accent); outline-offset: 1px; }
+.settings__affix-pre {
+  display: grid;
+  place-items: center;
+  padding: 0 0.1rem 0 0.6rem;
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 0.9rem;
+}
+.settings__form .settings__field .settings__affix input {
+  flex: 1;
+  min-width: 0;
+  padding-left: 0.2rem;
+  border: none;
+  outline: none;
+  background: transparent;
+  font-family: var(--mono);
+}
+.settings__form .settings__field input[aria-invalid='true'],
+.settings__affix:has(input[aria-invalid='true']) { border-color: var(--danger); }
+
+.settings__field-error {
+  color: var(--danger);
+  font-size: 0.8rem;
+  line-height: 1.4;
+}
+
+.settings__btn:disabled { opacity: 0.5; cursor: default; }
+.settings__btn--quiet { border-color: var(--border); background: transparent; }
 
 .settings__form {
   display: flex;

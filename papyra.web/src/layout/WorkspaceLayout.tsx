@@ -144,10 +144,18 @@ export default function WorkspaceLayout() {
               aria-expanded={menuOpen}
               onClick={() => setMenuOpen(o => !o)}
             >
-              <Avatar name={user?.name || user?.username} size={30} />
+              <Avatar name={user?.name || user?.username} size={38} />
             </button>
             {menuOpen && (
               <div className="workspace__avatar-menu" role="menu">
+                <div className="workspace__avatar-who" aria-hidden="true">
+                  <Avatar name={user?.name || user?.username} size={44} />
+                  <div className="workspace__avatar-names">
+                    <span className="workspace__avatar-name">{user?.name || user?.username}</span>
+                    <span className="workspace__avatar-handle">@{user?.username}</span>
+                  </div>
+                </div>
+                <div className="workspace__avatar-sep" />
                 <button type="button" role="menuitem" onClick={() => go('/settings?tab=profile')}>
                   <User size={15} /> Profile
                 </button>

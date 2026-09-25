@@ -91,23 +91,28 @@
 }
 
 .workspace__avatar {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 36px;
-  height: 36px;
+  display: inline-grid;
+  place-items: center;
+  width: 38px;
+  height: 38px;
+  padding: 0;
   border: none;
   border-radius: var(--radius-pill);
-  background: var(--accent);
-  color: var(--accent-fg);
-  font-family: var(--heading);
-  font-size: var(--fs-md);
-  text-decoration: none;
+  /* The picture is the button: no coloured disc behind it to show as a ring. */
+  background: transparent;
   cursor: pointer;
-  transition: transform var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease);
+  transition: transform var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease);
 }
-.workspace__avatar:hover { background: var(--accent-hover); }
+/* A hairline halo on hover/open instead of a filled rim — present, not heavy. */
+.workspace__avatar:hover,
+.workspace__avatar[aria-expanded='true'] {
+  box-shadow: 0 0 0 2px var(--surface), 0 0 0 3.5px color-mix(in srgb, var(--accent) 70%, transparent);
+}
 .workspace__avatar:active { transform: scale(0.96); }
+.workspace__avatar:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
 
 .workspace__avatar-menu {
   position: absolute;
@@ -158,6 +163,34 @@
   height: 1px;
   margin: var(--space-1) var(--space-2);
   background: var(--border);
+}
+
+/* Who is signed in, at the top of the menu: face first, then name and handle. */
+.workspace__avatar-who {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-width: 14rem;
+  padding: var(--space-3);
+}
+.workspace__avatar-names {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.workspace__avatar-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 400 var(--fs-md) / 1.2 var(--heading);
+  color: var(--text-h);
+}
+.workspace__avatar-handle {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 400 var(--fs-xs) / 1.3 var(--mono);
+  color: var(--text);
 }
 
 /* ---- Body (sidebar + desk) ---- */

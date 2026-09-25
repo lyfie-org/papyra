@@ -1331,16 +1331,78 @@ webauthn.MapDelete("/credentials/{id:int}", async (
 // The signed-in user edits their own display name + email, changes their password,
 // and uploads an avatar. Avatar lives under the user's hidden .papyra dir (UI
 // state, not the notes vault).
-auth.MapPut("/profile", async (ProfileRequest body, ClaimsPrincipal principal, AppDbContext db, CancellationToken ct) =>
+auth.MapPut("/profile", async (ProfileRequest body, HttpContext http, ClaimsPrincipal principal, AppDbContext db, CancellationToken ct) =>
 {
     var id = int.Parse(Uid(principal));
     var user = await db.Users.FindAsync([id], ct);
     if (user is null) return Results.NotFound();
 
-    if (!string.IsNullOrWhiteSpace(body.Name)) user.Name = body.Name.Trim();
-    user.Email = body.Email?.Trim() ?? string.Empty;
+    // Username: optional in the payload (older clients never send it). Renaming
+    // is safe because everything a user owns is keyed by their numeric id — the
+    // vault dir, shares, keys, the avatar — and the avatar-by-username lookup
+    // reads the live row. What does not follow a rename is text: an `@oldname`
+    // already typed into someone's note stays as written.
+    var renamed = false;
+    if (body.Username is not null)
+    {
+        var wanted = body.Username.Trim();
+        if (ProfileRules.UsernameProblem(wanted) is { } bad)
+            return Results.BadRequest(new { error = bad, field = "username" });
+        if (!string.Equals(wanted, user.Username, StringComparison.Ordinal))
+        {
+            // Case-insensitive: "Bea" and "bea" as two accounts would make every
+            // @mention and every sign-in ambiguous.
+            var lower = wanted.ToLower();
+            if (await db.Users.AnyAsync(u => u.Id != id && u.Username.ToLower() == lower, ct))
+                return Results.Conflict(new { error = "That username is taken.", field = "username" });
+            user.Username = wanted;
+            renamed = true;
+        }
+    }
+
+    if (body.Name is not null)
+    {
+        var name = body.Name.Trim();
+        if (name.Length > ProfileRules.MaxNameLength)
+            return Results.BadRequest(new { error = $"Keep the name under {ProfileRules.MaxNameLength} characters.", field = "name" });
+        // Blank means "no display name": fall back to the username, as setup does.
+        user.Name = name.Length == 0 ? user.Username : name;
+    }
+
+    if (body.Email is not null)
+    {
+        var email = body.Email.Trim();
+        if (email.Length > 0)
+        {
+            if (!ProfileRules.IsEmail(email))
+                return Results.BadRequest(new { error = "That doesn’t look like an email address.", field = "email" });
+            // Password reset finds an account by email; two accounts sharing one
+            // would hand the reset link for one to the owner of the other.
+            var lower = email.ToLower();
+            if (await db.Users.AnyAsync(u => u.Id != id && u.Email.ToLower() == lower, ct))
+                return Results.Conflict(new { error = "Another account already uses that email.", field = "email" });
+        }
+        user.Email = email;
+    }
+
     await db.SaveChangesAsync(ct);
+
+    // The session cookie carries the username as a claim; re-issue it so the new
+    // name is what the rest of this session sees. Only for a cookie session — an
+    // API-key request has no cookie to replace.
+    if (renamed && principal.Identity?.AuthenticationType == CookieAuthenticationDefaults.AuthenticationScheme)
+        await SignInAsync(http, user);
+
     return Results.Ok(new { user.Id, user.Username, user.Name, user.Email, user.Role });
+}).RequireAuthorization();
+
+// Remove the profile picture; the initial takes its place everywhere.
+auth.MapDelete("/avatar", (ClaimsPrincipal principal, IConfiguration config, IHostEnvironment env) =>
+{
+    var dir = PapyraPaths.UserDotPapyra(config, env.ContentRootPath, Uid(principal));
+    if (Directory.Exists(dir))
+        foreach (var old in Directory.EnumerateFiles(dir, "avatar.*")) File.Delete(old);
+    return Results.NoContent();
 }).RequireAuthorization();
 
 auth.MapPost("/password", async (
@@ -2900,12 +2962,13 @@ conflicts.MapPost("/{id}/resolve", async (
             // "Keep Right" overwrites the parent with the other device's text. Snapshot
             // the revision being replaced first — otherwise the losing side of a
             // conflict is gone for good, which is the opposite of what a conflict
-            // resolver is for. (Same guarantee the restore endpoint already gives.)
+            // resolver is for. Forced past the throttle, like restore: a snapshot a few
+            // minutes old would otherwise mean the replaced text is never archived.
             if (keep == "right")
             {
                 var snapRoot = PapyraPaths.UserSnapshotsDir(config, env.ContentRootPath, uid);
                 var noteSnapDir = PathGuard.ResolveAndVerify(snapRoot, c.ParentId, logger);
-                await snapshots.CaptureAsync(noteSnapDir, targetPath, ct);
+                await snapshots.CaptureAsync(noteSnapDir, targetPath, ct, force: true);
             }
 
             writeRing.Mark(targetPath); // our write — watcher ignores the echo
@@ -4407,7 +4470,8 @@ public sealed record ResetRequest(
 public sealed record RecoveryLinkRequest(bool? SendEmail = null);
 
 // Self-service profile update (display name + email).
-public sealed record ProfileRequest(string? Name, string? Email);
+// Every field optional: null = leave it as it is (older clients send no username).
+public sealed record ProfileRequest(string? Name, string? Email, string? Username = null);
 
 // Self-service password change: verify Current, set Next.
 public sealed record PasswordRequest(string? Current, string? Next);
