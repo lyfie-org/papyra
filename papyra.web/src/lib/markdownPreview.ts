@@ -230,3 +230,48 @@ function buildLists(rows: Row[]): ListBlock[] {
   }
   return top;
 }
+
+// Card height policy, in em of the preview's own font (line-height 1.55).
+/** Bodies up to about ten lines show in full. */
+const FULL_EM = 16;
+/**
+ * Past that, a card keeps growing on a log curve of the extra content: each
+ * doubling of a note's length still adds visible height, so a 40-line and an
+ * 80-line note differ, but no note can take over a column…
+ */
+const GROWTH_EM = 12;
+const GROWTH_SCALE_EM = 20;
+/** …and nothing is taller than about thirty lines. */
+const MAX_EM = 48;
+/** Characters on one line of a card column (~250–330px at --fs-sm). */
+const CHARS_PER_LINE = 36;
+const LINE_EM = 1.55;
+/** Source lines parsed for a card: enough to fill MAX_EM even with no wrapping. */
+export const PREVIEW_MAX_LINES = Math.ceil(MAX_EM / LINE_EM) + 4;
+
+/**
+ * How tall a card's preview may grow, in em — or null when the whole body fits.
+ *
+ * A fixed cap made every long note the same height, so a desk of them read as a
+ * flat wall. Here the visible height follows the note's own length (as Google
+ * Keep's cards do): short notes show whole, longer ones get taller but grow
+ * ever slower than their content, and nothing passes MAX_EM. Estimated
+ * from the text rather than measured, so it is the same at every column width
+ * and costs no layout reads across a desk of cards.
+ */
+export function previewCapEm(md: string): number | null {
+  let em = 0;
+  let blocks = 0;
+  for (const raw of stripBlockAnchors(md).replace(/\r\n?/g, '\n').split('\n')) {
+    const line = raw.trim();
+    if (!line) continue;
+    blocks++;
+    const text = line.replace(LIST, '$4').replace(/^#{1,6}\s+/, '');
+    const heading = /^#{1,6}\s/.test(line);
+    em += Math.max(1, Math.ceil(text.length / CHARS_PER_LINE)) * LINE_EM * (heading ? 1.25 : 1);
+  }
+  em += Math.max(0, blocks - 1) * 0.1; // spacing between blocks, roughly
+  // A line or two over the threshold is not worth a fade: show it whole.
+  if (em <= FULL_EM + 2 * LINE_EM) return null;
+  return Math.min(MAX_EM, FULL_EM + GROWTH_EM * Math.log1p((em - FULL_EM) / GROWTH_SCALE_EM));
+}

@@ -7,16 +7,19 @@
   line-height: 1.55;
   color: var(--text);
   overflow-wrap: anywhere;
-  max-height: 15.5em;
+}
+
+/* A long note is cut at --md-cap, which MarkdownPreview sets from the note's own
+   length (previewCapEm) so long cards differ in height instead of all stopping
+   at one line. The last two lines fade out rather than being sliced mid-glyph;
+   a note that fits carries no cap and no fade. */
+.md-preview--clamped {
+  max-height: var(--md-cap);
   overflow: hidden;
-  /* The fade is sized to the cap, not to the content: a short note ends above
-     it and is untouched, a long one (or one whose lines wrap past the cap)
-     fades out over its last line instead of being sliced mid-glyph. No
-     measuring, so it costs nothing across a few hundred cards. */
-  -webkit-mask-image: linear-gradient(to bottom, #000 13.5em, transparent 15.5em);
-  mask-image: linear-gradient(to bottom, #000 13.5em, transparent 15.5em);
-  -webkit-mask-size: 100% 15.5em;
-  mask-size: 100% 15.5em;
+  -webkit-mask-image: linear-gradient(to bottom, #000 calc(var(--md-cap) - 2em), transparent var(--md-cap));
+  mask-image: linear-gradient(to bottom, #000 calc(var(--md-cap) - 2em), transparent var(--md-cap));
+  -webkit-mask-size: 100% var(--md-cap);
+  mask-size: 100% var(--md-cap);
   -webkit-mask-repeat: no-repeat;
   mask-repeat: no-repeat;
 }

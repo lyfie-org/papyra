@@ -36,7 +36,7 @@ const NAV_ITEMS = [
 ] as const;
 
 /** Shown under the connection status so a self-hoster can see what they're running. */
-const APP_VERSION = '0.0.1';
+const APP_VERSION: string = import.meta.env.VITE_APP_VERSION ?? 'dev';
 
 export default function WorkspaceLayout() {
   const { user } = useAuth();
@@ -241,7 +241,7 @@ export default function WorkspaceLayout() {
                   {syncLabel}
                 </span>
               </span>
-              <span className="workspace__version workspace__nav-label">v{APP_VERSION}</span>
+              <span className="workspace__version workspace__nav-label">{APP_VERSION === 'dev' ? 'dev build' : `v${APP_VERSION}`}</span>
             </footer>
           </div>
         </nav>

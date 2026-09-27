@@ -181,6 +181,13 @@
   border-color: var(--accent);
   color: var(--accent-fg);
 }
+/* The plain hover above tints the icon with --accent-text, which on the green
+   fill is green on green. A pinned pin darkens its fill instead, ink unchanged. */
+.note-card__pin--active:hover {
+  background: var(--accent-hover);
+  border-color: var(--accent-hover);
+  color: var(--accent-fg);
+}
 
 /* ---- Hover action rail ---- */
 .note-card__actions {

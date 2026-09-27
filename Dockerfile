@@ -16,6 +16,8 @@ COPY papyra.web/package.json papyra.web/
 RUN pnpm install --frozen-lockfile
 
 COPY papyra.web/ papyra.web/
+# The sidebar shows this version; vite.config reads it at build time.
+COPY VERSION ./
 
 RUN pnpm --filter ./papyra.web build
 

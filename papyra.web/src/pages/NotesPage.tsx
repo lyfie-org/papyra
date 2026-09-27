@@ -12,7 +12,7 @@ import { useNotes } from '../hooks/useNotes';
 import { useConflicts, type Conflict } from '../hooks/useConflicts';
 import { useCollections } from '../hooks/useCollections';
 import { matchesRules, parseRules } from '../lib/smartCollections';
-import { putNote } from '../lib/notesApi';
+import { createDraft } from '../lib/noteDrafts';
 import './NotesPage.css';
 import LoadingBar from '../components/LoadingBar';
 import { fetchWithProgress } from '../lib/progress';
@@ -132,15 +132,10 @@ export default function NotesPage() {
     return map;
   }, [conflicts]);
 
-  // Create = PUT a fresh, empty note (the API upserts) then open it. The id is
-  // minted client-side; the .md becomes the source of truth on first write.
-  async function createNote() {
-    const id = crypto.randomUUID();
-    await putNote(id, {
-      title: '', tags: [], color: null, pinned: false, archived: false, kind: 'note', body: '',
-    });
-    await queryClient.invalidateQueries({ queryKey: ['notes'] });
-    navigate(`/note/${id}`);
+  // Open a local draft; the first change saves it (see lib/noteDrafts), so a
+  // note opened and closed untouched never reaches the disk.
+  function createNote() {
+    navigate(`/note/${createDraft()}`);
   }
 
   return (
@@ -170,7 +165,7 @@ export default function NotesPage() {
           />
         )}
         {importMsg && <span className="notes-page__import-msg">{importMsg}</span>}
-        <button type="button" className="notes-page__new" onClick={() => void createNote()}>
+        <button type="button" className="notes-page__new" onClick={createNote}>
           <Plus size={18} />
           New note
         </button>
@@ -186,7 +181,7 @@ export default function NotesPage() {
       {isLoading && <LoadingBar label="Loading notes" />}
       {isError && <p className="notes-page__status">Couldn’t reach the server.</p>}
       {/* A brand-new vault gets an explanation, not the word "empty". */}
-      {!isLoading && !isError && isFirstRun && <FirstRun onCreate={() => void createNote()} />}
+      {!isLoading && !isError && isFirstRun && <FirstRun onCreate={createNote} />}
       {!isLoading && !isError && !isFirstRun && (
         scope === 'shared' && visibleShared.length === 0
           ? <p className="notes-page__status">Nothing has been shared with you yet.</p>
