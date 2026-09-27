@@ -218,14 +218,6 @@ b,
 /* Keep the pill clear of the sheet's rounded top corners and off the footer. */
 .note-editor__scroll::-webkit-scrollbar-track { margin-block: var(--radius-lg) var(--space-2); }
 
-/* luthor's dialogs portal to <body> and pick up the editor theme a frame after
-   they mount; the theme transition then faded the panel (and its fields' ink)
-   in from nothing, so it flashed see-through over the note. Show it at once. */
-.luthor-dialog-overlay--portal,
-.luthor-dialog-overlay--portal * {
-  transition: none;
-}
-
 /* The portalled dialog carries the editor's ink (--luthor-fg — dark on a tinted
    note, whatever the app theme). Papyra's app-wide form colours would otherwise
    paint its fields and Cancel in the theme's tan: 2.6:1 on a tint in dark mode. */
