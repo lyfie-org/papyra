@@ -6,6 +6,10 @@ a Docker Hub tag and a GitHub Release.
 
 <!-- new releases are inserted directly below this line -->
 
+## [0.1.14] - 2026-09-27
+
+- fix: end-to-end WCAG 2.2 AA pass and check:a11y harness (7cd140b)
+
 ## [0.1.13] - 2026-09-27
 
 - feat: formatting toolbar toggle and "always show" preference (4d25bc6)
