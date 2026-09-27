@@ -6,6 +6,10 @@ a Docker Hub tag and a GitHub Release.
 
 <!-- new releases are inserted directly below this line -->
 
+## [0.1.16] - 2026-09-27
+
+- feat: whole-note sharing on mention + request edit access (6f345d2)
+
 ## [0.1.15] - 2026-09-27
 
 - chore: bump @lyfie/luthor to 2.10.2 (3385fad)
