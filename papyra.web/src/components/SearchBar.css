@@ -201,6 +201,19 @@ li:first-child .search__group { padding-top: var(--space-1); }
   overflow: hidden;
 }
 
+/* Query matches: a sage highlighter stroke, not a yellow box — ink goes to the
+   heading colour so the word stands out at AA on the wash in both themes. */
+.search__match {
+  padding: 0 0.12em;
+  margin: 0 -0.04em;
+  border-radius: 3px;
+  background: color-mix(in srgb, var(--accent) 38%, transparent);
+  color: var(--text-h);
+  font-weight: 600;
+  box-decoration-break: clone;
+  -webkit-box-decoration-break: clone;
+}
+
 .search__hit-snippet--locked { font-family: var(--mono); opacity: 0.7; }
 
 .search__empty,

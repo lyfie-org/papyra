@@ -22,7 +22,7 @@ export default function SelectTick({ title, selected, selecting, onToggle }: {
       onPointerDown={(e) => e.stopPropagation()}
       onClick={(e) => { e.preventDefault(); e.stopPropagation(); onToggle(e.shiftKey); }}
     >
-      <Check size={14} strokeWidth={3} aria-hidden="true" />
+      <Check size={12} strokeWidth={3} aria-hidden="true" />
     </button>
   );
 }

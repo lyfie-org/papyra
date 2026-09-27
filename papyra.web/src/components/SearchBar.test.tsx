@@ -62,7 +62,8 @@ describe('SearchBar', () => {
   it('labels each hit with the trail to where it lives', () => {
     type('recipes');
     const options = screen.getAllByRole('option');
-    const titled = (name: string) => options.find(o => within(o).queryByText(name));
+    // Titles are split by <mark> around the query, so match on the whole text.
+    const titled = (name: string) => options.find(o => o.querySelector('.search__hit-title')?.textContent === name);
 
     expect(within(titled('Roast recipes')!).getByText('Note')).toBeTruthy();
     expect(within(titled('Shopping list')!).getByText('To Do')).toBeTruthy();
@@ -73,8 +74,14 @@ describe('SearchBar', () => {
   it('finds a settings page and breadcrumbs it under its tab', () => {
     type('smtp');
     const option = screen.getAllByRole('option')[0];
-    expect(within(option).getByText('Outbound email (SMTP)')).toBeTruthy();
+    expect(option.querySelector('.search__hit-title')?.textContent).toBe('Outbound email (SMTP)');
     expect(within(option).getByText('Settings › Email')).toBeTruthy();
+  });
+
+  it('highlights the query inside each hit, whatever its case', () => {
+    type('smtp');
+    const option = screen.getAllByRole('option')[0];
+    expect([...option.querySelectorAll('mark')].map(m => m.textContent)).toContain('SMTP');
   });
 
   it('never shows an admin-only page to someone who is not an admin', () => {

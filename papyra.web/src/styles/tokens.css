@@ -33,6 +33,21 @@
   --tint-ink-muted:  #5c4636;
   --tint-ink-soft:   #4a3526;
   --tint-scrim:      rgba(61, 44, 30, 0.10);
+  /* How much of a note's YAML colour survives on its sheet. Light: all of it.
+     Dark mode mutes it toward --surface so a pastel doesn't glare off the
+     graphite. Card and open editor both read this, so they always match. */
+  --tint-strength:   100%;
+
+  /* Plain (uncoloured) note paper — cards and the open editor. Same as
+     --surface in light; lifted in dark so notes don't sink into --bg. */
+  --paper:      var(--surface);
+  --paper-edge: var(--border);
+
+  /* Scrollbars: a slim ink pill on a bare track, like a pencil line in the
+     margin. Mixed from --text so both themes stay in the paper palette. */
+  --scroll-thumb:       color-mix(in srgb, var(--text) 32%, transparent);
+  --scroll-thumb-hover: color-mix(in srgb, var(--text) 55%, transparent);
+  --scroll-track:       transparent;
 
   /* Modal backdrop. Warm near-black rather than pure black, so the dim reads as
      paper in shadow instead of a grey wash. */
@@ -136,6 +151,11 @@
   --surface:  #28231e;
   --border:   #3d3530;
   --code-bg:  #23201c;
+
+  /* Lifted note paper: holds --text at 4.6:1 (AA) and --text-h at 11.4:1. */
+  --paper:      #312a24;
+  --paper-edge: #4a3f36;
+  --tint-strength: 78%;
 
   --text-h: #f0e6d3;
   --text:   #a89070;

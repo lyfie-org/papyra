@@ -7,6 +7,7 @@ import { useAuth } from '../hooks/useAuth';
 import { useTags } from '../hooks/useTags';
 import { useCollections } from '../hooks/useCollections';
 import { flattenMarkdown, normaliseLines } from '../lib/plainText';
+import { highlightParts } from '../lib/highlight';
 import {
   GROUP_LABEL, tagResults, collectionResults, noteResult, orderResults, settingsResults,
   type SearchResult,
@@ -22,6 +23,17 @@ interface Hit {
 }
 
 const DEBOUNCE_MS = 180;
+
+// The query's matches in a hit's title/snippet, marked so it's clear why the
+// hit showed up. Text only — never rendered as HTML.
+function Highlighted({ text, query }: { text: string; query: string }) {
+  return (
+    <>
+      {highlightParts(text, query).map((p, i) =>
+        p.match ? <mark key={i} className="search__match">{p.text}</mark> : p.text)}
+    </>
+  );
+}
 const OFFLINE_SNIPPET = 120;
 
 // Local fallback used when the Lucene endpoint can't be reached (offline, or the
@@ -248,10 +260,10 @@ export default function SearchBar() {
                 onClick={() => openHit(hit)}
               >
                 <span className="search__hit-crumb">{hit.breadcrumb.join(' › ')}</span>
-                <span className="search__hit-title">{hit.title}</span>
+                <span className="search__hit-title"><Highlighted text={hit.title} query={query} /></span>
                 {hit.secure
                   ? <span className="search__hit-snippet search__hit-snippet--locked">Locked note</span>
-                  : hit.snippet && <span className="search__hit-snippet">{hit.snippet.replace(/<\/?[^>]+>/g, '')}</span>}
+                  : hit.snippet && <span className="search__hit-snippet"><Highlighted text={hit.snippet} query={query} /></span>}
               </button>
             </li>
           ))}

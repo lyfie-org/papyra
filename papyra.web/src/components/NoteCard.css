@@ -10,8 +10,8 @@
   flex-direction: column;
   gap: var(--space-2);
   padding: var(--space-4);
-  background: var(--surface);
-  border: 1px solid var(--border);
+  background: var(--paper);
+  border: 1px solid var(--paper-edge);
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-card);
   cursor: pointer;
@@ -42,9 +42,11 @@
   .note-card, .note-card:hover, .note-card:active { transform: none; }
 }
 
-/* Light mode: pastel tint at full strength with dark ink. */
+/* Pastel tint (full strength in light, muted by --tint-strength in dark) with
+   dark ink. NoteEditor paints its sheet the same way so opening a note never
+   shifts its colour. */
 .note-card--colored {
-  background: var(--note-tint);
+  background: color-mix(in srgb, var(--note-tint) var(--tint-strength), var(--surface));
 }
 .note-card--colored .note-card__title {
   color: var(--tint-ink);
@@ -57,11 +59,8 @@
   color: var(--tint-ink);
 }
 
-/* Dark mode: keep the tint a bright pastel and pin dark ink for contrast (the
+/* Dark mode: the muted tint is still a light pastel, so pin dark ink for contrast (the
    tints are always light, so dark ink reads far better than the theme's tan). */
-[data-theme='dark'] .note-card--colored {
-  background: color-mix(in srgb, var(--note-tint) 78%, var(--surface));
-}
 [data-theme='dark'] .note-card--colored .note-card__title {
   color: var(--tint-ink);
 }

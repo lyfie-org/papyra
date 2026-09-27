@@ -536,11 +536,12 @@ export default function NoteEditor({ note }: { note: Note }) {
   // coloured note repaints without rebuilding the editor (and losing the caret).
   const colored = !!note.color;
   const editorTheme = colored ? 'light' : theme;
-  // `--note-tint` lets chrome inside the sheet (the editor's floating toolbar)
-  // derive a solid colour from the tint — the editor surface itself is
-  // transparent on a coloured note so the paper shows through.
+  // `--note-tint` paints the sheet (CSS mixes it by --tint-strength, exactly as
+  // the card does) and lets chrome inside it (the floating toolbar) derive a
+  // solid colour — the editor surface itself is transparent on a coloured note
+  // so the paper shows through.
   const style = note.color
-    ? ({ background: note.color, '--note-tint': note.color } as CSSProperties)
+    ? ({ '--note-tint': note.color } as CSSProperties)
     : undefined;
 
   return (

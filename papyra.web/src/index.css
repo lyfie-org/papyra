@@ -116,3 +116,51 @@ textarea {
      pastel tint. The light theme's deep green holds AA on every tint. */
   --papyra-accent-text:   #205c38;
 }
+
+/* ── Scrollbars ────────────────────────────────────────────────────────────────
+   A slim, rounded ink pill on a bare track — a pencil line in the margin rather
+   than OS chrome. Colours come from --scroll-* (mixed from --text), so every
+   theme and every scroller (page, sheet, menus, panels) matches.
+   Chromium/Safari get the shaped ::-webkit-scrollbar pill (the transparent
+   border insets it from the edge); Firefox, which lacks those, gets the
+   standard thin + coloured scrollbar. Chromium 121+ drops the webkit pseudo-
+   elements once `scrollbar-color` is set, hence the @supports split. */
+@supports not selector(::-webkit-scrollbar) {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--scroll-thumb) var(--scroll-track);
+  }
+}
+::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
+  background: var(--scroll-track);
+}
+::-webkit-scrollbar-thumb {
+  min-height: 40px;
+  border: 4px solid transparent;
+  border-radius: 999px;
+  background: var(--scroll-thumb) padding-box;
+  transition: background-color var(--dur-fast) var(--ease);
+}
+::-webkit-scrollbar-thumb:hover {
+  border-width: 3px;
+  background-color: var(--scroll-thumb-hover);
+}
+::-webkit-scrollbar-thumb:active {
+  background-color: var(--scroll-thumb-hover);
+}
+::-webkit-scrollbar-button { display: none; }
+
+/* A coloured note is a light pastel in both themes: ink the thumb with the dark
+   tint ink so it reads on the paper instead of the theme's tan. */
+.note-editor--colored,
+.note-card--colored {
+  --scroll-thumb:       color-mix(in srgb, var(--tint-ink) 28%, transparent);
+  --scroll-thumb-hover: color-mix(in srgb, var(--tint-ink) 50%, transparent);
+}
+/* Keep the pill clear of the sheet's rounded corners. */
+.note-editor::-webkit-scrollbar-track { margin-block: var(--radius-lg); }
