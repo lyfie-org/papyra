@@ -267,6 +267,10 @@ export const SEED_INBOX: InboxEntry[] = [
     title: 'Support volume by tier',
     text: 'Team accounts open about a third of the tickets and are a fifth of the seats. Worth a line in the review.',
     readUtc: null,
+    available: true,
+    shareId: null,
+    access: null,
+    requestPending: false,
   },
 ];
 

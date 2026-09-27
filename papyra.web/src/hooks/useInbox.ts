@@ -1,8 +1,9 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useAccessRequests } from './useShares';
 
-// One block another user pinged you with. `text` is null when the source note
-// has since been deleted or locked — the grant is block-scoped, so there is
-// nothing else to fall back to and the entry says so plainly.
+// Someone mentioned you in one of their notes. Access is the whole note or
+// nothing: `text`/`title` are filled only when the note is shared with you
+// (`shareId`); otherwise the entry says who and when, and offers to ask.
 export interface InboxEntry {
   id: number;
   noteId: string;
@@ -13,6 +14,13 @@ export interface InboxEntry {
   text: string | null;
   /** Null until the recipient has opened their inbox. Drives the sidebar badge. */
   readUtc: string | null;
+  /** False once the note is deleted, trashed or locked. */
+  available: boolean;
+  /** The share that lets you open the note, when there is one. */
+  shareId: number | null;
+  access: 'view' | 'edit' | null;
+  /** You asked the author for access and they haven't answered yet. */
+  requestPending: boolean;
 }
 
 export const INBOX_KEY = ['inbox'] as const;
@@ -27,10 +35,14 @@ export function useInbox() {
   return useQuery({ queryKey: INBOX_KEY, queryFn: fetchInbox });
 }
 
-/** Count of entries the recipient hasn't looked at yet — the sidebar badge. */
+/**
+ * The sidebar badge: mentions not yet looked at, plus access requests waiting
+ * on a decision — both are things only the inbox can clear.
+ */
 export function useUnreadInboxCount(): number {
   const { data } = useInbox();
-  return (data ?? []).filter((e) => !e.readUtc).length;
+  const { data: requests } = useAccessRequests();
+  return (data ?? []).filter((e) => !e.readUtc).length + (requests?.length ?? 0);
 }
 
 /**

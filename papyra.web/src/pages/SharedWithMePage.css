@@ -1,26 +1,129 @@
-.shared-with { padding: var(--space-2) var(--space-1) var(--space-12); }
-.shared-with__status { margin: 24px 0; color: var(--text); }
+.shared-with { position: relative; }
 
+.shared-with__head { margin-bottom: var(--space-6); }
+.shared-with__lede {
+  max-width: 60ch;
+  margin: var(--space-2) 0 0;
+  font: 400 var(--fs-sm) / 1.6 var(--sans);
+  color: var(--text);
+}
+.shared-with__status { margin: var(--space-6) 0; color: var(--text); font: 400 var(--fs-sm) / 1.5 var(--sans); }
+
+/* Same rhythm as the notes grid, so these read as notes — just someone else's. */
 .shared-with__grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr));
+  align-items: start;
   gap: var(--space-4);
+  margin: 0;
+  padding: 0;
+  list-style: none;
 }
-.shared-with__card {
+.shared-with__grid > li { display: flex; min-width: 0; }
+
+.shared-card {
   display: flex;
   flex-direction: column;
   gap: var(--space-2);
-  padding: var(--space-4) var(--space-4);
-  border: 1px solid var(--border);
+  width: 100%;
+  min-width: 0;
+  min-height: 9rem;
+  padding: var(--space-4);
+  border: 1px solid var(--paper-edge);
   border-radius: var(--radius-md);
-  background: var(--surface);
+  background: var(--paper);
   box-shadow: var(--shadow-card);
+  color: var(--text);
   text-align: left;
+  font: inherit;
   cursor: pointer;
+  transition:
+    box-shadow var(--dur) var(--ease),
+    transform var(--dur) var(--ease),
+    border-color var(--dur) var(--ease);
 }
-.shared-with__card:hover { box-shadow: var(--shadow-card-hover); transform: translateY(-1px); }
-.shared-with__card-title { font-family: var(--heading); font-size: 1.05rem; color: var(--text-h); }
-.shared-with__card-meta { font-family: var(--mono); font-size: 0.72rem; color: var(--text); }
+.shared-card:hover {
+  box-shadow: var(--shadow-card-hover);
+  border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
+  transform: translateY(-2px);
+}
+.shared-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) {
+  .shared-card, .shared-card:hover { transform: none; }
+}
+
+.shared-card--colored {
+  background: color-mix(in srgb, var(--note-tint) var(--tint-strength), var(--surface));
+}
+
+.shared-card__title {
+  font: 400 var(--fs-lg) / 1.25 var(--heading);
+  letter-spacing: -0.005em;
+  color: var(--text-h);
+  overflow-wrap: anywhere;
+}
+
+.shared-card__excerpt {
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+  line-clamp: 4;
+  overflow: hidden;
+  font: 400 var(--fs-sm) / 1.55 var(--sans);
+  color: var(--text);
+  overflow-wrap: anywhere;
+}
+
+/* Pinned to the bottom so a grid of cards lines up along its footers. */
+.shared-card__foot {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2);
+  margin-top: auto;
+  padding-top: var(--space-3);
+  border-top: 1px solid color-mix(in srgb, var(--border) 70%, transparent);
+  min-width: 0;
+}
+
+.shared-card__owner {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  min-width: 0;
+  font: 500 var(--fs-xs) / 1.2 var(--sans);
+  color: var(--text-h);
+}
+.shared-card__owner-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.shared-card__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  flex: none;
+  padding: 2px var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  font: 500 var(--fs-2xs) / 1.4 var(--sans);
+  color: var(--text);
+  white-space: nowrap;
+}
+.shared-card__chip--edit {
+  border-color: var(--accent-border);
+  background: var(--accent-bg);
+  color: var(--accent-text);
+}
+
+.shared-card--colored .shared-card__title,
+.shared-card--colored .shared-card__owner { color: var(--tint-ink); }
+.shared-card--colored .shared-card__excerpt { color: var(--tint-ink-muted); }
+[data-theme='dark'] .shared-card--colored .shared-card__excerpt { color: var(--tint-ink-soft); }
+.shared-card--colored .shared-card__foot { border-top-color: var(--tint-scrim); }
+.shared-card--colored .shared-card__chip {
+  border-color: transparent;
+  background: var(--tint-scrim);
+  color: var(--tint-ink);
+}
 
 .shared-with__modal {
   position: fixed;
@@ -31,14 +134,14 @@
   justify-content: center;
   padding: 4vh 1rem;
   overflow-y: auto;
-  background: rgba(0, 0, 0, 0.45);
+  background: color-mix(in srgb, var(--scrim) 55%, transparent);
   backdrop-filter: blur(2px);
 }
-.shared-with__modal-inner { position: relative; width: 100%; max-width: 820px; }
+.shared-with__modal-inner { position: relative; width: 100%; max-width: 820px; outline: none; }
 .shared-with__close {
   position: absolute;
-  top: -2px;
-  right: -2px;
+  top: var(--space-3);
+  right: var(--space-3);
   z-index: 2;
   display: inline-flex;
   padding: var(--space-2);
@@ -49,3 +152,5 @@
   box-shadow: var(--shadow-card);
   cursor: pointer;
 }
+.shared-with__close:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.shared-with__modal .shared-note__bar { padding-right: 2.75rem; }

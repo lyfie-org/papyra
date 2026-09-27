@@ -15,6 +15,7 @@ import { queryClient } from './lib/queryClient.ts';
 import { ThemeProvider } from './hooks/ThemeProvider.tsx';
 import { ToastProvider } from './components/ToastProvider.tsx';
 import { ConfirmProvider } from './components/ConfirmProvider.tsx';
+import { ShareOfferProvider } from './components/ShareOfferProvider.tsx';
 import './index.css';
 import App from './App.tsx';
 import TopProgressBar from './components/TopProgressBar.tsx';
@@ -56,9 +57,11 @@ createRoot(document.getElementById('root')!).render(
         <TopProgressBar />
         <ToastProvider>
           <ConfirmProvider>
-            <BrowserRouter basename={import.meta.env.BASE_URL}>
-              <App />
-            </BrowserRouter>
+            <ShareOfferProvider>
+              <BrowserRouter basename={import.meta.env.BASE_URL}>
+                <App />
+              </BrowserRouter>
+            </ShareOfferProvider>
           </ConfirmProvider>
         </ToastProvider>
       </ThemeProvider>

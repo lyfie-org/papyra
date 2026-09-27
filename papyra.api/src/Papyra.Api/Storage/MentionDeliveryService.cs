@@ -275,7 +275,7 @@ public sealed partial class MentionDeliveryService : BackgroundService
             recipient.Email,
             $"@{job.OwnerUsername} mentioned you in Papyra",
             $"@{job.OwnerUsername} mentioned you in a note.\n\n"
-            + "Open your Papyra inbox to read the block they tagged you in.",
+            + "Open your Papyra inbox to see it, or to ask for access to the note.",
             ct);
     }
 
@@ -291,15 +291,14 @@ public sealed partial class MentionDeliveryService : BackgroundService
         var path = PathGuard.ResolveAndVerify(notesDir, $"{InboxNoteId}.md");
 
         var existing = File.Exists(path) ? await _storage.ReadAsync(path, ct) : null;
-        // An anchored block gets a live transclusion, so this file keeps showing
-        // whatever the author's note says now. An unanchored one has no address to
-        // transclude, so the line is quoted instead — the reader is entitled to it
-        // (that is what the grant is), and this file is a human-readable mirror
-        // rather than the record of truth. `/api/inbox` still re-reads the author's
-        // note, so the app never shows a line that has since been changed.
+        // An anchored block gets a live transclusion, which resolves only while
+        // the recipient holds a share of the note. An unanchored one has no
+        // address, and its text is NOT copied here: access is the whole note or
+        // nothing, so a mention alone must not leak a line of it into another
+        // vault. `/api/inbox` shows the line once the note is actually shared.
         var reference = blockId is not null
             ? $"![[{job.NoteId}#^{blockId}]]"
-            : $"> {blockText}";
+            : "> (mentioned you in a note)";
         var entry = $"{reference}\n— @{job.OwnerUsername} · {DateTime.UtcNow:yyyy-MM-dd HH:mm} UTC";
 
         var note = existing ?? new Note

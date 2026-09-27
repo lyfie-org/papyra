@@ -748,6 +748,8 @@ const routes: Route[] = [
   // ------------------------------------------------------- the quiet corners
   ['GET', /^\/api\/shares\/summary$/, () => json([])],
   ['GET', /^\/api\/shares\/incoming$/, () => json([])],
+  ['GET', /^\/api\/access-requests\/incoming$/, () => json([])],
+  ['POST', /^\/api\/access-requests/, () => serverOnly('Requesting access')],
   ['DELETE', /^\/api\/shares\//, () => serverOnly('Revoking a share')],
   ['GET', /^\/api\/conflicts$/, () => json([])],
   ['GET', /^\/api\/keys$/, () => json([])],

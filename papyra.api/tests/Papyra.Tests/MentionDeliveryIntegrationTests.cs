@@ -208,8 +208,10 @@ public sealed class MentionDeliveryIntegrationTests : IDisposable
         Assert.Equal(Expect(_beaId, _calId), AllFiles());
 
         var inbox = await File.ReadAllTextAsync(InboxOf(_beaId));
-        Assert.Contains("ask @bea about it", inbox);
-        // The neighbouring list item is not the block bea was named in.
+        Assert.Contains($"@{Owner}", inbox);
+        // Whole note or nothing: without a share, not even the mentioning line
+        // is copied into bea's vault.
+        Assert.DoesNotContain("ask @bea about it", inbox);
         Assert.DoesNotContain("something private", inbox);
     }
 
