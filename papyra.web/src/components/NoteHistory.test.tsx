@@ -43,7 +43,7 @@ function setup(overrides: Partial<Parameters<typeof NoteHistory>[0]> = {}) {
   const onClose = vi.fn();
   let view: HistoryView = 'preview';
   const onViewChange = vi.fn((v: HistoryView) => { view = v; rerender(); });
-  const props = () => ({ noteId: 'n1', live: LIVE, onPreview, onRestore, onClose, view, onViewChange, ...overrides });
+  const props = () => ({ noteId: 'n1', live: LIVE, onPreview, onRestore, onClose, view, onViewChange, diffSlot: document.body, ...overrides });
   const utils = render(<NoteHistory {...props()} />);
   function rerender() { utils.rerender(<NoteHistory {...props()} />); }
   return { onPreview, onRestore, onClose, onViewChange, ...utils };

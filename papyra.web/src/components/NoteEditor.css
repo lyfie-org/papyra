@@ -17,13 +17,20 @@
 @keyframes note-modal-fade { from { opacity: 0; } to { opacity: 1; } }
 
 .note-editor {
-  position: relative; /* offsetParent for the TOC's heading offset measurements */
+  /* The sheet's inner margin. The scroll area pads by it, and the footer,
+     history bar and canvas rule line up with it. */
+  --sheet-pad: var(--space-6);
+  position: relative;
+  display: flex;
+  flex-direction: column;
   width: 100%;
   max-width: 820px;
   margin: 0 auto;
   max-height: 92vh;
-  overflow-y: auto;
-  padding: var(--space-6);
+  /* The sheet itself never scrolls — .note-editor__scroll does. The footer and
+     history bar are its siblings, so their rules span the whole sheet rather
+     than stopping short of the scrollbar. */
+  overflow: hidden;
   border-radius: var(--radius-lg);
   background: var(--paper);
   /* The luthor canvas paints --papyra-surface; keep it on the same paper. */
@@ -34,6 +41,15 @@
   animation: note-editor-rise var(--dur-slow) var(--ease);
   /* A colour pick washes over the sheet instead of snapping. */
   transition: background-color var(--dur-slow) var(--ease-inout);
+}
+
+.note-editor__scroll {
+  position: relative; /* offsetParent for the TOC's heading offset measurements */
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: var(--sheet-pad);
 }
 
 @keyframes note-editor-rise {
@@ -50,23 +66,19 @@
   margin-bottom: var(--space-4);
 }
 
-/* Actions + save state under the body. Sticky, so on a long note they stay at
-   the bottom edge of the sheet instead of scrolling away. Chrome measures the
-   sticky offset from inside the sheet's padding, so the negative bottom (and
-   margins) take it flush to the sheet's edge. `inherit` picks up a
-   coloured note's tint, so the bar never shows a plain strip. */
+/* Actions + save state under the body. A sibling of the scroll area, so on a
+   long note they stay at the bottom edge of the sheet instead of scrolling
+   away, and the rule runs edge to edge (past the scrollbar). */
 .note-editor__footer {
-  position: sticky;
-  bottom: calc(-1 * var(--space-6));
+  position: relative;
   z-index: 3;
+  flex-shrink: 0;
   display: flex;
   align-items: center;
   flex-wrap: wrap;
   gap: var(--space-2) var(--space-4);
-  margin: var(--space-3) calc(-1 * var(--space-6)) calc(-1 * var(--space-6));
-  padding: var(--space-2) var(--space-6);
+  padding: var(--space-2) var(--sheet-pad);
   border-top: 1px solid var(--border);
-  background: inherit;
 }
 .note-editor__footer .note-toolbar { justify-content: flex-start; }
 .note-editor__footer .note-editor__status { margin-left: auto; }
@@ -79,14 +91,10 @@
   left: 0;
 }
 
-/* On a phone the sheet's padding shrinks, and the footer's bleed with it. */
+/* On a phone the sheet's padding shrinks; everything keyed to --sheet-pad
+   (scroll area, footer, history bar, canvas bleed) follows. */
 @media (max-width: 620px) {
-  .note-editor { padding: var(--space-4); }
-  .note-editor__footer {
-    bottom: calc(-1 * var(--space-4));
-    margin: var(--space-3) calc(-1 * var(--space-4)) calc(-1 * var(--space-4));
-    padding: var(--space-2) var(--space-4);
-  }
+  .note-editor { --sheet-pad: var(--space-4); }
   .note-editor__title { font-size: var(--fs-lg); }
   /* Touch: there is no hover, so the toolbar has to be visible by default. */
   .note-toolbar { opacity: 1; }
@@ -156,8 +164,39 @@
 }
 
 .note-editor__canvas {
+  position: relative;
   font-family: var(--sans);
+  /* No boxed input: the canvas bleeds to the sheet's edges and luthor's own
+     content padding takes over the sheet's, so body text lines up with the
+     title. */
+  margin-inline: calc(-1 * var(--sheet-pad));
 }
+.note-editor__canvas .luthor-editor-wrapper {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+}
+.note-editor__canvas .luthor-preset-papyra__content {
+  padding-inline: var(--sheet-pad);
+}
+/* A single rule above the body marks where the writing starts — the footer's
+   line, but ruled across the text column (like a notebook line) rather than
+   edge to edge: it scrolls with the note, and inside the scroll area a full
+   bleed would stop short at the scrollbar. */
+.note-editor__canvas::before {
+  content: '';
+  position: absolute;
+  top: 0;
+  inset-inline: var(--sheet-pad);
+  z-index: 1;
+  border-top: 1px solid var(--border);
+  pointer-events: none;
+}
+.note-editor--colored .note-editor__canvas::before {
+  border-top-color: var(--tint-scrim);
+}
+/* Focus mode is distraction-free: no rule, just the page. */
+.note-editor--focus .note-editor__canvas::before { content: none; }
 
 /* Line spacing. Every Enter makes a new block, and luthor spaces blocks like
    document paragraphs (8px above and below each line, 10px around each list and
@@ -182,12 +221,15 @@
 }
 
 .note-editor--focus {
+  --sheet-pad: clamp(var(--space-4), 6vw, var(--space-12));
   max-width: min(48rem, 92vw);
   max-height: 100vh;
   min-height: 100vh;
   border-radius: 0;
-  padding: var(--space-12) clamp(var(--space-4), 6vw, var(--space-12)) 6rem;
   box-shadow: none;
+}
+.note-editor--focus .note-editor__scroll {
+  padding: var(--space-12) var(--sheet-pad) 6rem;
 }
 
 .note-editor--focus .note-editor__title {
