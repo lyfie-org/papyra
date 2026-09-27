@@ -55,6 +55,16 @@ export function useSignalR(): ServerStatus {
     // Sync conflict copies appear/resolve out of band; refresh the grid banners.
     connection.on('NoteConflict', invalidateConflicts);
     connection.on('ConflictResolved', invalidateConflicts);
+    // Sharing is cross-user: another account shared, upgraded, revoked or
+    // answered a request, or mentioned us. Refresh the surfaces that show it
+    // (rail, Shared with me, inbox) in place rather than on the next reload.
+    connection.on('SharesChanged', () => {
+      void queryClient.invalidateQueries({ queryKey: ['shares', 'incoming'] });
+      void queryClient.invalidateQueries({ queryKey: ['inbox'] });
+    });
+    connection.on('InboxDelivered', () => { void queryClient.invalidateQueries({ queryKey: ['inbox'] }); });
+    connection.on('AccessRequested', () => { void queryClient.invalidateQueries({ queryKey: ['access-requests'] }); });
+
     // Import progress lives in the query cache (not the Settings page) so the bar
     // survives navigating away. A finished import has rewritten drag positions too:
     // refetch them, or the next drag would PUT a stale map over the import's.

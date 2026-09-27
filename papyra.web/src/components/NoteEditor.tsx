@@ -208,7 +208,8 @@ export default function NoteEditor({ note }: { note: Note }) {
 
   // Naming someone in a note offers to share the note with them — see
   // useMentionShare for why it asks rather than acts.
-  const offerMentionShare = useMentionShare(note.id, note.secure);
+  const getTitle = useCallback(() => titleRef.current, []);
+  const offerMentionShare = useMentionShare(note.id, note.secure, getTitle);
   const onSaved = useCallback(
     (priorBody: string, nextBody: string) => { void offerMentionShare(priorBody, nextBody); },
     [offerMentionShare],
