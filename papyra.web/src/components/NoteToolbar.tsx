@@ -1,8 +1,9 @@
-import { useState } from 'react';
+import { useCallback, useRef, useState } from 'react';
 import { Pin, Palette, History, Archive, Trash2, Maximize2, Lock, LockOpen, Share2, Type } from 'lucide-react';
 import PalettePicker from './PalettePicker';
 import './NoteToolbar.css';
 import { useSyncState } from '../hooks/useSync';
+import { useDismiss } from '../hooks/useDismiss';
 
 // Frontmatter-action rail for the open note: Pin/Palette write into YAML, Trash
 // deletes the .md. Fades in on editor hover (see NoteToolbar.css). Presentational
@@ -52,6 +53,10 @@ export default function NoteToolbar({
 }: Props) {
   const { online } = useSyncState();
   const [paletteOpen, setPaletteOpen] = useState(false);
+  // The swatches close on a click anywhere else, or Escape — like every popover.
+  const paletteRef = useRef<HTMLDivElement>(null);
+  const closePalette = useCallback(() => setPaletteOpen(false), []);
+  useDismiss(paletteRef, paletteOpen, closePalette);
 
   return (
     <div className="note-toolbar">
@@ -79,7 +84,7 @@ export default function NoteToolbar({
         <Pin size={18} fill={pinned ? 'currentColor' : 'none'} />
       </button>
 
-      <div className="note-toolbar__palette-wrap">
+      <div className="note-toolbar__palette-wrap" ref={paletteRef}>
         <button
           type="button"
           className="note-toolbar__btn"

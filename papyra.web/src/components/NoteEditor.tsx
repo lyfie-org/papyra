@@ -9,6 +9,8 @@ import type { Note } from '../types/note';
 import { useAutoSave, type Draft } from '../hooks/useAutoSave';
 import { useTheme } from '../hooks/useTheme';
 import { createPapyraEditorAdapter } from '../lib/papyraEditorAdapter';
+import { tintInkClass } from '../lib/noteColors';
+import { PAPYRA_TOOLBAR_LAYOUT, createToolbarItems } from '../lib/editorToolbar';
 import { putNote } from '../lib/notesApi';
 import { patchNoteInCache } from '../lib/notesCache';
 import { vaultFetch } from '../lib/vault';
@@ -124,10 +126,20 @@ export default function NoteEditor({ note }: { note: Note }) {
   // wikilink activation → router push. Rebuilt only when the open note or the
   // injected services change. The editor owns the drop/paste upload pipeline
   // through adapter.uploadMedia, so Papyra no longer hand-splices ![[…]].
+  // Papyra's own toolbar items (icons, grouping and inserts are ours; luthor
+  // supplies the controls). Upload failures surface as a toast.
+  const toolbarItems = useMemo(() => createToolbarItems((message) => toast(message)), [toast]);
   const adapter = useMemo(
     () => createPapyraEditorAdapter({ noteId: note.id, navigate, queryClient, onUnresolvedLink }),
     [note.id, navigate, queryClient, onUnresolvedLink],
   );
+  // luthor's own image paths (the /image slash command) otherwise fall back to
+  // a blob: URL, which dies on reload. Store the file like any other upload and
+  // point the image at the media route.
+  const imageUploadHandler = useCallback(async (file: File) => {
+    const { filename } = await adapter.uploadMedia(file);
+    return adapter.resolveMediaUrl(filename);
+  }, [adapter]);
   const [title, setTitle] = useState(note.title);
   // Mirror the title in a ref so the debounced save reads the live value, not a
   // value captured in the closure of the render that scheduled it.
@@ -583,7 +595,7 @@ export default function NoteEditor({ note }: { note: Note }) {
     >
     <section
       ref={sheetRef}
-      className={`note-editor${colored ? ' note-editor--colored' : ''}${focus ? ' note-editor--focus' : ''}${history ? ` note-editor--history note-editor--history-${historyView}` : ''}`}
+      className={`note-editor${colored ? ` note-editor--colored${tintInkClass(note.color, theme)}` : ''}${focus ? ' note-editor--focus' : ''}${history ? ` note-editor--history note-editor--history-${historyView}` : ''}`}
       style={style}
       role="dialog"
       aria-modal="true"
@@ -679,6 +691,9 @@ export default function NoteEditor({ note }: { note: Note }) {
           // old version (the canvas is read-only then).
           toolbar={toolbarShown && !focus && !history}
           toolbarAlignment="center"
+          toolbarLayout={PAPYRA_TOOLBAR_LAYOUT}
+          toolbarItems={toolbarItems}
+          imageUploadHandler={imageUploadHandler}
           defaultEditorView="visual"
           // Anchors are assigned by getSaveDraft at save time, never on commit.
           blockAnchors="on-demand"

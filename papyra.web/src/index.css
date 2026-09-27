@@ -110,11 +110,22 @@ textarea {
   color: var(--selection-link);
 }
 .note-editor--colored,
-.note-card--colored {
-  --caret: var(--tint-caret);
+.note-card--colored,
+.shared-note--colored {
+  --caret: var(--tint-ink);
   --selection-bg: var(--tint-selection-bg);
   --selection-link: var(--tint-selection-link);
 }
+/* Text I-beam, after macOS: a black beam with a white halo, so the pointer reads
+   on any background — pale pastels, dark custom note colours, the dark theme —
+   where the system beam can wash out. Hotspot at its centre; falls back to the
+   system `text` cursor. */
+:where([contenteditable]:not([contenteditable='false']), textarea,
+  input:not([type]), input[type='text'], input[type='search'], input[type='email'],
+  input[type='url'], input[type='password'], input[type='number'], input[type='tel']) {
+  cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='24' viewBox='0 0 16 24'%3E%3Cg fill='none' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 3.5h2.2c.5 0 .8.3.8.8v15.4c0 .5-.3.8-.8.8H5M11 3.5H8.8c-.5 0-.8.3-.8.8v15.4c0 .5.3.8.8.8H11M6 12h4' stroke='white' stroke-width='3'/%3E%3Cpath d='M5 3.5h2.2c.5 0 .8.3.8.8v15.4c0 .5-.3.8-.8.8H5M11 3.5H8.8c-.5 0-.8.3-.8.8v15.4c0 .5.3.8.8.8H11M6 12h4' stroke='black' stroke-width='1.2'/%3E%3C/g%3E%3C/svg%3E") 8 12, text;
+}
+
 /* luthor paints its own selection from --papyra-selection-bg; declared on the
    editor element so it picks up the coloured-note override above. */
 .luthor-preset-papyra {
@@ -135,19 +146,28 @@ b,
 }
 
 /* Colored notes light-lock the editor (the host paints the tint). Make the
-   editor surface transparent so the note tint shows through, and pin dark ink
-   for contrast — mirrors the NoteCard/NoteEditor colored convention. */
+   editor surface transparent so the note tint shows through, and ink it with
+   the note's --tint-ink (dark on a light colour, light on a dark one). */
 .luthor-preset-papyra--colored {
   --papyra-surface:       transparent;
-  --papyra-surface-muted: rgba(61, 44, 30, 0.06);
-  --papyra-text:          #3d2c1e;
-  --papyra-text-muted:    #5c4636;
-  --papyra-text-heading:  #3d2c1e;
-  --papyra-border:        rgba(61, 44, 30, 0.18);
-  --papyra-code-surface:  rgba(61, 44, 30, 0.06);
+  --papyra-surface-muted: color-mix(in srgb, var(--tint-ink) 6%, transparent);
+  --papyra-text:          var(--tint-ink);
+  --papyra-text-muted:    var(--tint-ink-muted);
+  --papyra-text-heading:  var(--tint-ink);
+  --papyra-border:        color-mix(in srgb, var(--tint-ink) 18%, transparent);
+  --papyra-code-surface:  color-mix(in srgb, var(--tint-ink) 6%, transparent);
   /* Links too: dark mode's accent text is a pale sage that sank to ~2:1 on a
      pastel tint; --tint-link holds AA on every tint in both themes. */
   --papyra-accent-text:   var(--tint-link);
+  /* Formatting toolbar on the tint: an active control is a wash of the note's
+     own ink, never the sage accent (which could sit on a sage note). */
+  --papyra-toolbar-hover-surface:  color-mix(in srgb, var(--tint-ink) 8%, transparent);
+  --papyra-toolbar-active-surface: color-mix(in srgb, var(--tint-ink) 14%, transparent);
+  --papyra-toolbar-active-text:    var(--tint-ink);
+  /* Floating chrome (selection toolbar, dialogs — which now portal out of the
+     sheet, so class-scoped overrides can't reach them) sits on the tint lifted
+     toward its lift colour, opaque over the text. */
+  --papyra-floating-surface: color-mix(in srgb, var(--note-tint) 55%, var(--tint-lift));
 }
 
 /* ── Scrollbars ────────────────────────────────────────────────────────────────
@@ -197,3 +217,14 @@ b,
 }
 /* Keep the pill clear of the sheet's rounded top corners and off the footer. */
 .note-editor__scroll::-webkit-scrollbar-track { margin-block: var(--radius-lg) var(--space-2); }
+
+/* The portalled dialog carries the editor's ink (--luthor-fg — dark on a tinted
+   note, whatever the app theme). Papyra's app-wide form colours would otherwise
+   paint its fields and Cancel in the theme's tan: 2.6:1 on a tint in dark mode. */
+.luthor-dialog-overlay--portal :is(input, textarea, select, .luthor-button-secondary) {
+  color: var(--luthor-fg);
+}
+.luthor-dialog-overlay--portal :is(input, textarea)::placeholder {
+  color: var(--luthor-muted-fg, var(--luthor-fg));
+  opacity: 0.8;
+}

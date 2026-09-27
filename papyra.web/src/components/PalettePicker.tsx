@@ -1,4 +1,4 @@
-import { NOTE_SWATCHES as SWATCHES } from '../lib/noteColors';
+import { NOTE_SWATCHES as SWATCHES, sameColour } from '../lib/noteColors';
 import './PalettePicker.css';
 
 export default function PalettePicker({
@@ -11,7 +11,8 @@ export default function PalettePicker({
   return (
     <div className="palette-picker" role="menu" aria-label="Note color">
       {SWATCHES.map((s) => {
-        const isActive = (active ?? null) === s.value;
+        // A note on a previous palette's value shows its swatch as picked.
+        const isActive = s.value === null ? !active : sameColour(active, s.value);
         const noneClass = s.value === null ? ' palette-picker__swatch--none' : '';
         return (
           <button

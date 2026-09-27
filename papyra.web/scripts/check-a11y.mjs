@@ -59,7 +59,23 @@ function startServer() {
 const openNote = async (page, id) => {
   await page.goto(`${ORIGIN}/demo/note/${id}`);
   await page.locator('.luthor-content-editable').waitFor();
+  // The demo's "this is a demo" banner sits over the note's footer.
+  await page.getByRole('button', { name: 'Hide the demo notice' }).click({ timeout: 2000 }).catch(() => {});
   await page.waitForTimeout(400); // entrance animation
+};
+
+// Set a note's YAML colour through the demo's own API, then reload the grid.
+const recolour = async (page, id, color) => {
+  await page.goto(`${ORIGIN}/demo/`);
+  await page.locator('.note-card').first().waitFor();
+  await page.evaluate(async ({ id, color }) => {
+    const note = await (await fetch(`/api/notes/${id}`)).json();
+    await fetch(`/api/notes/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ ...note, color }),
+    });
+  }, { id, color });
 };
 
 const FLOWS = [
@@ -101,21 +117,43 @@ const FLOWS = [
     await openNote(page, 'welcome');
     await page.locator('.luthor-toolbar').waitFor();
   } },
-  { name: 'embed menu open', toolbar: true, run: async (page) => {
+  // `color:` is free YAML, so a note can be any colour — not just the pastels.
+  { name: 'dark custom-colour note + toolbar', toolbar: true, run: async (page) => {
+    await recolour(page, 'quarterly-review', '#1f2a44');
+    await openNote(page, 'quarterly-review');
+    await page.locator('.luthor-toolbar').waitFor();
+  } },
+  { name: 'mid-tone custom-colour note + toolbar', toolbar: true, run: async (page) => {
+    await recolour(page, 'quarterly-review', '#8a8f98');
+    await openNote(page, 'quarterly-review');
+    await page.locator('.luthor-toolbar').waitFor();
+  } },
+  { name: 'insert menu open', toolbar: true, run: async (page) => {
     await openNote(page, 'welcome');
-    await page.getByRole('button', { name: 'Embed' }).click();
+    await page.getByRole('button', { name: 'Insert', exact: true }).click();
     await page.getByRole('button', { name: 'YouTube video' }).waitFor();
+  } },
+  { name: 'text-style group open', toolbar: true, run: async (page) => {
+    await openNote(page, 'welcome');
+    await page.getByRole('button', { name: 'Text style' }).click();
+    await page.locator('.luthor-toolbar-group-menu').waitFor();
   } },
   { name: 'embed dialog open', toolbar: true, run: async (page) => {
     await openNote(page, 'welcome');
-    await page.getByRole('button', { name: 'Embed' }).click();
+    await page.getByRole('button', { name: 'Insert', exact: true }).click();
     await page.getByRole('button', { name: 'YouTube video' }).click();
     await page.getByLabel('Video link').waitFor();
   } },
   { name: 'table dialog open', toolbar: true, run: async (page) => {
     await openNote(page, 'quarterly-review');
+    await page.getByRole('button', { name: /^Blocks/ }).click();
     await page.getByRole('button', { name: 'Insert Table' }).click();
     await page.getByText('Rows:').waitFor();
+  } },
+  { name: 'colour picker open', run: async (page) => {
+    await openNote(page, 'welcome');
+    await page.getByRole('button', { name: 'Change color' }).click();
+    await page.locator('.palette-picker').waitFor();
   } },
 ];
 
@@ -241,6 +279,8 @@ try {
             failures.push(`${label}: ${v.id} (${v.impact}) — ${v.help} → ${where}`);
           }
           if (flow.name.endsWith('+ toolbar')) {
+            // Axe would also have flagged the page's text; this adds the caret
+            // and ::selection, which it cannot see.
             await checkCaretAndSelection(page, failures, label);
           }
         } catch (err) {

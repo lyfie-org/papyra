@@ -196,7 +196,7 @@
 }
 
 .note-card--colored .todo-card__add-input {
-  background: color-mix(in srgb, #fff 55%, transparent);
+  background: color-mix(in srgb, var(--tint-lift) 55%, transparent);
   border-color: var(--tint-scrim);
 }
 

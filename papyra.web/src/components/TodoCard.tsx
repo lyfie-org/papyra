@@ -5,6 +5,8 @@ import { Plus } from 'lucide-react';
 import type { Note } from '../types/note';
 import { putNote } from '../lib/notesApi';
 import { InlineMarkdown } from './MarkdownPreview';
+import { tintInkClass } from '../lib/noteColors';
+import { useResolvedTheme } from '../hooks/useTheme';
 
 // Matches a markdown task line: leading bullet, [ ] or [x], then the label.
 const CHECK = /^(\s*[-*+]\s+)\[([ xX])\]\s?(.*)$/;
@@ -35,7 +37,8 @@ function TodoCard({ note }: { note: Note }) {
 
   const title = note.title.trim() || 'Untitled';
   const style = note.color ? ({ '--note-tint': note.color } as CSSProperties) : undefined;
-  const className = `note-card todo-card${note.color ? ' note-card--colored' : ''}`;
+  const theme = useResolvedTheme();
+  const className = `note-card todo-card${note.color ? ` note-card--colored${tintInkClass(note.color, theme)}` : ''}`;
 
   async function putBody(body: string) {
     // Ticking a checkbox is the most likely thing to happen away from a network

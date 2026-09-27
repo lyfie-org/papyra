@@ -164,7 +164,7 @@
    buttons floating bare over the text. Give it solid paper: the tint lifted
    toward white, so it reads as part of this note but sits clearly above it. */
 .note-editor--colored .luthor-floating-toolbar {
-  background-color: color-mix(in srgb, var(--note-tint) 55%, #fff);
+  background-color: color-mix(in srgb, var(--note-tint) 55%, var(--tint-lift));
 }
 /* Same for every overlay the editor opens over the text: the formatting
    toolbar's menus and dialogs, and the /, @, [[ and emoji menus. They read the
@@ -179,7 +179,7 @@
   .luthor-emoji-menu,
   .luthor-command-palette
 ) {
-  background-color: color-mix(in srgb, var(--note-tint) 55%, #fff);
+  background-color: color-mix(in srgb, var(--note-tint) 55%, var(--tint-lift));
 }
 
 .note-editor__canvas {
@@ -257,25 +257,7 @@
   .note-editor__canvas .luthor-toolbar-section { flex-shrink: 0; }
 }
 
-/* Dialog confirm buttons: luthor inks them with the editor surface (transparent
-   on a coloured note, so the label vanished) and hovers to slate. Papyra's
-   accent pair instead — AA in both themes. */
-.note-editor .luthor-button-primary {
-  color: var(--accent-fg);
-}
-.note-editor .luthor-button-primary:not(:disabled):hover {
-  background-color: var(--accent-hover);
-  border-color: var(--accent-hover);
-}
 
-/* luthor's dialogs (insert table, embed a link) are absolutely positioned
-   against their nearest positioned ancestor — which the sticky toolbar now is,
-   so they were squeezed into the toolbar's own band. Fix them to the screen
-   instead; the note modal already covers it. */
-.note-editor__canvas .luthor-dialog-overlay {
-  position: fixed;
-  inset: 0;
-}
 
 /* Line spacing. Every Enter makes a new block, and luthor spaces blocks like
    document paragraphs (8px above and below each line, 10px around each list and
@@ -497,7 +479,7 @@
 
 /* A tinted note light-locks its ink, so the borrowed block follows suit. */
 .note-editor--colored .luthor-transclusion {
-  background: color-mix(in srgb, #fff 45%, transparent);
+  background: color-mix(in srgb, var(--tint-lift) 45%, transparent);
   border-color: var(--tint-scrim);
   border-left-color: var(--tint-ink-muted);
   color: var(--tint-ink);

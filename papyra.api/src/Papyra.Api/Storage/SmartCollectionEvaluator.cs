@@ -23,7 +23,9 @@ public static class SmartCollectionEvaluator
             return (c.Field ?? string.Empty).ToLowerInvariant() switch
             {
                 "tag" or "tags" => note.Tags.Any(t => string.Equals(t, value, StringComparison.OrdinalIgnoreCase)),
-                "color" => string.Equals(note.Color ?? string.Empty, value, StringComparison.OrdinalIgnoreCase),
+                // Palette-aware: a note still carrying a previous palette's value
+                // matches the swatch that replaced it.
+                "color" => NotePalette.Same(note.Color, value),
                 "pinned" => note.Pinned == value.Equals("true", StringComparison.OrdinalIgnoreCase),
                 "kind" => string.Equals(note.Kind, value, StringComparison.OrdinalIgnoreCase),
                 "text" => (note.Title ?? string.Empty).Contains(value, StringComparison.OrdinalIgnoreCase)

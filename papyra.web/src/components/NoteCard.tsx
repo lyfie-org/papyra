@@ -16,6 +16,8 @@ import ConfirmDialog from './ConfirmDialog';
 import { useToast } from '../lib/toastContext';
 import MarkdownPreview from './MarkdownPreview';
 import { patchNoteInCache } from '../lib/notesCache';
+import { tintInkClass } from '../lib/noteColors';
+import { useResolvedTheme } from '../hooks/useTheme';
 import './NoteCard.css';
 
 
@@ -59,7 +61,8 @@ function NoteCard({ note, variant = 'active', conflictId, conflictCount, onResol
   // YAML `color` drives the card surface via a CSS var so the stylesheet can dim
   // the (always-light) pastel toward surface in dark mode instead of glaring.
   const style = note.color ? ({ '--note-tint': note.color } as CSSProperties) : undefined;
-  const className = `note-card${note.color ? ' note-card--colored' : ''}`;
+  const theme = useResolvedTheme();
+  const className = `note-card${note.color ? ` note-card--colored${tintInkClass(note.color, theme)}` : ''}`;
 
   useEffect(() => {
     if (!menuOpen) return;

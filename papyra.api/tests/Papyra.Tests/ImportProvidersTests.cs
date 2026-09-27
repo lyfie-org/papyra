@@ -190,7 +190,7 @@ public sealed class ImportProvidersTests
             Assert.Equal(1, first.GetProperty("imported").GetInt32());
 
             var note = Assert.Single(await client.GetFromJsonAsync<List<Note>>("/api/notes") ?? []);
-            Assert.Equal("#ecd9da", note.Color); // Keep RED → Rose swatch
+            Assert.Equal(Papyra.Api.Storage.NotePalette.Rose, note.Color); // Keep RED → Rose swatch
             Assert.True(note.Archived);
             Assert.Contains("[Example](https://example.com)", note.Body);
             // Last-modified is Keep's edit time, not the moment of import.
@@ -214,7 +214,7 @@ public sealed class ImportProvidersTests
             var updated = Assert.Single(await client.GetFromJsonAsync<List<Note>>("/api/notes") ?? []);
             Assert.Equal(note.Id, updated.Id);
             Assert.StartsWith("hello again", updated.Body);
-            Assert.Equal("#d8e3ea", updated.Color);
+            Assert.Equal(Papyra.Api.Storage.NotePalette.Sky, updated.Color);
             Assert.Equal(DateTime.UnixEpoch.AddSeconds(1720000000), updated.Updated.ToUniversalTime(), TimeSpan.FromSeconds(1));
         }
         finally
@@ -278,7 +278,7 @@ public sealed class ImportProvidersTests
     public void KeepColours_FoldOntoThePalette()
     {
         Assert.Null(Papyra.Api.Storage.ImportService.MapKeepColor("DEFAULT"));
-        Assert.Equal("#e2dcec", Papyra.Api.Storage.ImportService.MapKeepColor("PURPLE"));
+        Assert.Equal(Papyra.Api.Storage.NotePalette.Lilac, Papyra.Api.Storage.ImportService.MapKeepColor("PURPLE"));
         Assert.Null(Papyra.Api.Storage.ImportService.MapKeepColor("NEON"));
     }
 

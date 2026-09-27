@@ -24,3 +24,12 @@ export function useTheme() {
   if (!ctx) throw new Error('useTheme must be used within ThemeProvider');
   return ctx;
 }
+
+/**
+ * The resolved light/dark theme, for leaf components that only read it (cards
+ * picking their ink). Outside a provider — a component test — it is 'light'
+ * rather than an error.
+ */
+export function useResolvedTheme(): Theme {
+  return useContext(ThemeContext)?.theme ?? 'light';
+}
