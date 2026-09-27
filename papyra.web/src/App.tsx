@@ -20,7 +20,6 @@ import { useAuth } from './hooks/useAuth';
 import { clearSessionData } from './lib/session';
 import { FocusProvider } from './hooks/FocusProvider';
 import './App.css';
-import InboxPage from './pages/InboxPage';
 import { backgroundPage } from './lib/noteLink';
 import { RealLocationContext } from './lib/realLocation';
 import LoadingBar from './components/LoadingBar';
@@ -99,7 +98,8 @@ export default function App() {
       <Route element={<RequireAuth />}>
         <Route path="/" element={<NotesPage />} />
         <Route path="todo" element={<TodoPage />} />
-        <Route path="inbox" element={<InboxPage />} />
+        {/* The inbox became the bell in the top bar; old links open it. */}
+        <Route path="inbox" element={<Navigate to="/?notifications=1" replace />} />
         {/* Tags now live on the Collections page. */}
         <Route path="categories" element={<Navigate to="/collections" replace />} />
         <Route path="collections" element={<CollectionsPage />} />

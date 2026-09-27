@@ -1268,7 +1268,7 @@ function NotificationsTab() {
       <h2 id="email-notifications" className="settings__subhead">Email notifications</h2>
       <p className="settings__hint">
         Papyra emails you when something needs your attention. These are courtesy copies —
-        your in-app Inbox always receives everything regardless of what you choose here.
+        the in-app notifications tray always receives everything regardless of what you choose here.
       </p>
 
       {!data?.emailConfigured && (

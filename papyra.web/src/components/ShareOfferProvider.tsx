@@ -50,9 +50,17 @@ function ShareOfferDialog({ offer, onAnswer }: { offer: ShareOffer; onAnswer: (a
   const [access, setAccess] = useState<'view' | 'edit'>('edit');
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onAnswer(null); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    // Capture phase, and the event stops here: this dialog owns Escape while
+    // it is open. Listening in the bubble phase let the note underneath (whose
+    // own Escape handler was registered first) close as well.
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      onAnswer(null);
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
   }, [onAnswer]);
 
   // Sharing is the expected answer to "you mentioned someone who can't see

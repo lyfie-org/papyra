@@ -37,9 +37,17 @@ export default function ConfirmDialog({
   const confirmRef = useRef<HTMLButtonElement | null>(null);
 
   useEffect(() => {
-    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onCancel(); };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    // Capture phase, and the event stops here: this dialog owns Escape while
+    // it is open. Listening in the bubble phase let the note underneath (whose
+    // own Escape handler was registered first) close as well.
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key !== 'Escape') return;
+      e.preventDefault();
+      e.stopImmediatePropagation();
+      onCancel();
+    };
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
   }, [onCancel]);
 
   // Focus Cancel, not Confirm: a stray Enter should not destroy anything.

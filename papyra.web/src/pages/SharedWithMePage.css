@@ -9,72 +9,6 @@
 }
 .shared-with__status { margin: var(--space-6) 0; color: var(--text); font: 400 var(--fs-sm) / 1.5 var(--sans); }
 
-/* Same rhythm as the notes grid, so these read as notes — just someone else's. */
-.shared-with__grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(min(100%, 240px), 1fr));
-  align-items: start;
-  gap: var(--space-4);
-  margin: 0;
-  padding: 0;
-  list-style: none;
-}
-.shared-with__grid > li { display: flex; min-width: 0; }
-
-.shared-card {
-  display: flex;
-  flex-direction: column;
-  gap: var(--space-2);
-  width: 100%;
-  min-width: 0;
-  min-height: 9rem;
-  padding: var(--space-4);
-  border: 1px solid var(--paper-edge);
-  border-radius: var(--radius-md);
-  background: var(--paper);
-  box-shadow: var(--shadow-card);
-  color: var(--text);
-  text-align: left;
-  font: inherit;
-  cursor: pointer;
-  transition:
-    box-shadow var(--dur) var(--ease),
-    transform var(--dur) var(--ease),
-    border-color var(--dur) var(--ease);
-}
-.shared-card:hover {
-  box-shadow: var(--shadow-card-hover);
-  border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
-  transform: translateY(-2px);
-}
-.shared-card:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-@media (prefers-reduced-motion: reduce) {
-  .shared-card, .shared-card:hover { transform: none; }
-}
-
-.shared-card--colored {
-  background: color-mix(in srgb, var(--note-tint) var(--tint-strength), var(--surface));
-}
-
-.shared-card__title {
-  font: 400 var(--fs-lg) / 1.25 var(--heading);
-  letter-spacing: -0.005em;
-  color: var(--text-h);
-  overflow-wrap: anywhere;
-}
-
-.shared-card__excerpt {
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 4;
-  line-clamp: 4;
-  overflow: hidden;
-  font: 400 var(--fs-sm) / 1.55 var(--sans);
-  color: var(--text);
-  overflow-wrap: anywhere;
-}
-
-/* Pinned to the bottom so a grid of cards lines up along its footers. */
 .shared-card__foot {
   display: flex;
   align-items: center;
@@ -114,12 +48,10 @@
   color: var(--accent-text);
 }
 
-.shared-card--colored .shared-card__title,
-.shared-card--colored .shared-card__owner { color: var(--tint-ink); }
-.shared-card--colored .shared-card__excerpt { color: var(--tint-ink-muted); }
-[data-theme='dark'] .shared-card--colored .shared-card__excerpt { color: var(--tint-ink-soft); }
-.shared-card--colored .shared-card__foot { border-top-color: var(--tint-scrim); }
-.shared-card--colored .shared-card__chip {
+/* On a tinted card the footer takes the card's ink, like its tags do. */
+.note-card--colored .shared-card__owner { color: var(--tint-ink); }
+.note-card--colored .shared-card__foot { border-top-color: var(--tint-scrim); }
+.note-card--colored .shared-card__chip {
   border-color: transparent;
   background: var(--tint-scrim);
   color: var(--tint-ink);

@@ -728,19 +728,19 @@ const routes: Route[] = [
     },
   ],
 
-  // ----------------------------------------------------------------- inbox
-  ['GET', /^\/api\/inbox$/, () => json(getState().inbox)],
-  ['POST', /^\/api\/inbox\/read$/, () =>
+  // ---------------------------------------------------------- notifications
+  ['GET', /^\/api\/notifications$/, () => json(getState().notifications)],
+  ['POST', /^\/api\/notifications\/read$/, () =>
     mutate((s) => {
-      for (const e of s.inbox) e.readUtc ??= now();
+      for (const n of s.notifications) n.readUtc ??= now();
       return noContent();
     })],
   [
     'DELETE',
-    /^\/api\/inbox\/(\d+)$/,
+    /^\/api\/notifications\/(\d+)$/,
     ({ match }) =>
       mutate((s) => {
-        s.inbox = s.inbox.filter((e) => e.id !== Number(match[1]));
+        s.notifications = s.notifications.filter((n) => n.id !== Number(match[1]));
         return noContent();
       }),
   ],
@@ -748,7 +748,6 @@ const routes: Route[] = [
   // ------------------------------------------------------- the quiet corners
   ['GET', /^\/api\/shares\/summary$/, () => json([])],
   ['GET', /^\/api\/shares\/incoming$/, () => json([])],
-  ['GET', /^\/api\/access-requests\/incoming$/, () => json([])],
   ['POST', /^\/api\/access-requests/, () => serverOnly('Requesting access')],
   ['DELETE', /^\/api\/shares\//, () => serverOnly('Revoking a share')],
   ['GET', /^\/api\/conflicts$/, () => json([])],

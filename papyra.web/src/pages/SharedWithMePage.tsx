@@ -1,6 +1,6 @@
-import { useEffect, useRef, type CSSProperties } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { useSearchParams } from 'react-router-dom';
+import { Link, useSearchParams } from 'react-router-dom';
 import { X, Users, Eye, PencilLine, Clock } from 'lucide-react';
 import { useIncomingShares, useRequestAccess, type IncomingShare } from '../hooks/useShares';
 import { useResolvedTheme } from '../hooks/useTheme';
@@ -9,15 +9,19 @@ import { useToast } from '../lib/toastContext';
 import { tintInkClass } from '../lib/noteColors';
 import SharedNoteView, { type SharedNote } from '../components/SharedNoteView';
 import Avatar from '../components/Avatar';
+import MarkdownPreview from '../components/MarkdownPreview';
+import { columnsFor } from '../lib/noteGridLayout';
+import '../components/NoteCard.css';
+import '../components/NoteGrid.css';
 import EmptyState from '../components/EmptyState';
 import LoadingBar from '../components/LoadingBar';
 import './SharedWithMePage.css';
 
 /**
- * Notes other people have shared with you. Cards read like your own notes —
- * colour, title, the opening lines — with who shared it and what you may do
- * with it along the bottom. `?open=<shareId>` (what the desk's rail links to)
- * opens one straight away.
+ * Notes other people have shared with you. The cards are the notes page's own
+ * cards — same width, same masonry, same colour exactly as the owner set it —
+ * with who shared it and what you may do with it along the bottom.
+ * `?open=<shareId>` (the desk's rail, the bell) opens one straight away.
  */
 export default function SharedWithMePage() {
   const { data: incoming, isLoading } = useIncomingShares();
@@ -53,46 +57,88 @@ export default function SharedWithMePage() {
         />
       )}
 
-      {count > 0 && (
-        <ul className="shared-with__grid">
-          {incoming!.map(s => (
-            <li key={s.shareId}>
-              <SharedCard share={s} onOpen={() => setOpen(s.shareId)} />
-            </li>
-          ))}
-        </ul>
-      )}
+      {count > 0 && <SharedGrid shares={incoming!} />}
 
       {openId != null && <SharedModal shareId={openId} onClose={() => setOpen(null)} />}
     </section>
   );
 }
 
-function SharedCard({ share, onOpen }: { share: IncomingShare; onOpen: () => void }) {
-  const theme = useResolvedTheme();
-  const style = share.color ? ({ '--note-tint': share.color } as CSSProperties) : undefined;
-  const colored = share.color ? ` shared-card--colored${tintInkClass(share.color, theme)}` : '';
-  const title = share.title.trim() || 'Untitled';
+/**
+ * Masonry with the desk's column maths (columnsFor: ~250px columns, 16px gap),
+ * so a shared card is the same width as one of your own at the same window size.
+ */
+function SharedGrid({ shares }: { shares: IncomingShare[] }) {
+  const ref = useRef<HTMLDivElement | null>(null);
+  const [width, setWidth] = useState(0);
+  // Measured before paint (no one-column flash), then kept in step with the
+  // window. ResizeObserver alone waits for a rendering frame, which a
+  // background tab may never give it.
+  useLayoutEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    setWidth(el.clientWidth);
+    const ro = new ResizeObserver(([entry]) => setWidth(entry.contentRect.width));
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, []);
+  // Container width + one column's padding, since .note-grid pulls itself
+  // left by the gap; columnsFor then yields exactly the desk's column width.
+  const { cols } = columnsFor(width);
+  // Round-robin into columns, the same order react-masonry-css uses elsewhere.
+  const columns: IncomingShare[][] = Array.from({ length: cols }, () => []);
+  shares.forEach((s, i) => columns[i % cols].push(s));
 
   return (
-    <button type="button" className={`shared-card${colored}`} style={style} onClick={onOpen}
-      aria-label={`${title}, shared by @${share.owner}, ${share.access === 'edit' ? 'you can edit' : 'view only'}`}>
-      <span className="shared-card__title">{title}</span>
-      {share.excerpt && <span className="shared-card__excerpt">{share.excerpt}</span>}
-      <span className="shared-card__foot">
-        <span className="shared-card__owner">
-          <Avatar username={share.owner} name={share.owner} size={20} />
-          <span className="shared-card__owner-name">@{share.owner}</span>
-        </span>
-        {share.access === 'edit' ? (
-          <span className="shared-card__chip shared-card__chip--edit"><PencilLine size={12} aria-hidden="true" /> Can edit</span>
-        ) : share.requestPending ? (
-          <span className="shared-card__chip"><Clock size={12} aria-hidden="true" /> Edit requested</span>
-        ) : (
-          <span className="shared-card__chip"><Eye size={12} aria-hidden="true" /> View only</span>
-        )}
-      </span>
-    </button>
+    <div ref={ref} className="note-grid-wrap">
+      {width > 0 && (
+        <div className="note-grid">
+          {columns.map((col, i) => (
+            <div key={i} className="note-grid__col" style={{ width: `${100 / cols}%` }}>
+              {col.map(s => <SharedCard key={s.shareId} share={s} />)}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function SharedCard({ share }: { share: IncomingShare }) {
+  const theme = useResolvedTheme();
+  const [params] = useSearchParams();
+  // Same paint as NoteCard: the owner's colour through --note-tint, mixed by
+  // --tint-strength so dark mode mutes it exactly as it does on the desk.
+  const style = share.color ? ({ '--note-tint': share.color } as CSSProperties) : undefined;
+  const className = `note-card shared-card${share.color ? ` note-card--colored${tintInkClass(share.color, theme)}` : ''}`;
+  const title = share.title.trim() || 'Untitled';
+  const next = new URLSearchParams(params);
+  next.set('open', String(share.shareId));
+
+  return (
+    <Link
+      to={{ search: next.toString() }}
+      className="note-card__link"
+      aria-label={`${title}, shared by @${share.owner}, ${share.access === 'edit' ? 'you can edit' : 'view only'}`}
+    >
+      <article className={className} style={style}>
+        <h3 className="note-card__title">{title}</h3>
+        {share.body.trim() && <MarkdownPreview body={share.body} />}
+        <div className="shared-card__foot">
+          <span className="shared-card__owner">
+            <Avatar username={share.owner} name={share.owner} size={20} />
+            <span className="shared-card__owner-name">@{share.owner}</span>
+          </span>
+          {share.access === 'edit' ? (
+            <span className="shared-card__chip shared-card__chip--edit"><PencilLine size={12} aria-hidden="true" /> Can edit</span>
+          ) : share.requestPending ? (
+            <span className="shared-card__chip"><Clock size={12} aria-hidden="true" /> Edit requested</span>
+          ) : (
+            <span className="shared-card__chip"><Eye size={12} aria-hidden="true" /> View only</span>
+          )}
+        </div>
+      </article>
+    </Link>
   );
 }
 

@@ -29,7 +29,7 @@ const CONCEPTS: Array<[string, string]> = [
   ],
   [
     'Name someone with @ and they hear about it',
-    'Typing @ and their username in a note tells them in their Inbox, and Papyra asks whether to share the note with them — as an editor or view-only. Access is always the whole note or nothing: if you don’t share, they see who mentioned them and can ask you for access. Anyone with view-only access can ask for edit access, and you approve or decline from your Inbox. A locked note is never shared and never delivers a mention.',
+    'Typing @ and their username in a note notifies them (the inbox button in the top bar), and Papyra asks whether to share the note with them — as an editor or view-only. Access is always the whole note or nothing: if you don’t share, they see who mentioned them and can ask you for access. Anyone with view-only access can ask for edit access, and you approve or decline from the same notifications tray. A locked note is never shared and never delivers a mention.',
   ],
   [
     'Deleting gives you time to change your mind',

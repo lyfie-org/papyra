@@ -3,7 +3,7 @@ import { Link, NavLink, Outlet, matchPath, useLocation, useNavigate } from 'reac
 import { useQueryClient } from '@tanstack/react-query';
 import {
   Menu, StickyNote, ListTodo, Archive, Settings, Trash2, ShieldCheck,
-  User, Shield, LogOut, Sun, Moon, Layers, Sparkles, CircleQuestionMark, Inbox,
+  User, Shield, LogOut, Sun, Moon, Layers, Sparkles, CircleQuestionMark, Users,
 } from 'lucide-react';
 import ChatPanel from '../components/ChatPanel';
 import SearchBar from '../components/SearchBar';
@@ -18,7 +18,7 @@ import { useSignalR } from '../hooks/useSignalR';
 import SidebarImportProgress from '../components/SidebarImportProgress';
 import { useAuth } from '../hooks/useAuth';
 import { useSyncEngine } from '../hooks/useSync';
-import { useUnreadInboxCount } from '../hooks/useInbox';
+import NotificationBell from '../components/NotificationBell';
 import logo from '../assets/papyra_logo.png';
 import Avatar from '../components/Avatar';
 import './WorkspaceLayout.css';
@@ -29,7 +29,7 @@ import './WorkspaceLayout.css';
 const NAV_ITEMS = [
   { to: '/', label: 'Notes', icon: StickyNote, end: true },
   { to: '/todo', label: 'To Do', icon: ListTodo, end: false },
-  { to: '/inbox', label: 'Inbox', icon: Inbox, end: false },
+  { to: '/shared-with-me', label: 'Shared with me', icon: Users, end: false },
   { to: '/collections', label: 'Collections', icon: Layers, end: false },
   { to: '/vault', label: 'Vault', icon: ShieldCheck, end: false },
   { to: '/archive', label: 'Archive', icon: Archive, end: false },
@@ -40,7 +40,6 @@ const APP_VERSION = '0.0.1';
 
 export default function WorkspaceLayout() {
   const { user } = useAuth();
-  const unreadInbox = useUnreadInboxCount();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [collapsed, setCollapsed] = useState(false);
@@ -139,6 +138,7 @@ export default function WorkspaceLayout() {
               <Sparkles size={18} />
             </button>
           )}
+          <NotificationBell />
           <ThemeToggle />
           <div className="workspace__avatar-wrap" ref={menuRef}>
             <button
@@ -197,14 +197,6 @@ export default function WorkspaceLayout() {
                 >
                   <Icon className="workspace__nav-icon" size={18} />
                   <span className="workspace__nav-label">{label}</span>
-                  {to === '/inbox' && unreadInbox > 0 && (
-                    <span
-                      className="workspace__nav-badge"
-                      aria-label={`${unreadInbox} unread`}
-                    >
-                      {unreadInbox > 99 ? '99+' : unreadInbox}
-                    </span>
-                  )}
                 </NavLink>
               </li>
             ))}

@@ -7,7 +7,10 @@
   background: var(--surface);
   box-shadow: var(--shadow-card);
 }
-.shared-note--colored { color: var(--tint-ink); }
+.shared-note--colored {
+  background: color-mix(in srgb, var(--note-tint) var(--tint-strength), var(--surface));
+  color: var(--tint-ink-muted);
+}
 
 .shared-note__bar {
   display: flex;

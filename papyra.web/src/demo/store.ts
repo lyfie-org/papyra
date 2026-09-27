@@ -10,14 +10,14 @@
 import type { Note } from '../types/note';
 import type { TagEntry as Category } from '../hooks/useTags';
 import type { SmartCollection } from '../hooks/useCollections';
-import type { InboxEntry } from '../hooks/useInbox';
+import type { AppNotification } from '../hooks/useNotifications';
 import type { ChatMessage, ChatSessionSummary } from '../hooks/useChatSessions';
 import type { OrderMap } from '../hooks/useNoteOrder';
-import { SEED_CATEGORIES, SEED_COLLECTIONS, SEED_INBOX, SEED_NOTES } from './seed';
+import { SEED_CATEGORIES, SEED_COLLECTIONS, SEED_NOTIFICATIONS, SEED_NOTES } from './seed';
 
 const KEY = 'papyra-demo-vault';
 /** Bump when the shape below changes so an old saved vault is replaced, not merged. */
-const VERSION = 1;
+const VERSION = 2; // 2: inbox → notifications
 
 export interface ChatSessionRecord extends ChatSessionSummary {
   messages: ChatMessage[];
@@ -28,7 +28,7 @@ export interface DemoState {
   notes: Note[];
   categories: Category[];
   collections: SmartCollection[];
-  inbox: InboxEntry[];
+  notifications: AppNotification[];
   order: OrderMap;
   settings: { trashRetentionDays: number };
   chatSessions: ChatSessionRecord[];
@@ -45,7 +45,7 @@ function fresh(): DemoState {
     notes: structuredClone(SEED_NOTES),
     categories: structuredClone(SEED_CATEGORIES),
     collections: structuredClone(SEED_COLLECTIONS),
-    inbox: structuredClone(SEED_INBOX),
+    notifications: structuredClone(SEED_NOTIFICATIONS),
     order: {},
     settings: { trashRetentionDays: 30 },
     chatSessions: [],
