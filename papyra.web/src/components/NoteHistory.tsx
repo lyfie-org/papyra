@@ -1,4 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type KeyboardEvent, type PointerEvent } from 'react';
+import { createPortal } from 'react-dom';
 import { ChevronLeft, ChevronRight, ChevronsUpDown, History, RotateCcw, X } from 'lucide-react';
 import type { Note } from '../types/note';
 import { lineDiff } from '../lib/lineDiff';
@@ -28,6 +29,10 @@ interface Props {
   onClose: () => void;
   view: HistoryView;
   onViewChange: (view: HistoryView) => void;
+  /** Where the diff renders. The bar sits above the sheet's scroll area (so its
+   *  rule spans the full width, past the scrollbar); the diff scrolls with the
+   *  note, so it portals into a slot inside the scroll area. */
+  diffSlot: HTMLElement | null;
 }
 
 /**
@@ -42,7 +47,7 @@ interface Props {
  * The server lists distinct versions only (none identical to its neighbour or to
  * the live note), so every stop on the timeline is a real change.
  */
-export default function NoteHistory({ noteId, live, onPreview, onRestore, onClose, view, onViewChange }: Props) {
+export default function NoteHistory({ noteId, live, onPreview, onRestore, onClose, view, onViewChange, diffSlot }: Props) {
   const [versions, setVersions] = useState<VersionMeta[] | null>(null);
   const [index, setIndex] = useState(0);
   const [loaded, setLoaded] = useState<HistoryVersion | null>(null);
@@ -325,7 +330,7 @@ export default function NoteHistory({ noteId, live, onPreview, onRestore, onClos
         )}
       </section>
 
-      {view === 'changes' && versions !== null && count > 0 && (
+      {view === 'changes' && versions !== null && count > 0 && diffSlot && createPortal(
         <HistoryDiff
           // Keyed per version, so a new comparison always starts folded.
           key={selected?.id ?? 'now'}
@@ -333,7 +338,8 @@ export default function NoteHistory({ noteId, live, onPreview, onRestore, onClos
           loading={!atNow && loaded === null && !error}
           rows={rows}
           titleChange={titleChanged && loaded ? { before: loaded.title, after: live.title } : null}
-        />
+        />,
+        diffSlot,
       )}
     </>
   );

@@ -5,7 +5,7 @@ import {
   User as UserIcon, Palette, Database, Info, Camera,
   Sun, Moon, Monitor, Upload, Download, RefreshCw, KeyRound, Copy, Trash2, Lock, ShieldAlert,
   Fingerprint, CheckCircle2, GitBranch, AlertTriangle, Bell, Mail, KeySquare, Send, UserPlus,
-  Sparkles, Play, Cog, LockOpen,
+  Sparkles, Play, Cog, LockOpen, Type,
 } from 'lucide-react';
 import { useGitConfig, useSaveGitConfig, useRunGitSync } from '../hooks/useGitSync';
 import {
@@ -29,6 +29,7 @@ import { hasPlatformAuthenticator, isWebAuthnAvailable } from '../lib/webauthn';
 import { useAuth, type AuthUser } from '../hooks/useAuth';
 import { useNotes } from '../hooks/useNotes';
 import { useTheme, type ThemePreference } from '../hooks/useTheme';
+import { setAlwaysShowEditorToolbar, useAlwaysShowEditorToolbar } from '../hooks/useEditorToolbar';
 import { clearSessionData } from '../lib/session';
 import { AI_ENABLED } from '../lib/features';
 import { useConfirm } from '../lib/confirmContext';
@@ -433,6 +434,7 @@ function ProfileTab({ user }: { user: AuthUser | null }) {
 // ── Appearance ──────────────────────────────────────────────────────────────────
 function AppearanceTab() {
   const { preference, setPreference } = useTheme();
+  const alwaysShowToolbar = useAlwaysShowEditorToolbar();
   const options: { id: ThemePreference; label: string; icon: typeof Sun }[] = [
     { id: 'light', label: 'Light', icon: Sun },
     { id: 'dark', label: 'Dark', icon: Moon },
@@ -456,6 +458,21 @@ function AppearanceTab() {
           </button>
         ))}
       </div>
+
+      <h2 id="formatting-toolbar" className="settings__subhead">Formatting toolbar</h2>
+      <p className="settings__hint">
+        The row of formatting tools above a note — headings, lists, tables, linking a note, mentions,
+        embeds. Show it on one note with the formatting button (<Type size={13} aria-hidden="true" />) under
+        the note, or keep it open on every note.
+      </p>
+      <label className="settings__field settings__field--inline">
+        <input
+          type="checkbox"
+          checked={alwaysShowToolbar}
+          onChange={e => setAlwaysShowEditorToolbar(e.target.checked)}
+        />
+        Always show the formatting toolbar
+      </label>
     </div>
   );
 }

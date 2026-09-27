@@ -46,6 +46,7 @@ export const SETTINGS_INDEX: SettingsEntry[] = [
 
   { tab: 'appearance', tabLabel: 'Appearance', keywords: ['look', 'colours', 'colors'] },
   { tab: 'appearance', tabLabel: 'Appearance', section: 'theme', sectionLabel: 'Theme', keywords: ['dark mode', 'light mode', 'night'] },
+  { tab: 'appearance', tabLabel: 'Appearance', section: 'formatting-toolbar', sectionLabel: 'Formatting toolbar', keywords: ['editor', 'toolbar', 'table', 'bullet list', 'heading', 'embed', 'always show'] },
 
   { tab: 'notifications', tabLabel: 'Notifications', keywords: ['alerts'] },
   { tab: 'notifications', tabLabel: 'Notifications', section: 'email-notifications', sectionLabel: 'Email notifications', keywords: ['mentions', 'shares', 'digest'] },

@@ -162,5 +162,5 @@ textarea {
   --scroll-thumb:       color-mix(in srgb, var(--tint-ink) 28%, transparent);
   --scroll-thumb-hover: color-mix(in srgb, var(--tint-ink) 50%, transparent);
 }
-/* Keep the pill clear of the sheet's rounded corners. */
-.note-editor::-webkit-scrollbar-track { margin-block: var(--radius-lg); }
+/* Keep the pill clear of the sheet's rounded top corners and off the footer. */
+.note-editor__scroll::-webkit-scrollbar-track { margin-block: var(--radius-lg) var(--space-2); }

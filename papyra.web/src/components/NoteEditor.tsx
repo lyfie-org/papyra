@@ -28,6 +28,7 @@ import { Minimize2, RefreshCw, Volume2, VolumeX } from 'lucide-react';
 import { useFocus } from '../hooks/useFocus';
 import { useDialogFocus } from '../hooks/useDialogFocus';
 import { useAmbient } from '../hooks/useAmbient';
+import { useAlwaysShowEditorToolbar } from '../hooks/useEditorToolbar';
 import './NoteEditor.css';
 
 /*
@@ -77,12 +78,27 @@ export default function NoteEditor({ note }: { note: Note }) {
   const queryClient = useQueryClient();
   const editorRef = useRef<PapyraEditorRef | null>(null);
   // The scrolling editor panel — the ghost TOC measures heading offsets against it.
-  const editorScrollRef = useRef<HTMLElement>(null);
+  // The sheet (dialog shell) and its scroll area are separate elements: the
+  // footer and history bar sit outside the scroll area, so their rules run the
+  // full width of the sheet instead of stopping short at the scrollbar.
+  const sheetRef = useRef<HTMLElement>(null);
+  const editorScrollRef = useRef<HTMLDivElement>(null);
+  const [diffSlot, setDiffSlot] = useState<HTMLDivElement | null>(null);
   // Distraction-free focus mode (shared with the SignalR bridge, which buffers
   // updates while focused). Aliased to avoid clashing with the conflict-banner
   // `pending` state below.
   const { focus, pending: pendingUpdates, enter: enterFocus, exit: exitFocus, flush: flushUpdates } = useFocus();
   const ambient = useAmbient();
+  // The formatting toolbar above the body. Each note opens with the Settings
+  // preference ("always show"), and the footer toggle overrides it for the note
+  // in hand. It is a live editor prop — showing or hiding it never remounts the
+  // editor, so the caret and undo history survive.
+  // The toggle is an override scoped to this note and this preference value, so
+  // opening another note, or changing the preference, falls back to the preference.
+  const alwaysShowToolbar = useAlwaysShowEditorToolbar();
+  const toolbarScope = `${note.id}|${alwaysShowToolbar}`;
+  const [toolbarOverride, setToolbarOverride] = useState<{ scope: string; shown: boolean } | null>(null);
+  const toolbarShown = toolbarOverride?.scope === toolbarScope ? toolbarOverride.shown : alwaysShowToolbar;
   // Trashing a note is the same decision here as it is on a card, so both go
   // through one rule — see useTrashNote for what drifted when they did not.
   const trashNote = useTrashNote();
@@ -188,7 +204,7 @@ export default function NoteEditor({ note }: { note: Note }) {
 
   const { status, isDirty, bump, reset, flush, savedRef } = useAutoSave(note, getDraft, getSaveDraft, onSaved);
   // Keyboard users land inside the editor instead of at the top of the page.
-  useDialogFocus(editorScrollRef);
+  useDialogFocus(sheetRef);
 
   // Sharing from inside the open note — the same dialog the card opens.
   const [shareOpen, setShareOpen] = useState(false);
@@ -550,7 +566,7 @@ export default function NoteEditor({ note }: { note: Note }) {
       onMouseDown={(e) => { if (!focus && e.target === e.currentTarget) void close(); }}
     >
     <section
-      ref={editorScrollRef}
+      ref={sheetRef}
       className={`note-editor${colored ? ' note-editor--colored' : ''}${focus ? ' note-editor--focus' : ''}${history ? ` note-editor--history note-editor--history-${historyView}` : ''}`}
       style={style}
       role="dialog"
@@ -558,6 +574,20 @@ export default function NoteEditor({ note }: { note: Note }) {
       aria-label={`Note editor: ${title.trim() || 'Untitled'}`}
       onMouseDown={(e) => e.stopPropagation()}
     >
+      {history && (
+        <NoteHistory
+          noteId={note.id}
+          live={historyLive}
+          onPreview={previewVersion}
+          onRestore={restoreVersion}
+          onClose={leaveHistory}
+          view={historyView}
+          onViewChange={setHistoryView}
+          diffSlot={diffSlot}
+        />
+      )}
+
+      <div ref={editorScrollRef} className="note-editor__scroll">
       {focus && (
         <div className="note-editor__focusbar">
           {pendingUpdates > 0 && (
@@ -580,17 +610,7 @@ export default function NoteEditor({ note }: { note: Note }) {
         </div>
       )}
 
-      {history && (
-        <NoteHistory
-          noteId={note.id}
-          live={historyLive}
-          onPreview={previewVersion}
-          onRestore={restoreVersion}
-          onClose={leaveHistory}
-          view={historyView}
-          onViewChange={setHistoryView}
-        />
-      )}
+      {history && <div ref={setDiffSlot} className="note-editor__diff-slot" />}
 
       {!focus && <NoteToc scrollRef={editorScrollRef} />}
 
@@ -639,6 +659,10 @@ export default function NoteEditor({ note }: { note: Note }) {
           key={`${note.id}-${editorKey}-${editorTheme}-${colored ? 'tint' : 'plain'}`}
           initialTheme={theme}
           colored={colored}
+          // Not in focus mode (distraction-free) or while history previews an
+          // old version (the canvas is read-only then).
+          toolbar={toolbarShown && !focus && !history}
+          toolbarAlignment="center"
           defaultEditorView="visual"
           // Anchors are assigned by getSaveDraft at save time, never on commit.
           blockAnchors="on-demand"
@@ -709,12 +733,15 @@ export default function NoteEditor({ note }: { note: Note }) {
       )}
 
       {!focus && !isLocked && !history && <GhostCards noteId={note.id} />}
+      </div>
 
-      {/* Actions and save state sit under the note body, where writing ends, and
-          stick to the bottom of the sheet so a long note keeps them in reach. */}
+      {/* Actions and save state sit under the note body, outside the scroll
+          area, so a long note keeps them in reach at the bottom of the sheet. */}
       {!focus && (
         <footer className="note-editor__footer">
           <NoteToolbar
+            formattingOpen={toolbarShown}
+            onFormatting={() => setToolbarOverride({ scope: toolbarScope, shown: !toolbarShown })}
             pinned={note.pinned}
             color={note.color}
             onTogglePin={() => void saveFrontmatter({ pinned: !note.pinned })}

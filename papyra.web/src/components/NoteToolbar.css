@@ -63,3 +63,9 @@
   background: transparent;
   color: inherit;
 }
+
+/* Nine actions have to fit one row on a phone; the buttons keep their 2rem
+   targets and give up the gaps between them instead. */
+@media (max-width: 620px) {
+  .note-toolbar { gap: 0; }
+}
