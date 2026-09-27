@@ -6,6 +6,11 @@ a Docker Hub tag and a GitHub Release.
 
 <!-- new releases are inserted directly below this line -->
 
+## [0.1.13] - 2026-09-27
+
+- feat: formatting toolbar toggle and "always show" preference (4d25bc6)
+- feat: borderless canvas, top rule, full-width footer (bf60145)
+
 ## [0.1.12] - 2026-09-27
 
 - ci: trigger workflows on push only (2df42f2)
