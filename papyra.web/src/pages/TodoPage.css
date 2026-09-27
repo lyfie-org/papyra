@@ -1,3 +1,38 @@
+.todo-card__check {
+  /* A 24px target (WCAG 2.5.8) around the same 18px box: the box is drawn by
+     ::before, and the negative margins keep the row's layout where the 18px
+     button left it. */
+  position: relative;
+  isolation: isolate;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  margin: -2px -3px -3px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: var(--accent-fg);
+  font-size: var(--fs-xs);
+  line-height: 1;
+  cursor: pointer;
+}
+.todo-card__check::before {
+  content: '';
+  position: absolute;
+  inset: 3px;
+  z-index: -1;
+  /* Full --text for the outline: the old half-sage border sat under the 3:1 a
+     control's edge needs (WCAG 1.4.11). */
+  border: 1.5px solid var(--text);
+  border-radius: 5px;
+}
+.todo-card__item.is-done .todo-card__check::before {
+  background: var(--accent);
+  border-color: var(--accent);
+}
 .todo-page {
   padding: var(--space-2) var(--space-1) var(--space-12);
 }
@@ -45,8 +80,8 @@
 .todo-card__progress {
   font-family: var(--mono);
   font-size: var(--fs-2xs);
+  /* Full --text: faded to 0.8 it dropped under AA (~3.6:1). */
   color: var(--text);
-  opacity: 0.8;
 }
 
 .todo-card__list {
@@ -153,8 +188,11 @@
   color: var(--tint-ink-soft);
 }
 
-.note-card--colored .todo-card__check {
-  border-color: var(--tint-scrim);
+.note-card--colored .todo-card__check::before {
+  border-color: var(--tint-ink-muted);
+}
+.note-card--colored .todo-card__item.is-done .todo-card__check::before {
+  border-color: var(--accent);
 }
 
 .note-card--colored .todo-card__add-input {

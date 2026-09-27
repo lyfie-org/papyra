@@ -95,6 +95,39 @@ textarea {
   letter-spacing: inherit;
 }
 
+/* ── Caret, selection, emphasis (macOS feel) ──────────────────────────────────
+   caret-color is set on the editable elements themselves rather than inherited
+   from :root, so a coloured note's --caret override actually reaches them. */
+:where(input, textarea, [contenteditable]) {
+  caret-color: var(--caret);
+}
+::selection {
+  background: var(--selection-bg);
+}
+/* Links keep their underline but take a selection-safe ink (see tokens). */
+:is(a, .luthor-link, .luthor-wikilink)::selection,
+:is(a, .luthor-link, .luthor-wikilink) *::selection {
+  color: var(--selection-link);
+}
+.note-editor--colored,
+.note-card--colored {
+  --caret: var(--tint-caret);
+  --selection-bg: var(--tint-selection-bg);
+  --selection-link: var(--tint-selection-link);
+}
+/* luthor paints its own selection from --papyra-selection-bg; declared on the
+   editor element so it picks up the coloured-note override above. */
+.luthor-preset-papyra {
+  --papyra-selection-bg: var(--selection-bg);
+}
+/* Semibold, as macOS sets emphasis — and the heaviest Sora weight we load, so
+   bold never asks for a face that isn't there (font-synthesis is off). */
+strong,
+b,
+.luthor-text-bold {
+  font-weight: 600;
+}
+
 :focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 2px;
@@ -113,8 +146,8 @@ textarea {
   --papyra-border:        rgba(61, 44, 30, 0.18);
   --papyra-code-surface:  rgba(61, 44, 30, 0.06);
   /* Links too: dark mode's accent text is a pale sage that sank to ~2:1 on a
-     pastel tint. The light theme's deep green holds AA on every tint. */
-  --papyra-accent-text:   #205c38;
+     pastel tint; --tint-link holds AA on every tint in both themes. */
+  --papyra-accent-text:   var(--tint-link);
 }
 
 /* ── Scrollbars ────────────────────────────────────────────────────────────────

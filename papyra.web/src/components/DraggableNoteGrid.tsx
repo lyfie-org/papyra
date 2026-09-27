@@ -70,7 +70,10 @@ const AbsCard = memo(function AbsCard({
   /** How many cards the dragged card carries (itself included); 0 when alone. */
   carrying: number;
 }) {
-  const { attributes, listeners, setNodeRef, transform, isDragging } = useDraggable({ id: note.id });
+  // `attributes` (role="button", tabIndex=0, aria-roledescription) are left off:
+  // dragging is pointer-only here (no KeyboardSensor), so they only made the
+  // wrapper a dead Tab stop and a button nesting the card's own links/buttons.
+  const { listeners, setNodeRef, transform, isDragging } = useDraggable({ id: note.id });
   const elRef = useRef<HTMLDivElement | null>(null);
 
   const setRef = useCallback((el: HTMLDivElement | null) => {
@@ -109,7 +112,6 @@ const AbsCard = memo(function AbsCard({
         e.stopPropagation();
         onToggle(note.id, e.shiftKey);
       } : undefined}
-      {...attributes}
       {...listeners}
     >
       <SelectTick title={title} selected={selected} selecting={selecting}

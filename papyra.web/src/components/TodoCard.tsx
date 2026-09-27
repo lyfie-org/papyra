@@ -1,4 +1,4 @@
-import { memo, useState, type CSSProperties } from 'react';
+import { memo, useId, useState, type CSSProperties } from 'react';
 import { Link } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { Plus } from 'lucide-react';
@@ -29,6 +29,7 @@ function stop(e: React.MouseEvent) { e.preventDefault(); e.stopPropagation(); }
 function TodoCard({ note }: { note: Note }) {
   const queryClient = useQueryClient();
   const [draft, setDraft] = useState('');
+  const idBase = useId();
   const { lines, items } = parse(note.body);
   const done = items.filter(i => i.checked).length;
 
@@ -83,12 +84,15 @@ function TodoCard({ note }: { note: Note }) {
               type="button"
               role="checkbox"
               aria-checked={item.checked}
+              // Named by the item's own text, so a screen reader says what is
+              // being ticked rather than an unlabelled "checkbox".
+              aria-labelledby={`${idBase}-item-${item.line}`}
               className="todo-card__check"
               onClick={(e) => { stop(e); toggle(item.line); }}
             >
-              {item.checked ? '✓' : ''}
+              <span aria-hidden="true">{item.checked ? '✓' : ''}</span>
             </button>
-            <span className="todo-card__text">{item.text ? <InlineMarkdown text={item.text} /> : '—'}</span>
+            <span className="todo-card__text" id={`${idBase}-item-${item.line}`}>{item.text ? <InlineMarkdown text={item.text} /> : '—'}</span>
           </li>
         ))}
       </ul>
