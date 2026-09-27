@@ -6,6 +6,13 @@ a Docker Hub tag and a GitHub Release.
 
 <!-- new releases are inserted directly below this line -->
 
+## [0.1.17] - 2026-09-27
+
+- feat: note-length-relative card heights; bump @lyfie/luthor to 2.10.3 (0f667c3)
+- feat: shared notes on the desk, "Shared with me" filter, one-row header (6f9006e)
+- fix: let editor menus see clicks inside the open note (3ff7368)
+- feat: notifications tray, shared-with-me as a page, note-card parity (42c083c)
+
 ## [0.1.16] - 2026-09-27
 
 - feat: whole-note sharing on mention + request edit access (6f345d2)
