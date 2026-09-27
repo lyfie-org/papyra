@@ -1,12 +1,12 @@
 name: CI
 
 # Quality gate: build, type-check, lint, and the full test suite on every push
-# and PR to the working (development) and stable (main) branches. This is what
+# to the working (development) and stable (main) branches. Push-only: a PR from
+# development → main would re-run the exact commits the push already checked,
+# and the merge into main is itself a push, so main is still gated. This is what
 # catches integration/regression/syntax breakage before a release is ever cut.
 on:
   push:
-    branches: [main, development]
-  pull_request:
     branches: [main, development]
 
 # Cancel an in-flight run when new commits land on the same ref — no point
