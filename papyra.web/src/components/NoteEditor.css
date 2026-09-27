@@ -25,7 +25,9 @@
   overflow-y: auto;
   padding: var(--space-6);
   border-radius: var(--radius-lg);
-  background: var(--surface);
+  background: var(--paper);
+  /* The luthor canvas paints --papyra-surface; keep it on the same paper. */
+  --papyra-surface: var(--paper);
   color: var(--text);
   font-family: var(--sans);
   box-shadow: var(--shadow);
@@ -52,7 +54,7 @@
    the bottom edge of the sheet instead of scrolling away. Chrome measures the
    sticky offset from inside the sheet's padding, so the negative bottom (and
    margins) take it flush to the sheet's edge. `inherit` picks up a
-   coloured note's inline tint, so the bar never shows a plain strip. */
+   coloured note's tint, so the bar never shows a plain strip. */
 .note-editor__footer {
   position: sticky;
   bottom: calc(-1 * var(--space-6));
@@ -126,6 +128,9 @@
    themes (mirrors the NoteCard convention). The luthor body is forced to its
    light theme when coloured, so its own text stays dark too. */
 .note-editor--colored {
+  /* Same mix as the card (--tint-strength), so dark mode's muted tint carries
+     over into the open note instead of snapping back to the raw pastel. */
+  background: color-mix(in srgb, var(--note-tint) var(--tint-strength), var(--surface));
   color: var(--tint-ink-muted);
 }
 .note-editor--colored .note-editor__title {

@@ -7,14 +7,16 @@
    hover/focus, and on every card once a selection exists. */
 .select-tick {
   position: absolute;
-  top: -10px;
-  left: -10px;
+  /* Small and tucked in: it only overhangs the card by 4px, so it clears the
+     neighbouring card's pin (which overhangs 10px) across the 16px gutter. */
+  top: -6px;
+  left: -4px;
   z-index: 3;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 26px;
-  height: 26px;
+  width: 20px;
+  height: 20px;
   padding: 0;
   border: 1.5px solid var(--border);
   border-radius: 50%;

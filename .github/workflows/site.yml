@@ -12,6 +12,9 @@ name: site
 #   CLOUDFLARE_API_TOKEN    — scoped to "Cloudflare Pages — Edit"
 #   CLOUDFLARE_ACCOUNT_ID
 
+# Push-only on purpose: a PR from development → main would otherwise run the
+# same build twice (once for the push, once for the PR). The merge into main is
+# itself a push, so production still deploys.
 on:
   push:
     branches: [main, development]
@@ -21,10 +24,6 @@ on:
       - 'pnpm-workspace.yaml'
       - 'pnpm-lock.yaml'
       - '.github/workflows/site.yml'
-  pull_request:
-    paths:
-      - 'papyra.app/**'
-      - 'papyra.web/**'
   # So a deploy can be re-run without an empty commit.
   workflow_dispatch:
 
@@ -100,10 +99,6 @@ jobs:
       # deploy to the same wrangler version the lockfile already resolves.
       #
       # Secrets come in as environment variables, which wrangler reads natively.
-      #
-      # Skipped for pull requests from forks: GitHub withholds secrets there, so
-      # the deploy could only ever fail. Everything above still runs, so an
-      # outside contribution is still fully built and checked.
       # Sideways scroll is invisible until somebody opens the site on a phone,
       # and it is caused by ordinary things: a wide table, a long URL, a grid
       # track that will not shrink. Checking it in a real browser is the only
@@ -116,9 +111,6 @@ jobs:
         run: pnpm --filter papyra-app run check:layout
 
       - name: Deploy to Cloudflare Pages
-        if: >-
-          github.event_name != 'pull_request' ||
-          github.event.pull_request.head.repo.full_name == github.repository
         working-directory: papyra.app
         env:
           CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
@@ -131,4 +123,4 @@ jobs:
           # main → production (papyra.app); every other branch → a preview URL.
           pnpm exec wrangler pages deploy dist \
             --project-name=papyra \
-            --branch="${{ github.head_ref || github.ref_name }}"
+            --branch="${{ github.ref_name }}"
