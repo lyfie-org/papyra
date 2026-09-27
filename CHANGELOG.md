@@ -6,6 +6,11 @@ a Docker Hub tag and a GitHub Release.
 
 <!-- new releases are inserted directly below this line -->
 
+## [0.1.12] - 2026-09-27
+
+- ci: trigger workflows on push only (2df42f2)
+- feat: highlight query matches in search results (e75d2ce)
+
 ## [0.1.11] - 2026-09-25
 
 - chore: bump @lyfie/luthor to 2.9.8 (a56690e)
