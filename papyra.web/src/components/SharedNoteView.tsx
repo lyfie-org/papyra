@@ -4,6 +4,7 @@ import {
 } from '@lyfie/luthor/presets/papyra';
 import '@lyfie/luthor/styles.css';
 import { useTheme } from '../hooks/useTheme';
+import { tintInkClass } from '../lib/noteColors';
 import './SharedNoteView.css';
 
 export interface SharedNote {
@@ -46,7 +47,7 @@ export default function SharedNoteView({
   }
 
   return (
-    <article className={`shared-note${colored ? ' shared-note--colored' : ''}`} style={style}>
+    <article className={`shared-note${colored ? ` shared-note--colored${tintInkClass(note.color, 'light')}` : ''}`} style={style}>
       <header className="shared-note__bar">
         <h1 className="shared-note__title">{note.title.trim() || 'Untitled'}</h1>
         {canEdit && (

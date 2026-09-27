@@ -431,24 +431,24 @@ public sealed class ImportService : BackgroundService
 
     // ── Google Keep ─────────────────────────────────────────────────────────
 
-    // Keep's twelve note colours, folded onto Papyra's seven-swatch palette
+    // Keep's twelve note colours, folded onto Papyra's six-swatch palette (NotePalette)
     // (lib/noteColors.ts) by hue. Keep's own hexes are saturated and clash with the
     // paper surface, so the nearest muted swatch wins over an exact copy.
     private static readonly Dictionary<string, string?> KeepColors = new(StringComparer.OrdinalIgnoreCase)
     {
         ["DEFAULT"] = null,
-        ["RED"] = "#ecd9da",       // Rose
-        ["PINK"] = "#ecd9da",      // Rose
-        ["ORANGE"] = "#ecdcd0",    // Clay
-        ["BROWN"] = "#ecdcd0",     // Clay
-        ["YELLOW"] = "#ece3cf",    // Sand
-        ["GRAY"] = "#ece3cf",      // Sand — the palette's nearest neutral
-        ["GREEN"] = "#dde7d4",     // Moss
-        ["TEAL"] = "#dfe9df",      // Sage
-        ["BLUE"] = "#d8e3ea",      // Sky
-        ["CERULEAN"] = "#d8e3ea",  // Sky
-        ["DARK_BLUE"] = "#d8e3ea", // Sky
-        ["PURPLE"] = "#e2dcec",    // Lilac
+        ["RED"] = NotePalette.Rose,
+        ["PINK"] = NotePalette.Rose,
+        ["ORANGE"] = NotePalette.Clay,
+        ["BROWN"] = NotePalette.Clay,
+        ["YELLOW"] = NotePalette.Sand,
+        ["GRAY"] = NotePalette.Sand,       // the palette's nearest neutral
+        ["GREEN"] = NotePalette.Sage,
+        ["TEAL"] = NotePalette.Sage,
+        ["BLUE"] = NotePalette.Sky,
+        ["CERULEAN"] = NotePalette.Sky,
+        ["DARK_BLUE"] = NotePalette.Sky,
+        ["PURPLE"] = NotePalette.Lilac,
     };
 
     public static string? MapKeepColor(string? keepColor) =>

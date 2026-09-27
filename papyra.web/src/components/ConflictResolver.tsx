@@ -73,7 +73,15 @@ export default function ConflictResolver({ conflictId, onClose }: Props) {
   const rows = detail ? lineDiff(detail.parentBody, detail.conflictBody) : null;
 
   return (
-    <div ref={dialogRef} className="conflict-resolver" role="dialog" aria-label="Resolve conflict" aria-modal="true">
+    <div
+      ref={dialogRef}
+      className="conflict-resolver"
+      role="dialog"
+      aria-label="Resolve conflict"
+      aria-modal="true"
+      // A click on the backdrop (not the sheet) closes, like every other dialog.
+      onMouseDown={(e) => { if (e.target === e.currentTarget && !resolving) onClose(); }}
+    >
       <div className="conflict-resolver__sheet">
         <header className="conflict-resolver__head">
           <h2 className="conflict-resolver__title">Resolve Conflict</h2>

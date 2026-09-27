@@ -48,7 +48,7 @@ export const SEED_NOTES: Note[] = [
     id: 'welcome',
     title: 'Start here',
     pinned: true,
-    color: '#dfe9df',
+    color: '#d3e8d0',
     tags: ['papyra'],
     updated: daysAgo(0, 9),
     body: `This is a real copy of Papyra running entirely inside your browser. There is no server behind it — every note here lives on your device and nothing you type is sent anywhere.
@@ -71,7 +71,7 @@ Everything else you see is the actual application.`,
     id: 'revenue-model',
     title: 'Revenue model',
     tags: ['work', 'planning'],
-    color: '#ece3cf',
+    color: '#f1e4c7',
     updated: daysAgo(1, 15),
     // The table sits below the fold of the card preview on purpose. Note cards
     // render a plain-text preview and flatten markdown, so a table near the top
@@ -112,7 +112,7 @@ Ask @dana for the support figures — she has the ticket volume broken down by t
     id: 'reading-list',
     title: 'Reading list',
     tags: ['personal'],
-    color: '#d8e3ea',
+    color: '#c1e5f7',
     updated: daysAgo(5, 20),
     body: `Things worth finishing, roughly in order of how long they have been sitting here.
 
@@ -126,7 +126,7 @@ The Alexander is the one I keep coming back to. It is not really about buildings
     id: 'sourdough',
     title: 'Sourdough, finally working',
     tags: ['personal', 'recipes'],
-    color: '#ecdcd0',
+    color: '#f8d6c4',
     updated: daysAgo(8, 8),
     body: `The change that fixed it was nothing to do with the flour.
 
@@ -162,7 +162,7 @@ Roll back by pinning the previous tag instead of \`latest\`.`,
     id: 'garden',
     title: 'What went in the beds',
     tags: ['personal'],
-    color: '#dde7d4',
+    color: '#d3e8d0',
     updated: daysAgo(12, 16),
     body: `North bed gets sun until about two, so the tomatoes went there and the chard went in the shade of the wall.
 
@@ -188,7 +188,7 @@ Note for next year: start the basil indoors, it never recovered from going strai
     id: 'groceries',
     title: 'Groceries',
     kind: 'todo',
-    color: '#ecd9da',
+    color: '#fbd3d9',
     updated: daysAgo(1, 18),
     body: `- [x] Bread flour
 - [ ] Olive oil
@@ -226,10 +226,10 @@ Trash keeps a note for 30 days by default, so this is recoverable until it isn't
 ];
 
 export const SEED_CATEGORIES: Category[] = [
-  { name: 'work', color: '#ece3cf', count: 5 },
-  { name: 'personal', color: '#d8e3ea', count: 4 },
-  { name: 'planning', color: '#dfe9df', count: 2 },
-  { name: 'recipes', color: '#ecdcd0', count: 1 },
+  { name: 'work', color: '#f1e4c7', count: 5 },
+  { name: 'personal', color: '#c1e5f7', count: 4 },
+  { name: 'planning', color: '#d3e8d0', count: 2 },
+  { name: 'recipes', color: '#f8d6c4', count: 1 },
   { name: 'papyra', color: null, count: 1 },
 ];
 

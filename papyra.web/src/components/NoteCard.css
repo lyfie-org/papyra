@@ -204,10 +204,10 @@
   transform: none;
 }
 .note-card--colored .note-card__actions {
-  background: rgba(255, 255, 255, 0.65);
+  background: color-mix(in srgb, var(--tint-lift) 65%, transparent);
 }
 [data-theme='dark'] .note-card--colored .note-card__actions {
-  background: rgba(255, 255, 255, 0.72);
+  background: color-mix(in srgb, var(--tint-lift) 72%, transparent);
 }
 [data-theme='dark'] .note-card--colored .note-card__action {
   color: var(--tint-ink-muted);

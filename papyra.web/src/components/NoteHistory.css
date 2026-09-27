@@ -350,7 +350,7 @@
 .note-editor--colored .note-history__seg button,
 .note-editor--colored .note-history__empty { color: var(--tint-ink-muted); }
 .note-editor--colored .note-history__seg button[aria-pressed='true'] { color: var(--tint-ink); }
-.note-editor--colored .note-history__stop:not(.is-active) { background: color-mix(in srgb, var(--note-tint) 60%, #fff); }
+.note-editor--colored .note-history__stop:not(.is-active) { background: color-mix(in srgb, var(--note-tint) 60%, var(--tint-lift)); }
 
 /* The Changes view is the whole comparison, title included — the live title
    and tags would only repeat below it. */

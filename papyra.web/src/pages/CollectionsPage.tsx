@@ -7,7 +7,7 @@ import { useCollections, useDeleteCollection } from '../hooks/useCollections';
 import { useCreateTag, useDeleteTag, useTags } from '../hooks/useTags';
 import { useNotes } from '../hooks/useNotes';
 import { useConfirm } from '../lib/confirmContext';
-import { NOTE_SWATCHES } from '../lib/noteColors';
+import { NOTE_SWATCHES, swatchName } from '../lib/noteColors';
 import { MAX_TAG_LENGTH } from '../lib/tags';
 import { describeRule, matchesRules, parseRules, type SmartRules } from '../lib/smartCollections';
 import './CollectionsPage.css';
@@ -174,7 +174,7 @@ export default function CollectionsPage() {
                 type="button"
                 role="radio"
                 aria-checked={newTagColour === c}
-                aria-label={NOTE_SWATCHES.find((s) => s.value === c)?.name ?? c}
+                aria-label={swatchName(c) ?? c}
                 className={`collections__swatch${newTagColour === c ? ' is-on' : ''}`}
                 style={{ background: c }}
                 onClick={() => setNewTagColour(c)}

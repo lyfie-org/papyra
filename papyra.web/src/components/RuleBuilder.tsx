@@ -3,7 +3,7 @@ import { Check, Plus, X } from 'lucide-react';
 import { useCreateCollection } from '../hooks/useCollections';
 import { useTags } from '../hooks/useTags';
 import { useNotes } from '../hooks/useNotes';
-import { NOTE_SWATCHES, swatchName } from '../lib/noteColors';
+import { NOTE_SWATCHES, swatchFor, swatchName } from '../lib/noteColors';
 import type { SmartField, SmartRule, SmartRules } from '../lib/smartCollections';
 import './RuleBuilder.css';
 
@@ -37,7 +37,8 @@ export default function RuleBuilder({ onSaved, onCancel }: { onSaved?: () => voi
     const list = NOTE_SWATCHES.filter((s) => s.value).map((s) => ({ name: s.name, value: s.value! }));
     const known = new Set(list.map((c) => c.value.toLowerCase()));
     for (const n of notes ?? []) {
-      if (n.color && !known.has(n.color.toLowerCase())) {
+      // A previous palette's value is its swatch, not an "Other" colour.
+      if (n.color && !swatchFor(n.color) && !known.has(n.color.toLowerCase())) {
         known.add(n.color.toLowerCase());
         list.push({ name: 'Other', value: n.color });
       }

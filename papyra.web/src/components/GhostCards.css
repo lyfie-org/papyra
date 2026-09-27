@@ -84,3 +84,25 @@
   border-radius: 3px;
   padding: 0 0.1rem;
 }
+
+/* On a coloured note the panel sits on the note's own colour, which can be
+   anything: ink it with the note's tint ink (dark or light, per colour) rather
+   than the theme's text, and lift the cards toward the tint's lift colour. */
+.note-editor--colored .ghost-cards__head { color: var(--tint-ink-muted); }
+.note-editor--colored .ghost-cards__count {
+  background: var(--tint-scrim);
+  color: var(--tint-ink);
+}
+.note-editor--colored .ghost-card {
+  background: color-mix(in srgb, var(--tint-lift) 45%, transparent);
+  border-color: var(--tint-ink-muted);
+}
+.note-editor--colored .ghost-card:hover {
+  background: color-mix(in srgb, var(--tint-lift) 65%, transparent);
+}
+.note-editor--colored .ghost-card__title { color: var(--tint-ink); }
+.note-editor--colored .ghost-card__snippet { color: var(--tint-ink-muted); }
+.note-editor--colored .ghost-card__snippet mark {
+  background: var(--tint-scrim);
+  color: var(--tint-ink);
+}

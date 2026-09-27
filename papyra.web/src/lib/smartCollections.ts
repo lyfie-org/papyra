@@ -1,5 +1,5 @@
 import type { Note } from '../types/note';
-import { swatchName } from './noteColors';
+import { sameColour, swatchName } from './noteColors';
 
 export type SmartField = 'tag' | 'color' | 'pinned' | 'kind' | 'text';
 
@@ -42,7 +42,7 @@ export function matchesRules(note: Note, rules: SmartRules): boolean {
       case 'tag':
       case 'tags':
         return (note.tags ?? []).some((t) => eq(t, value));
-      case 'color': return eq(note.color, value);
+      case 'color': return sameColour(note.color, value); // legacy palette values count as their swatch
       case 'pinned': return note.pinned === (value.toLowerCase() === 'true');
       case 'kind': return eq(note.kind, value);
       case 'text': {
