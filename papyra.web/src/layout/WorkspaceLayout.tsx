@@ -29,7 +29,7 @@ import './WorkspaceLayout.css';
 const NAV_ITEMS = [
   { to: '/', label: 'Notes', icon: StickyNote, end: true },
   { to: '/todo', label: 'To Do', icon: ListTodo, end: false },
-  { to: '/shared-with-me', label: 'Shared with me', icon: Users, end: false },
+  { to: '/?scope=shared', label: 'Shared with me', icon: Users, end: true },
   { to: '/collections', label: 'Collections', icon: Layers, end: false },
   { to: '/vault', label: 'Vault', icon: ShieldCheck, end: false },
   { to: '/archive', label: 'Archive', icon: Archive, end: false },
@@ -40,6 +40,10 @@ const APP_VERSION = '0.0.1';
 
 export default function WorkspaceLayout() {
   const { user } = useAuth();
+  // "Shared with me" is the desk behind a filter, not its own page, so it and
+  // Notes share the "/" path and are told apart by `?scope=shared`.
+  const { pathname, search } = useLocation();
+  const onSharedScope = pathname === '/' && new URLSearchParams(search).get('scope') === 'shared';
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [collapsed, setCollapsed] = useState(false);
@@ -191,9 +195,10 @@ export default function WorkspaceLayout() {
                   to={to}
                   end={end}
                   title={label}
-                  className={({ isActive }) =>
-                    `workspace__nav-link${isActive ? ' workspace__nav-link--active' : ''}`
-                  }
+                  className={({ isActive }) => {
+                    const on = to === '/?scope=shared' ? onSharedScope : isActive && !(to === '/' && onSharedScope);
+                    return `workspace__nav-link${on ? ' workspace__nav-link--active' : ''}`;
+                  }}
                 >
                   <Icon className="workspace__nav-icon" size={18} />
                   <span className="workspace__nav-label">{label}</span>

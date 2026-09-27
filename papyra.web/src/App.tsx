@@ -12,7 +12,6 @@ import TrashPage from './pages/TrashPage';
 import SettingsPage from './pages/SettingsPage';
 import ManageUsersPage from './pages/ManageUsersPage';
 import ChoosePasswordPage from './pages/ChoosePasswordPage';
-import SharedWithMePage from './pages/SharedWithMePage';
 import SharedNotePage from './pages/SharedNotePage';
 import LoginPage from './pages/LoginPage';
 import SetupPage from './pages/SetupPage';
@@ -103,7 +102,8 @@ export default function App() {
         {/* Tags now live on the Collections page. */}
         <Route path="categories" element={<Navigate to="/collections" replace />} />
         <Route path="collections" element={<CollectionsPage />} />
-        <Route path="shared-with-me" element={<SharedWithMePage />} />
+        {/* Shared notes live on the desk now, behind the "Shared with me" filter. */}
+        <Route path="shared-with-me" element={<SharedWithMeRedirect />} />
         <Route path="vault" element={<VaultPage />} />
         <Route path="archive" element={<ArchivePage />} />
         <Route path="trash" element={<TrashPage />} />
@@ -116,4 +116,12 @@ export default function App() {
     </Routes>
     </RealLocationContext.Provider>
   );
+}
+
+/** Old /shared-with-me links (emails, bookmarks) land on the filtered desk, keeping `?open=`. */
+function SharedWithMeRedirect() {
+  const { search } = useLocation();
+  const params = new URLSearchParams(search);
+  params.set('scope', 'shared');
+  return <Navigate to={`/?${params.toString()}`} replace />;
 }

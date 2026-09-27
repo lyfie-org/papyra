@@ -138,7 +138,7 @@ function Item({ n, onNavigate }: { n: AppNotification; onNavigate: () => void })
   function open() {
     onNavigate();
     if (n.mine) navigate(`/note/${encodeURIComponent(n.noteId)}`);
-    else if (n.shareId != null) navigate(`/shared-with-me?open=${n.shareId}`);
+    else if (n.shareId != null) navigate(`/?open=${n.shareId}`);
   }
 
   async function decide(approve: boolean) {

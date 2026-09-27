@@ -1,4 +1,4 @@
-import { memo, useCallback, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react';
+import { memo, useCallback, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
 import { Pin, PinOff } from 'lucide-react';
 import {
   DndContext, PointerSensor, useSensor, useSensors, useDraggable,
@@ -22,6 +22,8 @@ import {
 import { bulkAction, planGroupDrop, plural } from '../lib/bulk';
 import { useFlipPosition } from '../hooks/useFlipPosition';
 import { useGridWidth } from '../hooks/useGridWidth';
+import type { IncomingShare } from '../hooks/useShares';
+import SharedNoteCard from './SharedNoteCard';
 import { useSelection } from '../hooks/useSelection';
 import { useToast } from '../lib/toastContext';
 import '../components/NoteGrid.css';
@@ -35,6 +37,12 @@ interface Props {
   includeTodos?: boolean;
   /** Only to-do lists, drawn as checklists (the To Do page). */
   todosOnly?: boolean;
+  /**
+   * Notes other people shared with you, laid out after your own in the same
+   * columns. They live in someone else's vault, so they can't be dragged,
+   * pinned or selected here.
+   */
+  shared?: IncomingShare[];
 }
 
 type Section = 'pinned' | 'others';
@@ -133,7 +141,7 @@ const AbsCard = memo(function AbsCard({
 });
 
 export default function DraggableNoteGrid({
-  notes, conflictsByParent, onResolveConflict, includeTodos = false, todosOnly = false,
+  notes, conflictsByParent, onResolveConflict, includeTodos = false, todosOnly = false, shared = [],
 }: Props) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -175,7 +183,7 @@ export default function DraggableNoteGrid({
   const others = useMemo(() => sortNotes(active.filter(n => !n.pinned), order), [active, order]);
   const byId = useMemo(() => new Map(active.map(n => [n.id, n])), [active]);
   const ordered = useMemo(() => [...pinned, ...others].map(n => n.id), [pinned, others]);
-  const { width, resizedAt, sticky, recordColumns } = useGridWidth(wrapRef, active.length > 0);
+  const { width, resizedAt, sticky, recordColumns } = useGridWidth(wrapRef, active.length > 0 || shared.length > 0);
   const selection = useSelection(ordered);
 
   const onMeasure = useCallback((id: string, h: number) => {
@@ -206,9 +214,17 @@ export default function DraggableNoteGrid({
   const pinnedLayout = drop?.section === 'pinned'
     ? pack(pinnedIds, heights.current, cols, colW, { index: drop.index, h: activeH }, prefer)
     : pinnedBase;
-  const othersLayout = drop?.section === 'others'
-    ? pack(othersIds, heights.current, cols, colW, { index: drop.index, h: activeH }, prefer)
-    : othersBase;
+  // Keyed `shared:<shareId>` — a note id is only unique within its own vault,
+  // so a shared note can carry the same id as one of yours.
+  // They flow on after your own unpinned notes in the same canvas. Hit-testing
+  // keeps using othersBase (your notes only): packing is sequential, so your
+  // cards sit in the same place either way, and nothing can drop among the
+  // shared ones.
+  const sharedIds = shared.map(s => `shared:${s.shareId}`);
+  const othersLayout = pack(
+    [...othersIds, ...sharedIds], heights.current, cols, colW,
+    drop?.section === 'others' ? { index: drop.index, h: activeH } : undefined, prefer,
+  );
 
   // Hand the current column assignment back, for the next resize to hold.
   useLayoutEffect(() => {
@@ -349,7 +365,7 @@ export default function DraggableNoteGrid({
     }
   }
 
-  if (active.length === 0) return <p className="note-grid__empty">No notes yet.</p>;
+  if (active.length === 0 && shared.length === 0) return <p className="note-grid__empty">No notes yet.</p>;
 
   const crossing = drop !== null && origin !== null && drop.section !== origin;
   const carrying = group.length;
@@ -389,7 +405,7 @@ export default function DraggableNoteGrid({
   };
 
   const showPinnedHeading = pinned.length > 0;
-  const showOthersHeading = pinned.length > 0 && others.length > 0;
+  const showOthersHeading = pinned.length > 0 && (others.length > 0 || shared.length > 0);
   const noun = todosOnly ? 'list' : 'note';
 
   return (
@@ -423,7 +439,17 @@ export default function DraggableNoteGrid({
         {showOthersHeading && <h2 className="note-grid__heading">OTHERS</h2>}
         <div className="dnd-canvas" ref={othersRef} style={{ height: othersLayout.height }}>
           {others.map(n => renderCard(n, othersLayout))}
+          {shared.map((s, i) => {
+            const box = othersLayout.boxes.get(sharedIds[i]);
+            return (
+              <SharedCell key={sharedIds[i]} id={sharedIds[i]} x={box?.x ?? 0} y={box?.y ?? 0} colW={colW} onMeasure={onMeasure}>
+                <SharedNoteCard share={s} />
+              </SharedCell>
+            );
+          })}
         </div>
+
+
       </div>
 
       {crossing && (
@@ -444,5 +470,26 @@ export default function DraggableNoteGrid({
         />
       )}
     </DndContext>
+  );
+}
+
+/** A shared card placed on the canvas like AbsCard, minus drag and selection. */
+function SharedCell({ id, x, y, colW, onMeasure, children }: {
+  id: string; x: number; y: number; colW: number;
+  onMeasure: (id: string, h: number) => void;
+  children: ReactNode;
+}) {
+  const ref = useRef<HTMLDivElement | null>(null);
+  useLayoutEffect(() => {
+    if (ref.current) onMeasure(id, ref.current.offsetHeight);
+  });
+  return (
+    <div
+      ref={ref}
+      className="dnd-card"
+      style={{ position: 'absolute', top: 0, left: 0, width: colW, transform: `translate3d(${x}px, ${y}px, 0)` }}
+    >
+      {children}
+    </div>
   );
 }

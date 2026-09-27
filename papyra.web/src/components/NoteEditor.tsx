@@ -601,7 +601,6 @@ export default function NoteEditor({ note }: { note: Note }) {
       role="dialog"
       aria-modal="true"
       aria-label={`Note editor: ${title.trim() || 'Untitled'}`}
-      onMouseDown={(e) => e.stopPropagation()}
     >
       {history && (
         <NoteHistory

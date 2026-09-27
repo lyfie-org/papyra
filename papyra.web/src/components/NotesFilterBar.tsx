@@ -1,9 +1,9 @@
 import { useEffect, useRef, useState } from 'react';
-import { Check, ChevronDown, Layers, Pin, Tags, X } from 'lucide-react';
+import { Check, ChevronDown, Layers, Pin, Tags, Users, X } from 'lucide-react';
 import type { SmartCollection } from '../hooks/useCollections';
 import './NotesFilterBar.css';
 
-export type NotesScope = 'all' | 'pinned';
+export type NotesScope = 'all' | 'pinned' | 'shared';
 
 interface Props {
   scope: NotesScope;
@@ -17,10 +17,12 @@ interface Props {
   collections: SmartCollection[];
   selectedCollection: number | null;
   onCollectionChange: (id: number | null) => void;
+  /** Offer the "Shared with me" pill — only when someone has shared a note. */
+  hasShared?: boolean;
 }
 
 /**
- * Filter pills above the notes grid: a scope toggle (All / Pinned), a
+ * Filter pills above the notes grid: a scope toggle (All / Pinned / Shared with me), a
  * multi-select tag dropdown, and one pill per smart collection. Filtering happens on the desk itself rather
  * than by navigating to a separate page, so the grid — and the drag order the
  * user arranged — stays put while they narrow it down.
@@ -31,7 +33,7 @@ interface Props {
  */
 export default function NotesFilterBar({
   scope, onScopeChange, allTags, selectedTags, onSelectedTagsChange,
-  collections, selectedCollection, onCollectionChange,
+  collections, selectedCollection, onCollectionChange, hasShared = false,
 }: Props) {
   const [tagsOpen, setTagsOpen] = useState(false);
   const tagsRef = useRef<HTMLDivElement | null>(null);
@@ -72,6 +74,17 @@ export default function NotesFilterBar({
       >
         <Pin size={13} aria-hidden="true" /> Pinned
       </button>
+
+      {(hasShared || scope === 'shared') && (
+        <button
+          type="button"
+          className={`notes-filters__pill${scope === 'shared' ? ' is-active' : ''}`}
+          aria-pressed={scope === 'shared'}
+          onClick={() => onScopeChange('shared')}
+        >
+          <Users size={13} aria-hidden="true" /> Shared with me
+        </button>
+      )}
 
       {allTags.length > 0 && (
         <div className="notes-filters__dropdown" ref={tagsRef}>

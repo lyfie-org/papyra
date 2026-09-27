@@ -4,7 +4,8 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Plus, UploadCloud } from 'lucide-react';
 import DraggableNoteGrid from '../components/DraggableNoteGrid';
 import NotesFilterBar, { type NotesScope } from '../components/NotesFilterBar';
-import SharedRail from '../components/SharedRail';
+import SharedNoteModal from '../components/SharedNoteModal';
+import { useIncomingShares } from '../hooks/useShares';
 import ConflictResolver from '../components/ConflictResolver';
 import FirstRun from '../components/FirstRun';
 import { useNotes } from '../hooks/useNotes';
@@ -30,7 +31,12 @@ export default function NotesPage() {
   // reload, and an open note keeps the filtered desk behind it (the editor now
   // opens over whatever page you came from, not as a child of this one).
   const [params, setParams] = useSearchParams();
-  const scope: NotesScope = params.get('scope') === 'pinned' ? 'pinned' : 'all';
+  const scopeParam = params.get('scope');
+  const scope: NotesScope = scopeParam === 'pinned' || scopeParam === 'shared' ? scopeParam : 'all';
+  // Notes other people shared with you sit on the desk with your own; `?open=`
+  // opens one over it (cards, the bell and old /shared-with-me links use it).
+  const { data: incoming } = useIncomingShares();
+  const openShare = Number(params.get('open')) || null;
   const selectedTags = useMemo(() => params.getAll('tag'), [params]);
   const collectionId = Number(params.get('collection')) || null;
   const setFilter = (mutate: (p: URLSearchParams) => void) => {
@@ -38,7 +44,7 @@ export default function NotesPage() {
     mutate(next);
     setParams(next, { replace: true });
   };
-  const setScope = (v: NotesScope) => setFilter((p) => { if (v === 'pinned') p.set('scope', 'pinned'); else p.delete('scope'); });
+  const setScope = (v: NotesScope) => setFilter((p) => { if (v === 'all') p.delete('scope'); else p.set('scope', v); });
   const setSelectedTags = (tags: string[]) => setFilter((p) => { p.delete('tag'); for (const t of tags) p.append('tag', t); });
   const setCollection = (id: number | null) => setFilter((p) => { if (id === null) p.delete('collection'); else p.set('collection', String(id)); });
 
@@ -59,6 +65,7 @@ export default function NotesPage() {
 
   const visibleNotes = useMemo(() => {
     let list = notes ?? [];
+    if (scope === 'shared') return [];
     if (scope === 'pinned') list = list.filter((n) => n.pinned);
     // Any selected tag matches — intersecting them would empty the grid almost
     // every time, since notes rarely carry several tags at once.
@@ -72,10 +79,17 @@ export default function NotesPage() {
     return list;
   }, [notes, scope, selectedTags, activeRules]);
 
+  // Shared notes show under All and under Shared with me. Pinning, tags and
+  // collections are the owner's, so those filters narrow to your own notes.
+  const visibleShared = useMemo(
+    () => (scope === 'pinned' || selectedTags.length > 0 || activeRules ? [] : incoming ?? []),
+    [scope, selectedTags, activeRules, incoming],
+  );
+
   // A genuinely empty vault (not just an empty filter or an all-archived one)
   // gets the first-run explainer instead of the grid.
   const isFirstRun = scope === 'all' && selectedTags.length === 0 && collectionId === null
-    && (notes ?? []).every(n => n.trashed);
+    && (notes ?? []).every(n => n.trashed) && (incoming?.length ?? 0) === 0;
 
   // Quick-import: drop .md/.txt onto the grid → new notes (native DnD, no lib).
   async function importFiles(fileList: FileList) {
@@ -140,12 +154,26 @@ export default function NotesPage() {
         if (e.dataTransfer.files.length) void importFiles(e.dataTransfer.files);
       }}
     >
+      {/* Filters and New note share one row, so the grid starts right under them. */}
       <header className="notes-page__head">
+        {!isLoading && !isError && !isFirstRun && (
+          <NotesFilterBar
+            scope={scope}
+            onScopeChange={setScope}
+            allTags={allTags}
+            selectedTags={selectedTags}
+            onSelectedTagsChange={setSelectedTags}
+            collections={collections ?? []}
+            selectedCollection={collectionId}
+            onCollectionChange={setCollection}
+            hasShared={(incoming?.length ?? 0) > 0}
+          />
+        )}
+        {importMsg && <span className="notes-page__import-msg">{importMsg}</span>}
         <button type="button" className="notes-page__new" onClick={() => void createNote()}>
           <Plus size={18} />
           New note
         </button>
-        {importMsg && <span className="notes-page__import-msg">{importMsg}</span>}
       </header>
 
       {dragging && (
@@ -155,35 +183,24 @@ export default function NotesPage() {
         </div>
       )}
 
-      {!isLoading && !isError && !isFirstRun && (
-        <NotesFilterBar
-          scope={scope}
-          onScopeChange={setScope}
-          allTags={allTags}
-          selectedTags={selectedTags}
-          onSelectedTagsChange={setSelectedTags}
-          collections={collections ?? []}
-          selectedCollection={collectionId}
-          onCollectionChange={setCollection}
-        />
-      )}
-
       {isLoading && <LoadingBar label="Loading notes" />}
       {isError && <p className="notes-page__status">Couldn’t reach the server.</p>}
       {/* A brand-new vault gets an explanation, not the word "empty". */}
       {!isLoading && !isError && isFirstRun && <FirstRun onCreate={() => void createNote()} />}
       {!isLoading && !isError && !isFirstRun && (
-        <div className="notes-page__body">
-          <div className="notes-page__main">
-            <DraggableNoteGrid
-              notes={visibleNotes}
-              conflictsByParent={conflictsByParent}
-              onResolveConflict={setResolving}
-              includeTodos={activeRules !== null}
-            />
-          </div>
-          <SharedRail />
-        </div>
+        scope === 'shared' && visibleShared.length === 0
+          ? <p className="notes-page__status">Nothing has been shared with you yet.</p>
+          : <DraggableNoteGrid
+          notes={visibleNotes}
+          shared={visibleShared}
+          conflictsByParent={conflictsByParent}
+          onResolveConflict={setResolving}
+          includeTodos={activeRules !== null}
+        />
+      )}
+
+      {openShare != null && (
+        <SharedNoteModal shareId={openShare} onClose={() => setFilter((p) => p.delete('open'))} />
       )}
 
       {resolving && (
