@@ -28,6 +28,7 @@ import { Minimize2, RefreshCw, Volume2, VolumeX } from 'lucide-react';
 import { useFocus } from '../hooks/useFocus';
 import { useDialogFocus } from '../hooks/useDialogFocus';
 import { useAmbient } from '../hooks/useAmbient';
+import { useAlwaysShowEditorToolbar } from '../hooks/useEditorToolbar';
 import './NoteEditor.css';
 
 /*
@@ -88,6 +89,16 @@ export default function NoteEditor({ note }: { note: Note }) {
   // `pending` state below.
   const { focus, pending: pendingUpdates, enter: enterFocus, exit: exitFocus, flush: flushUpdates } = useFocus();
   const ambient = useAmbient();
+  // The formatting toolbar above the body. Each note opens with the Settings
+  // preference ("always show"), and the footer toggle overrides it for the note
+  // in hand. It is a live editor prop — showing or hiding it never remounts the
+  // editor, so the caret and undo history survive.
+  // The toggle is an override scoped to this note and this preference value, so
+  // opening another note, or changing the preference, falls back to the preference.
+  const alwaysShowToolbar = useAlwaysShowEditorToolbar();
+  const toolbarScope = `${note.id}|${alwaysShowToolbar}`;
+  const [toolbarOverride, setToolbarOverride] = useState<{ scope: string; shown: boolean } | null>(null);
+  const toolbarShown = toolbarOverride?.scope === toolbarScope ? toolbarOverride.shown : alwaysShowToolbar;
   // Trashing a note is the same decision here as it is on a card, so both go
   // through one rule — see useTrashNote for what drifted when they did not.
   const trashNote = useTrashNote();
@@ -648,6 +659,10 @@ export default function NoteEditor({ note }: { note: Note }) {
           key={`${note.id}-${editorKey}-${editorTheme}-${colored ? 'tint' : 'plain'}`}
           initialTheme={theme}
           colored={colored}
+          // Not in focus mode (distraction-free) or while history previews an
+          // old version (the canvas is read-only then).
+          toolbar={toolbarShown && !focus && !history}
+          toolbarAlignment="center"
           defaultEditorView="visual"
           // Anchors are assigned by getSaveDraft at save time, never on commit.
           blockAnchors="on-demand"
@@ -725,6 +740,8 @@ export default function NoteEditor({ note }: { note: Note }) {
       {!focus && (
         <footer className="note-editor__footer">
           <NoteToolbar
+            formattingOpen={toolbarShown}
+            onFormatting={() => setToolbarOverride({ scope: toolbarScope, shown: !toolbarShown })}
             pinned={note.pinned}
             color={note.color}
             onTogglePin={() => void saveFrontmatter({ pinned: !note.pinned })}

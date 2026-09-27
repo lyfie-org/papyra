@@ -20,6 +20,9 @@
   /* The sheet's inner margin. The scroll area pads by it, and the footer,
      history bar and canvas rule line up with it. */
   --sheet-pad: var(--space-6);
+  /* What the sheet is painted with. Chrome that has to cover the body as it
+     scrolls under it (the sticky formatting toolbar) paints the same. */
+  --sheet-paint: var(--paper);
   position: relative;
   display: flex;
   flex-direction: column;
@@ -138,7 +141,8 @@
 .note-editor--colored {
   /* Same mix as the card (--tint-strength), so dark mode's muted tint carries
      over into the open note instead of snapping back to the raw pastel. */
-  background: color-mix(in srgb, var(--note-tint) var(--tint-strength), var(--surface));
+  --sheet-paint: color-mix(in srgb, var(--note-tint) var(--tint-strength), var(--surface));
+  background: var(--sheet-paint);
   color: var(--tint-ink-muted);
 }
 .note-editor--colored .note-editor__title {
@@ -162,6 +166,21 @@
 .note-editor--colored .luthor-floating-toolbar {
   background-color: color-mix(in srgb, var(--note-tint) 55%, #fff);
 }
+/* Same for every overlay the editor opens over the text: the formatting
+   toolbar's menus and dialogs, and the /, @, [[ and emoji menus. They read the
+   editor's (transparent) surface too, so on a coloured note they floated
+   see-through over the body. */
+.note-editor--colored :is(
+  .luthor-dropdown-content,
+  .luthor-select-dropdown,
+  .luthor-dialog,
+  .luthor-typeahead-menu,
+  .luthor-slash-menu,
+  .luthor-emoji-menu,
+  .luthor-command-palette
+) {
+  background-color: color-mix(in srgb, var(--note-tint) 55%, #fff);
+}
 
 .note-editor__canvas {
   position: relative;
@@ -175,6 +194,10 @@
   border: 0;
   border-radius: 0;
   box-shadow: none;
+  /* luthor clips with overflow: hidden, which makes the wrapper the sticky
+     toolbar's scroll container — a box that never scrolls, so the toolbar
+     scrolled away with the note. `clip` still clips but isn't a scroller. */
+  overflow: clip;
 }
 .note-editor__canvas .luthor-preset-papyra__content {
   padding-inline: var(--sheet-pad);
@@ -197,6 +220,62 @@
 }
 /* Focus mode is distraction-free: no rule, just the page. */
 .note-editor--focus .note-editor__canvas::before { content: none; }
+
+/* Formatting toolbar (footer toggle, or Settings → Appearance "always show").
+   It sits between the two rules above the body and sticks to the top of the
+   sheet as a long note scrolls, painted with the sheet so text slides under it
+   rather than showing through. Icons line up with the text column. */
+.note-editor__canvas .luthor-editor-top-region {
+  position: sticky;
+  /* Chrome measures a sticky offset from inside the scroll area's padding. */
+  top: calc(-1 * var(--sheet-pad));
+  z-index: 5;
+}
+.note-editor__canvas .luthor-editor-toolbar-slot {
+  background: var(--sheet-paint);
+  border-bottom: 1px solid var(--border);
+}
+.note-editor--colored .note-editor__canvas .luthor-editor-toolbar-slot {
+  border-bottom-color: var(--tint-scrim);
+}
+.note-editor__canvas .luthor-toolbar {
+  padding: var(--space-2) calc(var(--sheet-pad) - 7px);
+  /* Centred (toolbarAlignment="center"), but `safe`: when the phone's single
+     scrolling row overflows, it starts at the left edge instead of centring
+     its first tools out of reach. */
+  justify-content: safe center;
+}
+/* On a phone the tools would stack four or five rows deep and push the note off
+   the screen: keep them to one row that scrolls sideways instead. */
+@media (max-width: 620px) {
+  .note-editor__canvas .luthor-toolbar {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .note-editor__canvas .luthor-toolbar::-webkit-scrollbar { display: none; }
+  .note-editor__canvas .luthor-toolbar-section { flex-shrink: 0; }
+}
+
+/* Dialog confirm buttons: luthor inks them with the editor surface (transparent
+   on a coloured note, so the label vanished) and hovers to slate. Papyra's
+   accent pair instead — AA in both themes. */
+.note-editor .luthor-button-primary {
+  color: var(--accent-fg);
+}
+.note-editor .luthor-button-primary:not(:disabled):hover {
+  background-color: var(--accent-hover);
+  border-color: var(--accent-hover);
+}
+
+/* luthor's dialogs (insert table, embed a link) are absolutely positioned
+   against their nearest positioned ancestor — which the sticky toolbar now is,
+   so they were squeezed into the toolbar's own band. Fix them to the screen
+   instead; the note modal already covers it. */
+.note-editor__canvas .luthor-dialog-overlay {
+  position: fixed;
+  inset: 0;
+}
 
 /* Line spacing. Every Enter makes a new block, and luthor spaces blocks like
    document paragraphs (8px above and below each line, 10px around each list and

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Pin, Palette, History, Archive, Trash2, Maximize2, Lock, LockOpen, Share2 } from 'lucide-react';
+import { Pin, Palette, History, Archive, Trash2, Maximize2, Lock, LockOpen, Share2, Type } from 'lucide-react';
 import PalettePicker from './PalettePicker';
 import './NoteToolbar.css';
 import { useSyncState } from '../hooks/useSync';
@@ -8,6 +8,9 @@ import { useSyncState } from '../hooks/useSync';
 // deletes the .md. Fades in on editor hover (see NoteToolbar.css). Presentational
 // only — the editor owns the actual mutations so they ride the live draft.
 interface Props {
+  /** Whether the formatting toolbar above the note body is showing. */
+  formattingOpen: boolean;
+  onFormatting: () => void;
   pinned: boolean;
   color: string | null;
   onTogglePin: () => void;
@@ -31,6 +34,8 @@ interface Props {
 }
 
 export default function NoteToolbar({
+  formattingOpen,
+  onFormatting,
   pinned,
   color,
   onTogglePin,
@@ -50,6 +55,20 @@ export default function NoteToolbar({
 
   return (
     <div className="note-toolbar">
+      {/* Shows the formatting toolbar (headings, lists, table, link a note,
+          mention, embeds…) above the body. Settings → Appearance can keep it
+          open on every note. */}
+      <button
+        type="button"
+        className={`note-toolbar__btn${formattingOpen ? ' is-active' : ''}`}
+        aria-pressed={formattingOpen}
+        aria-label={formattingOpen ? 'Hide formatting toolbar' : 'Show formatting toolbar'}
+        title={formattingOpen ? 'Hide formatting toolbar' : 'Show formatting toolbar'}
+        onClick={onFormatting}
+      >
+        <Type size={18} />
+      </button>
+
       <button
         type="button"
         className={`note-toolbar__btn${pinned ? ' is-active' : ''}`}
