@@ -6,6 +6,11 @@ a Docker Hub tag and a GitHub Release.
 
 <!-- new releases are inserted directly below this line -->
 
+## [0.1.15] - 2026-09-27
+
+- chore: bump @lyfie/luthor to 2.10.2 (3385fad)
+- feat: Papyra-owned grouped toolbar, distinct palette, insert e2e (aab4350)
+
 ## [0.1.14] - 2026-09-27
 
 - fix: end-to-end WCAG 2.2 AA pass and check:a11y harness (7cd140b)
