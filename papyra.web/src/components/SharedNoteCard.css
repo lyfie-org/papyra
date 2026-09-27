@@ -1,0 +1,27 @@
+/* "Shared with you by @bea · View only" — one quiet line, the only thing that
+   sets a shared card apart from your own. */
+.shared-card__foot {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 0;
+  margin: var(--space-1) 0 0;
+  font: 500 var(--fs-2xs) / 1.4 var(--sans);
+  color: var(--text);
+}
+.shared-card__foot svg { flex: none; color: var(--accent-text); }
+
+.shared-card__owner {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-h);
+}
+
+.shared-card__access { flex: none; margin-left: auto; }
+
+.note-card--colored .shared-card__foot,
+.note-card--colored .shared-card__foot svg { color: var(--tint-ink-muted); }
+[data-theme='dark'] .note-card--colored .shared-card__foot,
+[data-theme='dark'] .note-card--colored .shared-card__foot svg { color: var(--tint-ink-soft); }
+.note-card--colored .shared-card__owner { color: var(--tint-ink); }

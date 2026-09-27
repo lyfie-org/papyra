@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseBlocks, parseInline, type ListBlock } from './markdownPreview';
+import { parseBlocks, parseInline, previewCapEm, type ListBlock } from './markdownPreview';
 
 describe('parseBlocks', () => {
   it('nests an editor-written numbered list and drops block anchors', () => {
@@ -94,5 +94,47 @@ describe('parseInline', () => {
 
   it('leaves snake_case words alone', () => {
     expect(parseInline('my_var_name')).toEqual([{ t: 'text', v: 'my_var_name' }]);
+  });
+});
+
+describe('previewCapEm', () => {
+  const lines = (n: number) => Array.from({ length: n }, (_, i) => `line ${i + 1}`).join('\n');
+
+  it('shows short notes whole', () => {
+    expect(previewCapEm('')).toBeNull();
+    expect(previewCapEm(lines(8))).toBeNull();
+    // A line or two past ten is not worth a fade.
+    expect(previewCapEm(lines(11))).toBeNull();
+  });
+
+  it('lets longer notes grow with their length, not stop at one height', () => {
+    const a = previewCapEm(lines(16))!;
+    const b = previewCapEm(lines(24))!;
+    const c = previewCapEm(lines(32))!;
+    expect(a).toBeGreaterThan(16);
+    expect(b).toBeGreaterThan(a);
+    expect(c).toBeGreaterThan(b);
+    // …but slower than the content does.
+    expect(b - a).toBeLessThan(8 * 1.55);
+  });
+
+  it('keeps long notes apart instead of flattening them to one height', () => {
+    const forty = previewCapEm(lines(40))!;
+    const eighty = previewCapEm(lines(80))!;
+    expect(eighty).toBeGreaterThan(forty + 1);
+  });
+
+  it('stops the very longest at a ceiling', () => {
+    expect(previewCapEm(lines(200))).toBe(previewCapEm(lines(400)));
+    expect(previewCapEm(lines(200))).toBeLessThanOrEqual(48);
+  });
+
+  it('counts wrapped prose, not just line breaks', () => {
+    const paragraph = 'word '.repeat(150); // one source line, many card lines
+    expect(previewCapEm(paragraph)).not.toBeNull();
+  });
+
+  it('ignores block anchors and list markers', () => {
+    expect(previewCapEm('- [ ] buy milk ^abc12345')).toBeNull();
   });
 });

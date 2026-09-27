@@ -7,7 +7,7 @@
 
 import type { Note } from '../types/note';
 import type { TagEntry as Category } from '../hooks/useTags';
-import type { InboxEntry } from '../hooks/useInbox';
+import type { AppNotification } from '../hooks/useNotifications';
 import type { SmartCollection } from '../hooks/useCollections';
 import { AI_ENABLED } from '../lib/features';
 
@@ -257,19 +257,25 @@ export const SEED_COLLECTIONS: SmartCollection[] = [
   },
 ];
 
-export const SEED_INBOX: InboxEntry[] = [
+/** The bell in the demo: Dana's mention, in a note shared with the visitor. */
+export const SEED_NOTIFICATIONS: AppNotification[] = [
   {
     id: 1,
+    kind: 'mention',
+    createdUtc: daysAgo(1, 12),
+    readUtc: null,
     noteId: 'revenue-model',
-    blockId: 'demo-block-1',
-    from: 'dana',
-    receivedUtc: daysAgo(1, 12),
+    access: null,
+    actor: 'dana',
+    actorName: null,
     title: 'Support volume by tier',
     text: 'Team accounts open about a third of the tickets and are a fifth of the seats. Worth a line in the review.',
-    readUtc: null,
     available: true,
+    mine: false,
     shareId: null,
-    access: null,
+    shareAccess: null,
+    requestId: null,
+    requestStatus: null,
     requestPending: false,
   },
 ];

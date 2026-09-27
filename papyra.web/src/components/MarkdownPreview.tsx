@@ -1,5 +1,7 @@
-import { memo, useMemo, type ReactNode } from 'react';
-import { parseBlocks, parseInline, type Block, type Inline, type ListBlock } from '../lib/markdownPreview';
+import { memo, useMemo, type CSSProperties, type ReactNode } from 'react';
+import {
+  parseBlocks, parseInline, previewCapEm, PREVIEW_MAX_LINES, type Block, type Inline, type ListBlock,
+} from '../lib/markdownPreview';
 import './MarkdownPreview.css';
 
 function renderInline(nodes: Inline[]): ReactNode[] {
@@ -69,9 +71,14 @@ function BlockView({ block }: { block: Block }) {
  * grid (theme flips, a sibling card's save) never re-parses a note.
  */
 const MarkdownPreview = memo(function MarkdownPreview({ body, className }: { body: string; className?: string }) {
-  const blocks = useMemo(() => parseBlocks(body).blocks, [body]);
+  const blocks = useMemo(() => parseBlocks(body, PREVIEW_MAX_LINES).blocks, [body]);
+  // Height follows the note's length (see previewCapEm); null = show it whole.
+  const cap = useMemo(() => previewCapEm(body), [body]);
   return (
-    <div className={`md-preview${className ? ` ${className}` : ''}`}>
+    <div
+      className={`md-preview${cap ? ' md-preview--clamped' : ''}${className ? ` ${className}` : ''}`}
+      style={cap ? ({ '--md-cap': `${cap.toFixed(2)}em` } as CSSProperties) : undefined}
+    >
       {blocks.map((b, i) => <BlockView key={i} block={b} />)}
     </div>
   );

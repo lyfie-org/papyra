@@ -1,4 +1,4 @@
-import { copyFileSync, rmSync } from 'node:fs';
+import { copyFileSync, readFileSync, rmSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { defineConfig, type Plugin } from 'vite';
 import react from '@vitejs/plugin-react';
@@ -61,6 +61,19 @@ const API_TARGET = process.env.PAPYRA_API ?? 'http://localhost:5220';
 // directory change; the application code is identical, which is the whole point —
 // the demo IS the app, so it can never drift from it. VITE_DEMO comes from
 // .env.demo, which Vite loads for this mode.
+/**
+ * The release version, from the repo-root VERSION file the release workflow
+ * bumps — the one place a version is recorded. Baked into the bundle so the
+ * sidebar shows what is actually running; "dev" when built outside the repo.
+ */
+function appVersion(): string {
+  try {
+    return readFileSync(new URL('../VERSION', import.meta.url), 'utf8').trim() || 'dev';
+  } catch {
+    return 'dev';
+  }
+}
+
 export default defineConfig(({ mode }) => {
   const isDemo = mode === 'demo';
 
@@ -76,6 +89,7 @@ export default defineConfig(({ mode }) => {
     // core's own publish step runs in the browser build too.
     define: {
       global: 'globalThis',
+      'import.meta.env.VITE_APP_VERSION': JSON.stringify(appVersion()),
     },
     // Prod build emits straight into the API's wwwroot so a single Kestrel
     // process serves the SPA (UseStaticFiles + MapFallbackToFile). The demo build

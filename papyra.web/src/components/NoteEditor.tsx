@@ -13,6 +13,7 @@ import { tintInkClass } from '../lib/noteColors';
 import { PAPYRA_TOOLBAR_LAYOUT, createToolbarItems } from '../lib/editorToolbar';
 import { putNote } from '../lib/notesApi';
 import { patchNoteInCache } from '../lib/notesCache';
+import { patchDraft } from '../lib/noteDrafts';
 import { vaultFetch } from '../lib/vault';
 import VaultUnlock from './VaultUnlock';
 import { closeTarget } from '../lib/noteLink';
@@ -69,7 +70,11 @@ const STATUS_LABEL = {
 // The editing canvas for a single note. Luthor's markdown preset owns the body
 // (uncontrolled — content is read imperatively at save time); a Marcellus title
 // input sits above it. Both feed the debounced auto-save.
-export default function NoteEditor({ note }: { note: Note }) {
+/**
+ * `isDraft`: a new note not yet on the server (see lib/noteDrafts). Its first
+ * change saves it like any other edit; closed untouched, nothing is written.
+ */
+export default function NoteEditor({ note, isDraft = false }: { note: Note; isDraft?: boolean }) {
   const { theme } = useTheme();
   const navigate = useNavigate();
   const location = useLocation();
@@ -408,6 +413,7 @@ export default function NoteEditor({ note }: { note: Note }) {
     fm.current = { ...fm.current, ...patch };
     const intended = fm.current;
     patchNoteInCache(queryClient, note.id, patch);
+    if (isDraft) patchDraft(note.id, patch);
     fmInFlight.current++;
     const run = fmChain.current.then(async () => {
       const draft = getDraft();
@@ -436,7 +442,7 @@ export default function NoteEditor({ note }: { note: Note }) {
     });
     fmChain.current = run;
     return run;
-  }, [getDraft, note.id, note.updated, reset, queryClient, isLocked, toast]);
+  }, [getDraft, note.id, note.updated, reset, queryClient, isLocked, toast, isDraft]);
 
   // Lock or unlock the note. Not through saveFrontmatter: that path parks a failed
   // write in the offline outbox, and the two refusals here are answers, not
@@ -553,13 +559,34 @@ export default function NoteEditor({ note }: { note: Note }) {
   // re-baselined so the editor's unmount has nothing left to flush — a save that
   // lands after the trash would write the note back out of Trash.
   const trash = useCallback(async () => {
+    // Never saved: there is nothing to put in Trash — just let it go.
+    if (isDraft) {
+      reset(getDraft());
+      navigate(closeTo);
+      return;
+    }
     if (history) leaveHistory();
     if (!isLocked) await flush();
     if (await trashNote(note)) {
       reset(getDraft());
       navigate(closeTo);
     }
-  }, [trashNote, note, navigate, closeTo, flush, reset, getDraft, isLocked, history, leaveHistory]);
+  }, [trashNote, note, navigate, closeTo, flush, reset, getDraft, isLocked, history, leaveHistory, isDraft]);
+
+  // Sharing needs a note on the server to point at. Opening the share dialog
+  // is a deliberate act, so it saves a draft first — empty or not.
+  const openShare = useCallback(async () => {
+    if (isDraft) {
+      const draft = getDraft();
+      await putNote(note.id, {
+        title: draft.title, tags: note.tags, color: note.color, pinned: note.pinned,
+        archived: note.archived, kind: note.kind, body: draft.body,
+      });
+      reset(draft);
+      await queryClient.invalidateQueries({ queryKey: ['notes'] });
+    }
+    setShareOpen(true);
+  }, [isDraft, getDraft, note, reset, queryClient]);
 
   // Archive: the frontmatter save carries the live draft, so nothing is left to
   // flush afterwards — cancel the debounce so a stale save (with archived: false
@@ -601,7 +628,6 @@ export default function NoteEditor({ note }: { note: Note }) {
       role="dialog"
       aria-modal="true"
       aria-label={`Note editor: ${title.trim() || 'Untitled'}`}
-      onMouseDown={(e) => e.stopPropagation()}
     >
       {history && (
         <NoteHistory
@@ -788,7 +814,7 @@ export default function NoteEditor({ note }: { note: Note }) {
             canToggleSecure={!isLocked}
             onToggleSecure={() => void toggleSecure()}
             onArchive={() => void archive()}
-            onShare={() => setShareOpen(true)}
+            onShare={() => void openShare()}
             onTrash={() => {
               void trash();
             }}

@@ -60,10 +60,12 @@ export function useSignalR(): ServerStatus {
     // (rail, Shared with me, inbox) in place rather than on the next reload.
     connection.on('SharesChanged', () => {
       void queryClient.invalidateQueries({ queryKey: ['shares', 'incoming'] });
-      void queryClient.invalidateQueries({ queryKey: ['inbox'] });
+      void queryClient.invalidateQueries({ queryKey: ['notifications'] });
     });
-    connection.on('InboxDelivered', () => { void queryClient.invalidateQueries({ queryKey: ['inbox'] }); });
-    connection.on('AccessRequested', () => { void queryClient.invalidateQueries({ queryKey: ['access-requests'] }); });
+    // The bell: mentions, shares, requests and their answers.
+    connection.on('NotificationsChanged', () => {
+      void queryClient.invalidateQueries({ queryKey: ['notifications'] });
+    });
 
     // Import progress lives in the query cache (not the Settings page) so the bar
     // survives navigating away. A finished import has rewritten drag positions too:

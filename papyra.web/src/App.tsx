@@ -12,7 +12,6 @@ import TrashPage from './pages/TrashPage';
 import SettingsPage from './pages/SettingsPage';
 import ManageUsersPage from './pages/ManageUsersPage';
 import ChoosePasswordPage from './pages/ChoosePasswordPage';
-import SharedWithMePage from './pages/SharedWithMePage';
 import SharedNotePage from './pages/SharedNotePage';
 import LoginPage from './pages/LoginPage';
 import SetupPage from './pages/SetupPage';
@@ -20,7 +19,6 @@ import { useAuth } from './hooks/useAuth';
 import { clearSessionData } from './lib/session';
 import { FocusProvider } from './hooks/FocusProvider';
 import './App.css';
-import InboxPage from './pages/InboxPage';
 import { backgroundPage } from './lib/noteLink';
 import { RealLocationContext } from './lib/realLocation';
 import LoadingBar from './components/LoadingBar';
@@ -99,11 +97,13 @@ export default function App() {
       <Route element={<RequireAuth />}>
         <Route path="/" element={<NotesPage />} />
         <Route path="todo" element={<TodoPage />} />
-        <Route path="inbox" element={<InboxPage />} />
+        {/* The inbox became the bell in the top bar; old links open it. */}
+        <Route path="inbox" element={<Navigate to="/?notifications=1" replace />} />
         {/* Tags now live on the Collections page. */}
         <Route path="categories" element={<Navigate to="/collections" replace />} />
         <Route path="collections" element={<CollectionsPage />} />
-        <Route path="shared-with-me" element={<SharedWithMePage />} />
+        {/* Shared notes live on the desk now, behind the "Shared with me" filter. */}
+        <Route path="shared-with-me" element={<SharedWithMeRedirect />} />
         <Route path="vault" element={<VaultPage />} />
         <Route path="archive" element={<ArchivePage />} />
         <Route path="trash" element={<TrashPage />} />
@@ -116,4 +116,12 @@ export default function App() {
     </Routes>
     </RealLocationContext.Provider>
   );
+}
+
+/** Old /shared-with-me links (emails, bookmarks) land on the filtered desk, keeping `?open=`. */
+function SharedWithMeRedirect() {
+  const { search } = useLocation();
+  const params = new URLSearchParams(search);
+  params.set('scope', 'shared');
+  return <Navigate to={`/?${params.toString()}`} replace />;
 }

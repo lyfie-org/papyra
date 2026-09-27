@@ -18,28 +18,16 @@ export interface IncomingShare {
   owner: string;
   title: string;
   access: 'view' | 'edit';
-  /** Plain-text opening of the note, for the card. */
+  /** Plain-text opening of the note. */
   excerpt: string;
+  /** The note's markdown, previewed on the card as the owner's own card does. */
+  body: string;
   color: string | null;
   updatedUtc: string | null;
   /** The caller has asked the owner for edit access and is waiting. */
   requestPending: boolean;
 }
 
-/** Someone asking me for access to one of my notes. */
-export interface AccessRequest {
-  id: number;
-  noteId: string;
-  title: string;
-  requester: string;
-  requesterName: string | null;
-  access: 'view' | 'edit';
-  /** What they hold today, if anything — a view share asking to edit. */
-  currentAccess: 'view' | 'edit' | null;
-  createdUtc: string;
-}
-
-export const ACCESS_REQUESTS_KEY = ['access-requests'] as const;
 
 export interface CreateShareInput {
   kind: 'link' | 'user';
@@ -128,18 +116,6 @@ export function useIncomingShares() {
   });
 }
 
-/** Requests waiting on the signed-in owner. */
-export function useAccessRequests() {
-  return useQuery({
-    queryKey: ACCESS_REQUESTS_KEY,
-    queryFn: async (): Promise<AccessRequest[]> => {
-      const res = await fetch('/api/access-requests/incoming');
-      if (!res.ok) throw new Error(`GET access requests failed: ${res.status}`);
-      return res.json();
-    },
-  });
-}
-
 /**
  * Ask a note's owner for access — from a read-only share (`shareId`) or from a
  * mention in the inbox (`inboxId`). Asking twice is the same request.
@@ -147,7 +123,7 @@ export function useAccessRequests() {
 export function useRequestAccess() {
   const queryClient = useQueryClient();
   return useMutation({
-    mutationFn: async (input: { shareId?: number; inboxId?: number; access: 'view' | 'edit' }) => {
+    mutationFn: async (input: { shareId?: number; inboxId?: number; notificationId?: number; access: 'view' | 'edit' }) => {
       const res = await fetch('/api/access-requests', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -160,7 +136,7 @@ export function useRequestAccess() {
     },
     onSuccess: () => {
       void queryClient.invalidateQueries({ queryKey: ['shares', 'incoming'] });
-      void queryClient.invalidateQueries({ queryKey: ['inbox'] });
+      void queryClient.invalidateQueries({ queryKey: ['notifications'] });
     },
   });
 }
@@ -181,7 +157,7 @@ export function useAnswerAccessRequest() {
       }
     },
     onSettled: () => {
-      void queryClient.invalidateQueries({ queryKey: ACCESS_REQUESTS_KEY });
+      void queryClient.invalidateQueries({ queryKey: ['notifications'] });
       void queryClient.invalidateQueries({ queryKey: ['shares'] });
     },
   });

@@ -17,6 +17,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<NoteEmbedding> NoteEmbeddings => Set<NoteEmbedding>();
     public DbSet<BlockGrant> BlockGrants => Set<BlockGrant>();
     public DbSet<AccessRequest> AccessRequests => Set<AccessRequest>();
+    public DbSet<Notification> Notifications => Set<Notification>();
     public DbSet<AuthToken> AuthTokens => Set<AuthToken>();
     public DbSet<ChatSession> ChatSessions => Set<ChatSession>();
     public DbSet<ChatMessage> ChatMessages => Set<ChatMessage>();
@@ -58,6 +59,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         // Owners list their pending requests; requesters are matched by note.
         modelBuilder.Entity<AccessRequest>().HasIndex(r => new { r.OwnerId, r.Status });
         modelBuilder.Entity<AccessRequest>().HasIndex(r => new { r.RequesterUserId, r.OwnerId, r.NoteId });
+        // The tray is "mine, newest first".
+        modelBuilder.Entity<Notification>().HasIndex(n => new { n.UserId, n.CreatedUtc });
         // The session list is "mine, most recent first" and nothing else.
         modelBuilder.Entity<ChatSession>().HasIndex(c => new { c.UserId, c.UpdatedUtc });
         // A thread is read in order, always by session.

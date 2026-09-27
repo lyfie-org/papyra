@@ -1,36 +1,29 @@
 import { useNavigate } from 'react-router-dom';
-import { useQueryClient } from '@tanstack/react-query';
 import { Plus, ListChecks } from 'lucide-react';
 import { useNotes } from '../hooks/useNotes';
 import DraggableNoteGrid from '../components/DraggableNoteGrid';
 import EmptyState from '../components/EmptyState';
-import { putNote } from '../lib/notesApi';
+import { createDraft } from '../lib/noteDrafts';
 import './TodoPage.css';
 import LoadingBar from '../components/LoadingBar';
 
 export default function TodoPage() {
   const { data: notes, isLoading, isError } = useNotes();
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
 
   const todos = (notes ?? []).filter(n => n.kind === 'todo' && !n.trashed && !n.archived);
 
-  // Create = PUT a fresh todo note seeded with one empty checkbox, then open it.
-  async function createTodo() {
-    const id = crypto.randomUUID();
-    await putNote(id, {
-      title: '', tags: [], color: null, pinned: false, archived: false,
-      kind: 'todo', body: '- [ ] ',
-    });
-    await queryClient.invalidateQueries({ queryKey: ['notes'] });
-    navigate(`/note/${id}`);
+  // Open a draft list seeded with one empty checkbox; like a new note, it is
+  // saved on the first change and dropped if closed untouched.
+  function createTodo() {
+    navigate(`/note/${createDraft('todo', '- [ ] ')}`);
   }
 
   return (
     <section className="todo-page">
       <header className="todo-page__head">
         <h1 className="page-title todo-page__title">To Do</h1>
-        <button type="button" className="todo-page__new" onClick={() => void createTodo()}>
+        <button type="button" className="todo-page__new" onClick={createTodo}>
           <Plus size={18} /> New list
         </button>
       </header>

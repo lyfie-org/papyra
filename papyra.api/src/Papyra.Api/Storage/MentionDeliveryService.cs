@@ -240,7 +240,7 @@ public sealed partial class MentionDeliveryService : BackgroundService
                 continue;
             }
 
-            db.BlockGrants.Add(new BlockGrant
+            var grant = new BlockGrant
             {
                 SourceOwnerId = job.OwnerId,
                 SourceNoteId = job.NoteId,
@@ -249,11 +249,23 @@ public sealed partial class MentionDeliveryService : BackgroundService
                 GranteeUserId = recipient.Id,
                 SourceUsername = job.OwnerUsername,
                 CreatedUtc = DateTime.UtcNow,
+            };
+            db.BlockGrants.Add(grant);
+            await db.SaveChangesAsync(ct);
+
+            // The tray entry. What it may show of the note is decided on read,
+            // by whether the recipient holds a share of it.
+            db.Notifications.Add(new Notification
+            {
+                UserId = recipient.Id, Kind = "mention", ActorUserId = job.OwnerId,
+                OwnerId = job.OwnerId, NoteId = job.NoteId, BlockGrantId = grant.Id,
+                CreatedUtc = grant.CreatedUtc,
             });
             await db.SaveChangesAsync(ct);
 
             await AppendToInboxAsync(recipient.Id.ToString(), job, blockId, blockText, ct);
             await _hub.Clients.User(recipient.Id.ToString()).SendAsync("InboxDelivered", new { recipientId = recipient.Id }, ct);
+            await _hub.Clients.User(recipient.Id.ToString()).SendAsync("NotificationsChanged", ct);
             await NotifyByEmailAsync(recipient, job, ct);
         }
     }
@@ -275,7 +287,7 @@ public sealed partial class MentionDeliveryService : BackgroundService
             recipient.Email,
             $"@{job.OwnerUsername} mentioned you in Papyra",
             $"@{job.OwnerUsername} mentioned you in a note.\n\n"
-            + "Open your Papyra inbox to see it, or to ask for access to the note.",
+            + "Open the notifications tray in Papyra to see it, or to ask for access to the note.",
             ct);
     }
 

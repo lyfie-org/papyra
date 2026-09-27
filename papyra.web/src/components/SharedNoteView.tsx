@@ -4,7 +4,7 @@ import {
 } from '@lyfie/luthor/presets/papyra';
 import '@lyfie/luthor/styles.css';
 import { Check, Eye, Loader2, PencilLine } from 'lucide-react';
-import { useTheme } from '../hooks/useTheme';
+import { useResolvedTheme } from '../hooks/useTheme';
 import { tintInkClass } from '../lib/noteColors';
 import { hasBridgePlaceholder } from '../lib/bridgePlaceholder';
 import './SharedNoteView.css';
@@ -38,7 +38,7 @@ export default function SharedNoteView({
   onRequestEdit?: () => Promise<void>;
   mediaUrl: (filename: string) => string;
 }) {
-  const { theme } = useTheme();
+  const theme = useResolvedTheme();
   const editorRef = useRef<PapyraEditorRef | null>(null);
   const [status, setStatus] = useState<Status>('idle');
   const [requesting, setRequesting] = useState(false);
@@ -54,7 +54,11 @@ export default function SharedNoteView({
 
   const colored = !!note.color;
   const canEdit = note.access === 'edit' && !!onSave;
-  const style = note.color ? ({ background: note.color } as CSSProperties) : undefined;
+  // Painted exactly like the owner's open note: `--note-tint` mixed by
+  // --tint-strength (muted in dark mode), and a coloured note keeps a light
+  // editor for dark ink — the NoteEditor convention.
+  const style = note.color ? ({ '--note-tint': note.color } as CSSProperties) : undefined;
+  const editorTheme = colored ? 'light' : theme;
 
   // What the server last holds. Starts as the editor's own serialization of the
   // loaded note (see onReady) so merely opening it never writes anything back.
@@ -99,7 +103,7 @@ export default function SharedNoteView({
   }
 
   return (
-    <article className={`shared-note${colored ? ` shared-note--colored${tintInkClass(note.color, 'light')}` : ''}`} style={style}>
+    <article className={`shared-note${colored ? ` shared-note--colored${tintInkClass(note.color, theme)}` : ''}`} style={style}>
       <header className="shared-note__bar">
         <h1 className="shared-note__title">{note.title.trim() || 'Untitled'}</h1>
         {canEdit ? (
@@ -135,8 +139,8 @@ export default function SharedNoteView({
       <PapyraEditor
         // Re-mounted when access changes, so an approval turns the page
         // editable in place.
-        key={`${theme}-${note.color ?? 'none'}-${canEdit ? 'edit' : 'view'}`}
-        initialTheme={theme}
+        key={`${editorTheme}-${colored ? 'tint' : 'plain'}-${canEdit ? 'edit' : 'view'}`}
+        initialTheme={editorTheme}
         colored={colored}
         readOnly={!canEdit}
         defaultEditorView="visual"
