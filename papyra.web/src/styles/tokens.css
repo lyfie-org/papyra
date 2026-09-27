@@ -33,6 +33,9 @@
   --tint-ink-muted:  #5c4636;
   --tint-ink-soft:   #4a3526;
   --tint-scrim:      rgba(61, 44, 30, 0.10);
+  /* Link ink on those tints: holds 4.97:1 on the darkest dark-mode tint
+     (the old #205c38 fell to 3.9:1 there). */
+  --tint-link:       #174a2b;
   /* How much of a note's YAML colour survives on its sheet. Light: all of it.
      Dark mode mutes it toward --surface so a pastel doesn't glare off the
      graphite. Card and open editor both read this, so they always match. */
@@ -42,6 +45,21 @@
      --surface in light; lifted in dark so notes don't sink into --bg. */
   --paper:      var(--surface);
   --paper-edge: var(--border);
+
+  /* Caret + text selection, after macOS: the system-blue insertion point and
+     the selectedTextBackgroundColor wash. Deliberately not the sage accent, so
+     the caret never blends into sage UI. Coloured notes are light pastels in
+     both themes; plain blue sinks to ~2:1 on the dark-mode tints, so they get
+     a deeper blue that holds 3:1 (non-text contrast) on every palette tint. */
+  --caret:             #007aff;
+  --selection-bg:      #b3d7ff;
+  --tint-caret:        #0064d1;
+  --tint-selection-bg: #b3d7ff;
+  /* Link ink while selected. The light-theme link green already holds 5.3:1 on
+     the blue wash, so it stays; dark mode swaps sage (2.4:1 there) for a pale
+     blue-white (5.2:1) — the underline still marks it as a link. */
+  --selection-link:      #205c38;
+  --tint-selection-link: var(--tint-link);
 
   /* Scrollbars: a slim ink pill on a bare track, like a pencil line in the
      margin. Mixed from --text so both themes stay in the paper palette. */
@@ -157,6 +175,13 @@
   --paper-edge: #4a3f36;
   --tint-strength: 78%;
 
+  /* macOS dark: #0A84FF caret (3.9:1 on paper), #3F638B selection (5:1 under
+     --text-h). */
+  --caret:        #0a84ff;
+  --selection-bg: #3f638b;
+  --tint-caret:   #0058b8;
+  --selection-link: #dcebff;
+
   --text-h: #f0e6d3;
   --text:   #a89070;
 
@@ -165,7 +190,10 @@
   --accent-fg:     #0f2118;
   --accent-bg:     rgba(122, 170, 138, 0.18);
   --accent-border: rgba(122, 170, 138, 0.35);
-  --accent-text: #7aaa8a;
+  /* One step lighter than --accent: sage on its own wash (tags, the active nav
+     item) sat at 3.9–4.3:1 once cards moved onto the lifted --paper. This
+     holds 4.9:1 on the wash and 6.6:1 on paper. */
+  --accent-text: #8dbc9d;
 
   --danger:        #f87171;
   --danger-hover:  #fca5a5;

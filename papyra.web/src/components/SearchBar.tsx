@@ -208,7 +208,8 @@ export default function SearchBar() {
           aria-label="Search notes, to-dos and settings"
           role="combobox"
           aria-expanded={showPanel}
-          aria-controls="search-results"
+          aria-controls={showPanel && results.length > 0 ? 'search-results' : undefined}
+          aria-activedescendant={showPanel && results.length > 0 ? `search-opt-${activeIndex}` : undefined}
           aria-autocomplete="list"
           onChange={(e) => { setQuery(e.target.value); setOpen(true); setActive(0); }}
           onFocus={() => setOpen(true)}
@@ -241,10 +242,14 @@ export default function SearchBar() {
       )}
 
       {showPanel && (
-        <ul className="search__results" id="search-results" role="listbox">
-          {results.length === 0 && <li className="search__empty">No matches.</li>}
+        // The panel holds the listbox and, outside it, the status lines — a listbox
+        // may only own options, so "No matches." and the notes live beside it.
+        <div className="search__results">
+          {results.length === 0 && <p className="search__empty" role="status">No matches.</p>}
+          {results.length > 0 && (
+          <ul className="search__list" id="search-results" role="listbox" aria-label="Search results">
           {results.map((hit, i) => (
-            <li key={hit.key}>
+            <li key={hit.key} role="none">
               {/* A heading whenever the group changes. `aria-hidden` because the
                   breadcrumb inside each option already names its source — a
                   screen reader would otherwise hear the group twice. */}
@@ -252,6 +257,7 @@ export default function SearchBar() {
                 <p className="search__group" aria-hidden="true">{GROUP_LABEL[hit.source]}</p>
               )}
               <button
+                id={`search-opt-${i}`}
                 type="button"
                 role="option"
                 aria-selected={i === activeIndex}
@@ -267,13 +273,15 @@ export default function SearchBar() {
               </button>
             </li>
           ))}
+          </ul>
+          )}
           {offlineResults && hasNoteResults && (
-            <li className="search__note">Searching this device — full-text search resumes when the server is back.</li>
+            <p className="search__note">Searching this device — full-text search resumes when the server is back.</p>
           )}
           {!offlineResults && partial && hasNoteResults && (
-            <li className="search__note">Close matches — nothing contains that word exactly.</li>
+            <p className="search__note">Close matches — nothing contains that word exactly.</p>
           )}
-        </ul>
+        </div>
       )}
     </div>
   );

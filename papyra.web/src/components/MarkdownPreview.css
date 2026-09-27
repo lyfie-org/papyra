@@ -136,7 +136,7 @@ ul.md-preview__list--d2 { list-style-type: square; }
 .note-card--colored .md-preview strong,
 .note-card--colored .md-preview__h,
 .note-card--colored .md-preview__list li::marker { color: var(--tint-ink); }
-.note-card--colored .md-preview__link { color: #205c38; }
+.note-card--colored .md-preview__link { color: var(--tint-link); }
 .note-card--colored .md-preview mark,
 .note-card--colored .md-preview__pre { background: var(--tint-scrim); }
 .note-card--colored .md-preview__quote,

@@ -312,7 +312,7 @@
 /* Quieter than the status line — reference information, not a live signal. */
 .workspace__version {
   padding-left: calc(9px + var(--space-2));
-  opacity: 0.75;
+  /* Quiet by size, not by fading: at 0.75 opacity it fell to ~3.4:1. */
 }
 
 .workspace--collapsed .workspace__version {

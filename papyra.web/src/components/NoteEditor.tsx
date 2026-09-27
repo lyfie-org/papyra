@@ -283,6 +283,22 @@ export default function NoteEditor({ note }: { note: Note }) {
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== 'Escape' || e.defaultPrevented) return;
+      // Tab indents inside the body, so without this a keyboard user could
+      // never Tab out of it (WCAG 2.1.2). Escape leaves the body for the next
+      // control after it — the note's actions — and a second Escape closes.
+      const target = e.target as HTMLElement | null;
+      if (target?.closest('.luthor-content-editable') && sheetRef.current) {
+        const body = target.closest('.luthor-content-editable') as HTMLElement;
+        const next = [...sheetRef.current.querySelectorAll<HTMLElement>(
+          'a[href], button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])',
+        )].find((el) => !body.contains(el)
+          && (body.compareDocumentPosition(el) & Node.DOCUMENT_POSITION_FOLLOWING));
+        if (next) {
+          e.preventDefault();
+          next.focus();
+          return;
+        }
+      }
       if (focus) { exitFocus(); return; }
       if (history || unlockToChangeLock) return;
       if (document.querySelectorAll('[aria-modal="true"]').length > 1) return;
@@ -678,6 +694,9 @@ export default function NoteEditor({ note }: { note: Note }) {
           onReady={(methods) => {
             editorRef.current = methods;
             const lexical = methods.getLexicalEditor();
+            // luthor's editable is a textbox with no accessible name; screen
+            // readers announced a bare "edit text". Name it after its job.
+            lexical?.getRootElement()?.setAttribute('aria-label', 'Note body');
             // defaultContent loads as plain text, so parse the markdown into the
             // visual surface explicitly — otherwise the body renders as raw source.
             methods.setMarkdown(body);
