@@ -6,6 +6,10 @@ a Docker Hub tag and a GitHub Release.
 
 <!-- new releases are inserted directly below this line -->
 
+## [0.1.19] - 2026-09-28
+
+- feat: passkey sign-in, settings/profile overhaul, autofill hygiene, search rebuild job (79ae643)
+
 ## [0.1.18] - 2026-09-28
 
 - fix: UI polish — neutral caret/focus/hover edges, themed dropdowns, share user picker (bab9a17)
