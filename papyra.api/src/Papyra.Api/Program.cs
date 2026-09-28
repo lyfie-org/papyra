@@ -1144,24 +1144,23 @@ auth.MapPost("/setup", async (
         }
     }
 
-    // The wizard always sends an authenticator, proven either by a code now or
-    // by /setup/totp/verify earlier. A scripted setup may leave it out and add
-    // one later from Settings → Security.
-    long? totpStep = null;
+    // An authenticator is compulsory for the first admin: it is the account's
+    // proof of identity before anything sensitive (a fresh Papyra usually has no
+    // mail to send a code with). Proven either by a code now or by
+    // /setup/totp/verify earlier in the wizard.
+    if (string.IsNullOrWhiteSpace(body.TotpSecret))
+        return Results.BadRequest(new { error = "Set up an authenticator app first.", field = "totpCode" });
+    var totpSecret = body.TotpSecret.Trim();
     AuthToken? totpProof = null;
-    if (!string.IsNullOrWhiteSpace(body.TotpSecret))
+    var totpStep = Totp.Match(totpSecret, body.TotpCode, DateTimeOffset.UtcNow);
+    if (totpStep is null)
     {
-        var secret = body.TotpSecret.Trim();
-        totpStep = Totp.Match(secret, body.TotpCode, DateTimeOffset.UtcNow);
-        if (totpStep is null)
-        {
-            var hash = SetupTotpHash(secret);
-            totpProof = await db.AuthTokens.FirstOrDefaultAsync(t => t.Kind == "setup-totp" && t.TokenHash == hash, ct);
-            if (totpProof is null || totpProof.UsedUtc is not null || totpProof.ExpiresUtc < DateTime.UtcNow)
-                return Results.BadRequest(new { error = "That authenticator code didn’t match. Try the newest one.", field = "totpCode" });
-            // Nothing typed now to spend: refuse this step's code from here on.
-            totpStep = Totp.StepAt(DateTimeOffset.UtcNow);
-        }
+        var hash = SetupTotpHash(totpSecret);
+        totpProof = await db.AuthTokens.FirstOrDefaultAsync(t => t.Kind == "setup-totp" && t.TokenHash == hash, ct);
+        if (totpProof is null || totpProof.UsedUtc is not null || totpProof.ExpiresUtc < DateTime.UtcNow)
+            return Results.BadRequest(new { error = "That authenticator code didn’t match. Try the newest one.", field = "totpCode" });
+        // Nothing typed now to spend: refuse this step's code from here on.
+        totpStep = Totp.StepAt(DateTimeOffset.UtcNow);
     }
 
     if (body.Pin is { Length: > 0 } && VaultPin.Validate(body.Pin) is { } badPin)
@@ -1194,7 +1193,7 @@ auth.MapPost("/setup", async (
         TimeZone = string.IsNullOrEmpty(zone) ? null : zone,
         Theme = body.Theme,
     };
-    if (totpStep is { } step) totp.Enable(user, body.TotpSecret!.Trim(), step);
+    totp.Enable(user, totpSecret, totpStep.Value);
 
     db.Users.Add(user);
     if (emailToken is not null) emailToken.UsedUtc = DateTime.UtcNow;

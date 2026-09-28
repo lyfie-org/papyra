@@ -85,8 +85,14 @@ public sealed class TotpTests
         Assert.Equal(HttpStatusCode.BadRequest,
             (await client.PostAsJsonAsync("/api/auth/setup/totp/verify", new { secret, code = ((int.Parse(Now(secret)) + 500_000) % 1_000_000).ToString("D6") })).StatusCode);
 
+        // No authenticator at all: the first admin can't be made without one.
+        var none = await client.PostAsJsonAsync("/api/auth/setup", new SetupRequest(
+            Username: "admin", Name: null, Email: "a@b.c", Password: "hunter2!"));
+        Assert.Equal(HttpStatusCode.BadRequest, none.StatusCode);
+        Assert.Equal("totpCode", (await none.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("field").GetString());
+
         // Unproven, a wrong code stops setup before an account exists.
-        var wrong = await client.PostAsJsonAsync("/api/auth/setup", new SetupRequest(
+        var wrong = await client.PostSetupAsync(new SetupRequest(
             Username: "admin", Name: null, Email: "a@b.c", Password: "hunter2!", TotpSecret: secret, TotpCode: "12345"));
         Assert.Equal(HttpStatusCode.BadRequest, wrong.StatusCode);
 
@@ -94,7 +100,7 @@ public sealed class TotpTests
             (await client.PostAsJsonAsync("/api/auth/setup/totp/verify", new { secret, code = Now(secret) })).StatusCode);
 
         // Proven early in the wizard, so the account is made minutes later with no fresh code.
-        var ok = await client.PostAsJsonAsync("/api/auth/setup", new SetupRequest(
+        var ok = await client.PostSetupAsync(new SetupRequest(
             Username: "admin", Name: null, Email: "a@b.c", Password: "hunter2!", TotpSecret: secret));
         Assert.Equal(HttpStatusCode.OK, ok.StatusCode);
         var me = await client.GetFromJsonAsync<JsonElement>("/api/auth/me");
@@ -127,11 +133,12 @@ public sealed class TotpTests
     });
 
     [Fact]
-    public Task SettingsCanAddReplaceAndRemoveIt_WithThePassword() => WithFreshAppAsync(async (_, client) =>
+    public Task SettingsCanReplaceAndRemoveIt_WithThePassword() => WithFreshAppAsync(async (_, client) =>
     {
-        Assert.Equal(HttpStatusCode.OK, (await client.PostAsJsonAsync("/api/auth/setup", new SetupRequest(
+        Assert.Equal(HttpStatusCode.OK, (await client.PostSetupAsync(new SetupRequest(
             Username: "admin", Name: null, Email: "a@b.c", Password: "hunter2!"))).StatusCode);
-        Assert.False((await client.GetFromJsonAsync<JsonElement>("/api/auth/totp")).GetProperty("enabled").GetBoolean());
+        // Setup enrolled one; replace it with a new app.
+        Assert.True((await client.GetFromJsonAsync<JsonElement>("/api/auth/totp")).GetProperty("enabled").GetBoolean());
 
         var secret = (await (await client.PostAsync("/api/auth/totp/begin", null)).Content.ReadFromJsonAsync<JsonElement>())
             .GetProperty("secret").GetString()!;

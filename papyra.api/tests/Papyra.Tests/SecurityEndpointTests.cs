@@ -31,7 +31,7 @@ public sealed class SecurityEndpointTests
     private static async Task<HttpClient> SeedAdminAsync(WebApplicationFactory<Program> factory)
     {
         var client = factory.CreateClient();
-        var res = await client.PostAsJsonAsync("/api/auth/setup", new SetupRequest(
+        var res = await client.PostSetupAsync(new SetupRequest(
             Username: "admin", Name: "Admin", Email: "a@b.c", Password: Pw));
         Assert.Equal(HttpStatusCode.OK, res.StatusCode);
         return client;
@@ -202,8 +202,7 @@ public sealed class SecurityEndpointTests
         var (factory, dir) = NewApp();
         try
         {
-            var res = await factory.CreateClient().PostAsJsonAsync("/api/auth/setup",
-                new SetupRequest(Username: "admin", Name: "A", Email: "a@b.c", Password: "short"));
+            var res = await factory.CreateClient().PostSetupAsync(new SetupRequest(Username: "admin", Name: "A", Email: "a@b.c", Password: "short"));
             Assert.Equal(HttpStatusCode.BadRequest, res.StatusCode);
         }
         finally { Cleanup(factory, dir); }

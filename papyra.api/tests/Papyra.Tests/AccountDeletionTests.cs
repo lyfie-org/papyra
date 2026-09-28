@@ -26,7 +26,7 @@ public sealed class AccountDeletionTests
         try
         {
             var admin = factory.CreateClient();
-            Assert.Equal(HttpStatusCode.OK, (await admin.PostAsJsonAsync("/api/auth/setup", new SetupRequest(
+            Assert.Equal(HttpStatusCode.OK, (await admin.PostSetupAsync(new SetupRequest(
                 Username: "admin", Name: "Admin", Email: "a@b.c", Password: "hunter2!"))).StatusCode);
             await body(factory, admin, dir);
         }
@@ -43,10 +43,11 @@ public sealed class AccountDeletionTests
     {
         var status = await admin.GetFromJsonAsync<JsonElement>("/api/account/delete");
         var blockers = status.GetProperty("blockers").EnumerateArray().Select(b => b.GetString()!).ToList();
-        // Fresh password, no PIN, no mail server, sole admin: all four say so.
+        // Fresh password, no PIN, sole admin: each says so. No mail server is
+        // fine — the authenticator from setup confirms it instead.
         Assert.Contains(blockers, b => b.Contains("24 hours"));
         Assert.Contains(blockers, b => b.Contains("vault PIN"));
-        Assert.Contains(blockers, b => b.Contains("email"));
+        Assert.DoesNotContain(blockers, b => b.Contains("email"));
         Assert.Contains(blockers, b => b.Contains("only administrator"));
     });
 

@@ -276,4 +276,8 @@
   --preview-dark-bg:       #1c1917;
   --preview-dark-surface:  #28231e;
   --preview-dark-border:   #3a322b;
+  /* QR codes stay dark-on-light in both themes: not every scanner reads an
+     inverted code. */
+  --qr-ink:   #1c1917;
+  --qr-paper: #fdf8f2;
 }

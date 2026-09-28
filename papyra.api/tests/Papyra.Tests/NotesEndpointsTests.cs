@@ -31,7 +31,7 @@ public sealed class NotesEndpointsTests
     // on-disk vault at users/{id}/.
     private static async Task<string> SeedAdminAsync(HttpClient client)
     {
-        var res = await client.PostAsJsonAsync("/api/auth/setup", new SetupRequest(
+        var res = await client.PostSetupAsync(new SetupRequest(
             Username: "admin", Name: "Admin", Email: "a@b.c", Password: "hunter2!"));
         Assert.Equal(HttpStatusCode.OK, res.StatusCode);
         var doc = await res.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>();
@@ -47,7 +47,7 @@ public sealed class NotesEndpointsTests
             var client = factory.CreateClient();
             await SeedAdminAsync(client);
 
-            var again = await client.PostAsJsonAsync("/api/auth/setup", new SetupRequest(
+            var again = await client.PostSetupAsync(new SetupRequest(
                 Username: "other", Name: null, Email: null, Password: "pw"));
             Assert.Equal(HttpStatusCode.Conflict, again.StatusCode);
         }

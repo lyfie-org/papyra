@@ -25,7 +25,7 @@ public sealed class ShareLinkViewTests
         try
         {
             var owner = factory.CreateClient();
-            Assert.Equal(HttpStatusCode.OK, (await owner.PostAsJsonAsync("/api/auth/setup", new SetupRequest(
+            Assert.Equal(HttpStatusCode.OK, (await owner.PostSetupAsync(new SetupRequest(
                 Username: "admin", Name: "Admin", Email: "a@b.c", Password: "hunter2!"))).StatusCode);
             await owner.PutAsJsonAsync("/api/notes/n1", new NoteWrite("Once", null, null, false, false, "read me once"));
             var created = await owner.PostAsJsonAsync("/api/notes/n1/shares", new ShareWrite(

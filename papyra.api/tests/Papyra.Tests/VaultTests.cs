@@ -519,7 +519,7 @@ public sealed class VaultTests
         try
         {
             var client = factory.CreateClient();
-            var setup = await client.PostAsJsonAsync("/api/auth/setup", new SetupRequest(
+            var setup = await client.PostSetupAsync(new SetupRequest(
                 Username: "owner", Name: "Owner", Email: "o@b.c", Password: Pw));
             Assert.Equal(HttpStatusCode.OK, setup.StatusCode);
             await body(factory, client);

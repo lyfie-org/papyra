@@ -33,7 +33,7 @@ public sealed class SecureShareTests
     private static async Task<HttpClient> OwnerAsync(WebApplicationFactory<Program> factory)
     {
         var client = factory.CreateClient();
-        var setup = await client.PostAsJsonAsync("/api/auth/setup", new SetupRequest(
+        var setup = await client.PostSetupAsync(new SetupRequest(
             Username: "owner", Name: "Owner", Email: "o@b.c", Password: Pw));
         Assert.Equal(HttpStatusCode.OK, setup.StatusCode);
         await TestAuth.SetVaultPinAsync(client, Pw);
