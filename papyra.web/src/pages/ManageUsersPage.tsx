@@ -8,6 +8,7 @@ import { useConfirm } from '../lib/confirmContext';
 import { useToast } from '../lib/toastContext';
 import './ManageUsersPage.css';
 import LoadingBar from '../components/LoadingBar';
+import { MASKED_SECRET, NO_AUTOFILL } from '../lib/autofill';
 
 // Accounts on this instance. Split out of Settings because managing other people
 // is not a preference: everything under Settings changes what happens to *you*,
@@ -240,7 +241,7 @@ function AddUserDialog({ onClose, onCreated }: {
           {error && <p className="users-dialog__error" role="alert">{error}</p>}
 
           <label className="users-dialog__field">Username
-            <input value={username} onChange={e => setUsername(e.target.value)} required autoFocus />
+            <input value={username} onChange={e => setUsername(e.target.value)} required autoFocus {...NO_AUTOFILL} />
           </label>
           <label className="users-dialog__field">Display name
             <input value={name} onChange={e => setName(e.target.value)} placeholder="Optional" />
@@ -251,20 +252,18 @@ function AddUserDialog({ onClose, onCreated }: {
 
           <label className="users-dialog__field">First password
             <input
-              type="password"
+              {...MASKED_SECRET}
               value={password}
               onChange={e => setPassword(e.target.value)}
               placeholder="Leave blank to generate one"
-              autoComplete="new-password"
             />
           </label>
           {password && (
             <label className="users-dialog__field">Repeat the password
               <input
-                type="password"
+                {...MASKED_SECRET}
                 value={confirmPassword}
                 onChange={e => setConfirmPassword(e.target.value)}
-                autoComplete="new-password"
               />
             </label>
           )}

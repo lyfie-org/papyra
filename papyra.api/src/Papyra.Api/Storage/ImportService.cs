@@ -58,6 +58,7 @@ public sealed class ImportService : BackgroundService
     private readonly MarkdownStorageService _storage;
     private readonly VaultState _state;
     private readonly SearchIndexService _search;
+    private readonly SearchRebuilder _rebuilder;
     private readonly WriteRing _writeRing;
     private readonly SnapshotService _snapshots;
     private readonly OrderStore _order;
@@ -70,6 +71,7 @@ public sealed class ImportService : BackgroundService
         MarkdownStorageService storage,
         VaultState state,
         SearchIndexService search,
+        SearchRebuilder rebuilder,
         WriteRing writeRing,
         SnapshotService snapshots,
         OrderStore order,
@@ -81,6 +83,7 @@ public sealed class ImportService : BackgroundService
         _storage = storage;
         _state = state;
         _search = search;
+        _rebuilder = rebuilder;
         _writeRing = writeRing;
         _snapshots = snapshots;
         _order = order;
@@ -224,6 +227,17 @@ public sealed class ImportService : BackgroundService
                 if (IsHiddenPath(RelativePath(entry.FullName, vaultRoot))) continue;
                 await CopyMediaAsync(entry, mediaDir, ct);
             }
+
+        // Each note was indexed as it landed; finish with a full rebuild of this
+        // account so search and the note cache match the vault exactly — stale
+        // entries dropped, every imported note findable the moment the bar ends.
+        // A failure here must not turn a successful import red: the notes are
+        // on disk, and the Jobs screen can rebuild search again.
+        try { await _rebuilder.RebuildUserAsync(job.UserId, ct); }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogWarning(ex, "Search rebuild after import {JobId} failed", job.JobId);
+        }
 
         status.Done = true;
         await PushAsync(job, ct);

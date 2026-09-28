@@ -19,10 +19,15 @@
   width: 16px;
   height: 16px;
   padding: 0;
-  border: 1px solid color-mix(in srgb, var(--text) 32%, transparent);
+  /* One recipe on every card, drawn from the card's own ink: a faint wash,
+     a ring and a faint check. A coloured card only swaps the ink (below), so an
+     unselected tick never looks filled — which on a dark-mode tint read as
+     "already selected". Selected is the one sage fill. */
+  --tick-ink: var(--text-h);
+  border: 1.5px solid color-mix(in srgb, var(--tick-ink) 42%, transparent);
   border-radius: 50%;
-  background: color-mix(in srgb, var(--paper) 55%, #fff);
-  color: color-mix(in srgb, var(--text) 75%, transparent);
+  background: color-mix(in srgb, var(--tick-ink) 8%, transparent);
+  color: color-mix(in srgb, var(--tick-ink) 50%, transparent);
   cursor: pointer;
   opacity: 0;
   transform: scale(0.85);
@@ -34,20 +39,10 @@
     color var(--dur-fast) var(--ease),
     translate var(--dur) var(--ease);
 }
-[data-theme='dark'] .select-tick {
-  background: color-mix(in srgb, var(--text-h) 20%, var(--paper));
-}
-/* On a coloured card: a lifted wash of the card itself, inked like its text. */
-.selectable:has(.note-card--colored) .select-tick {
-  border-color: color-mix(in srgb, #3d2c1e 30%, transparent);
-  background: color-mix(in srgb, #fff 55%, transparent);
-  color: color-mix(in srgb, #3d2c1e 65%, transparent);
-}
-.selectable:has(.tint--light-ink) .select-tick {
-  border-color: color-mix(in srgb, #fff 35%, transparent);
-  background: color-mix(in srgb, #000 30%, transparent);
-  color: color-mix(in srgb, #fff 75%, transparent);
-}
+/* A coloured card is a pastel in both themes, inked dark (or light, for a dark
+   custom colour) — the tick follows that ink, not the theme's. */
+.selectable:has(.note-card--colored) .select-tick { --tick-ink: #3d2c1e; }
+.selectable:has(.tint--light-ink) .select-tick { --tick-ink: #f0e6d3; }
 
 .selectable:hover .select-tick,
 .selectable:focus-within .select-tick,
@@ -73,8 +68,8 @@
 }
 
 .select-tick:hover {
-  border-color: var(--border-hover);
-  color: var(--text-h);
+  border-color: color-mix(in srgb, var(--tick-ink) 70%, transparent);
+  color: var(--tick-ink);
 }
 
 .select-tick:focus-visible {

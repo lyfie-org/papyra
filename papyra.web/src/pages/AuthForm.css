@@ -155,3 +155,13 @@
   padding-top: var(--space-3);
   border-top: 1px solid var(--border);
 }
+
+.auth__passkey {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+}
+.auth__passkey:disabled { opacity: 0.6; cursor: default; }
+/* Passkey and SSO stacked under one "or": keep them apart. */
+.auth__passkey + .auth__sso { margin-top: var(--space-2); }

@@ -431,3 +431,39 @@
 
 /* The desk owns vertical scrolling; nothing should ever scroll it sideways. */
 .workspace__desk { overflow-x: hidden; }
+
+/* ── Vault open, in the rail ─────────────────────────────────────────────────
+   An open lock with a sage dot, and an "Open" tag beside the name. The dot is
+   what's left in the icon-only rail, so the state reads there too. */
+.workspace__vault-icon {
+  position: relative;
+  display: inline-flex;
+  color: var(--accent-text);
+}
+.workspace__vault-dot {
+  position: absolute;
+  top: -2px;
+  right: -3px;
+  width: 7px;
+  height: 7px;
+  border: 1.5px solid var(--surface);
+  border-radius: 50%;
+  background: var(--accent);
+  animation: vault-dot-in var(--dur) var(--ease);
+}
+@keyframes vault-dot-in {
+  from { transform: scale(0); }
+}
+.workspace__nav-badge {
+  margin-left: auto;
+  padding: 1px var(--space-2);
+  border-radius: var(--radius-pill);
+  background: var(--accent-bg);
+  color: var(--accent-text);
+  font: 600 var(--fs-2xs) / 1.5 var(--sans);
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+@media (prefers-reduced-motion: reduce) {
+  .workspace__vault-dot { animation: none; }
+}

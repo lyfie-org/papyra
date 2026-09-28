@@ -7,6 +7,7 @@ const SHORTCUTS: Array<[string, string]> = [
   ['⌘K / Ctrl+K', 'Search every note'],
   ['Esc', 'Leave the note body (Tab indents there); again to close the note, a panel, or focus mode'],
   ['Enter', 'Add the tag / to-do item you just typed'],
+  ['⌘⇧L / Ctrl+Shift+L', 'Lock your vault (while it’s open)'],
   ['Drag a text file onto the grid', 'Import it as a note'],
 ];
 

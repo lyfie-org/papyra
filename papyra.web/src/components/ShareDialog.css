@@ -169,9 +169,7 @@
 
 .share__invite { flex-wrap: wrap; }
 .share__invite select,
-.share__link-form select,
-.share__opt input,
-.share__link-form input[type='number'] {
+.share__link-form select {
   padding: 0.4rem 0.5rem;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
@@ -209,16 +207,6 @@
   font-size: 0.75rem;
   color: var(--text);
 }
-.share__opt input[type='date'] {
-  padding: 0.4rem 0.5rem;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--surface);
-  color: var(--text-h);
-  font-family: var(--sans);
-  font-size: 0.85rem;
-}
-.share__link-form input[type='number'] { width: 5rem; }
 
 .share__links { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 0.5rem; }
 .share__link-row {

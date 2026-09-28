@@ -1,6 +1,8 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
+import { Fingerprint } from 'lucide-react';
+import { assertionToJson, isWebAuthnAvailable, toRequestOptions, webAuthnErrorMessage } from '../lib/webauthn';
 import './AuthForm.css';
 
 export default function LoginPage() {
@@ -40,6 +42,61 @@ export default function LoginPage() {
   }
   const navigate = useNavigate();
   const queryClient = useQueryClient();
+  const usernameRef = useRef<HTMLInputElement | null>(null);
+  // Passkeys need the WebAuthn API and a secure context (HTTPS or localhost).
+  const canPasskey = isWebAuthnAvailable();
+
+  function signedIn(user: unknown) {
+    // Seed the auth cache from the login response so RequireAuth sees an authed
+    // session immediately instead of bouncing on the stale 'login' snapshot.
+    queryClient.setQueryData(['auth'], { state: 'authed', user });
+    navigate('/', { replace: true });
+  }
+
+  // Sign in with a biometric device registered under Settings → Security. The
+  // passkeys aren't discoverable, so the account is named first; the server
+  // answers the same for any name, and the device decides.
+  async function passkeySignIn() {
+    setError(null);
+    const name = username.trim();
+    if (!name) {
+      setError('Enter your username, then use your passkey.');
+      usernameRef.current?.focus();
+      return;
+    }
+    setBusy(true);
+    try {
+      const optRes = await fetch('/api/auth/passkey/options', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: name }),
+      });
+      const options = await optRes.json().catch(() => null);
+      if (!optRes.ok) { setError(options?.error ?? 'Passkey sign-in isn’t available here.'); return; }
+
+      let assertion: PublicKeyCredential | null;
+      try {
+        assertion = (await navigator.credentials.get({ publicKey: toRequestOptions(options) })) as PublicKeyCredential | null;
+      } catch (e) {
+        setError(`${webAuthnErrorMessage(e)} No passkey for this account on this device? Use your password.`);
+        return;
+      }
+      if (!assertion) { setError('Passkey sign-in was cancelled.'); return; }
+
+      const res = await fetch('/api/auth/passkey/verify', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: name, response: assertionToJson(assertion) }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) { setError(data?.error ?? 'That passkey didn’t work.'); return; }
+      signedIn(data);
+    } catch {
+      setError('Couldn’t reach the server.');
+    } finally {
+      setBusy(false);
+    }
+  }
 
   useEffect(() => {
     fetch('/api/auth/providers')
@@ -62,11 +119,7 @@ export default function LoginPage() {
         setError('Invalid credentials.');
         return;
       }
-      // Seed the auth cache from the login response so RequireAuth sees an authed
-      // session immediately instead of bouncing on the stale 'login' snapshot.
-      const user = await res.json();
-      queryClient.setQueryData(['auth'], { state: 'authed', user });
-      navigate('/', { replace: true });
+      signedIn(await res.json());
     } catch {
       setError('Couldn’t reach the server.');
     } finally {
@@ -84,7 +137,7 @@ export default function LoginPage() {
 
         <label className="auth__field">
           Username
-          <input value={username} onChange={e => setUsername(e.target.value)} autoComplete="username" required />
+          <input ref={usernameRef} value={username} onChange={e => setUsername(e.target.value)} autoComplete="username" required />
         </label>
         <label className="auth__field">
           Password
@@ -130,9 +183,16 @@ export default function LoginPage() {
           </div>
         )}
 
+        {(canPasskey || sso?.enabled) && <div className="auth__divider"><span>or</span></div>}
+
+        {canPasskey && (
+          <button type="button" className="auth__sso auth__passkey" disabled={busy} onClick={() => void passkeySignIn()}>
+            <Fingerprint size={17} aria-hidden="true" /> Sign in with a passkey
+          </button>
+        )}
+
         {sso?.enabled && (
           <>
-            <div className="auth__divider"><span>or</span></div>
             <button
               type="button"
               className="auth__sso"

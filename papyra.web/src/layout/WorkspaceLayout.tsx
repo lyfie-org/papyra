@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { Link, NavLink, Outlet, matchPath, useLocation, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import {
-  Menu, StickyNote, ListTodo, Archive, Settings, Trash2, ShieldCheck,
+  Menu, StickyNote, ListTodo, Archive, Settings, Trash2, ShieldCheck, LockOpen,
   User, Shield, LogOut, Sun, Moon, Layers, Sparkles, CircleQuestionMark, Users,
 } from 'lucide-react';
 import ChatPanel from '../components/ChatPanel';
@@ -22,6 +22,9 @@ import NotificationBell from '../components/NotificationBell';
 import logo from '../assets/papyra_logo.png';
 import Avatar from '../components/Avatar';
 import './WorkspaceLayout.css';
+import { APP_VERSION_LABEL } from '../lib/appInfo';
+import VaultOpenPill from '../components/VaultOpenPill';
+import { useVaultOpen } from '../hooks/useVault';
 
 // Settings deliberately lives with Trash at the foot of the rail, not in this
 // list — the top group is "places your notes are", the bottom group is app
@@ -36,7 +39,6 @@ const NAV_ITEMS = [
 ] as const;
 
 /** Shown under the connection status so a self-hoster can see what they're running. */
-const APP_VERSION: string = import.meta.env.VITE_APP_VERSION ?? 'dev';
 
 export default function WorkspaceLayout() {
   const { user } = useAuth();
@@ -52,6 +54,7 @@ export default function WorkspaceLayout() {
   const [helpOpen, setHelpOpen] = useState(false);
   const menuRef = useRef<HTMLDivElement | null>(null);
   const serverStatus = useSignalR();
+  const vaultOpen = useVaultOpen();
 
   // Connectivity + outbox telemetry. The dot now answers the question a
   // local-first app actually has to answer — "is my writing safe?" — not just
@@ -120,6 +123,7 @@ export default function WorkspaceLayout() {
         <SearchBar />
 
         <div className="workspace__nav-actions">
+          <VaultOpenPill />
           <button
             type="button"
             className="workspace__theme-toggle"
@@ -194,14 +198,30 @@ export default function WorkspaceLayout() {
                 <NavLink
                   to={to}
                   end={end}
-                  title={label}
+                  title={to === '/vault' && vaultOpen ? 'Vault — open on this device' : label}
+                  aria-label={to === '/vault' && vaultOpen ? 'Vault (open)' : undefined}
                   className={({ isActive }) => {
                     const on = to === '/?scope=shared' ? onSharedScope : isActive && !(to === '/' && onSharedScope);
                     return `workspace__nav-link${on ? ' workspace__nav-link--active' : ''}`;
                   }}
                 >
-                  <Icon className="workspace__nav-icon" size={18} />
-                  <span className="workspace__nav-label">{label}</span>
+                  {to === '/vault' && vaultOpen ? (
+                    // The vault item says when it's open, from any page — a
+                    // sage dot on an open lock, and "Open" beside the name.
+                    <>
+                      <span className="workspace__nav-icon workspace__vault-icon">
+                        <LockOpen size={18} aria-hidden="true" />
+                        <span className="workspace__vault-dot" aria-hidden="true" />
+                      </span>
+                      <span className="workspace__nav-label">{label}</span>
+                      <span className="workspace__nav-badge workspace__nav-label">Open</span>
+                    </>
+                  ) : (
+                    <>
+                      <Icon className="workspace__nav-icon" size={18} />
+                      <span className="workspace__nav-label">{label}</span>
+                    </>
+                  )}
                 </NavLink>
               </li>
             ))}
@@ -241,7 +261,7 @@ export default function WorkspaceLayout() {
                   {syncLabel}
                 </span>
               </span>
-              <span className="workspace__version workspace__nav-label">{APP_VERSION === 'dev' ? 'dev build' : `v${APP_VERSION}`}</span>
+              <span className="workspace__version workspace__nav-label">{APP_VERSION_LABEL}</span>
             </footer>
           </div>
         </nav>

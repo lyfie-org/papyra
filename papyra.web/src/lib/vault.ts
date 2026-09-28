@@ -1,4 +1,4 @@
-import { fromB64Url, isWebAuthnAvailable, toB64Url } from './webauthn';
+import { assertionToJson, isWebAuthnAvailable, toRequestOptions, webAuthnErrorMessage } from './webauthn';
 
 /**
  * The vault's client side: the unlock token and the calls that earn one.
@@ -48,6 +48,11 @@ export function forgetUnlock(): void {
   if (token === null) return;
   token = null;
   emit();
+}
+
+/** When the open vault closes itself (epoch ms), or 0 when it is closed. */
+export function unlockExpiresAt(): number {
+  return currentUnlockToken() ? expiresAt : 0;
 }
 
 export function subscribeUnlock(listener: () => void): () => void {
@@ -149,43 +154,17 @@ export async function unlockWithBiometric(signal?: AbortSignal): Promise<string>
   try {
     assertion = (await navigator.credentials.get({
       signal,
-      publicKey: {
-        ...options,
-        challenge: fromB64Url(options.challenge),
-        allowCredentials: (options.allowCredentials ?? []).map((c: { id: string; type: string }) => ({
-          ...c,
-          id: fromB64Url(c.id),
-        })),
-      },
+      publicKey: toRequestOptions(options),
     })) as PublicKeyCredential | null;
   } catch (e) {
-    throw new VaultError(0, {
-      error: e instanceof DOMException && e.name === 'AbortError'
-        ? 'Biometric check stopped.'
-        : e instanceof DOMException && e.name === 'NotAllowedError'
-        ? 'Biometric check was cancelled or timed out.'
-        : e instanceof Error ? e.message : 'Biometric check failed.',
-    });
+    throw new VaultError(0, { error: webAuthnErrorMessage(e) });
   }
   if (!assertion) throw new VaultError(0, { error: 'Biometric check was cancelled.' });
 
-  const response = assertion.response as AuthenticatorAssertionResponse;
   return fetch('/api/auth/webauthn/verify', {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      response: {
-        id: assertion.id,
-        rawId: toB64Url(assertion.rawId),
-        type: assertion.type,
-        response: {
-          authenticatorData: toB64Url(response.authenticatorData),
-          clientDataJSON: toB64Url(response.clientDataJSON),
-          signature: toB64Url(response.signature),
-          userHandle: response.userHandle ? toB64Url(response.userHandle) : null,
-        },
-      },
-    }),
+    body: JSON.stringify({ response: assertionToJson(assertion) }),
   }).then(expectToken);
 }
 

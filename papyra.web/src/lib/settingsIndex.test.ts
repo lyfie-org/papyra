@@ -2,6 +2,7 @@ import { describe, it, expect } from 'vitest';
 // The page's own source is the fixture: these tests assert the index still
 // describes what SettingsPage actually renders.
 import settingsPage from '../pages/SettingsPage.tsx?raw';
+import aboutPanel from '../components/AboutPanel.tsx?raw';
 import { SETTINGS_INDEX, searchSettings, settingsHref } from './settingsIndex';
 
 describe('settingsIndex', () => {
@@ -31,9 +32,11 @@ describe('settingsIndex', () => {
   });
 
   it('points every section at a heading id that exists', () => {
-    const ids = new Set(
-      [...settingsPage.matchAll(/id="([a-z-]+)" className="settings__subhead"/g)].map(m => m[1]),
-    );
+    const ids = new Set([
+      ...[...settingsPage.matchAll(/id="([a-z-]+)" className="settings__subhead"/g)].map(m => m[1]),
+      // The About tab is its own component.
+      ...[...aboutPanel.matchAll(/<h2 id="([a-z-]+)"/g)].map(m => m[1]),
+    ]);
     for (const entry of SETTINGS_INDEX) {
       if (entry.section) expect(ids).toContain(entry.section);
     }

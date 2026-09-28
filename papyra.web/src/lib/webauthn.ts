@@ -68,3 +68,43 @@ export function attestationToJson(credential: PublicKeyCredential) {
     },
   };
 }
+
+// The server's AssertionOptions JSON → what navigator.credentials.get wants.
+export function toRequestOptions(options: {
+  challenge: string;
+  allowCredentials?: { id: string; type: string }[];
+  [key: string]: unknown;
+}): PublicKeyCredentialRequestOptions {
+  return {
+    ...options,
+    challenge: fromB64Url(options.challenge),
+    allowCredentials: (options.allowCredentials ?? []).map((c) => ({
+      ...c,
+      id: fromB64Url(c.id),
+      type: 'public-key' as const,
+    })),
+  } as unknown as PublicKeyCredentialRequestOptions;
+}
+
+// A signed assertion, serialised the way Fido2NetLib reads it.
+export function assertionToJson(assertion: PublicKeyCredential) {
+  const response = assertion.response as AuthenticatorAssertionResponse;
+  return {
+    id: assertion.id,
+    rawId: toB64Url(assertion.rawId),
+    type: assertion.type,
+    response: {
+      authenticatorData: toB64Url(response.authenticatorData),
+      clientDataJSON: toB64Url(response.clientDataJSON),
+      signature: toB64Url(response.signature),
+      userHandle: response.userHandle ? toB64Url(response.userHandle) : null,
+    },
+  };
+}
+
+// Why a get() failed, in words a person can act on.
+export function webAuthnErrorMessage(e: unknown): string {
+  if (e instanceof DOMException && e.name === 'AbortError') return 'Biometric check stopped.';
+  if (e instanceof DOMException && e.name === 'NotAllowedError') return 'Biometric check was cancelled or timed out.';
+  return e instanceof Error ? e.message : 'Biometric check failed.';
+}

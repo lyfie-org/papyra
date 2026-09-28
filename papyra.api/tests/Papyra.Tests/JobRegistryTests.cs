@@ -99,6 +99,23 @@ public sealed class JobRegistryTests
     }
 
     [Fact]
+    public async Task AManualJobHasNoTimerButRunsOnRequest()
+    {
+        var registry = NewRegistry();
+        registry.RegisterManual("search-rebuild", "Rebuild search", "Re-reads every note.",
+            _ => Task.FromResult<string?>("3 notes indexed"));
+
+        var status = registry.Snapshot().Single();
+        Assert.Equal(JobKind.Manual, status.Kind);
+        Assert.Null(status.Interval);
+        Assert.False(status.Running);
+
+        var run = await registry.RunAsync("search-rebuild", CancellationToken.None);
+        Assert.True(run!.Ok);
+        Assert.Equal("3 notes indexed", registry.Snapshot().Single().LastRun!.Summary);
+    }
+
+    [Fact]
     public async Task AnUnknownJobIsNotSomethingToRun()
     {
         var registry = NewRegistry();

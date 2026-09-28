@@ -6,6 +6,7 @@ import { isWebAuthnAvailable } from '../lib/webauthn';
 import { parseUtc, unlockWithBiometric, unlockWithPin, VaultError } from '../lib/vault';
 import './VaultUnlock.css';
 import LoadingBar from './LoadingBar';
+import { MASKED_SECRET } from '../lib/autofill';
 
 function useCountdown(until: Date | null): number {
   const [now, setNow] = useState(() => Date.now());
@@ -152,10 +153,9 @@ export default function VaultUnlock({
             id="vault-pin-input"
             ref={inputRef}
             className="vault-unlock__input"
-            type="password"
+            {...MASKED_SECRET}
             inputMode="numeric"
             pattern="[0-9]*"
-            autoComplete="off"
             maxLength={s?.pinLength.max ?? 12}
             value={pin}
             disabled={busy === 'pin' || wait > 0}

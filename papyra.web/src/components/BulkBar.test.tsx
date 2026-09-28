@@ -289,7 +289,7 @@ describe('BulkShareDialog', () => {
 
   it('refuses to send when every note is locked', () => {
     renderDialog([mk('s', { secure: true }), mk('t', { secure: true })]);
-    fireEvent.change(screen.getByLabelText('Username'), { target: { value: 'bea' } });
+    fireEvent.change(screen.getByLabelText('Person to share with'), { target: { value: 'bea' } });
     expect((screen.getByRole('button', { name: /Share/ }) as HTMLButtonElement).disabled).toBe(true);
     expect(screen.getByText(/Every selected note is locked/)).toBeTruthy();
   });
@@ -303,7 +303,7 @@ describe('BulkShareDialog', () => {
       return json([]);
     });
     const onClose = renderDialog([mk('a'), mk('b')]);
-    fireEvent.change(screen.getByLabelText('Username'), { target: { value: '@bea ' } });
+    fireEvent.change(screen.getByLabelText('Person to share with'), { target: { value: '@bea ' } });
     fireEvent.change(screen.getByLabelText('Access'), { target: { value: 'edit' } });
     fireEvent.click(screen.getByRole('button', { name: 'Share' }));
 
@@ -320,11 +320,11 @@ describe('BulkShareDialog', () => {
       ? json({ error: 'There\'s no one called “zed” here.' }, 404)
       : json([]));
     const onClose = renderDialog([mk('a')]);
-    fireEvent.change(screen.getByLabelText('Username'), { target: { value: 'zed' } });
+    fireEvent.change(screen.getByLabelText('Person to share with'), { target: { value: 'zed' } });
     fireEvent.click(screen.getByRole('button', { name: 'Share' }));
     expect((await screen.findByRole('alert')).textContent).toBe('There\'s no one called “zed” here.');
     expect(onClose).not.toHaveBeenCalled();
-    expect((screen.getByLabelText('Username') as HTMLInputElement).value).toBe('zed');
+    expect((screen.getByLabelText('Person to share with') as HTMLInputElement).value).toBe('zed');
   });
 
   it('closing before sharing keeps the selection (nothing was done)', () => {
@@ -335,7 +335,7 @@ describe('BulkShareDialog', () => {
 
   it('does nothing for an empty or whitespace name', () => {
     renderDialog([mk('a')]);
-    fireEvent.change(screen.getByLabelText('Username'), { target: { value: '   ' } });
+    fireEvent.change(screen.getByLabelText('Person to share with'), { target: { value: '   ' } });
     expect((screen.getByRole('button', { name: 'Share' }) as HTMLButtonElement).disabled).toBe(true);
   });
 });

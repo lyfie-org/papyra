@@ -7,6 +7,25 @@ import './ShareDialog.css';
 import { useDialogFocus } from '../hooks/useDialogFocus';
 import UserPicker from './UserPicker';
 
+// Link limits as a short list of sensible choices rather than a calendar and a
+// number spinner: nobody needs "expires 14 March" precision for a share link,
+// and the spinner's tiny arrows were fiddly.
+const EXPIRY_OPTIONS = [
+  { value: '', label: 'Never' },
+  { value: '1', label: 'In 1 day' },
+  { value: '7', label: 'In 7 days' },
+  { value: '30', label: 'In 30 days' },
+  { value: '90', label: 'In 90 days' },
+];
+const VIEW_OPTIONS = [
+  { value: '', label: 'Unlimited' },
+  { value: '1', label: 'Once' },
+  { value: '5', label: '5 views' },
+  { value: '10', label: '10 views' },
+  { value: '25', label: '25 views' },
+  { value: '100', label: '100 views' },
+];
+
 function shareUrl(token: string) {
   return `${window.location.origin}/shared/${token}`;
 }
@@ -19,7 +38,7 @@ export default function ShareDialog({ note, onClose }: { note: Note; onClose: ()
   const revoke = useRevokeShare(note.id);
 
   const [access, setAccess] = useState<'view' | 'edit'>('view');
-  const [expires, setExpires] = useState('');           // yyyy-mm-dd
+  const [expires, setExpires] = useState('');           // days from now; '' = never
   const [maxViews, setMaxViews] = useState('');
   const [username, setUsername] = useState('');
   const [userAccess, setUserAccess] = useState<'view' | 'edit'>('view');
@@ -36,7 +55,7 @@ export default function ShareDialog({ note, onClose }: { note: Note; onClose: ()
     try {
       await create.mutateAsync({
         kind: 'link', access,
-        expiresUtc: expires ? new Date(expires).toISOString() : null,
+        expiresUtc: expires ? new Date(Date.now() + Number(expires) * 86_400_000).toISOString() : null,
         maxViews: maxViews ? Number(maxViews) : null,
       });
       setExpires(''); setMaxViews('');
@@ -124,10 +143,14 @@ export default function ShareDialog({ note, onClose }: { note: Note; onClose: ()
               <option value="edit">Can edit</option>
             </select>
             <label className="share__opt">Expires
-              <input type="date" value={expires} onChange={(e) => setExpires(e.target.value)} />
+              <select value={expires} onChange={(e) => setExpires(e.target.value)}>
+                {EXPIRY_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
             </label>
             <label className="share__opt">Max views
-              <input type="number" min={1} placeholder="∞" value={maxViews} onChange={(e) => setMaxViews(e.target.value)} />
+              <select value={maxViews} onChange={(e) => setMaxViews(e.target.value)}>
+                {VIEW_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
+              </select>
             </label>
             <button type="button" className="share__btn" onClick={() => void createLink()}>
               <Plus size={15} /> Create link

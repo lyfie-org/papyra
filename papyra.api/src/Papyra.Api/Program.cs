@@ -209,6 +209,7 @@ builder.Services.AddScoped<VaultPinService>();
 // Background import queue: drains uploaded Obsidian/Keep archives into the vault
 // off the request thread, pushing progress over SignalR. Singleton so the endpoint
 // can Enqueue onto the same instance the hosted worker drains.
+builder.Services.AddSingleton<SearchRebuilder>();
 builder.Services.AddSingleton<ImportService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<ImportService>());
 
@@ -632,6 +633,19 @@ app.UseStaticFiles(new StaticFileOptions
         "Re-reads a note the moment it changes so searching finds what you wrote a second ago.");
     jobs.RegisterContinuous("webhooks", "Send webhooks",
         "Passes changes on to anything you have connected to Papyra, retrying if it can't be reached.");
+
+    // On demand only: search keeps itself current note by note (above), and an
+    // import rebuilds its account when it finishes. This is the "search is
+    // missing something" button, for every account at once.
+    var rebuilder = app.Services.GetRequiredService<SearchRebuilder>();
+    jobs.RegisterManual("search-rebuild", "Rebuild search",
+        "Re-reads every note from disk and rebuilds search from scratch. Safe any time — it only "
+        + "rewrites what search uses, never your notes. Runs by itself after every import.",
+        async ct =>
+        {
+            var n = await rebuilder.RebuildAllAsync(ct);
+            return $"{n} note{(n == 1 ? "" : "s")} indexed";
+        });
 }
 
 app.UseAuthentication();
@@ -921,6 +935,53 @@ auth.MapPost("/login", async (LoginRequest body, HttpContext http, AppDbContext 
     throttle.Reset(body.Username);
     await SignInAsync(http, user!);
     return Results.Ok(new { user!.Id, user.Username, user.Name, user.Email, user.Role });
+}).RequireRateLimiting(AuthRateLimit);
+
+// ── Sign in with a passkey ──────────────────────────────────────────────────────
+// The biometric devices registered under Settings → Security also sign in, from
+// the address they were registered on. Two steps: options for the named account
+// (always answered, so it never reveals whether the account exists or has a
+// passkey), then the signed assertion. Failures count against the same lockout
+// as wrong passwords.
+auth.MapPost("/passkey/options", async (
+    PasskeyOptionsRequest body, HttpRequest request, IConfiguration config, AppDbContext db,
+    BiometricAuthService bio, LoginThrottle throttle, CancellationToken ct) =>
+{
+    var username = body.Username?.Trim() ?? string.Empty;
+    if (username.Length == 0) return Results.BadRequest(new { error = "Enter your username first." });
+    if (throttle.IsLockedOut(username))
+        return Results.Json(new { error = "Too many failed attempts. Try again later." },
+            statusCode: StatusCodes.Status429TooManyRequests);
+    var (party, problem) = WebAuthnRelyingParty.Resolve(request, config);
+    if (party is null) return Results.BadRequest(new { error = problem!.Message, code = problem.Code });
+    var user = await db.Users.FirstOrDefaultAsync(u => u.Username == username, ct);
+    return Results.Text((await bio.LoginChallengeAsync(user, party, ct)).ToJson(), "application/json");
+}).RequireRateLimiting(AuthRateLimit);
+
+auth.MapPost("/passkey/verify", async (
+    PasskeyVerifyRequest body, HttpContext http, IConfiguration config, AppDbContext db,
+    BiometricAuthService bio, LoginThrottle throttle, CancellationToken ct) =>
+{
+    var username = body.Username?.Trim() ?? string.Empty;
+    if (username.Length == 0 || body.Response is null)
+        return Results.BadRequest(new { error = "Missing passkey response." });
+    if (throttle.IsLockedOut(username))
+        return Results.Json(new { error = "Too many failed attempts. Try again later." },
+            statusCode: StatusCodes.Status429TooManyRequests);
+    var (party, problem) = WebAuthnRelyingParty.Resolve(http.Request, config);
+    if (party is null) return Results.BadRequest(new { error = problem!.Message, code = problem.Code });
+
+    var user = await db.Users.FirstOrDefaultAsync(u => u.Username == username, ct);
+    if (user is null || !await bio.LoginVerifyAsync(user.Id, body.Response, party, ct))
+    {
+        throttle.RecordFailure(username);
+        return Results.Json(new { error = "That passkey didn't work. Try again, or use your password." },
+            statusCode: StatusCodes.Status401Unauthorized);
+    }
+
+    throttle.Reset(username);
+    await SignInAsync(http, user);
+    return Results.Ok(new { user.Id, user.Username, user.Name, user.Email, user.Role });
 }).RequireRateLimiting(AuthRateLimit);
 
 auth.MapPost("/logout", async (HttpContext http, UnlockTokenStore unlockTokens) =>
@@ -1495,7 +1556,7 @@ jobsApi.MapGet("/", (JobRegistry jobs) => Results.Ok(jobs.Snapshot().Select(j =>
     j.Running,
     // A job that can be asked to run now is exactly one that has a timer — the
     // always-on ones have nothing to start.
-    canTrigger = j.Kind == JobKind.Periodic,
+    canTrigger = j.Kind != JobKind.Continuous,
     lastRun = j.LastRun is null ? null : new
     {
         startedUtc = j.LastRun.StartedUtc,
@@ -4265,48 +4326,12 @@ app.MapPost("/api/system/prune-media", (OrphanPruneService prune) =>
 
 app.MapPost("/api/system/rebuild-index", async (
     ClaimsPrincipal user,
-    SearchIndexService search,
-    MarkdownStorageService storage,
-    VaultState state,
-    VaultObserverOptions vault,
-    AppDbContext db,
+    SearchRebuilder rebuilder,
     IHubContext<NotesHub> hub,
     CancellationToken ct) =>
 {
     await hub.Clients.All.SendAsync("SystemRebuilding", ct);
-
-    var uid = Uid(user);
-    var notesDir = vault.UserNotesDir(uid);
-    Directory.CreateDirectory(notesDir);
-    var scanned = new List<(Note Note, DateTime Mtime)>();
-    foreach (var path in Directory.EnumerateFiles(notesDir, "*.md", SearchOption.AllDirectories))
-    {
-        if (ConflictDetector.IsConflict(Path.GetFileName(path))) continue; // not a note
-        var note = await storage.ReadAsync(path, ct);
-        if (note is null || string.IsNullOrEmpty(note.Id)) continue;
-        state.Upsert(uid, path, note);
-        scanned.Add((note, File.GetLastWriteTimeUtc(path)));
-    }
-
-    search.RebuildUser(uid, scanned.Select(s => s.Note)); // drop only this tenant's docs
-
-    // Refresh the caller's cache rows (disposable mirror, keyed by tenant + note
-    // id). The UserId filter is load-bearing, not decorative: without it a
-    // rebuild deleted every tenant's row for any id this vault happened to share
-    // — and "Inbox" is shared by every user who has ever been @mentioned.
-    var ids = scanned.Select(s => s.Note.Id).ToHashSet(StringComparer.Ordinal);
-    db.NoteCache.RemoveRange(db.NoteCache.Where(r => r.UserId == uid && ids.Contains(r.Id)));
-    db.NoteCache.AddRange(scanned.Select(s => new NoteCache
-    {
-        UserId = uid,
-        Id = s.Note.Id,
-        Title = s.Note.Title,
-        Tags = string.Join(' ', s.Note.Tags),
-        LastModified = s.Mtime,
-    }));
-    await db.SaveChangesAsync(ct);
-
-    return Results.Ok(new { rebuilt = scanned.Count });
+    return Results.Ok(new { rebuilt = await rebuilder.RebuildUserAsync(Uid(user), ct) });
 }).RequireAuthorization();
 
 // ── Media uploads ───────────────────────────────────────────────────────────
@@ -5162,6 +5187,8 @@ public sealed record ChatSessionRename(string? Title);
 
 // WebAuthn unlock: the browser's assertion response.
 public sealed record WebAuthnAssertRequest(Fido2NetLib.AuthenticatorAssertionRawResponse? Response);
+public sealed record PasskeyOptionsRequest(string? Username);
+public sealed record PasskeyVerifyRequest(string? Username, Fido2NetLib.AuthenticatorAssertionRawResponse? Response);
 
 // Encrypted-backup generation payload: the account password (verified, then reused
 // as the vault encryption secret).

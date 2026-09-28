@@ -1,7 +1,7 @@
 import { useCallback, useSyncExternalStore } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
-  currentUnlockToken, fetchVaultStatus, lockVault, subscribeUnlock, type VaultStatus,
+  currentUnlockToken, fetchVaultStatus, lockVault, subscribeUnlock, unlockExpiresAt, type VaultStatus,
 } from '../lib/vault';
 
 export const VAULT_KEY = ['vault'];
@@ -9,6 +9,26 @@ export const VAULT_KEY = ['vault'];
 /** Whether the vault is open on this session right now (a live unlock token). */
 export function useVaultOpen(): boolean {
   return useSyncExternalStore(subscribeUnlock, () => currentUnlockToken() !== null, () => false);
+}
+
+// A one-second clock for the countdown, read through useSyncExternalStore so
+// the snapshot only changes when the tick does (a component re-renders once a
+// second while the vault is open, and never while it is closed).
+let tickNow = Date.now();
+function subscribeTick(onChange: () => void): () => void {
+  tickNow = Date.now();
+  const id = setInterval(() => { tickNow = Date.now(); onChange(); }, 1000);
+  const unsubscribe = subscribeUnlock(() => { tickNow = Date.now(); onChange(); });
+  return () => { clearInterval(id); unsubscribe(); };
+}
+function secondsLeft(): number | null {
+  const at = unlockExpiresAt();
+  return at ? Math.max(0, Math.ceil((at - tickNow) / 1000)) : null;
+}
+
+/** Seconds until the open vault locks itself; null while it is closed. */
+export function useVaultTimeLeft(): number | null {
+  return useSyncExternalStore(subscribeTick, secondsLeft, () => null);
 }
 
 /** The vault's state from the server (PIN set? locked out? biometrics usable here?) plus lock/refresh. */

@@ -13,7 +13,7 @@ export interface Job {
   id: string;
   name: string;
   description: string;
-  kind: 'periodic' | 'continuous';
+  kind: 'periodic' | 'continuous' | 'manual';
   /** Null for always-on work, which has no schedule. */
   intervalSeconds: number | null;
   running: boolean;
