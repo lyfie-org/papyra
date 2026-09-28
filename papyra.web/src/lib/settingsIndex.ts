@@ -37,7 +37,7 @@ export interface SettingsEntry {
 
 export const SETTINGS_INDEX: SettingsEntry[] = [
   { tab: 'profile', tabLabel: 'Profile', keywords: ['account', 'avatar', 'profile picture', 'name', 'email'] },
-  { tab: 'profile', tabLabel: 'Profile', section: 'account', sectionLabel: 'Account', keywords: ['display name', 'email address'] },
+  { tab: 'profile', tabLabel: 'Profile', section: 'account', sectionLabel: 'Account', keywords: ['display name', 'email address', 'time zone', 'timezone', 'last edited'] },
   { tab: 'profile', tabLabel: 'Profile', section: 'change-password', sectionLabel: 'Change password', keywords: ['password', 'new password'] },
   {
     tab: 'profile', tabLabel: 'Profile', section: 'activity', sectionLabel: 'Your writing, day by day',
@@ -95,8 +95,7 @@ export const SETTINGS_INDEX: SettingsEntry[] = [
   },
 
   { tab: 'jobs', tabLabel: 'Jobs', adminOnly: true, keywords: ['background', 'housekeeping', 'maintenance', 'tasks'] },
-  { tab: 'jobs', tabLabel: 'Jobs', section: 'scheduled-jobs', sectionLabel: 'Housekeeping', adminOnly: true, keywords: ['empty trash', 'cleanup', 'sweep', 'run now', 'schedule'] },
-  { tab: 'jobs', tabLabel: 'Jobs', section: 'on-demand-jobs', sectionLabel: 'On demand', adminOnly: true, keywords: ['rebuild search', 'reindex', 'missing notes', 'search index'] },
+  { tab: 'jobs', tabLabel: 'Jobs', section: 'scheduled-jobs', sectionLabel: 'Housekeeping', adminOnly: true, keywords: ['empty trash', 'cleanup', 'sweep', 'run now', 'schedule', 'rebuild search', 'reindex', 'missing notes'] },
   { tab: 'jobs', tabLabel: 'Jobs', section: 'always-on-jobs', sectionLabel: 'Always running', adminOnly: true, keywords: ['watcher', 'mentions', 'webhooks', 'search index'] },
 
   { tab: 'about', tabLabel: 'About', keywords: ['version', 'licence', 'license'] },

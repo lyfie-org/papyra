@@ -46,8 +46,10 @@ RUN dotnet publish papyra.api/src/Papyra.Api/Papyra.Api.csproj \
 # ─── Stage 4: Runtime ─────────────────────────────────────────────────────────
 FROM mcr.microsoft.com/dotnet/aspnet:10.0-alpine AS runtime
 
-# icu-libs: globalization; su-exec: drop privileges; shadow: usermod/groupmod realign
-RUN apk add --no-cache icu-libs su-exec shadow
+# icu-libs: globalization; su-exec: drop privileges; shadow: usermod/groupmod realign;
+# tzdata: IANA time zones, so TZ sets the server's zone and a person's chosen zone
+# (Settings → Profile) resolves — without it every zone quietly reads as UTC.
+RUN apk add --no-cache icu-libs su-exec shadow tzdata
 ENV DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=false
 
 WORKDIR /app

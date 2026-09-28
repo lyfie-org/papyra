@@ -130,6 +130,10 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<OrphanPruneService
 
 // Permanently purges trashed notes once they outlive the retention window.
 builder.Services.AddHostedService<TrashPurgeService>();
+// Daily search rebuild — the safety net under live indexing (see SearchRebuildJob).
+builder.Services.AddHostedService<SearchRebuildJob>();
+// Readable file names for notes still stored under an id (see NoteFileNamingJob).
+builder.Services.AddHostedService<NoteFileNamingJob>();
 
 // Hard-deletes expired / view-exhausted share links (burn-after-reading cleanup).
 builder.Services.AddHostedService<ShareCleanupService>();
@@ -633,19 +637,6 @@ app.UseStaticFiles(new StaticFileOptions
         "Re-reads a note the moment it changes so searching finds what you wrote a second ago.");
     jobs.RegisterContinuous("webhooks", "Send webhooks",
         "Passes changes on to anything you have connected to Papyra, retrying if it can't be reached.");
-
-    // On demand only: search keeps itself current note by note (above), and an
-    // import rebuilds its account when it finishes. This is the "search is
-    // missing something" button, for every account at once.
-    var rebuilder = app.Services.GetRequiredService<SearchRebuilder>();
-    jobs.RegisterManual("search-rebuild", "Rebuild search",
-        "Re-reads every note from disk and rebuilds search from scratch. Safe any time — it only "
-        + "rewrites what search uses, never your notes. Runs by itself after every import.",
-        async ct =>
-        {
-            var n = await rebuilder.RebuildAllAsync(ct);
-            return $"{n} note{(n == 1 ? "" : "s")} indexed";
-        });
 }
 
 app.UseAuthentication();
@@ -934,7 +925,7 @@ auth.MapPost("/login", async (LoginRequest body, HttpContext http, AppDbContext 
 
     throttle.Reset(body.Username);
     await SignInAsync(http, user!);
-    return Results.Ok(new { user!.Id, user.Username, user.Name, user.Email, user.Role });
+    return Results.Ok(new { user!.Id, user.Username, user.Name, user.Email, user.Role, user.TimeZone, serverTimeZone = ServerTimeZoneId() });
 }).RequireRateLimiting(AuthRateLimit);
 
 // ── Sign in with a passkey ──────────────────────────────────────────────────────
@@ -981,7 +972,7 @@ auth.MapPost("/passkey/verify", async (
 
     throttle.Reset(username);
     await SignInAsync(http, user);
-    return Results.Ok(new { user.Id, user.Username, user.Name, user.Email, user.Role });
+    return Results.Ok(new { user.Id, user.Username, user.Name, user.Email, user.Role, user.TimeZone, serverTimeZone = ServerTimeZoneId() });
 }).RequireRateLimiting(AuthRateLimit);
 
 auth.MapPost("/logout", async (HttpContext http, UnlockTokenStore unlockTokens) =>
@@ -1168,6 +1159,10 @@ auth.MapGet("/me", async (HttpContext http, AppDbContext db, CancellationToken c
         // 403, so a freshly provisioned user lands there instead of watching
         // every request on the page fail.
         user.MustChangePassword,
+        // Times are shown in the person's chosen zone, else the server's (the
+        // container's TZ) — the client falls back from one to the other.
+        user.TimeZone,
+        serverTimeZone = ServerTimeZoneId(),
     });
 });
 
@@ -1285,6 +1280,16 @@ vault.MapPost("/unlock", async (
 
 // Close the vault on this session now (the lock button), rather than waiting for
 // the unlock to expire.
+// Sliding expiry: the client calls this while someone is actively reading or
+// editing locked notes, so the vault doesn't shut mid-read. An idle vault still
+// closes five minutes after the last touch. Needs the live token itself — a
+// session alone can never re-open or extend anything.
+vault.MapPost("/keepalive", (ClaimsPrincipal principal, HttpRequest request, UnlockTokenStore unlockTokens) =>
+    unlockTokens.Touch(request.Headers["X-Unlock-Token"].ToString(), Uid(principal))
+        ? Results.NoContent()
+        : Results.Json(new { error = "Unlock the vault first.", code = "locked" },
+            statusCode: StatusCodes.Status401Unauthorized));
+
 vault.MapPost("/lock", (ClaimsPrincipal principal, UnlockTokenStore unlockTokens) =>
 {
     unlockTokens.RevokeUser(Uid(principal));
@@ -1446,6 +1451,16 @@ auth.MapPut("/profile", async (ProfileRequest body, HttpContext http, ClaimsPrin
         user.Email = email;
     }
 
+    // Empty = "use the server's zone"; anything else must be a zone this machine
+    // knows, or every timestamp the person reads would quietly fall back to UTC.
+    if (body.TimeZone is not null)
+    {
+        var tz = body.TimeZone.Trim();
+        if (tz.Length > 0 && !TimeZoneInfo.TryFindSystemTimeZoneById(tz, out _))
+            return Results.BadRequest(new { error = "That isn’t a time zone this server recognises.", field = "timeZone" });
+        user.TimeZone = tz.Length == 0 ? null : tz;
+    }
+
     await db.SaveChangesAsync(ct);
 
     // The session cookie carries the username as a claim; re-issue it so the new
@@ -1454,7 +1469,7 @@ auth.MapPut("/profile", async (ProfileRequest body, HttpContext http, ClaimsPrin
     if (renamed && principal.Identity?.AuthenticationType == CookieAuthenticationDefaults.AuthenticationScheme)
         await SignInAsync(http, user);
 
-    return Results.Ok(new { user.Id, user.Username, user.Name, user.Email, user.Role });
+    return Results.Ok(new { user.Id, user.Username, user.Name, user.Email, user.Role, user.TimeZone, serverTimeZone = ServerTimeZoneId() });
 }).RequireAuthorization();
 
 // Remove the profile picture; the initial takes its place everywhere.
@@ -1525,8 +1540,8 @@ auth.MapPost("/avatar", async (
     return Results.Ok(new { ok = true });
 }).RequireAuthorization().DisableAntiforgery();
 
-auth.MapGet("/avatar", (ClaimsPrincipal principal, IConfiguration config, IHostEnvironment env) =>
-    AvatarFile(Uid(principal), config, env)).RequireAuthorization();
+auth.MapGet("/avatar", (ClaimsPrincipal principal, HttpResponse response, IConfiguration config, IHostEnvironment env) =>
+    AvatarFile(Uid(principal), config, env, response)).RequireAuthorization();
 
 // Somebody else's picture, by username. A face next to a name is the point of
 // having one, and these appear wherever a person does: the inbox, a shared note,
@@ -1534,11 +1549,11 @@ auth.MapGet("/avatar", (ClaimsPrincipal principal, IConfiguration config, IHostE
 // any signed-in user — an unknown name and a user with no picture answer the
 // same 404.
 auth.MapGet("/avatar/{username}", async (
-    string username, AppDbContext db, IConfiguration config, IHostEnvironment env, CancellationToken ct) =>
+    string username, HttpResponse response, AppDbContext db, IConfiguration config, IHostEnvironment env, CancellationToken ct) =>
 {
     var name = username.Trim();
     var id = await db.Users.Where(u => u.Username == name).Select(u => (int?)u.Id).FirstOrDefaultAsync(ct);
-    return id is null ? Results.NotFound() : AvatarFile(id.Value.ToString(), config, env);
+    return id is null ? Results.NotFound() : AvatarFile(id.Value.ToString(), config, env, response);
 }).RequireAuthorization();
 
 // ── Background jobs ───────────────────────────────────────────────────────────
@@ -2116,7 +2131,8 @@ notes.MapPut("/{id}", async (
     HttpContext http,
     CancellationToken ct) =>
 {
-    // The id becomes the .md filename. PathGuard stops it escaping the vault, but
+    // A new note's file starts under its id until it has a title (then it is
+    // renamed — see NoteFileNamer). PathGuard stops it escaping the vault, but
     // a name like `..%2F..%2Fetc%2Fpasswd` still landed as a literal file the API
     // could never address again — reject it up front instead.
     if (!PathGuard.IsValidNoteId(id))
@@ -2129,8 +2145,8 @@ notes.MapPut("/{id}", async (
     if (priorPath is not null) state.TryGet(uid, priorPath, out prior);
 
     // Resolve under the caller's vault and verify it can't escape (→ 403).
-    var path = priorPath
-        ?? PathGuard.ResolveAndVerify(vault.UserNotesDir(uid), $"{id}.md", loggerFactory.CreateLogger("PathGuard"));
+    // Where it is now; a new note's file is named below, once its title is known.
+    var path = priorPath;
 
     // Locking and unlocking a note are the two moves the vault has to police.
     // Locking needs a PIN to exist — a secure note must always have a way in that
@@ -2185,10 +2201,26 @@ notes.MapPut("/{id}", async (
         Updated = DateTime.UtcNow,
     };
 
+    // The file is named after the note — its title, else its first line — and
+    // follows it as that changes (see NoteFileNamer). Identity is the `id` in
+    // the front matter, so a rename breaks nothing that points at the note.
+    var desiredName = NoteFileNamer.DesiredBaseName(note);
+    if (path is null)
+    {
+        var notesDir = vault.UserNotesDir(uid);
+        Directory.CreateDirectory(notesDir);
+        var fresh = NoteFileNamer.NewPath(notesDir, desiredName, id);
+        path = PathGuard.ResolveAndVerify(notesDir, Path.GetFileName(fresh), loggerFactory.CreateLogger("PathGuard"));
+    }
+
     // Snapshot the prior on-disk revision before we overwrite it (throttled).
     var snapRoot = PapyraPaths.UserSnapshotsDir(config, env.ContentRootPath, uid);
     var noteSnapDir = PathGuard.ResolveAndVerify(snapRoot, id, loggerFactory.CreateLogger("PathGuard"));
     await snapshots.CaptureAsync(noteSnapDir, path, ct);
+
+    if (priorPath is not null)
+        path = NoteFileNamer.Move(uid, path, NoteFileNamer.TargetPath(path, desiredName, id),
+            state, writeRing, loggerFactory.CreateLogger("NoteFileNamer"));
 
     writeRing.Mark(path); // log self-write before touching disk (loop prevention)
     await storage.WriteAsync(path, note, ct);
@@ -3469,6 +3501,8 @@ shares.MapGet("/incoming", async (
             body = note?.Body ?? string.Empty,
             color = note?.Color,
             updatedUtc = note?.Updated,
+            // When it was shared with you — the Shared with me page says so.
+            sharedUtc = DateTime.SpecifyKind(s.CreatedUtc, DateTimeKind.Utc),
             requestPending = pending.Contains((s.OwnerId, s.NoteId)),
         });
     }
@@ -3822,15 +3856,35 @@ accessRequests.MapPost("/{id:int}/deny", async (
 .WithSummary("Decline an access request");
 
 // Public: read a link-shared note (enforces expiry + view cap, counts the view).
+//
+// A view is a visit, not a request. The first read hands the browser a signed,
+// HttpOnly cookie scoped to this link; reads that carry it for the next hour
+// don't count again and aren't refused. Without it a "view once" link died on
+// its own first visit — anything that loaded the page twice (a reload, the
+// service worker taking over, a remount) spent the only view. The cookie is
+// Data-Protection-signed, so it can't be minted to dodge a limit, and it names
+// the share and token, so it opens nothing else.
 app.MapGet("/api/shared/{token}", async (
-    string token, AppDbContext db, VaultState state, MarkdownStorageService storage,
+    string token, HttpContext http, IDataProtectionProvider dataProtection, AppDbContext db,
+    VaultState state, MarkdownStorageService storage,
     VaultObserverOptions vault, ILoggerFactory lf, CancellationToken ct) =>
 {
     var share = await db.Shares.FirstOrDefaultAsync(s => s.Token == token && s.Kind == "link", ct);
     if (share is null) return Results.NotFound();
     if (share.ExpiresUtc is { } exp && exp < DateTime.UtcNow)
         return Results.Json(new { error = "This link has expired." }, statusCode: StatusCodes.Status410Gone);
-    if (share.MaxViews is { } mv && share.ViewCount >= mv)
+
+    var viewer = dataProtection.CreateProtector("Papyra.SharedLinkView.v1").ToTimeLimitedDataProtector();
+    var cookieName = $"papyra_view_{share.Id}";
+    var visit = $"{share.Id}:{token}";
+    var counted = false;
+    if (http.Request.Cookies.TryGetValue(cookieName, out var cookie))
+    {
+        try { counted = viewer.Unprotect(cookie) == visit; }
+        catch (System.Security.Cryptography.CryptographicException) { /* expired or forged: a new visit */ }
+    }
+
+    if (!counted && share.MaxViews is { } mv && share.ViewCount >= mv)
         return Results.Json(new { error = "This link has reached its view limit." }, statusCode: StatusCodes.Status410Gone);
 
     var note = await storage.ReadAsync(OwnerNotePath(state, vault, lf, share.OwnerId.ToString(), share.NoteId), ct);
@@ -3840,8 +3894,20 @@ app.MapGet("/api/shared/{token}", async (
 
     // Counted only once the note is actually being handed over, so a refused
     // read doesn't burn one of a limited-view link's views.
-    share.ViewCount++;
-    await db.SaveChangesAsync(ct);
+    if (!counted)
+    {
+        share.ViewCount++;
+        await db.SaveChangesAsync(ct);
+        var lifetime = TimeSpan.FromHours(1);
+        http.Response.Cookies.Append(cookieName, viewer.Protect(visit, lifetime), new CookieOptions
+        {
+            HttpOnly = true,
+            Secure = http.Request.IsHttps,
+            SameSite = SameSiteMode.Strict,
+            Path = $"/api/shared/{token}",
+            MaxAge = lifetime,
+        });
+    }
     return Results.Ok(new { note.Title, note.Body, note.Color, access = share.Access });
 });
 
@@ -4510,12 +4576,40 @@ app.MapPost("/api/import/quick", async (
 .RequireAuthorization()
 .DisableAntiforgery();
 
-app.MapGet("/api/export", (
+app.MapGet("/api/export", async (
     ClaimsPrincipal user,
     VaultState state,
+    AppDbContext db,
     IConfiguration config,
-    IHostEnvironment env) =>
+    IHostEnvironment env,
+    CancellationToken ct) =>
 {
+    // Zip entries carry a bare local clock time (no zone), which an unzipper
+    // reads as its own local time. Write each file's real last-modified moment
+    // in the person's zone (Settings → Profile, else the server's), so a note
+    // edited at 9:14 unpacks as 9:14 on their machine — and every file keeps
+    // its own date rather than the moment of export.
+    var me = await db.Users.FindAsync([int.Parse(Uid(user))], ct);
+    var zone = TimeZoneInfo.Local;
+    if (me?.TimeZone is { Length: > 0 } tzId && TimeZoneInfo.TryFindSystemTimeZoneById(tzId, out var chosen)) zone = chosen;
+    DateTimeOffset InZone(DateTime utc)
+    {
+        var local = TimeZoneInfo.ConvertTimeFromUtc(DateTime.SpecifyKind(utc, DateTimeKind.Utc), zone);
+        // The zip format can't store dates before 1980; clamp rather than throw.
+        if (local.Year < 1980) local = new DateTime(1980, 1, 1, 0, 0, 0, DateTimeKind.Unspecified);
+        return new DateTimeOffset(DateTime.SpecifyKind(local, DateTimeKind.Unspecified), zone.GetUtcOffset(local));
+    }
+    // Built by hand rather than CreateEntryFromFile: in Create mode an entry is
+    // sealed once written, so its time has to be set before the bytes go in.
+    void AddFile(ZipArchive zip, string file, string entryName)
+    {
+        var entry = zip.CreateEntry(entryName, CompressionLevel.Optimal);
+        entry.LastWriteTime = InZone(File.GetLastWriteTimeUtc(file));
+        using var source = File.OpenRead(file);
+        using var target = entry.Open();
+        source.CopyTo(target);
+    }
+
     // The export is a plain zip anyone holding the session can download, so secure
     // notes are left out. They travel in the encrypted backup instead, which asks
     // for the account password.
@@ -4534,7 +4628,7 @@ app.MapGet("/api/export", (
         foreach (var file in Directory.EnumerateFiles(notesDir, "*", SearchOption.AllDirectories))
         {
             if (secureFiles.Contains(Path.GetFullPath(file))) continue;
-            archive.CreateEntryFromFile(file, Path.GetRelativePath(notesDir, file).Replace('\\', '/'));
+            AddFile(archive, file, Path.GetRelativePath(notesDir, file).Replace('\\', '/'));
         }
 
         // Attachments too. Exporting notes without the images they embed leaves
@@ -4543,15 +4637,16 @@ app.MapGet("/api/export", (
         if (Directory.Exists(mediaDir))
         {
             foreach (var file in Directory.EnumerateFiles(mediaDir, "*", SearchOption.AllDirectories))
-                archive.CreateEntryFromFile(
-                    file, "media/" + Path.GetRelativePath(mediaDir, file).Replace('\\', '/'));
+                AddFile(archive, file, "media/" + Path.GetRelativePath(mediaDir, file).Replace('\\', '/'));
         }
     }
 
     // DeleteOnClose reclaims the temp zip once the response stream finishes.
     var stream = new FileStream(
         tmp, FileMode.Open, FileAccess.Read, FileShare.None, 4096, FileOptions.DeleteOnClose);
-    return Results.File(stream, "application/zip", "papyra-export.zip");
+    // Dated, so a folder of exports sorts itself and one never overwrites another.
+    var stamp = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, zone).ToString("yyyy-MM-dd-HHmm");
+    return Results.File(stream, "application/zip", $"papyra-export-{stamp}.zip");
 })
 .RequireAuthorization();
 
@@ -4908,7 +5003,7 @@ static (string Extension, string ContentType)? SniffImage(ReadOnlySpan<byte> byt
 // Serve a stored avatar. The content type comes from the extension the upload
 // path chose, never from anything a caller supplied, and the response says
 // nosniff so a browser cannot decide it is something more exciting.
-static IResult AvatarFile(string uid, IConfiguration config, IHostEnvironment env)
+static IResult AvatarFile(string uid, IConfiguration config, IHostEnvironment env, HttpResponse response)
 {
     var dir = PapyraPaths.UserDotPapyra(config, env.ContentRootPath, uid);
     var file = Directory.Exists(dir) ? Directory.EnumerateFiles(dir, "avatar.*").FirstOrDefault() : null;
@@ -4922,7 +5017,16 @@ static IResult AvatarFile(string uid, IConfiguration config, IHostEnvironment en
         // guess: whatever it is, it is not something this endpoint promised.
         _ => null,
     };
-    return contentType is null ? Results.NotFound() : Results.File(file, contentType);
+    if (contentType is null) return Results.NotFound();
+    // The URL stays the same across uploads, so the browser must revalidate
+    // every time (a cheap 304 when nothing changed). With no caching headers it
+    // guessed a freshness from Last-Modified and kept showing an old picture —
+    // "View photo" opened the previous face.
+    response.Headers.CacheControl = "private, no-cache";
+    var modified = File.GetLastWriteTimeUtc(file);
+    return Results.File(file, contentType,
+        lastModified: modified,
+        entityTag: new Microsoft.Net.Http.Headers.EntityTagHeaderValue($"\"{modified.Ticks:x}\""));
 }
 
 // Serve a media file from an arbitrary owner's vault (for shared notes). The
@@ -5043,6 +5147,15 @@ static async Task<string> UniqueSsoUsername(AppDbContext db, string email, strin
 
 // Mint the session cookie for a user. UserId rides as NameIdentifier so the
 // services scope per-user storage (the Sprint 6.3 path jail keys off it).
+// The server's own zone as an IANA id — what a Docker container's TZ sets. On
+// Windows (development) the local zone has a Windows id; browsers want IANA.
+static string ServerTimeZoneId()
+{
+    var local = TimeZoneInfo.Local;
+    if (local.HasIanaId) return local.Id;
+    return TimeZoneInfo.TryConvertWindowsIdToIanaId(local.Id, out var iana) ? iana : "UTC";
+}
+
 static async Task SignInAsync(HttpContext http, User user)
 {
     var claims = new List<Claim>
@@ -5109,7 +5222,7 @@ public sealed record RecoveryLinkRequest(bool? SendEmail = null);
 
 // Self-service profile update (display name + email).
 // Every field optional: null = leave it as it is (older clients send no username).
-public sealed record ProfileRequest(string? Name, string? Email, string? Username = null);
+public sealed record ProfileRequest(string? Name, string? Email, string? Username = null, string? TimeZone = null);
 
 // Self-service password change: verify Current, set Next.
 public sealed record PasswordRequest(string? Current, string? Next);

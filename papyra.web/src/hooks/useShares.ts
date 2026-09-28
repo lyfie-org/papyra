@@ -24,6 +24,8 @@ export interface IncomingShare {
   body: string;
   color: string | null;
   updatedUtc: string | null;
+  /** When the owner shared it with you (UTC). */
+  sharedUtc?: string;
   /** The caller has asked the owner for edit access and is waiting. */
   requestPending: boolean;
 }

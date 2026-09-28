@@ -50,6 +50,26 @@ public sealed class ProfileEndpointsTests
         => (await res.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("field").GetString()!;
 
     [Fact]
+    public Task TimeZone_DefaultsToTheServers_IsValidated_AndCanBeCleared() => InApp(async (client, _, _, _) =>
+    {
+        var me = await Me(client);
+        Assert.Equal(JsonValueKind.Null, me.GetProperty("timeZone").ValueKind);
+        Assert.False(string.IsNullOrEmpty(me.GetProperty("serverTimeZone").GetString()));
+
+        var bad = await client.PutAsJsonAsync("/api/auth/profile", new ProfileRequest(null, null, TimeZone: "Mars/Olympus_Mons"));
+        Assert.Equal(HttpStatusCode.BadRequest, bad.StatusCode);
+        Assert.Equal("timeZone", await ErrorField(bad));
+
+        var ok = await client.PutAsJsonAsync("/api/auth/profile", new ProfileRequest(null, null, TimeZone: "Asia/Kolkata"));
+        Assert.Equal(HttpStatusCode.OK, ok.StatusCode);
+        Assert.Equal("Asia/Kolkata", (await Me(client)).GetProperty("timeZone").GetString());
+
+        // Blank goes back to following the server.
+        await client.PutAsJsonAsync("/api/auth/profile", new ProfileRequest(null, null, TimeZone: ""));
+        Assert.Equal(JsonValueKind.Null, (await Me(client)).GetProperty("timeZone").ValueKind);
+    });
+
+    [Fact]
     public Task Rename_KeepsTheSession_AndTheNotes() => InApp(async (client, _, _, _) =>
     {
         await client.PutAsJsonAsync("/api/notes/n1", new NoteWrite("T", null, null, false, false, "body"));

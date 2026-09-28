@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { PapyraEditor, type PapyraEditorRef } from '@lyfie/luthor/presets/papyra';
 import '@lyfie/luthor/styles.css';
-import { $getRoot, CLEAR_HISTORY_COMMAND, type LexicalEditor } from 'lexical';
+import { $addUpdateTag, $getRoot, $setSelection, CLEAR_HISTORY_COMMAND, SKIP_DOM_SELECTION_TAG, type LexicalEditor } from 'lexical';
 import { hasBridgePlaceholder } from '../lib/bridgePlaceholder';
 import type { Note } from '../types/note';
 import { useAutoSave, type Draft } from '../hooks/useAutoSave';
@@ -33,6 +33,7 @@ import { useDialogFocus } from '../hooks/useDialogFocus';
 import { useAmbient } from '../hooks/useAmbient';
 import { useAlwaysShowEditorToolbar } from '../hooks/useEditorToolbar';
 import './NoteEditor.css';
+import { editedLabel, fullStamp, useMinuteTick, useTimeZone } from '../lib/timeZone';
 
 /*
  * luthor ≤2.9.7 serializes a just-adopted document without the Papyra preset's
@@ -66,6 +67,41 @@ const STATUS_LABEL = {
   saved: 'Saved to local disk',
   queued: 'Saved on this device — will sync',
 } as const;
+
+/**
+ * Save-time anchor stamping is an editor update, and Lexical ends every update
+ * by writing its selection back into the DOM — which moves focus into the body.
+ * So a note saving in the background (1.5 s after the last keystroke) pulled the
+ * caret out of the title mid-word. When the caret is in a field outside the
+ * body, drop the body's remembered selection first, without touching the DOM:
+ * there is then nothing to write back. Clicking back into the body makes a fresh
+ * one. An editor dialog's own field (link URL…) is left alone — it still needs
+ * the body selection it was opened on.
+ */
+function releaseBodySelectionIfAway(lexical: LexicalEditor | null | undefined): void {
+  const root = lexical?.getRootElement();
+  const active = document.activeElement;
+  if (!lexical || !root || !active || root.contains(active)) return;
+  if (!(active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement)) return;
+  if (active.closest('[class*="luthor-"]')) return;
+  lexical.update(() => {
+    $addUpdateTag(SKIP_DOM_SELECTION_TAG);
+    $setSelection(null);
+  }, { discrete: true });
+}
+
+/** "Edited 3:42 PM", in the person's time zone; the full date on hover. */
+function EditedStamp({ updated }: { updated: string }) {
+  const zone = useTimeZone();
+  const now = useMinuteTick();
+  const label = editedLabel(updated, zone, now);
+  if (!label) return null;
+  return (
+    <time className="note-editor__edited" dateTime={updated} title={fullStamp(updated, zone)}>
+      {label}
+    </time>
+  );
+}
 
 // The editing canvas for a single note. Luthor's markdown preset owns the body
 // (uncontrolled — content is read imperatively at save time); a Marcellus title
@@ -206,6 +242,7 @@ export default function NoteEditor({ note, isDraft = false }: { note: Note; isDr
     // body is withheld — neither should be stamped.
     // Nor is a preview: stamping would write anchors into a past version.
     if (note.kind === 'todo' || isLocked || suppressSave.current) return getDraft();
+    releaseBodySelectionIfAway(editorRef.current?.getLexicalEditor());
     const md = editorRef.current?.ensureBlockAnchors() ?? latestBody.current;
     latestBody.current = md;
     return { title: titleRef.current, body: md };
@@ -250,10 +287,26 @@ export default function NoteEditor({ note, isDraft = false }: { note: Note; isDr
   // read-only preview) nor judged against the draft (the "draft" is the preview,
   // which would read as unsaved edits and raise a false conflict). Applied on leave.
   const deferredRemote = useRef<{ title: string; body: string } | null>(null);
+  // Where focus was when a remote adopt remounted the canvas (see applyRemote).
+  const focusToRestore = useRef<{ el: HTMLElement; start: number | null; end: number | null } | null>(null);
 
   // Force the editor to display a remote revision, re-baselining the save state
   // so the adopted content isn't immediately written back.
   const applyRemote = useCallback((next: { title: string; body: string }) => {
+    // Adopting remounts the canvas, and loading markdown into a fresh Lexical
+    // editor moves the DOM selection — and with it the focus — into the body.
+    // That is how a new note's first save (its echo can differ from what was
+    // sent, e.g. whitespace the file drops) pulled the caret out of the title
+    // mid-word. Remember where focus was; onReady puts it back.
+    const active = document.activeElement as HTMLElement | null;
+    if (active && active !== document.body && !active.closest('.note-editor__canvas')) {
+      const field = active as HTMLInputElement;
+      focusToRestore.current = {
+        el: active,
+        start: typeof field.selectionStart === 'number' ? field.selectionStart : null,
+        end: typeof field.selectionEnd === 'number' ? field.selectionEnd : null,
+      };
+    }
     titleRef.current = next.title;
     latestBody.current = next.body;
     setTitle(next.title);
@@ -747,6 +800,20 @@ export default function NoteEditor({ note, isDraft = false }: { note: Note; isDr
             // whole note flattened into one paragraph of raw `1. … ^id` source,
             // which autosave then wrote to disk. Opening a note is not an edit.
             forgetHistory(lexical);
+            // Give focus back to whatever held it before the remount (the title,
+            // a tag field…) — after Lexical has finished claiming the selection.
+            const restore = focusToRestore.current;
+            focusToRestore.current = null;
+            if (restore) {
+              requestAnimationFrame(() => requestAnimationFrame(() => {
+                if (!restore.el.isConnected) return;
+                restore.el.focus({ preventScroll: true });
+                const field = restore.el as HTMLInputElement;
+                if (restore.start !== null && typeof field.setSelectionRange === 'function') {
+                  try { field.setSelectionRange(restore.start, restore.end ?? restore.start); } catch { /* not a text field */ }
+                }
+              }));
+            }
             // A remount while history is open (a colour pick that tints the note,
             // an app theme switch) builds a fresh, editable canvas from the live
             // body — so history is over; leave it rather than leave its bar over
@@ -822,6 +889,7 @@ export default function NoteEditor({ note, isDraft = false }: { note: Note; isDr
           <span className="note-editor__status" role="status">
             {STATUS_LABEL[status]}
           </span>
+          {!isDraft && !history && <EditedStamp updated={note.updated} />}
         </footer>
       )}
 

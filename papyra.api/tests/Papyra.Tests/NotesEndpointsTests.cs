@@ -94,7 +94,7 @@ public sealed class NotesEndpointsTests
                 Title: "Hello", Tags: ["a", "b"], Color: "#7aaa8a", Pinned: true, Archived: false, Body: "world"));
             Assert.Equal(HttpStatusCode.OK, put.StatusCode);
 
-            var mdPath = Path.Combine(dir, "users", uid, "notes", "n1.md");
+            var mdPath = NoteFiles.Find(Path.Combine(dir, "users", uid, "notes"), "n1");
             Assert.True(File.Exists(mdPath));
             var raw = await File.ReadAllTextAsync(mdPath);
             Assert.Contains("title: Hello", raw);
@@ -130,7 +130,7 @@ public sealed class NotesEndpointsTests
             var del = await client.DeleteAsync("/api/notes/d1");
             Assert.Equal(HttpStatusCode.NoContent, del.StatusCode);
 
-            Assert.False(File.Exists(Path.Combine(dir, "users", uid, "notes", "d1.md")));
+            Assert.Null(NoteFiles.TryFind(Path.Combine(dir, "users", uid, "notes"), "d1"));
 
             var notes = await client.GetFromJsonAsync<List<Note>>("/api/notes");
             Assert.Empty(notes!);

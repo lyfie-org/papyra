@@ -42,9 +42,16 @@ if (import.meta.env.PROD && !import.meta.env.VITE_DEMO && 'serviceWorker' in nav
   // A new worker that has claimed this page means a new build is live. Without
   // this an already-open tab kept running the previous bundle off the cached
   // shell until it was closed — an upgrade that never arrives.
+  //
+  // Only when a worker was ALREADY in charge: on a first visit the worker
+  // installs and claims the page too, and reloading then is pure cost — it
+  // reloaded every first-time visitor, and on a one-view share link that
+  // second load spent the only view ("This link has reached its view limit"
+  // a second after the note appeared).
+  const hadController = !!navigator.serviceWorker.controller;
   let reloading = false;
   navigator.serviceWorker.addEventListener('controllerchange', () => {
-    if (reloading) return;
+    if (!hadController || reloading) return;
     reloading = true;
     window.location.reload();
   });

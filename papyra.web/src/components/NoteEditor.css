@@ -85,6 +85,17 @@
 }
 .note-editor__footer .note-toolbar { justify-content: flex-start; }
 .note-editor__footer .note-editor__status { margin-left: auto; }
+/* Last edited, at the foot's right edge; the save state sits just before it. */
+.note-editor__edited {
+  flex-shrink: 0;
+  color: var(--text);
+  font: 400 var(--fs-2xs) / 1.3 var(--sans);
+  opacity: 0.85;
+  white-space: nowrap;
+  cursor: default;
+}
+.note-editor--colored .note-editor__edited { color: var(--tint-ink-muted); opacity: 1; }
+.note-editor__footer .note-editor__status:empty + .note-editor__edited { margin-left: auto; }
 
 /* At the bottom of the sheet the colour palette opens upward, not off the edge. */
 .note-editor__footer .palette-picker {
@@ -229,6 +240,12 @@
 }
 .note-editor__canvas .luthor-preset-papyra__content {
   padding-inline: var(--sheet-pad);
+}
+/* luthor positions the "Start writing…" placeholder from its own padding
+   variable, not from the body's padding — so after the override above the
+   placeholder sat 4px left of where the caret blinks. Feed it the same inset. */
+.note-editor__canvas .luthor-richtext-container {
+  --luthor-editor-content-padding-x: var(--sheet-pad);
 }
 /* A single rule above the body marks where the writing starts — the footer's
    line, but ruled across the text column (like a notebook line) rather than

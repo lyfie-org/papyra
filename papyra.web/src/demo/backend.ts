@@ -205,6 +205,7 @@ const routes: Route[] = [
   ],
   ['POST', /^\/api\/auth\/vault\/unlock$/, () => json({ unlockToken: 'demo' })],
   ['POST', /^\/api\/auth\/vault\/lock$/, () => noContent()],
+  ['POST', /^\/api\/auth\/vault\/keepalive$/, () => noContent()],
   ['POST', /^\/api\/auth\/vault\/pin$/, () => serverOnly('Changing the vault PIN')],
   ['GET', /^\/api\/auth\/webauthn\/credentials$/, () => json([])],
   ['POST', /^\/api\/auth\/webauthn\//, () => serverOnly('Passkeys')],

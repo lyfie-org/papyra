@@ -21,3 +21,20 @@
   margin-top: 2rem;
   color: var(--text);
 }
+
+/* Theme toggle for visitors: the same round control as the app's top bar. */
+.shared-page__theme {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  margin-left: auto;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--text-h);
+  cursor: pointer;
+  transition: border-color var(--dur-fast) var(--ease), background-color var(--dur-fast) var(--ease);
+}
+.shared-page__theme:hover { border-color: var(--border-hover); background: var(--accent-bg); }

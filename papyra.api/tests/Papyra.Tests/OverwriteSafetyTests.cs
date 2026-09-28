@@ -94,8 +94,9 @@ public sealed class OverwriteSafetyTests
                 Title: "Doc", Tags: null, Color: null, Pinned: false, Archived: false, Body: "second"));
 
             var notesDir = Path.Combine(dir, "users", uid, "notes");
+            var stem2 = Path.GetFileNameWithoutExtension(NoteFiles.Find(notesDir, "c2"));
             await File.WriteAllTextAsync(
-                Path.Combine(notesDir, "c2.sync-conflict-20260811-090000-K7XQ2R4.md"),
+                Path.Combine(notesDir, $"{stem2}.sync-conflict-20260811-090000-K7XQ2R4.md"),
                 "---\nid: c2\ntitle: Doc\n---\n\nthe other device's text\n");
 
             ConflictDto? conflict = null;
@@ -138,7 +139,7 @@ public sealed class OverwriteSafetyTests
 
             // A sync tool drops its own copy beside the note (Syncthing's naming).
             var notesDir = Path.Combine(dir, "users", uid, "notes");
-            var copyName = "c1.sync-conflict-20260811-090000-K7XQ2R4.md";
+            var copyName = $"{Path.GetFileNameWithoutExtension(NoteFiles.Find(notesDir, "c1"))}.sync-conflict-20260811-090000-K7XQ2R4.md";
             await File.WriteAllTextAsync(
                 Path.Combine(notesDir, copyName),
                 "---\nid: c1\ntitle: Doc\n---\n\nthe other device's text\n");
@@ -158,7 +159,7 @@ public sealed class OverwriteSafetyTests
             Assert.Equal(HttpStatusCode.NoContent, resolve.StatusCode);
 
             // The copy won the note...
-            var live = await File.ReadAllTextAsync(Path.Combine(notesDir, "c1.md"));
+            var live = await File.ReadAllTextAsync(NoteFiles.Find(notesDir, "c1"));
             Assert.Contains("the other device's text", live);
 
             // ...but the revision it replaced is recoverable.
@@ -213,7 +214,7 @@ public sealed class OverwriteSafetyTests
                 $"/api/shares/incoming/{share!.Id}", new SharedBodyWrite("the sharee's replacement"));
             Assert.Equal(HttpStatusCode.NoContent, edit.StatusCode);
 
-            var live = await File.ReadAllTextAsync(Path.Combine(dir, "users", ownerUid, "notes", "s2.md"));
+            var live = await File.ReadAllTextAsync(NoteFiles.Find(Path.Combine(dir, "users", ownerUid, "notes"), "s2"));
             Assert.Contains("the sharee's replacement", live);
 
             // The owner's version is in their own snapshot history, not gone.

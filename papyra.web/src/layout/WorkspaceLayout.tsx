@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Link, NavLink, Outlet, matchPath, useLocation, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import {
@@ -32,7 +32,7 @@ import { useVaultOpen } from '../hooks/useVault';
 const NAV_ITEMS = [
   { to: '/', label: 'Notes', icon: StickyNote, end: true },
   { to: '/todo', label: 'To Do', icon: ListTodo, end: false },
-  { to: '/?scope=shared', label: 'Shared with me', icon: Users, end: true },
+  { to: '/shared-with-me', label: 'Shared with me', icon: Users, end: false },
   { to: '/collections', label: 'Collections', icon: Layers, end: false },
   { to: '/vault', label: 'Vault', icon: ShieldCheck, end: false },
   { to: '/archive', label: 'Archive', icon: Archive, end: false },
@@ -42,10 +42,6 @@ const NAV_ITEMS = [
 
 export default function WorkspaceLayout() {
   const { user } = useAuth();
-  // "Shared with me" is the desk behind a filter, not its own page, so it and
-  // Notes share the "/" path and are told apart by `?scope=shared`.
-  const { pathname, search } = useLocation();
-  const onSharedScope = pathname === '/' && new URLSearchParams(search).get('scope') === 'shared';
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [collapsed, setCollapsed] = useState(false);
@@ -200,10 +196,7 @@ export default function WorkspaceLayout() {
                   end={end}
                   title={to === '/vault' && vaultOpen ? 'Vault — open on this device' : label}
                   aria-label={to === '/vault' && vaultOpen ? 'Vault (open)' : undefined}
-                  className={({ isActive }) => {
-                    const on = to === '/?scope=shared' ? onSharedScope : isActive && !(to === '/' && onSharedScope);
-                    return `workspace__nav-link${on ? ' workspace__nav-link--active' : ''}`;
-                  }}
+                  className={({ isActive }) => `workspace__nav-link${isActive ? ' workspace__nav-link--active' : ''}`}
                 >
                   {to === '/vault' && vaultOpen ? (
                     // The vault item says when it's open, from any page — a
@@ -214,7 +207,7 @@ export default function WorkspaceLayout() {
                         <span className="workspace__vault-dot" aria-hidden="true" />
                       </span>
                       <span className="workspace__nav-label">{label}</span>
-                      <span className="workspace__nav-badge workspace__nav-label">Open</span>
+                      <span className="workspace__vault-tag workspace__nav-label">Open</span>
                     </>
                   ) : (
                     <>
@@ -251,8 +244,13 @@ export default function WorkspaceLayout() {
               <span className="workspace__nav-label">Settings</span>
             </NavLink>
 
-            <footer className="workspace__sidebar-footer" title={syncTitle}>
-              <span className="workspace__status-row">
+            {/* Connection + build in one quiet badge; it opens Settings → About. */}
+            <footer className="workspace__sidebar-footer">
+              <Link
+                to="/settings?tab=about"
+                className="workspace__build"
+                title={`${syncTitle} · Papyra ${APP_VERSION_LABEL} — about this Papyra`}
+              >
                 <span
                   className={`workspace__status-dot workspace__status-dot--${syncTone}`}
                   aria-hidden="true"
@@ -260,14 +258,16 @@ export default function WorkspaceLayout() {
                 <span className="workspace__status-label workspace__nav-label" role="status">
                   {syncLabel}
                 </span>
-              </span>
-              <span className="workspace__version workspace__nav-label">{APP_VERSION_LABEL}</span>
+                <span className="workspace__build-sep workspace__nav-label" aria-hidden="true" />
+                <span className="workspace__version workspace__nav-label">{APP_VERSION_LABEL}</span>
+              </Link>
             </footer>
           </div>
         </nav>
 
         <main className="workspace__desk">
           <OriginTracker />
+          <DeskScrollReset />
           <Outlet />
           <NoteOverlay />
         </main>
@@ -305,6 +305,23 @@ function OriginTracker() {
   const location = useLocation();
   useEffect(() => { rememberPage(location); }, [location]);
   return null;
+}
+
+// A new page starts at its top. The desk is one scroller shared by every page,
+// so it kept the last page's offset: leave Settings half-way down and Notes
+// opened half-way down too. The location here is the page behind any open note
+// (see App), so opening and closing a note leaves the desk where it was.
+function DeskScrollReset() {
+  const location = useLocation();
+  const params = new URLSearchParams(location.search);
+  params.delete('open'); // ?open= overlays a shared note; the page underneath stays put
+  params.delete('s');    // Settings' jump-to-section scrolls on its own
+  const page = `${location.pathname}?${params.toString()}`;
+  const ref = useRef<HTMLSpanElement | null>(null);
+  useLayoutEffect(() => {
+    ref.current?.closest('.workspace__desk')?.scrollTo({ top: 0 });
+  }, [page]);
+  return <span ref={ref} hidden />;
 }
 
 // The open note, over whatever page it was opened from. App keeps rendering that

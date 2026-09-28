@@ -39,6 +39,21 @@ public sealed class UnlockTokenStoreTests
     }
 
     [Fact]
+    public void Touch_KeepsALiveTokenOpen_ButNeverRevivesOrCrossesTenants()
+    {
+        var store = new UnlockTokenStore();
+        var token = store.Issue("1");
+        Assert.True(store.Touch(token, "1"));
+        Assert.True(store.IsValid(token, "1"));
+
+        Assert.False(store.Touch(token, "2"));          // someone else's unlock
+        Assert.False(store.Touch("not-a-token", "1"));
+        store.Revoke(token);
+        Assert.False(store.Touch(token, "1"));          // a locked vault stays locked
+        Assert.False(store.IsValid(token, "1"));
+    }
+
+    [Fact]
     public void EachIssue_MintsADistinctToken()
     {
         var store = new UnlockTokenStore();

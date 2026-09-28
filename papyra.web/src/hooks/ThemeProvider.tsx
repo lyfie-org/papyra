@@ -9,8 +9,13 @@ function systemTheme(): Theme {
 }
 
 function getInitialPreference(): ThemePreference {
-  const saved = localStorage.getItem(LS_KEY);
-  return saved === 'light' || saved === 'dark' || saved === 'system' ? saved : 'system';
+  let saved: string | null = null;
+  try { saved = localStorage.getItem(LS_KEY); } catch { /* storage blocked */ }
+  if (saved === 'light' || saved === 'dark' || saved === 'system') return saved;
+  // Someone opening a public share link has never been here: show the note on
+  // paper, as it was written. The page has a toggle, and their pick sticks.
+  if (window.location.pathname.startsWith('/shared/')) return 'light';
+  return 'system';
 }
 
 function applyTheme(theme: Theme) {

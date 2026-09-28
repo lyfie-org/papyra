@@ -1,9 +1,8 @@
-import { memo, useEffect, useRef, useState, type CSSProperties } from 'react';
+import { memo, useState, type CSSProperties } from 'react';
 import { Link } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   AlertTriangle, Pin, Archive, ArchiveRestore, Share2, Trash2, RotateCcw,
-  MoreHorizontal, Copy, Link2,
 } from 'lucide-react';
 import type { Note } from '../types/note';
 import { putNote } from '../lib/notesApi';
@@ -11,6 +10,7 @@ import { useTrashNote } from '../hooks/useTrashNote';
 import { useSyncState } from '../hooks/useSync';
 import { useShareSummary } from '../hooks/useShares';
 import ShareDialog from './ShareDialog';
+import CardMenu from './CardMenu';
 import ShareBadge from './ShareBadge';
 import ConfirmDialog from './ConfirmDialog';
 import { useToast } from '../lib/toastContext';
@@ -50,12 +50,10 @@ function NoteCard({ note, variant = 'active', conflictId, conflictCount, onResol
   // into a void, the controls say plainly that they need a connection.
   const { online } = useSyncState();
   const offlineHint = online ? undefined : 'Needs a connection';
-  const [menuOpen, setMenuOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   // One request for the whole grid, not one per card.
   const { data: shareSummary } = useShareSummary();
   const shared = shareSummary?.find(s => s.noteId === note.id);
-  const menuRef = useRef<HTMLDivElement | null>(null);
 
   const title = note.title.trim() || 'Untitled';
   // YAML `color` drives the card surface via a CSS var so the stylesheet can dim
@@ -63,15 +61,6 @@ function NoteCard({ note, variant = 'active', conflictId, conflictCount, onResol
   const style = note.color ? ({ '--note-tint': note.color } as CSSProperties) : undefined;
   const theme = useResolvedTheme();
   const className = `note-card${note.color ? ` note-card--colored${tintInkClass(note.color, theme)}` : ''}`;
-
-  useEffect(() => {
-    if (!menuOpen) return;
-    const onDown = (e: MouseEvent) => {
-      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
-    };
-    window.addEventListener('mousedown', onDown);
-    return () => window.removeEventListener('mousedown', onDown);
-  }, [menuOpen]);
 
   function invalidate() { queryClient.invalidateQueries({ queryKey: ['notes'] }); }
 
@@ -105,20 +94,6 @@ function NoteCard({ note, variant = 'active', conflictId, conflictCount, onResol
     setConfirming(null);
     await action('', 'DELETE');
     toast('Note deleted for good.');
-  }
-
-  async function duplicate() {
-    const id = crypto.randomUUID();
-    await putNote(id, {
-      title: title === 'Untitled' ? '' : `${note.title} copy`,
-      tags: note.tags, color: note.color, pinned: false, archived: false, kind: note.kind, body: note.body,
-    });
-    invalidate();
-  }
-
-  async function copyLink() {
-    const url = `${window.location.origin}/note/${encodeURIComponent(note.id)}`;
-    try { await navigator.clipboard.writeText(url); } catch { /* clipboard blocked */ }
   }
 
   const card = (
@@ -210,7 +185,7 @@ function NoteCard({ note, variant = 'active', conflictId, conflictCount, onResol
             <button
               type="button" className="note-card__action" aria-label="Share note"
               disabled={!online} title={offlineHint}
-              onClick={(e) => { stop(e); setMenuOpen(false); setShareOpen(true); }}
+              onClick={(e) => { stop(e); setShareOpen(true); }}
             >
               <Share2 size={16} />
             </button>
@@ -221,31 +196,7 @@ function NoteCard({ note, variant = 'active', conflictId, conflictCount, onResol
             >
               <Trash2 size={16} />
             </button>
-            <div className="note-card__menu-wrap" ref={menuRef}>
-              <button
-                type="button" className="note-card__action" aria-label="More actions"
-                aria-expanded={menuOpen}
-                onClick={(e) => { stop(e); setMenuOpen(o => !o); }}
-              >
-                <MoreHorizontal size={16} />
-              </button>
-              {menuOpen && (
-                <div className="note-card__menu" role="menu">
-                  <button
-                    type="button" role="menuitem" className="note-card__menu-item"
-                    onClick={(e) => { stop(e); setMenuOpen(false); void duplicate(); }}
-                  >
-                    <Copy size={15} /> Duplicate
-                  </button>
-                  <button
-                    type="button" role="menuitem" className="note-card__menu-item"
-                    onClick={(e) => { stop(e); setMenuOpen(false); void copyLink(); setShareOpen(true); }}
-                  >
-                    <Link2 size={15} /> Copy link
-                  </button>
-                </div>
-              )}
-            </div>
+            <CardMenu note={note} onShare={() => setShareOpen(true)} />
           </>
         )}
       </div>

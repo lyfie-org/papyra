@@ -1,6 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
 import { useParams } from 'react-router-dom';
+import { Moon, Sun } from 'lucide-react';
 import logo from '../assets/papyra_logo.png';
+import { useTheme } from '../hooks/useTheme';
 import SharedNoteView, { type SharedNote } from '../components/SharedNoteView';
 import './SharedNotePage.css';
 import LoadingBar from '../components/LoadingBar';
@@ -15,6 +17,8 @@ export default function SharedNotePage() {
   // Fetch counts a view server-side, so guard against React StrictMode's
   // double-invoke (dev) firing it twice — one visit must be exactly one view.
   const fetchedToken = useRef<string | null>(null);
+  const { theme, toggleTheme } = useTheme();
+  const next = theme === 'light' ? 'dark' : 'light';
 
   useEffect(() => {
     if (fetchedToken.current === token) return;
@@ -44,6 +48,15 @@ export default function SharedNotePage() {
       <header className="shared-page__brand">
         <img className="shared-page__logo" src={logo} alt="" aria-hidden="true" />
         <span className="shared-page__wordmark">Papyra</span>
+        <button
+          type="button"
+          className="shared-page__theme"
+          onClick={toggleTheme}
+          aria-label={`Switch to ${next} mode`}
+          title={`Switch to ${next} mode`}
+        >
+          {theme === 'light' ? <Moon size={18} /> : <Sun size={18} />}
+        </button>
       </header>
       <main className="shared-page__main">
         {loading && <LoadingBar label="Loading shared note" />}

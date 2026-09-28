@@ -43,6 +43,33 @@ export function rememberUnlock(next: string): void {
   emit();
 }
 
+// Sliding expiry. While someone is using the vault, activity pings the server
+// (at most every PING_EVERY_MS), which pushes the token's life out to a full five
+// minutes again. The local clock only moves on a confirmed ping, measured from
+// when the ping was sent, so the client never believes in more time than the
+// server granted.
+const PING_EVERY_MS = 5_000;
+let lastPing = 0;
+
+/** Someone is actively using the open vault: keep it open. No-op when closed. */
+export function touchVault(): void {
+  const t = currentUnlockToken();
+  if (!t) return;
+  const sentAt = Date.now();
+  if (sentAt - lastPing < PING_EVERY_MS) return;
+  lastPing = sentAt;
+  fetch('/api/auth/vault/keepalive', { method: 'POST', headers: { 'X-Unlock-Token': t } })
+    .then((res) => {
+      if (res.status === 401) { if (token === t) forgetUnlock(); return; }
+      if (!res.ok || token !== t) return;
+      expiresAt = sentAt + LIFETIME_MS;
+      if (expiryTimer) clearTimeout(expiryTimer);
+      expiryTimer = setTimeout(forgetUnlock, expiresAt - Date.now());
+      emit();
+    })
+    .catch(() => { /* offline: the vault keeps its current deadline */ });
+}
+
 export function forgetUnlock(): void {
   if (expiryTimer) { clearTimeout(expiryTimer); expiryTimer = null; }
   if (token === null) return;
