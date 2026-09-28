@@ -1,0 +1,56 @@
+.export-dialog {
+  position: fixed;
+  inset: 0;
+  z-index: 70;
+  display: grid;
+  place-items: center;
+  padding: var(--space-4);
+  background: color-mix(in srgb, var(--scrim) 55%, transparent);
+}
+.export-dialog__card {
+  width: min(30rem, 100%);
+  max-height: 90vh;
+  overflow-y: auto;
+  padding: var(--space-6);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  font-family: var(--sans);
+}
+.export-dialog__head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
+.export-dialog__title { margin: 0; font: 400 var(--fs-xl) / 1.2 var(--heading); color: var(--text-h); }
+.export-dialog__close {
+  display: inline-grid; place-items: center; padding: var(--space-1);
+  border: none; border-radius: var(--radius-sm); background: transparent; color: var(--text); cursor: pointer;
+}
+.export-dialog__close:hover { background: color-mix(in srgb, var(--text) 12%, transparent); }
+.export-dialog__lede { margin: var(--space-3) 0 var(--space-4); color: var(--text); font-size: var(--fs-sm); line-height: 1.6; }
+.export-dialog__lede code { padding: 1px 6px; font-size: var(--fs-xs); }
+
+.export-dialog__steps { display: grid; gap: var(--space-4); margin: 0; padding: 0; list-style: none; }
+.export-dialog__step {
+  display: grid;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg);
+}
+.export-dialog__step-head { display: flex; align-items: center; gap: var(--space-2); color: var(--text-h); font-weight: 500; font-size: var(--fs-sm); }
+.export-dialog__step.is-done .export-dialog__step-head { color: var(--accent-text); }
+
+.export-dialog__form { display: grid; gap: var(--space-3); justify-items: start; }
+.export-dialog__field { display: grid; gap: var(--space-1); width: 100%; color: var(--text); font-size: var(--fs-xs); }
+.export-dialog__field input {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text-h);
+  font-size: var(--fs-sm);
+}
+.export-dialog__done { display: grid; gap: var(--space-4); justify-items: start; margin-top: var(--space-3); color: var(--text-h); }
+.export-dialog__done p { margin: 0; line-height: 1.6; }

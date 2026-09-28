@@ -1,94 +1,98 @@
-/* Sticky, zero-height anchor pinned to the top of the editor's scrollport; the bar
-   itself is absolutely positioned off it, so it stays in view as the note scrolls. */
+/* Sticky, zero-height anchor pinned to the top of the editor's scrollport; the
+   rail hangs off it at the sheet's right edge, clear of the title. */
 .note-toc {
   position: sticky;
   top: 0;
   height: 0;
   z-index: 6;
-  /* Ignore pointer events on the empty anchor; only the bar/ticks are interactive. */
   pointer-events: none;
 }
 
-.note-toc__bar {
+.note-toc__rail {
   position: absolute;
-  top: 12px;
-  right: 2px;
-  width: 14px;
-  height: 78vh;
+  right: 4px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  width: 28px;
+  padding: 6px 0;
+  border-radius: var(--radius-md);
   pointer-events: auto;
+  transition: width var(--dur) var(--ease), background-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
+}
+/* Open: a soft panel wide enough for names, the dock swell inside it. */
+.note-toc__rail.is-open {
+  width: 248px;
+  background: color-mix(in srgb, var(--surface) 94%, transparent);
+  box-shadow: var(--shadow);
+  backdrop-filter: blur(8px);
 }
 
-/* A heading tick: a short dash on the rail, growing a text label on hover. */
-.note-toc__tick {
-  position: absolute;
-  right: 0;
-  transform: translateY(-50%);
+.note-toc__item {
+  --boost: 0;
   display: flex;
   align-items: center;
   justify-content: flex-end;
   gap: var(--space-2);
-  /* A 24px target (WCAG 2.5.8) round a 2px dash: the dash stays right-aligned
-     and centred on the heading's position. */
-  min-width: 24px;
-  min-height: 24px;
-  padding: 0;
+  width: 100%;
+  min-height: 0;
+  padding: 0 6px 0 var(--space-3);
   border: none;
   background: transparent;
   cursor: pointer;
+  transition: height 120ms var(--ease);
 }
 
 .note-toc__dash {
-  display: block;
+  flex: none;
   height: 2px;
-  border-radius: var(--radius-sm);
+  border-radius: 2px;
   background: var(--text);
-  opacity: 0.4;
-  transition: opacity var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease);
+  opacity: 0.35;
+  transition: width 120ms var(--ease), opacity var(--dur-fast) var(--ease), background-color var(--dur-fast) var(--ease);
 }
+.note-toc__item--h1 .note-toc__dash { width: calc(14px + var(--boost) * 8px); }
+.note-toc__item--h2 .note-toc__dash { width: calc(10px + var(--boost) * 8px); }
+.note-toc__item--h3 .note-toc__dash { width: calc(6px + var(--boost) * 8px); }
+.note-toc__item.is-active .note-toc__dash { background: var(--accent); opacity: 1; width: calc(18px + var(--boost) * 6px); }
 
-/* Indent by heading depth so the outline reads at a glance. */
-.note-toc__tick--h1 .note-toc__dash { width: 14px; }
-.note-toc__tick--h2 .note-toc__dash { width: 10px; }
-.note-toc__tick--h3 .note-toc__dash { width: 7px; }
-
+/* Names only while open, sized and faded by nearness to the pointer. */
 .note-toc__label {
-  max-width: 0;
   overflow: hidden;
-  white-space: nowrap;
-  font-family: var(--sans);
-  font-size: 0.75rem;
-  line-height: 1.4;
+  min-width: 0;
+  max-width: 0;
   color: var(--text-h);
+  font-family: var(--sans);
+  font-size: calc(10.5px + var(--boost) * 3.5px);
+  line-height: 1.2;
+  text-align: right;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   opacity: 0;
-  transition: max-width var(--dur) var(--ease), opacity var(--dur) var(--ease), padding var(--dur) var(--ease);
+  transition: opacity var(--dur-fast) var(--ease);
 }
-
-/* Hover anywhere on the rail expands it into a labelled mini-map. */
-.note-toc__bar:hover {
-  background: color-mix(in srgb, var(--surface) 92%, transparent);
-  border-radius: var(--radius-sm);
-  box-shadow: var(--shadow-card);
-  width: 220px;
+.note-toc__rail.is-open .note-toc__label {
+  max-width: 200px;
+  opacity: calc(0.28 + var(--boost) * 0.72);
 }
+.note-toc__item--h2 .note-toc__label { padding-right: 2px; }
+.note-toc__item--h3 .note-toc__label { padding-right: 6px; }
+.note-toc__rail.is-open .note-toc__dash { opacity: calc(0.35 + var(--boost) * 0.65); }
+.note-toc__item.is-active .note-toc__label { color: var(--accent-text); font-weight: 600; }
+.note-toc__item:hover .note-toc__label { color: var(--accent-text); }
 
-.note-toc__bar:hover .note-toc__dash {
-  opacity: 0.8;
-  background: var(--accent);
-}
-
-.note-toc__bar:hover .note-toc__label {
-  max-width: 190px;
-  opacity: 1;
-  padding: 2px 8px 2px 0;
-}
-
-.note-toc__tick:hover .note-toc__dash { opacity: 1; background: var(--accent); }
-.note-toc__tick:hover .note-toc__label { color: var(--accent); }
-
-.note-toc__tick:focus-visible {
+.note-toc__item:focus-visible {
   outline: 2px solid var(--accent);
-  outline-offset: 2px;
+  outline-offset: -2px;
   border-radius: var(--radius-sm);
+}
+
+/* On a coloured note the rail is inked like the note. */
+.note-editor--colored .note-toc__dash { background: var(--tint-ink); }
+.note-editor--colored .note-toc__label { color: var(--tint-ink); }
+
+@media (prefers-reduced-motion: reduce) {
+  .note-toc__rail, .note-toc__item, .note-toc__dash { transition: none; }
 }
 
 /* On narrow screens the rail would crowd the text — hide it. */

@@ -3,6 +3,7 @@ import { describe, it, expect } from 'vitest';
 // describes what SettingsPage actually renders.
 import settingsPage from '../pages/SettingsPage.tsx?raw';
 import aboutPanel from '../components/AboutPanel.tsx?raw';
+import deleteAccount from '../components/DeleteAccountSection.tsx?raw';
 import { SETTINGS_INDEX, searchSettings, settingsHref } from './settingsIndex';
 
 describe('settingsIndex', () => {
@@ -36,6 +37,7 @@ describe('settingsIndex', () => {
       ...[...settingsPage.matchAll(/id="([a-z-]+)" className="settings__subhead"/g)].map(m => m[1]),
       // The About tab is its own component.
       ...[...aboutPanel.matchAll(/<h2 id="([a-z-]+)"/g)].map(m => m[1]),
+      ...[...deleteAccount.matchAll(/<h2 id="([a-z-]+)"/g)].map(m => m[1]),
     ]);
     for (const entry of SETTINGS_INDEX) {
       if (entry.section) expect(ids).toContain(entry.section);

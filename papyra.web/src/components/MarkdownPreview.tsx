@@ -14,7 +14,9 @@ function renderInline(nodes: Inline[]): ReactNode[] {
       case 'mark': return <mark key={i}>{renderInline(n.c)}</mark>;
       case 'code': return <code key={i} className="md-preview__code">{n.v}</code>;
       case 'link': return <span key={i} className="md-preview__link">{renderInline(n.c)}</span>;
-      case 'embed': return <span key={i} className="md-preview__embed">{n.v}</span>;
+      // Attachments are drawn as pictures and chips by CardMedia, not as their
+      // stored file names.
+      case 'embed': return null;
     }
   });
 }
@@ -58,7 +60,7 @@ function BlockView({ block }: { block: Block }) {
     case 'hr':
       return <hr className="md-preview__hr" />;
     case 'embed':
-      return <p className="md-preview__p"><span className="md-preview__embed">{block.v}</span></p>;
+      return null; // shown by CardMedia
     case 'list':
       return <List list={block} />;
   }

@@ -17,6 +17,8 @@ export interface AuthUser {
   timeZone?: string | null;
   /** The server's own zone (the container's TZ), as an IANA name. */
   serverTimeZone?: string;
+  /** Set while the account waits out its deletion week (UTC). */
+  deletionScheduledUtc?: string | null;
 }
 
 // 'setup' = no admin yet (428 → /setup); 'login' = unauthenticated (401 → /login);

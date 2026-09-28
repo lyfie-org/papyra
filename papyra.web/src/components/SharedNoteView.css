@@ -1,8 +1,9 @@
 .shared-note {
+  box-sizing: border-box;
   width: 100%;
   max-width: 820px;
   margin: 0 auto;
-  padding: 1.5rem;
+  padding: var(--space-8) var(--space-8) var(--space-6);
   border-radius: var(--radius-md);
   background: var(--surface);
   box-shadow: var(--shadow-card);
@@ -93,3 +94,38 @@
   background: var(--tint-scrim);
 }
 .shared-note--colored .shared-note__request-text { color: var(--tint-ink); }
+
+/* Who shared it · how many views. One quiet line under the title. */
+.shared-note__meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-4);
+  margin: calc(-1 * var(--space-2)) 0 var(--space-4);
+  font: 400 var(--fs-xs) / 1.5 var(--sans);
+  color: var(--text);
+}
+.shared-note__meta strong { color: var(--text-h); font-weight: 600; }
+.shared-note--colored .shared-note__meta { color: var(--tint-ink-muted); }
+.shared-note--colored .shared-note__meta strong { color: var(--tint-ink); }
+
+/* The note reads the way it does in Papyra: the editor sits on the note's own
+   paper with no box of its own — no border, no inset frame, text aligned with
+   the title. */
+.shared-note .luthor-editor-wrapper {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background: transparent;
+}
+.shared-note .luthor-preset-papyra__content,
+.shared-note .luthor-content-editable {
+  padding-inline: 0;
+}
+.shared-note .luthor-richtext-container {
+  --luthor-editor-content-padding-x: 0px;
+  background: transparent;
+}
+.shared-note .luthor-editor { min-height: 0; }
+@media (max-width: 600px) {
+  .shared-note { padding: var(--space-5) var(--space-4); }
+}

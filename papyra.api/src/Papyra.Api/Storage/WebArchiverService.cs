@@ -112,7 +112,10 @@ public sealed partial class WebArchiverService : BackgroundService
 
     // SSRF-safe fetch: http(s) only, every resolved IP must be public, redirects
     // followed manually and re-validated, response size-capped, HTML only.
-    private async Task<string?> FetchAsync(string url, CancellationToken ct)
+    private Task<string?> FetchAsync(string url, CancellationToken ct) => FetchHtmlAsync(url, _logger, ct);
+
+    /// <summary>The SSRF-guarded HTML fetch, shared with link previews.</summary>
+    internal static async Task<string?> FetchHtmlAsync(string url, ILogger logger, CancellationToken ct)
     {
         var current = url;
         for (var hop = 0; hop <= MaxRedirects; hop++)
@@ -121,7 +124,7 @@ public sealed partial class WebArchiverService : BackgroundService
             if (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps) return null;
             if (!await HostIsPublicAsync(uri, ct))
             {
-                _logger.LogWarning("Refusing to archive {Host}: resolves to a non-public address.", uri.Host);
+                logger.LogWarning("Refusing to fetch {Host}: resolves to a non-public address.", uri.Host);
                 return null;
             }
 

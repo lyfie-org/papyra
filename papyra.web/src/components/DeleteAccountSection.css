@@ -1,0 +1,92 @@
+.danger-zone {
+  display: grid;
+  gap: var(--space-3);
+  justify-items: start;
+  margin-top: var(--space-6);
+  padding: var(--space-5);
+  border: 1px solid var(--danger-border);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--danger-bg) 50%, transparent);
+}
+.danger-zone__title { display: flex; align-items: center; gap: var(--space-2); margin: 0; color: var(--danger); }
+.danger-zone__blockers {
+  margin: 0;
+  padding-left: 1.2rem;
+  color: var(--text-h);
+  font-size: var(--fs-sm);
+  line-height: 1.6;
+}
+.danger-zone__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 0.55rem 0.9rem;
+  border: 1px solid var(--danger-border);
+  border-radius: var(--radius-sm);
+  background: var(--danger-bg);
+  color: var(--danger);
+  font: 500 var(--fs-sm) / 1.2 var(--sans);
+  cursor: pointer;
+}
+.danger-zone__btn:hover:not(:disabled) { background: var(--danger); color: var(--danger-fg); }
+.danger-zone__btn:disabled { opacity: 0.5; cursor: not-allowed; }
+.danger-zone__btn--solid { background: var(--danger); color: var(--danger-fg); }
+
+.danger-dialog {
+  position: fixed;
+  inset: 0;
+  z-index: 75;
+  display: grid;
+  place-items: center;
+  padding: var(--space-4);
+  background: color-mix(in srgb, var(--scrim) 60%, transparent);
+}
+.danger-dialog__card {
+  width: min(32rem, 100%);
+  max-height: 92vh;
+  overflow-y: auto;
+  padding: var(--space-6);
+  border: 1px solid var(--danger-border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  font-family: var(--sans);
+}
+.danger-dialog__head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-3); }
+.danger-dialog__title {
+  display: flex; align-items: center; gap: var(--space-2);
+  margin: 0; font: 400 var(--fs-xl) / 1.2 var(--heading); color: var(--danger);
+}
+.danger-dialog__close {
+  display: inline-grid; place-items: center; padding: var(--space-1);
+  border: none; border-radius: var(--radius-sm); background: transparent; color: var(--text); cursor: pointer;
+}
+.danger-dialog__lede { margin: var(--space-3) 0; color: var(--text-h); font-size: var(--fs-sm); line-height: 1.6; }
+.danger-dialog__list { margin: 0 0 var(--space-2); padding-left: 1.2rem; color: var(--text-h); font-size: var(--fs-sm); line-height: 1.7; }
+.danger-dialog__actions { display: flex; flex-wrap: wrap; justify-content: flex-end; gap: var(--space-2); margin-top: var(--space-4); }
+
+.danger-dialog__form { display: grid; gap: var(--space-3); margin-top: var(--space-4); }
+.danger-dialog__steps { display: grid; gap: var(--space-3); margin: 0; padding: 0; list-style: none; }
+.danger-dialog__steps > li {
+  display: grid;
+  gap: var(--space-2);
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg);
+}
+.danger-dialog__step-head { display: flex; align-items: center; gap: var(--space-2); color: var(--text-h); font-weight: 500; font-size: var(--fs-sm); }
+.danger-dialog__step-head code { padding: 0 6px; font-size: var(--fs-xs); }
+.danger-dialog__steps input {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 0.5rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text-h);
+  font-size: var(--fs-sm);
+}
+.danger-dialog__row { display: flex; gap: var(--space-2); }
+.danger-dialog__row input { flex: 1; font-family: var(--mono); letter-spacing: 0.2em; }
+.danger-dialog__hint { color: var(--text); font-size: var(--fs-xs); }

@@ -52,8 +52,16 @@ public sealed class EmailSender
             ? _config.GetOrEmpty(SmtpKeys.PublicUrl).TrimEnd('/')
             : requestOrigin.TrimEnd('/');
 
+    public Task<EmailResult> SendAsync(
+        string toAddress, string subject, string body, CancellationToken ct = default) =>
+        SendAsync(toAddress, subject, body, details: null, ct);
+
+    /// <summary>
+    /// Send one message as plain text plus a matching HTML part (see
+    /// <see cref="EmailTemplate"/>), optionally with a details table.
+    /// </summary>
     public async Task<EmailResult> SendAsync(
-        string toAddress, string subject, string body, CancellationToken ct = default)
+        string toAddress, string subject, string body, IReadOnlyList<EmailDetail>? details, CancellationToken ct = default)
     {
         await _config.EnsureLoadedAsync(ct);
         if (!IsConfigured) return EmailResult.NotConfigured;
@@ -67,12 +75,16 @@ public sealed class EmailSender
                     _config.GetOrEmpty(SmtpKeys.FromAddress),
                     _config.GetOrEmpty(SmtpKeys.FromName) is { Length: > 0 } n ? n : "Papyra"),
                 Subject = subject,
-                Body = body,
-                // Plain text on purpose: these are short transactional notes, and
-                // a text body renders everywhere without a second HTML version to
-                // keep in sync.
+                // The text part is the message as written; the HTML part is the
+                // same words framed in Papyra's (light) paper design. Both come
+                // from one string, so they can't drift apart.
+                Body = EmailTemplate.PlainText(body, details),
                 IsBodyHtml = false,
+                BodyEncoding = System.Text.Encoding.UTF8,
+                SubjectEncoding = System.Text.Encoding.UTF8,
             };
+            message.AlternateViews.Add(AlternateView.CreateAlternateViewFromString(
+                EmailTemplate.Render(subject, body, details), System.Text.Encoding.UTF8, "text/html"));
             message.To.Add(toAddress);
 
             using var client = new SmtpClient(_config.GetOrEmpty(SmtpKeys.Host))

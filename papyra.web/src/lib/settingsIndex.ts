@@ -53,6 +53,7 @@ export const SETTINGS_INDEX: SettingsEntry[] = [
 
   { tab: 'security', tabLabel: 'Security', keywords: ['privacy', 'lock'] },
   { tab: 'security', tabLabel: 'Security', section: 'biometric-unlock', sectionLabel: 'Biometric unlock', keywords: ['passkey', 'fingerprint', 'face', 'vault', 'webauthn', 'device'] },
+  { tab: 'security', tabLabel: 'Security', section: 'delete-account', sectionLabel: 'Delete account', keywords: ['delete account', 'close account', 'remove my data', 'erase', 'gdpr'] },
 
   { tab: 'data', tabLabel: 'Data & Storage', keywords: ['storage', 'files'] },
   { tab: 'data', tabLabel: 'Data & Storage', section: 'import', sectionLabel: 'Import', keywords: ['obsidian', 'google keep', 'migrate', 'bring notes in'] },

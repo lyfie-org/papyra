@@ -11,6 +11,8 @@ import { useSyncState } from '../hooks/useSync';
 import { useShareSummary } from '../hooks/useShares';
 import ShareDialog from './ShareDialog';
 import CardMenu from './CardMenu';
+import CardMedia from './CardMedia';
+import LinkCards from './LinkCards';
 import ShareBadge from './ShareBadge';
 import ConfirmDialog from './ConfirmDialog';
 import { useToast } from '../lib/toastContext';
@@ -124,6 +126,7 @@ function NoteCard({ note, variant = 'active', conflictId, conflictCount, onResol
             : 'Sync conflict — resolve'}
         </button>
       )}
+      {!note.secure && <CardMedia body={note.body} part="cover" />}
       <h3 className="note-card__title">{title}</h3>
       {/* A secure note's body never reaches the client, so there's no snippet to
           show — a redacted placeholder stands in until it's unlocked. */}
@@ -134,6 +137,8 @@ function NoteCard({ note, variant = 'active', conflictId, conflictCount, onResol
       ) : note.body.trim() && (
         <MarkdownPreview body={note.body} />
       )}
+      {!note.secure && <CardMedia body={note.body} part="rest" />}
+      {!note.secure && <LinkCards body={note.body} compact />}
       {note.tags.length > 0 && (
         <ul className="note-card__tags">
           {note.tags.map(tag => (
