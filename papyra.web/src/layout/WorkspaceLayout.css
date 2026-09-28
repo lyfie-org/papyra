@@ -94,7 +94,7 @@
     color var(--dur-fast) var(--ease);
 }
 .workspace__theme-toggle:hover {
-  border-color: var(--accent-border);
+  border-color: var(--border-hover);
   background: var(--accent-bg);
   color: var(--accent-text);
 }

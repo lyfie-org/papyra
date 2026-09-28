@@ -440,7 +440,7 @@
   cursor: pointer;
   transition: border-color var(--dur-fast) var(--ease), background-color var(--dur-fast) var(--ease);
 }
-.profile-hero__btn:hover { border-color: var(--accent); }
+.profile-hero__btn:hover { border-color: var(--border-hover); }
 .profile-hero__btn--quiet { background: transparent; }
 .profile-hero__btn--quiet:hover { border-color: var(--danger-border); color: var(--danger); }
 .profile-hero__btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
@@ -464,7 +464,8 @@
   background: var(--bg);
   overflow: hidden;
 }
-.settings__affix:focus-within { outline: 2px solid var(--accent); outline-offset: 1px; }
+.settings__affix:focus-within { border-color: var(--border-focus); }
+.settings__affix input:focus-visible { outline: none; }
 .settings__affix-pre {
   display: grid;
   place-items: center;
@@ -499,7 +500,7 @@
   flex-direction: column;
   gap: 0.8rem;
 }
-.settings__form .settings__field input {
+.settings__form .settings__field input:not(.switch) {
   padding: 0.5rem 0.6rem;
   border: 1px solid var(--border);
   border-radius: var(--radius-sm);
@@ -539,7 +540,7 @@
   cursor: pointer;
 }
 .settings__btn:hover {
-  border-color: var(--accent);
+  border-color: var(--border-hover);
 }
 .settings__msg {
   display: inline-flex;
@@ -758,7 +759,7 @@
   color: var(--text-h);
 }
 
-.settings__btn--ghost:hover { border-color: var(--accent); background: var(--accent-bg); }
+.settings__btn--ghost:hover { border-color: var(--border-hover); background: var(--accent-bg); }
 
 /* ── Jobs ─────────────────────────────────────────────────────────────────── */
 

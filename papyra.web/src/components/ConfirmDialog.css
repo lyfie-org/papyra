@@ -64,7 +64,7 @@
   transition: background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
 }
 
-.confirm__btn:hover { border-color: var(--accent); }
+.confirm__btn:hover { border-color: var(--border-hover); }
 
 .confirm__btn--go {
   border-color: var(--accent);

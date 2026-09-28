@@ -27,18 +27,39 @@ public sealed record RelyingPartyProblem(string Code, string Message);
 /// </summary>
 public static class WebAuthnRelyingParty
 {
+    /// <summary>
+    /// The page's origin, sent by the client on requests the browser gives no
+    /// <c>Origin</c> header — a same-origin GET such as the vault status.
+    /// </summary>
+    public const string OriginHintHeader = "X-Papyra-Origin";
+
     public static (RelyingParty? Party, RelyingPartyProblem? Problem) Resolve(HttpRequest request, IConfiguration config)
     {
+        // Browsers send Origin on POSTs, not on a same-origin GET (and Papyra's
+        // no-referrer policy leaves no Referer either). The old fallback was the
+        // request's own scheme — which, behind a TLS-terminating reverse proxy,
+        // is the proxy's plain-http hop, so the status call reported "needs
+        // HTTPS" on an https site and biometric unlock was never offered. The
+        // client now names its origin on those calls; failing that, the proxy's
+        // X-Forwarded-Proto/Host. Neither can widen trust: the result still has
+        // to pass the same-host check below, and a credential is bound by the
+        // authenticator to its rp id, so a wrong guess only fails a ceremony.
         var originHeader = request.Headers.Origin.ToString();
+        if (string.IsNullOrEmpty(originHeader)) originHeader = request.Headers[OriginHintHeader].ToString();
+        var forwardedHost = FirstForwarded(request, "X-Forwarded-Host");
         var origin = string.IsNullOrEmpty(originHeader)
-            ? $"{request.Scheme}://{request.Host}"
+            ? $"{FirstForwarded(request, "X-Forwarded-Proto") ?? request.Scheme}://{forwardedHost ?? request.Host.ToString()}"
             : originHeader;
         if (!Uri.TryCreate(origin, UriKind.Absolute, out var uri))
             return (null, new RelyingPartyProblem("rp_origin", "Unrecognised origin."));
 
         var host = uri.Host.ToLowerInvariant();
         var listed = config.GetSection("WebAuthn:Origins").Get<string[]>() ?? [];
-        var sameHost = string.Equals(host, request.Host.Host, StringComparison.OrdinalIgnoreCase);
+        // A proxy that rewrites Host (nginx's default is the upstream's name)
+        // still reports the public one in X-Forwarded-Host.
+        var sameHost = string.Equals(host, request.Host.Host, StringComparison.OrdinalIgnoreCase)
+            || (forwardedHost is not null
+                && string.Equals(host, HostString.FromUriComponent(forwardedHost).Host, StringComparison.OrdinalIgnoreCase));
         var allowed = sameHost || listed.Any(o => string.Equals(o.TrimEnd('/'), origin.TrimEnd('/'), StringComparison.OrdinalIgnoreCase));
         if (!allowed)
             return (null, new RelyingPartyProblem("rp_origin", "This address is not allowed to use biometric unlock."));
@@ -60,5 +81,12 @@ public static class WebAuthnRelyingParty
             rpId = configured;
 
         return (new RelyingParty(rpId, $"{uri.Scheme}://{uri.Authority}"), null);
+    }
+
+    // The client-facing hop of a forwarded header ("https, http" → "https").
+    private static string? FirstForwarded(HttpRequest request, string name)
+    {
+        var value = request.Headers[name].ToString().Split(',')[0].Trim();
+        return value.Length == 0 ? null : value;
     }
 }

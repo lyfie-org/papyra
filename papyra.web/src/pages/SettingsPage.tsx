@@ -467,7 +467,7 @@ function AppearanceTab() {
       </p>
       <label className="settings__field settings__field--inline">
         <input
-          type="checkbox"
+          type="checkbox" role="switch" className="switch"
           checked={alwaysShowToolbar}
           onChange={e => setAlwaysShowEditorToolbar(e.target.checked)}
         />
@@ -1296,7 +1296,7 @@ function NotificationsTab() {
 
       <label className="settings__field settings__field--inline">
         <input
-          type="checkbox"
+          type="checkbox" role="switch" className="switch"
           checked={data?.mention ?? true}
           onChange={e => save.mutate({ mention: e.target.checked })}
         />
@@ -1305,7 +1305,7 @@ function NotificationsTab() {
 
       <label className="settings__field settings__field--inline">
         <input
-          type="checkbox"
+          type="checkbox" role="switch" className="switch"
           checked={data?.share ?? true}
           onChange={e => save.mutate({ share: e.target.checked })}
         />
@@ -1376,7 +1376,7 @@ function SsoTab() {
 
       <form className="settings__form" onSubmit={submit}>
         <label className="settings__field settings__field--inline">
-          <input type="checkbox" checked={enabled} onChange={e => setEnabled(e.target.checked)} />
+          <input type="checkbox" role="switch" className="switch" checked={enabled} onChange={e => setEnabled(e.target.checked)} />
           Enable SSO on the sign-in screen
         </label>
 
@@ -1480,7 +1480,7 @@ function EmailTab() {
 
       <form className="settings__form" onSubmit={submit}>
         <label className="settings__field settings__field--inline">
-          <input type="checkbox" checked={v('enabled')} onChange={e => set('enabled', e.target.checked)} />
+          <input type="checkbox" role="switch" className="switch" checked={v('enabled')} onChange={e => set('enabled', e.target.checked)} />
           Enable outbound email
         </label>
 
@@ -1493,7 +1493,7 @@ function EmailTab() {
             onChange={e => set('port', Number(e.target.value))} />
         </label>
         <label className="settings__field settings__field--inline">
-          <input type="checkbox" checked={v('useSsl')} onChange={e => set('useSsl', e.target.checked)} />
+          <input type="checkbox" role="switch" className="switch" checked={v('useSsl')} onChange={e => set('useSsl', e.target.checked)} />
           Use TLS/SSL
         </label>
         <label className="settings__field">Username <span className="settings__hint">(blank for an unauthenticated relay)</span>

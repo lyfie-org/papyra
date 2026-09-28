@@ -54,10 +54,6 @@
   font-size: 0.95rem;
 }
 
-.auth__field input:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 1px;
-}
 
 .auth__submit {
   padding: 0.6rem 0.9rem;
@@ -114,7 +110,7 @@
   transition: border-color var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease);
 }
 .auth__sso:hover {
-  border-color: var(--accent);
+  border-color: var(--border-hover);
 }
 .auth__sso:focus-visible {
   outline: 2px solid var(--accent);

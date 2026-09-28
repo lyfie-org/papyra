@@ -119,11 +119,8 @@
   letter-spacing: -0.01em;
 }
 
-.note-editor__title:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: 4px;
-  border-radius: var(--radius-sm);
-}
+/* The caret already says the title has focus; a ring round it read as chrome. */
+.note-editor__title:focus-visible { outline: none; }
 
 .note-editor__status {
   flex-shrink: 0;
@@ -180,6 +177,37 @@
   .luthor-command-palette
 ) {
   background-color: color-mix(in srgb, var(--note-tint) 55%, var(--tint-lift));
+}
+
+/* Toolbar dropdowns (block type, font, size…). luthor marks the chosen option
+   with a solid accent bar inked in the editor surface colour — which a coloured
+   note makes transparent, so the label vanished into a blank green bar. Mark it
+   the way an active toolbar button is marked instead: a quiet wash in the
+   editor's own ink (sage-tinted on plain paper, the note's ink on a tint), the
+   label still in body ink. The open trigger and dialog fields get a neutral
+   edge rather than an accent ring. */
+.luthor-preset-papyra .luthor-select-option {
+  border-radius: var(--radius-sm);
+}
+.luthor-preset-papyra .luthor-select-dropdown {
+  padding: var(--space-1);
+  border-radius: var(--radius-md);
+}
+.luthor-preset-papyra .luthor-select-option:hover {
+  background-color: var(--luthor-toolbar-button-hover-bg, var(--luthor-muted));
+}
+.luthor-preset-papyra .luthor-select-option.selected {
+  background-color: var(--luthor-toolbar-button-active-bg, var(--luthor-muted));
+  color: var(--luthor-fg);
+  font-weight: 500;
+}
+.luthor-preset-papyra .luthor-select-trigger.open {
+  border-color: var(--border-hover);
+  box-shadow: none;
+}
+:is(.luthor-preset-papyra, .luthor-dialog-overlay--portal) .luthor-input:focus {
+  border-color: var(--border-focus);
+  box-shadow: none;
 }
 
 .note-editor__canvas {
@@ -327,7 +355,7 @@
   cursor: pointer;
   transition: color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
 }
-.note-editor__focusbtn:hover { color: var(--text-h); border-color: var(--accent); }
+.note-editor__focusbtn:hover { color: var(--text-h); border-color: var(--border-hover); }
 .note-editor__focusbtn[aria-pressed='true'] { color: var(--accent); border-color: var(--accent); }
 
 .note-editor__pending {

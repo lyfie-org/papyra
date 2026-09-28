@@ -32,10 +32,6 @@
 .rule-builder__name { flex: 1; min-width: 12rem; }
 .rule-builder__value { flex: 1; min-width: 8rem; }
 
-.rule-builder__name:focus-visible,
-.rule-builder__value:focus-visible,
-.rule-builder__match:focus-visible,
-.rule-builder__field:focus-visible,
 .rule-builder__add:focus-visible,
 .rule-builder__save:focus-visible,
 .rule-builder__remove:focus-visible {

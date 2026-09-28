@@ -49,13 +49,13 @@
   --paper:      var(--surface);
   --paper-edge: var(--border);
 
-  /* Caret + text selection, after macOS: the system-blue insertion point and
-     the selectedTextBackgroundColor wash. Deliberately not the sage accent, so
-     the caret never blends into sage UI. A coloured note can be any colour, so
-     its caret is not blue at all — it takes the note's own ink (see
-     .note-editor--colored in index.css), the one colour guaranteed to stand
-     out on that background. */
-  --caret:             #007aff;
+  /* Caret + text selection. The caret is a plain neutral ink — dark grey on
+     paper, near-white in the dark theme — never a colour, so it never blends
+     into sage UI or reads as an accent. The selection keeps macOS's
+     selectedTextBackgroundColor wash. A coloured note can be any colour, so
+     its caret takes the note's own ink (see .note-editor--colored in
+     index.css), the one colour guaranteed to stand out on that background. */
+  --caret:             #3a3531;
   --selection-bg:      #b3d7ff;
   --tint-selection-bg: #b3d7ff;
   /* Link ink while selected. The light-theme link green already holds 5.3:1 on
@@ -69,6 +69,12 @@
   --scroll-thumb:       color-mix(in srgb, var(--text) 32%, transparent);
   --scroll-thumb-hover: color-mix(in srgb, var(--text) 55%, transparent);
   --scroll-track:       transparent;
+
+  /* Neutral emphasis for an edge: a hovered control, a focused text field.
+     Ink, not sage — the sage border is kept for what is actually selected or
+     on, so it keeps meaning something. Mixed from --text, so both themes. */
+  --border-hover: color-mix(in srgb, var(--text) 38%, var(--border));
+  --border-focus: color-mix(in srgb, var(--text) 62%, var(--border));
 
   /* Modal backdrop. Warm near-black rather than pure black, so the dim reads as
      paper in shadow instead of a grey wash. */
@@ -179,9 +185,9 @@
   --paper-edge: #4a3f36;
   --tint-strength: 78%;
 
-  /* macOS dark: #0A84FF caret (3.9:1 on paper), #3F638B selection (5:1 under
-     --text-h). */
-  --caret:        #0a84ff;
+  /* Near-white caret (13:1 on paper); macOS dark #3F638B selection (5:1
+     under --text-h). */
+  --caret:        #f2eee8;
   --selection-bg: #3f638b;
   --selection-link: #dcebff;
 

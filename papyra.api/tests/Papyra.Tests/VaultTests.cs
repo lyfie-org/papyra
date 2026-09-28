@@ -96,6 +96,45 @@ public sealed class VaultTests
     }
 
     [Fact]
+    public void RelyingParty_BehindATlsTerminatingProxy_IsStillHttps()
+    {
+        // The reported bug: the proxy speaks plain http to Papyra, and the vault
+        // status (a same-origin GET, so no Origin header) read that hop's scheme
+        // and said "needs HTTPS" on an https site.
+        static HttpRequest Proxied(string host, params (string Name, string Value)[] headers)
+        {
+            var ctx = new DefaultHttpContext();
+            ctx.Request.Scheme = "http";
+            ctx.Request.Host = new HostString(host);
+            foreach (var (name, value) in headers) ctx.Request.Headers[name] = value;
+            return ctx.Request;
+        }
+        var config = new ConfigurationBuilder().Build();
+
+        // The client's origin hint.
+        var (party, problem) = WebAuthnRelyingParty.Resolve(
+            Proxied("notes.example.com", (WebAuthnRelyingParty.OriginHintHeader, "https://notes.example.com")), config);
+        Assert.Null(problem);
+        Assert.Equal("https://notes.example.com", party!.Origin);
+
+        // No hint: the proxy's forwarded scheme.
+        (party, problem) = WebAuthnRelyingParty.Resolve(
+            Proxied("notes.example.com", ("X-Forwarded-Proto", "https")), config);
+        Assert.Null(problem);
+        Assert.Equal("https://notes.example.com", party!.Origin);
+
+        // A proxy that rewrites Host to the upstream's name: the public host is in X-Forwarded-Host.
+        (party, problem) = WebAuthnRelyingParty.Resolve(
+            Proxied("papyra:8080", ("Origin", "https://notes.example.com"), ("X-Forwarded-Host", "notes.example.com")), config);
+        Assert.Null(problem);
+        Assert.Equal("notes.example.com", party!.RpId);
+
+        // The hint can't borrow another host's relying party.
+        Assert.Equal("rp_origin", WebAuthnRelyingParty.Resolve(
+            Proxied("notes.example.com", (WebAuthnRelyingParty.OriginHintHeader, "https://evil.example.net")), config).Problem!.Code);
+    }
+
+    [Fact]
     public void RelyingParty_HonoursListedOriginsAndAParentDomain()
     {
         var listed = new Dictionary<string, string?> { ["WebAuthn:Origins:0"] = "https://app.example.com" };

@@ -1,10 +1,11 @@
-import { useState, useRef} from 'react';
+import { useState, useRef } from 'react';
 import { createPortal } from 'react-dom';
 import { Link2, Users, X, Trash2, Plus } from 'lucide-react';
 import type { Note } from '../types/note';
 import { useNoteShares, useCreateShare, useRevokeShare, type Share } from '../hooks/useShares';
 import './ShareDialog.css';
 import { useDialogFocus } from '../hooks/useDialogFocus';
+import UserPicker from './UserPicker';
 
 function shareUrl(token: string) {
   return `${window.location.origin}/shared/${token}`;
@@ -27,6 +28,8 @@ export default function ShareDialog({ note, onClose }: { note: Note; onClose: ()
 
   const links = (shares ?? []).filter(s => s.kind === 'link');
   const people = (shares ?? []).filter(s => s.kind === 'user');
+  // Already shared with: not offered again in the picker.
+  const sharedWith = new Set(people.map(s => (s.grantee ?? '').toLowerCase()));
 
   async function createLink() {
     setError(null);
@@ -42,7 +45,7 @@ export default function ShareDialog({ note, onClose }: { note: Note; onClose: ()
 
   async function addPerson() {
     setError(null);
-    const name = username.trim();
+    const name = username.trim().replace(/^@/, '');
     if (!name) return;
     try {
       await create.mutateAsync({ kind: 'user', access: userAccess, granteeUsername: name });
@@ -81,13 +84,13 @@ export default function ShareDialog({ note, onClose }: { note: Note; onClose: ()
         <section className="share__section">
           <h3 className="share__subhead"><Users size={15} /> People</h3>
           <div className="share__invite">
-            <input
-              placeholder="Add by username"
+            <UserPicker
               value={username}
-              onChange={(e) => setUsername(e.target.value)}
-              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); void addPerson(); } }}
+              onChange={setUsername}
+              onSubmit={() => void addPerson()}
+              exclude={sharedWith}
             />
-            <select value={userAccess} onChange={(e) => setUserAccess(e.target.value as 'view' | 'edit')}>
+            <select aria-label="Access" value={userAccess} onChange={(e) => setUserAccess(e.target.value as 'view' | 'edit')}>
               <option value="view">Can view</option>
               <option value="edit">Can edit</option>
             </select>
@@ -116,7 +119,7 @@ export default function ShareDialog({ note, onClose }: { note: Note; onClose: ()
         <section className="share__section">
           <h3 className="share__subhead"><Link2 size={15} /> Anyone with the link</h3>
           <div className="share__link-form">
-            <select value={access} onChange={(e) => setAccess(e.target.value as 'view' | 'edit')}>
+            <select aria-label="Link access" value={access} onChange={(e) => setAccess(e.target.value as 'view' | 'edit')}>
               <option value="view">Can view</option>
               <option value="edit">Can edit</option>
             </select>

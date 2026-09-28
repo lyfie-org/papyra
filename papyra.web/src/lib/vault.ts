@@ -105,7 +105,10 @@ async function expectToken(res: Response): Promise<string> {
 }
 
 export async function fetchVaultStatus(): Promise<VaultStatus> {
-  const res = await fetch('/api/auth/vault');
+  // A same-origin GET carries no Origin header, so name ours: behind a reverse
+  // proxy the server otherwise only sees the proxy's plain-http hop and reports
+  // that biometric unlock needs HTTPS on an https site.
+  const res = await fetch('/api/auth/vault', { headers: { 'X-Papyra-Origin': window.location.origin } });
   if (!res.ok) throw new VaultError(res.status, await res.json().catch(() => null));
   return res.json();
 }

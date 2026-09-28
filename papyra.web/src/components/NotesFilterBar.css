@@ -27,7 +27,7 @@
 }
 
 .notes-filters__pill:hover {
-  border-color: var(--accent);
+  border-color: var(--border-hover);
 }
 
 .notes-filters__pill.is-active {

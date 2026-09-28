@@ -162,7 +162,6 @@
 }
 .chat-panel__send:disabled { opacity: 0.5; cursor: default; }
 
-.chat-panel__input:focus-visible,
 .chat-panel__send:focus-visible,
 .chat-panel__close:focus-visible {
   outline: 2px solid var(--accent);
