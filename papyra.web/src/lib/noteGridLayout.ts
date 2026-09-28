@@ -45,7 +45,10 @@ export function pack(
     place(heights.get(id) ?? EST_H, id);
   });
   if (gapAt && gapAt.index >= ids.length) place(gapAt.h);
-  return { boxes, centers, height: Math.max(0, ...colH) - GAP, columns };
+  // Clamped: an empty section would come out at -GAP, which the browser rejects
+  // as a height — so the canvas kept its previous inline height, and switching
+  // the desk to a filter that empties it left a phantom gap above the cards.
+  return { boxes, centers, height: Math.max(0, Math.max(0, ...colH) - GAP), columns };
 }
 
 // Insertion index for a point (container-relative) given the laid-out centers:

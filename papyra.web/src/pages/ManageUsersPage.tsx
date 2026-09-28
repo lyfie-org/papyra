@@ -278,7 +278,7 @@ function AddUserDialog({ onClose, onCreated }: {
 
           <label className="users-dialog__check">
             <input
-              type="checkbox"
+              type="checkbox" role="switch" className="switch"
               checked={sendEmail}
               onChange={e => setSendEmail(e.target.checked)}
               disabled={!email}

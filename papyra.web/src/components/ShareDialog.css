@@ -88,6 +88,8 @@
 }
 .share__invite input:focus,
 .share__link input:focus { outline: none; }
+.share__invite:focus-within,
+.share__link:focus-within { border-color: var(--border-focus); }
 
 .share__people {
   list-style: none;

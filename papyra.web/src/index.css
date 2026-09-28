@@ -228,3 +228,141 @@ b,
   color: var(--luthor-muted-fg, var(--luthor-fg));
   opacity: 0.8;
 }
+
+/* ── Text fields ───────────────────────────────────────────────────────────────
+   A focused field already shows a caret, so focus is a firmer ink edge rather
+   than a sage ring: sage outlines are kept for keyboard focus on buttons and
+   links, and for what is actually selected. :is() lifts this over the bare
+   :focus-visible rule above. */
+:is(input:not([type='checkbox'], [type='radio'], [type='range'], [type='button'],
+  [type='submit'], [type='reset'], [type='color'], [type='file'], [type='image']),
+  textarea, select):focus-visible {
+  outline: none;
+  border-color: var(--border-focus);
+}
+
+/* ── Dropdowns ─────────────────────────────────────────────────────────────────
+   Native <select>s keep their semantics and keyboard handling, but where the
+   browser lets us style the popup (customizable select) it becomes Papyra
+   paper: a surface card, a quiet ink hover, and the chosen option marked by a
+   tick in sage text — never the OS's blue highlight bar. Browsers without it
+   keep their native popup, which follows color-scheme. Each select's own
+   border, padding and background stay with its component. */
+@supports (appearance: base-select) {
+  select,
+  ::picker(select) {
+    appearance: base-select;
+  }
+  select {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    cursor: pointer;
+  }
+  /* The same chevron as every other Papyra disclosure (lucide chevron-down),
+     rather than the UA's filled triangle. */
+  select::picker-icon {
+    content: '';
+    width: 12px;
+    height: 12px;
+    background: var(--text);
+    mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24' fill='none' stroke='black' stroke-width='2.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E") center / contain no-repeat;
+    transition: rotate var(--dur-fast) var(--ease);
+  }
+  select:open::picker-icon {
+    rotate: 180deg;
+  }
+  ::picker(select) {
+    margin-block: var(--space-1);
+    padding: var(--space-1);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--surface);
+    color: var(--text-h);
+    box-shadow: var(--shadow);
+  }
+  select option {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--text-h);
+    font: 400 var(--fs-sm) / 1.3 var(--sans);
+    cursor: pointer;
+    transition: background-color var(--dur-fast) var(--ease);
+  }
+  select option:hover,
+  select option:focus-visible {
+    outline: none;
+    background: color-mix(in srgb, var(--text) 12%, transparent);
+  }
+  select option:checked {
+    color: var(--accent-text);
+    font-weight: 500;
+  }
+  select option::checkmark {
+    color: var(--accent-text);
+  }
+  select option:disabled {
+    opacity: 0.5;
+    cursor: default;
+  }
+}
+
+/* ── Switch ────────────────────────────────────────────────────────────────────
+   An on/off setting is a switch, not a checkbox: `<input type="checkbox"
+   role="switch" className="switch">`. Still a real checkbox underneath, so the
+   wrapping <label>, Space, forms and screen readers ("switch, on") all work.
+   Sage only when on — the one place the accent means "this is enabled". */
+input.switch {
+  appearance: none;
+  position: relative;
+  flex-shrink: 0;
+  width: 34px;
+  height: 20px;
+  margin: 0;
+  border: 1px solid var(--border-hover);
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--text) 16%, transparent);
+  cursor: pointer;
+  transition:
+    background-color var(--dur-fast) var(--ease),
+    border-color var(--dur-fast) var(--ease);
+}
+input.switch::before {
+  content: '';
+  position: absolute;
+  top: 2px;
+  left: 2px;
+  width: 14px;
+  height: 14px;
+  border-radius: 50%;
+  background: var(--surface);
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.25);
+  transition: translate var(--dur) var(--ease);
+}
+input.switch:checked {
+  border-color: var(--accent);
+  background: var(--accent);
+}
+input.switch:checked::before {
+  translate: 14px 0;
+  background: var(--accent-fg);
+}
+input.switch:hover:not(:disabled) {
+  border-color: var(--border-focus);
+}
+input.switch:checked:hover:not(:disabled) {
+  border-color: var(--accent-hover);
+  background: var(--accent-hover);
+}
+input.switch:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+@media (prefers-reduced-motion: reduce) {
+  input.switch,
+  input.switch::before { transition: none; }
+}

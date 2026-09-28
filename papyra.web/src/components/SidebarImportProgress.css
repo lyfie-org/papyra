@@ -15,7 +15,7 @@
   transition: border-color var(--dur-fast) var(--ease);
 }
 
-.sidebar-import:hover { border-color: var(--accent-border); }
+.sidebar-import:hover { border-color: var(--border-hover); }
 
 .sidebar-import:focus-visible {
   outline: 2px solid var(--accent);

@@ -33,7 +33,6 @@
 }
 .note-card:hover {
   box-shadow: var(--shadow-card-hover);
-  border-color: color-mix(in srgb, var(--accent) 35%, var(--border));
   transform: translateY(-2px);
 }
 .note-card:active { transform: translateY(0); }
@@ -171,7 +170,7 @@
 }
 .note-card__pin:hover {
   color: var(--accent-text);
-  border-color: var(--accent);
+  border-color: var(--border-hover);
 }
 /* Pinned: always shown, filled + accented so the state reads at a glance. */
 .note-card__pin--active {

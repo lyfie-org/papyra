@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from 'react';
+import { useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { Users, X, Lock } from 'lucide-react';
@@ -7,8 +7,7 @@ import { bulkShare, plural, shareSummary } from '../lib/bulk';
 import { useDialogFocus } from '../hooks/useDialogFocus';
 import './ShareDialog.css';
 import './BulkShareDialog.css';
-
-interface Suggestion { username: string; name: string }
+import UserPicker from './UserPicker';
 
 /**
  * Share a selection with one person. Links stay per-note (one link per note
@@ -24,11 +23,9 @@ export default function BulkShareDialog({ notes, onClose }: {
   const dialogRef = useRef<HTMLDivElement | null>(null);
   useDialogFocus(dialogRef);
   const queryClient = useQueryClient();
-  const listId = useId();
 
   const [username, setUsername] = useState('');
   const [access, setAccess] = useState<'view' | 'edit'>('view');
-  const [suggestions, setSuggestions] = useState<Suggestion[]>([]);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [summary, setSummary] = useState<string | null>(null);
@@ -36,21 +33,8 @@ export default function BulkShareDialog({ notes, onClose }: {
   const locked = notes.filter((n) => n.secure).length;
   const shareable = notes.length - locked;
 
-  // Who's there to share with — the same directory the @ typeahead uses.
-  useEffect(() => {
-    const q = username.trim();
-    const ctrl = new AbortController();
-    const t = setTimeout(() => {
-      fetch(`/api/users/search?q=${encodeURIComponent(q)}`, { signal: ctrl.signal })
-        .then((r) => (r.ok ? r.json() : []))
-        .then((rows: Suggestion[]) => setSuggestions(Array.isArray(rows) ? rows.slice(0, 8) : []))
-        .catch(() => { /* aborted or offline: keep what we had */ });
-    }, 150);
-    return () => { clearTimeout(t); ctrl.abort(); };
-  }, [username]);
-
-  async function submit(e: React.FormEvent) {
-    e.preventDefault();
+  async function submit(e?: React.FormEvent) {
+    e?.preventDefault();
     const name = username.trim().replace(/^@/, '');
     if (!name || busy) return;
     setBusy(true);
@@ -92,18 +76,13 @@ export default function BulkShareDialog({ notes, onClose }: {
             <h3 className="share__subhead"><Users size={15} /> With someone here</h3>
             {error && <p className="share__error" role="alert">{error}</p>}
             <div className="share__invite">
-              <input
+              <UserPicker
                 autoFocus
                 placeholder="Username"
-                aria-label="Username"
-                list={listId}
-                autoComplete="off"
                 value={username}
-                onChange={(e) => setUsername(e.target.value)}
+                onChange={setUsername}
+                onSubmit={() => void submit()}
               />
-              <datalist id={listId}>
-                {suggestions.map((s) => <option key={s.username} value={s.username}>{s.name}</option>)}
-              </datalist>
               <select aria-label="Access" value={access} onChange={(e) => setAccess(e.target.value as 'view' | 'edit')}>
                 <option value="view">Can view</option>
                 <option value="edit">Can edit</option>

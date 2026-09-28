@@ -89,7 +89,7 @@
   transition: border-color var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease);
 }
 
-.share-offer__role:hover { border-color: var(--accent); }
+.share-offer__role:hover { border-color: var(--border-hover); }
 
 .share-offer__role[aria-checked='true'] {
   border-color: var(--accent);
@@ -125,7 +125,7 @@
   transition: background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
 }
 
-.share-offer__btn:hover { border-color: var(--accent); }
+.share-offer__btn:hover { border-color: var(--border-hover); }
 
 .share-offer__btn--go {
   border-color: var(--accent);

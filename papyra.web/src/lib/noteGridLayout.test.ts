@@ -44,6 +44,10 @@ describe('pack', () => {
     expect(withGap.boxes.get('b')).toEqual({ x: 0, y: 232 });
   });
 
+  it('an empty section has height 0, never negative (a negative inline height is ignored)', () => {
+    expect(pack([], new Map(), 3, 200).height).toBe(0);
+  });
+
   it('prefer holds cards in their column while heights shift (no hopping mid-resize)', () => {
     const before = pack(['a', 'b', 'c'], h([['a', 300], ['b', 100], ['c', 100]]), 2, 200);
     expect(before.columns.get('c')).toBe(1);

@@ -1,28 +1,28 @@
 /* Multi-select, shared by every card grid (Notes, To Do, Archive, Trash).
-   A .selectable cell wraps one card; its tick hangs off the top-left corner. */
+   A .selectable cell wraps one card; its tick sits in the top-left corner. */
 
 .select-cell { position: relative; }
 
-/* Tick: hangs off the top-left corner, mirroring the pin on the right. Shown on
-   hover/focus, and on every card once a selection exists. */
+/* Tick: tucked inside the card's top-left corner — a 16px circle centred on
+   the corner's own 12px radius, so it sits concentric with the curve and
+   clears the title (which starts at the 16px padding). Shown on hover/focus,
+   and on every card once a selection exists. The check is always drawn, faint
+   until selected, so the circle reads as "tap to select" rather than a dot. */
 .select-tick {
   position: absolute;
-  /* Small and tucked in: it only overhangs the card by 4px, so it clears the
-     neighbouring card's pin (which overhangs 10px) across the 16px gutter. */
-  top: -6px;
-  left: -4px;
+  top: 4px;
+  left: 4px;
   z-index: 3;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 20px;
-  height: 20px;
+  width: 16px;
+  height: 16px;
   padding: 0;
-  border: 1.5px solid var(--border);
+  border: 1px solid color-mix(in srgb, var(--text) 32%, transparent);
   border-radius: 50%;
-  background: var(--surface);
-  color: transparent;
-  box-shadow: var(--shadow-card);
+  background: color-mix(in srgb, var(--paper) 55%, #fff);
+  color: color-mix(in srgb, var(--text) 75%, transparent);
   cursor: pointer;
   opacity: 0;
   transform: scale(0.85);
@@ -34,6 +34,20 @@
     color var(--dur-fast) var(--ease),
     translate var(--dur) var(--ease);
 }
+[data-theme='dark'] .select-tick {
+  background: color-mix(in srgb, var(--text-h) 20%, var(--paper));
+}
+/* On a coloured card: a lifted wash of the card itself, inked like its text. */
+.selectable:has(.note-card--colored) .select-tick {
+  border-color: color-mix(in srgb, #3d2c1e 30%, transparent);
+  background: color-mix(in srgb, #fff 55%, transparent);
+  color: color-mix(in srgb, #3d2c1e 65%, transparent);
+}
+.selectable:has(.tint--light-ink) .select-tick {
+  border-color: color-mix(in srgb, #fff 35%, transparent);
+  background: color-mix(in srgb, #000 30%, transparent);
+  color: color-mix(in srgb, #fff 75%, transparent);
+}
 
 .selectable:hover .select-tick,
 .selectable:focus-within .select-tick,
@@ -42,10 +56,26 @@
   transform: scale(1);
 }
 
-/* Follows the card's own hover lift so the two stay together. */
+/* One hover for the pair. The card lifts whenever its cell is hovered — the
+   tick sits over the card but is its sibling, so hovering the tick alone used
+   to drop the card back — and the tick rides the same 2px lift with it. */
+.selectable:hover .note-card {
+  box-shadow: var(--shadow-card-hover);
+  transform: translateY(-2px);
+}
 .selectable:hover .select-tick { translate: 0 -2px; }
+.selectable:active .note-card { transform: translateY(0); }
+.selectable:active .select-tick { translate: 0 0; }
+@media (prefers-reduced-motion: reduce) {
+  .selectable:hover .note-card,
+  .selectable:active .note-card { transform: none; }
+  .selectable:hover .select-tick { translate: none; }
+}
 
-.select-tick:hover { border-color: var(--accent); color: var(--accent-text); }
+.select-tick:hover {
+  border-color: var(--border-hover);
+  color: var(--text-h);
+}
 
 .select-tick:focus-visible {
   opacity: 1;
@@ -53,7 +83,8 @@
   outline-offset: 2px;
 }
 
-.select-tick[aria-pressed="true"] {
+.select-tick[aria-pressed="true"],
+.selectable .select-tick[aria-pressed="true"] {
   border-color: var(--accent);
   background: var(--accent);
   color: var(--accent-fg);
@@ -64,8 +95,9 @@
   40% { transform: scale(1.18); }
 }
 
-/* Selected: a ring drawn outside the card (the card keeps its own colour),
-   and a slight settle inward, like a pressed-in page. */
+/* Selected: a ring drawn outside the card (the card keeps its own colour).
+   No scale-down: the tick lives inside the card's corner, and a shrinking card
+   slid its corner out from under it. */
 .selectable::after {
   content: '';
   position: absolute;
@@ -78,10 +110,6 @@
   transition: opacity var(--dur-fast) var(--ease), transform var(--dur) var(--ease);
 }
 .selectable.is-selected::after { opacity: 1; transform: none; }
-.selectable > .note-card__link,
-.selectable > .todo-card { transition: scale var(--dur) var(--ease); }
-.selectable.is-selected > .note-card__link,
-.selectable.is-selected > .todo-card { scale: 0.975; }
 
 /* In selection mode every click selects, so say so with the cursor. */
 .note-grid-wrap.is-selecting .selectable { cursor: default; }
