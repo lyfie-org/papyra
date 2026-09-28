@@ -83,7 +83,7 @@ public sealed class TagTests
         try
         {
             var client = factory.CreateClient();
-            var setup = await client.PostAsJsonAsync("/api/auth/setup", new SetupRequest(
+            var setup = await client.PostSetupAsync(new SetupRequest(
                 Username: "owner", Name: "Owner", Email: "o@b.c", Password: "hunter2!"));
             Assert.Equal(HttpStatusCode.OK, setup.StatusCode);
             await body(client);

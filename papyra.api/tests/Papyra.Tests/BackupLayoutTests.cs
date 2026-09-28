@@ -51,7 +51,7 @@ public sealed class BackupLayoutTests
     private static async Task<HttpClient> SeededAdminAsync(WebApplicationFactory<Program> factory)
     {
         var client = factory.CreateClient();
-        var setup = await client.PostAsJsonAsync("/api/auth/setup", new SetupRequest(
+        var setup = await client.PostSetupAsync(new SetupRequest(
             "admin", "Admin", "admin@example.com", Pw, Pin: "246810", TimeZone: "Asia/Kolkata", Theme: "dark"));
         Assert.Equal(HttpStatusCode.OK, setup.StatusCode);
 
@@ -254,7 +254,7 @@ public sealed class BackupLayoutTests
 
             // The person sets up their account again — new name, new password —
             // and everything else comes back.
-            var setup = await newcomer.PostAsJsonAsync("/api/auth/setup", new SetupRequest(
+            var setup = await newcomer.PostSetupAsync(new SetupRequest(
                 "restored", null, null, "An0ther-pass!", Pin: "135790", RestoreId: staged.GetProperty("restoreId").GetString()));
             Assert.Equal(HttpStatusCode.OK, setup.StatusCode);
             Assert.Equal(3, (await setup.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("restored").GetInt32());
@@ -287,16 +287,16 @@ public sealed class BackupLayoutTests
         try
         {
             var client = factory.CreateClient();
-            Assert.Equal(HttpStatusCode.BadRequest, (await client.PostAsJsonAsync("/api/auth/setup", new SetupRequest("bad name", null, null, Pw))).StatusCode);
-            Assert.Equal(HttpStatusCode.BadRequest, (await client.PostAsJsonAsync("/api/auth/setup", new SetupRequest("ok", null, null, Pw, Pin: "12"))).StatusCode);
-            Assert.Equal(HttpStatusCode.BadRequest, (await client.PostAsJsonAsync("/api/auth/setup", new SetupRequest("ok", null, null, Pw, TimeZone: "Mars/Base"))).StatusCode);
-            Assert.Equal(HttpStatusCode.BadRequest, (await client.PostAsJsonAsync("/api/auth/setup", new SetupRequest("ok", null, null, Pw, RestoreId: "../../etc"))).StatusCode);
+            Assert.Equal(HttpStatusCode.BadRequest, (await client.PostSetupAsync(new SetupRequest("bad name", null, null, Pw))).StatusCode);
+            Assert.Equal(HttpStatusCode.BadRequest, (await client.PostSetupAsync(new SetupRequest("ok", null, null, Pw, Pin: "12"))).StatusCode);
+            Assert.Equal(HttpStatusCode.BadRequest, (await client.PostSetupAsync(new SetupRequest("ok", null, null, Pw, TimeZone: "Mars/Base"))).StatusCode);
+            Assert.Equal(HttpStatusCode.BadRequest, (await client.PostSetupAsync(new SetupRequest("ok", null, null, Pw, RestoreId: "../../etc"))).StatusCode);
             // No mail configured → a code can't be sent, and the address is kept as typed.
             var code = await client.PostAsJsonAsync("/api/auth/setup/email/code", new SetupEmailCodeRequest("me@example.com"));
             Assert.Equal(HttpStatusCode.BadRequest, code.StatusCode);
             Assert.Equal("email_not_configured", (await code.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("code").GetString());
 
-            var ok = await client.PostAsJsonAsync("/api/auth/setup", new SetupRequest("ok", null, "me@example.com", Pw, Pin: "482915", TimeZone: "Europe/Berlin", Theme: "light"));
+            var ok = await client.PostSetupAsync(new SetupRequest("ok", null, "me@example.com", Pw, Pin: "482915", TimeZone: "Europe/Berlin", Theme: "light"));
             Assert.Equal(HttpStatusCode.OK, ok.StatusCode);
             var vault = await client.GetFromJsonAsync<JsonElement>("/api/auth/vault");
             Assert.True(vault.GetProperty("pinSet").GetBoolean());

@@ -54,7 +54,10 @@ dotnet run --project papyra.api/src/Papyra.Api -- --Papyra:DataDir=.edgedata --u
 On a brand-new vault, create the first admin once:
 
 ```bash
-curl -X POST -H 'Content-Type: application/json' -d '{"username":"admin","name":"Admin","password":"AdminPass123!"}' http://localhost:5221/api/auth/setup
+# An authenticator is compulsory for the first admin: get a secret, then send
+# it back with its current code (oathtool, or any authenticator app).
+SECRET=$(curl -s -X POST -H 'Content-Type: application/json' -d '{"account":"admin"}' http://localhost:5221/api/auth/setup/totp | python -c 'import json,sys; print(json.load(sys.stdin)["secret"])')
+curl -X POST -H 'Content-Type: application/json' -d "{\"username\":\"admin\",\"name\":\"Admin\",\"password\":\"AdminPass123!\",\"totpSecret\":\"$SECRET\",\"totpCode\":\"$(oathtool --totp -b "$SECRET")\"}" http://localhost:5221/api/auth/setup
 ```
 
 Then:

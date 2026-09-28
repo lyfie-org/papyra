@@ -214,6 +214,7 @@ builder.Services.AddSingleton<WebAuthnChallengeStore>();
 builder.Services.AddSingleton<UnlockTokenStore>();
 builder.Services.AddScoped<BiometricAuthService>();
 builder.Services.AddScoped<VaultPinService>();
+builder.Services.AddSingleton<TotpService>();
 
 // Background import queue: drains uploaded Obsidian/Keep archives into the vault
 // off the request thread, pushing progress over SignalR. Singleton so the endpoint
@@ -1014,6 +1015,33 @@ auth.MapPost("/setup/email/verify", async (SetupEmailVerifyRequest body, AppDbCo
         : Results.Ok(new { ok = true });
 }).RequireRateLimiting(AuthRateLimit);
 
+// The first admin's authenticator. A fresh Papyra usually has no outgoing mail,
+// so an emailed code can't be the account's proof of identity; an authenticator
+// app needs nothing from the server but a clock. The secret travels back with
+// POST /setup (there is no account to keep it on yet) and is only stored once a
+// code from it has been checked.
+auth.MapPost("/setup/totp", async (SetupTotpRequest body, AppDbContext db, CancellationToken ct) =>
+{
+    if (await db.Users.AnyAsync(ct)) return Results.Conflict(new { error = "Already initialized." });
+    var secret = Totp.NewSecret();
+    var account = string.IsNullOrWhiteSpace(body.Account) ? "admin" : body.Account.Trim();
+    return Results.Ok(new { secret, uri = Totp.ProvisioningUri(secret, account) });
+}).RequireRateLimiting(AuthRateLimit);
+
+// A matching code is remembered for the rest of the wizard: by the time POST
+// /setup runs, minutes later, the code typed here has long rolled over.
+auth.MapPost("/setup/totp/verify", async (TotpVerifyRequest body, AppDbContext db, CancellationToken ct) =>
+{
+    if (await db.Users.AnyAsync(ct)) return Results.Conflict(new { error = "Already initialized." });
+    var secret = body.Secret?.Trim() ?? string.Empty;
+    if (Totp.Match(secret, body.Code, DateTimeOffset.UtcNow) is null)
+        return Results.BadRequest(new { error = "That code didn’t match. Check the time on your phone and try the newest code.", field = "totpCode" });
+    db.AuthTokens.RemoveRange(db.AuthTokens.Where(t => t.Kind == "setup-totp"));
+    db.AuthTokens.Add(new AuthToken { TokenHash = SetupTotpHash(secret), Kind = "setup-totp", ExpiresUtc = DateTime.UtcNow.AddHours(1) });
+    await db.SaveChangesAsync(ct);
+    return Results.Ok(new { ok = true });
+}).RequireRateLimiting(AuthRateLimit);
+
 // Stage a backup to restore into the account about to be created: decrypt and
 // unpack it now (so a wrong password is caught before anything else), report
 // what it holds and the preferences it carries, and keep it until POST /setup.
@@ -1084,7 +1112,7 @@ auth.MapPost("/setup/restore", async (
 
 auth.MapPost("/setup", async (
     SetupRequest body, HttpContext http, AppDbContext db, VaultObserver observer, EmailSender email,
-    VaultPinService pins, BackupLayout layout, GitSyncService git, VaultState state, MarkdownStorageService storage,
+    VaultPinService pins, TotpService totp, BackupLayout layout, GitSyncService git, VaultState state, MarkdownStorageService storage,
     SearchIndexService search, IHubContext<NotesHub> hub, IConfiguration config, IHostEnvironment env, CancellationToken ct) =>
 {
     if (await db.Users.AnyAsync(ct))
@@ -1114,6 +1142,25 @@ auth.MapPost("/setup", async (
             if (emailToken is null)
                 return Results.BadRequest(new { error = "Confirm your email with the code we sent to it.", field = "emailCode" });
         }
+    }
+
+    // An authenticator is compulsory for the first admin: it is the account's
+    // proof of identity before anything sensitive (a fresh Papyra usually has no
+    // mail to send a code with). Proven either by a code now or by
+    // /setup/totp/verify earlier in the wizard.
+    if (string.IsNullOrWhiteSpace(body.TotpSecret))
+        return Results.BadRequest(new { error = "Set up an authenticator app first.", field = "totpCode" });
+    var totpSecret = body.TotpSecret.Trim();
+    AuthToken? totpProof = null;
+    var totpStep = Totp.Match(totpSecret, body.TotpCode, DateTimeOffset.UtcNow);
+    if (totpStep is null)
+    {
+        var hash = SetupTotpHash(totpSecret);
+        totpProof = await db.AuthTokens.FirstOrDefaultAsync(t => t.Kind == "setup-totp" && t.TokenHash == hash, ct);
+        if (totpProof is null || totpProof.UsedUtc is not null || totpProof.ExpiresUtc < DateTime.UtcNow)
+            return Results.BadRequest(new { error = "That authenticator code didn’t match. Try the newest one.", field = "totpCode" });
+        // Nothing typed now to spend: refuse this step's code from here on.
+        totpStep = Totp.StepAt(DateTimeOffset.UtcNow);
     }
 
     if (body.Pin is { Length: > 0 } && VaultPin.Validate(body.Pin) is { } badPin)
@@ -1146,9 +1193,11 @@ auth.MapPost("/setup", async (
         TimeZone = string.IsNullOrEmpty(zone) ? null : zone,
         Theme = body.Theme,
     };
+    totp.Enable(user, totpSecret, totpStep.Value);
 
     db.Users.Add(user);
     if (emailToken is not null) emailToken.UsedUtc = DateTime.UtcNow;
+    if (totpProof is not null) totpProof.UsedUtc = DateTime.UtcNow;
     await db.SaveChangesAsync(ct);
 
     observer.WatchUser(user.Id.ToString()); // create + watch the new tenant's vault
@@ -1478,6 +1527,7 @@ auth.MapGet("/me", async (HttpContext http, AppDbContext db, CancellationToken c
         serverTimeZone = ServerTimeZoneId(),
         // The theme follows the person, not the browser: every sign-in opens in it.
         user.Theme,
+        totpEnabled = TotpService.IsEnabled(user),
     });
 });
 
@@ -1724,7 +1774,7 @@ webauthn.MapDelete("/credentials/{id:int}", async (
 // state, not the notes vault).
 auth.MapPut("/profile", async (
     ProfileRequest body, HttpContext http, ClaimsPrincipal principal, AppDbContext db, EmailSender mail,
-    LoginThrottle throttle, CancellationToken ct) =>
+    LoginThrottle throttle, TotpService totp, CancellationToken ct) =>
 {
     var id = int.Parse(Uid(principal));
     var user = await db.Users.FindAsync([id], ct);
@@ -1779,15 +1829,28 @@ auth.MapPut("/profile", async (
 
         // Moving the account to another address is how a stolen session becomes
         // a stolen account: every reset link would follow it. So the change needs
-        // proof from the address it is leaving — a code sent there — or, where
-        // this Papyra can't send mail, the account password.
+        // proof: the authenticator app's code, or a code sent to the address it is
+        // leaving, or — with neither available — the account password.
         if (!string.Equals(email, user.Email, StringComparison.OrdinalIgnoreCase)
             && !string.IsNullOrWhiteSpace(user.Email))
         {
             var key = $"email-change:{user.Id}";
             if (throttle.IsLockedOut(key))
                 return Results.Json(new { error = "Too many attempts. Try again later.", field = "emailCode" }, statusCode: 429);
-            if (mail.IsConfigured)
+            if (!string.IsNullOrWhiteSpace(body.TotpCode))
+            {
+                if (!totp.Verify(user, body.TotpCode))
+                {
+                    throttle.RecordFailure(key);
+                    return Results.BadRequest(new { error = "That authenticator code didn’t match. Try the newest one.", field = "totpCode" });
+                }
+            }
+            else if (TotpService.IsEnabled(user) && string.IsNullOrWhiteSpace(body.EmailCode))
+            {
+                return Results.Json(new { error = "Enter the code from your authenticator app.", field = "totpCode", code = "totp_required" },
+                    statusCode: StatusCodes.Status428PreconditionRequired);
+            }
+            else if (mail.IsConfigured)
             {
                 var code = body.EmailCode?.Trim() ?? string.Empty;
                 if (code.Length == 0)
@@ -1867,7 +1930,12 @@ auth.MapPost("/email/code", async (
     if (await db.Users.AnyAsync(u => u.Id != user.Id && u.Email.ToLower() == lower, ct))
         return Results.Conflict(new { error = "Another account already uses that email.", field = "email" });
     if (string.IsNullOrWhiteSpace(user.Email)) return Results.Ok(new { required = false });
-    if (!mail.IsConfigured) return Results.Ok(new { required = false, passwordRequired = true });
+    var canEmail = mail.IsConfigured;
+    // An authenticator is the first choice: nothing has to be delivered. Email is
+    // the fallback, on request, when this Papyra can send it.
+    if (TotpService.IsEnabled(user) && !(body.ViaEmail && canEmail))
+        return Results.Ok(new { required = true, method = "totp", canEmail });
+    if (!canEmail) return Results.Ok(new { required = false, passwordRequired = true });
 
     var code = System.Security.Cryptography.RandomNumberGenerator.GetInt32(0, 1_000_000).ToString("D6");
     db.AuthTokens.RemoveRange(db.AuthTokens.Where(t => t.UserId == user.Id && t.Kind == "email-change"));
@@ -1888,8 +1956,89 @@ auth.MapPost("/email/code", async (
         + "If this wasn't you, don't share the code: change your password now. Your email stays as it is.",
         [new EmailDetail("Code", code), new EmailDetail("New address", wanted), .. RequestDetails(user, http)], ct);
     return sent.Sent
-        ? Results.Ok(new { required = true, sentTo = MaskEmail(user.Email) })
+        ? Results.Ok(new { required = true, method = "email", sentTo = MaskEmail(user.Email), totp = TotpService.IsEnabled(user) })
         : Results.BadRequest(new { error = "The code couldn't be emailed. Try again shortly." });
+}).RequireAuthorization().RequireRateLimiting(AuthRateLimit);
+
+// ── Authenticator app (TOTP) ──────────────────────────────────────────────────
+// The first way to confirm a sensitive action; an emailed code is the second.
+// Setting one up, replacing it or removing it asks for the account password, and
+// is only for a signed-in person — never an API key.
+auth.MapGet("/totp", async (ClaimsPrincipal principal, AppDbContext db, CancellationToken ct) =>
+{
+    var user = await db.Users.FindAsync([int.Parse(Uid(principal))], ct);
+    if (user is null) return Results.NotFound();
+    return Results.Ok(new
+    {
+        enabled = TotpService.IsEnabled(user),
+        enabledUtc = user.TotpEnabledUtc is { } at ? DateTime.SpecifyKind(at, DateTimeKind.Utc) : (DateTime?)null,
+    });
+}).RequireAuthorization();
+
+// A fresh secret to scan. Nothing is stored until POST /totp proves it with a code.
+auth.MapPost("/totp/begin", async (ClaimsPrincipal principal, AppDbContext db, CancellationToken ct) =>
+{
+    if (IsApiKey(principal)) return Results.Json(new { error = "Use the app, not an API key." }, statusCode: 403);
+    var user = await db.Users.FindAsync([int.Parse(Uid(principal))], ct);
+    if (user is null) return Results.NotFound();
+    var secret = Totp.NewSecret();
+    return Results.Ok(new { secret, uri = Totp.ProvisioningUri(secret, user.Username) });
+}).RequireAuthorization().RequireRateLimiting(AuthRateLimit);
+
+auth.MapPost("/totp", async (
+    TotpEnableRequest body, ClaimsPrincipal principal, HttpContext http, AppDbContext db, TotpService totp,
+    EmailSender mail, LoginThrottle throttle, CancellationToken ct) =>
+{
+    if (IsApiKey(principal)) return Results.Json(new { error = "Use the app, not an API key." }, statusCode: 403);
+    var user = await db.Users.FindAsync([int.Parse(Uid(principal))], ct);
+    if (user is null) return Results.NotFound();
+    var key = $"totp:{user.Id}";
+    if (throttle.IsLockedOut(key)) return Results.Json(new { error = "Too many attempts. Try again later." }, statusCode: 429);
+    if (string.IsNullOrEmpty(body.Password) || !BCrypt.Net.BCrypt.Verify(body.Password, user.PasswordHash))
+    {
+        throttle.RecordFailure(key);
+        return Results.Json(new { error = "That password isn't right.", field = "password" }, statusCode: 401);
+    }
+    var secret = body.Secret?.Trim() ?? string.Empty;
+    if (Totp.Match(secret, body.Code, DateTimeOffset.UtcNow) is not { } step)
+    {
+        throttle.RecordFailure(key);
+        return Results.BadRequest(new { error = "That code didn’t match. Check the time on your phone and try the newest code.", field = "totpCode" });
+    }
+    var replaced = TotpService.IsEnabled(user);
+    totp.Enable(user, secret, step);
+    await db.SaveChangesAsync(ct);
+    throttle.Reset(key);
+    await mail.NotifyAsync(user, NotificationCatalog.TotpChanged,
+        replaced ? "Your Papyra authenticator was replaced" : "An authenticator was added to your Papyra account",
+        $"An authenticator app was {(replaced ? "set up again" : "set up")} for @{user.Username}. Its codes now confirm sensitive changes.\n\n"
+        + "If that wasn't you, change your password now.",
+        RequestDetails(user, http), ct);
+    return Results.Ok(new { enabled = true });
+}).RequireAuthorization().RequireRateLimiting(AuthRateLimit);
+
+auth.MapPost("/totp/remove", async (
+    TotpRemoveRequest body, ClaimsPrincipal principal, HttpContext http, AppDbContext db,
+    EmailSender mail, LoginThrottle throttle, CancellationToken ct) =>
+{
+    if (IsApiKey(principal)) return Results.Json(new { error = "Use the app, not an API key." }, statusCode: 403);
+    var user = await db.Users.FindAsync([int.Parse(Uid(principal))], ct);
+    if (user is null) return Results.NotFound();
+    if (!TotpService.IsEnabled(user)) return Results.NoContent();
+    var key = $"totp:{user.Id}";
+    if (throttle.IsLockedOut(key)) return Results.Json(new { error = "Too many attempts. Try again later." }, statusCode: 429);
+    if (string.IsNullOrEmpty(body.Password) || !BCrypt.Net.BCrypt.Verify(body.Password, user.PasswordHash))
+    {
+        throttle.RecordFailure(key);
+        return Results.Json(new { error = "That password isn't right.", field = "password" }, statusCode: 401);
+    }
+    TotpService.Disable(user);
+    await db.SaveChangesAsync(ct);
+    throttle.Reset(key);
+    await mail.NotifyAsync(user, NotificationCatalog.TotpChanged, "Your Papyra authenticator was removed",
+        $"The authenticator app on @{user.Username} was removed.\n\nIf that wasn't you, change your password now.",
+        RequestDetails(user, http), ct);
+    return Results.NoContent();
 }).RequireAuthorization().RequireRateLimiting(AuthRateLimit);
 
 // Live "is this username free?" for the profile form. Usernames are unique per
@@ -2394,7 +2543,7 @@ auth.MapGet("/notifications", async (ClaimsPrincipal me, AppDbContext db, EmailS
             .Where(g => g.Key != "admin" || user.Role == "Admin")
             .Select(g => new { id = g.Key, label = g.Value }),
         events = NotificationCatalog.Events
-            .Where(e => !e.AdminOnly || user.Role == "Admin")
+            .Where(e => e.Listed && (!e.AdminOnly || user.Role == "Admin"))
             .Select(e => new
             {
                 e.Id, e.Group, e.Label, e.Description, e.Critical,
@@ -5268,8 +5417,12 @@ accountDelete.MapGet("/", async (ClaimsPrincipal principal, AppDbContext db, Ema
     if (me.PasswordChangedUtc is { } changed && DateTime.UtcNow - DateTime.SpecifyKind(changed, DateTimeKind.Utc) < AccountDeletion.MinPasswordAge)
         blockers.Add($"Your password was changed less than 24 hours ago. You can delete the account after {DateTime.SpecifyKind(changed, DateTimeKind.Utc).Add(AccountDeletion.MinPasswordAge):u}.");
     if (string.IsNullOrEmpty(me.VaultPinHash)) blockers.Add("Set a vault PIN first (Settings → Security) — it is one of the checks.");
-    if (string.IsNullOrWhiteSpace(me.Email)) blockers.Add("Add an email address to your profile — a code is sent there.");
-    else if (!email.IsConfigured) blockers.Add("This Papyra can't send email yet, so the confirmation code can't reach you. Ask your administrator.");
+    // A code confirms it: the authenticator's, or one emailed to the account.
+    if (!TotpService.IsEnabled(me))
+    {
+        if (string.IsNullOrWhiteSpace(me.Email)) blockers.Add("Set up an authenticator app (Settings → Security) or add an email address — a code confirms it.");
+        else if (!email.IsConfigured) blockers.Add("Set up an authenticator app (Settings → Security) — this Papyra can't email you a code.");
+    }
     if (me.Role == "Admin" && await db.Users.CountAsync(u => u.Role == "Admin" && u.Id != me.Id && u.DeletionScheduledUtc == null, ct) == 0)
         blockers.Add("You're the only administrator. Make someone else an admin first.");
     return Results.Ok(new
@@ -5277,6 +5430,8 @@ accountDelete.MapGet("/", async (ClaimsPrincipal principal, AppDbContext db, Ema
         scheduledUtc = me.DeletionScheduledUtc is { } s ? DateTime.SpecifyKind(s, DateTimeKind.Utc) : (DateTime?)null,
         blockers,
         graceDays = (int)AccountDeletion.GracePeriod.TotalDays,
+        totp = TotpService.IsEnabled(me),
+        canEmail = email.IsConfigured && !string.IsNullOrWhiteSpace(me.Email),
     });
 });
 
@@ -5325,7 +5480,7 @@ accountDelete.MapPost("/code", async (
 
 accountDelete.MapPost("/", async (
     AccountDeleteRequest body, ClaimsPrincipal principal, HttpContext http, AppDbContext db, EmailSender email,
-    LoginThrottle throttle, UnlockTokenStore unlockTokens, CancellationToken ct) =>
+    LoginThrottle throttle, UnlockTokenStore unlockTokens, TotpService totp, CancellationToken ct) =>
 {
     var uid = Uid(principal);
     var me = await db.Users.FindAsync([int.Parse(uid)], ct);
@@ -5348,14 +5503,18 @@ accountDelete.MapPost("/", async (
     if (me.Role == "Admin" && await db.Users.CountAsync(u => u.Role == "Admin" && u.Id != me.Id && u.DeletionScheduledUtc == null, ct) == 0)
         return Results.BadRequest(new { error = "You're the only administrator. Make someone else an admin first." });
 
-    var hash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes($"{me.Id}:{body.Code?.Trim()}")));
-    var token = await db.AuthTokens.FirstOrDefaultAsync(t => t.UserId == me.Id && t.Kind == "account-delete" && t.TokenHash == hash, ct);
-    if (token is null || token.UsedUtc is not null || token.ExpiresUtc < DateTime.UtcNow)
+    // Either code will do: the authenticator's, or the one emailed by /code.
+    if (!totp.Verify(me, body.Code))
     {
-        throttle.RecordFailure(key);
-        return Results.BadRequest(new { error = "That code is wrong or has expired. Send a new one.", field = "code" });
+        var hash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes($"{me.Id}:{body.Code?.Trim()}")));
+        var token = await db.AuthTokens.FirstOrDefaultAsync(t => t.UserId == me.Id && t.Kind == "account-delete" && t.TokenHash == hash, ct);
+        if (token is null || token.UsedUtc is not null || token.ExpiresUtc < DateTime.UtcNow)
+        {
+            throttle.RecordFailure(key);
+            return Results.BadRequest(new { error = "That code is wrong or has expired.", field = "code" });
+        }
+        token.UsedUtc = DateTime.UtcNow;
     }
-    token.UsedUtc = DateTime.UtcNow;
 
     var due = DateTime.UtcNow.Add(AccountDeletion.GracePeriod);
     me.DeletionScheduledUtc = due;
@@ -6166,6 +6325,10 @@ static string SetupCodeHash(string email, string code) =>
     Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
         System.Text.Encoding.UTF8.GetBytes($"setup-email:{email.Trim().ToLowerInvariant()}:{code.Trim()}")));
 
+static string SetupTotpHash(string secret) =>
+    Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
+        System.Text.Encoding.UTF8.GetBytes($"setup-totp:{secret.Trim().ToUpperInvariant()}")));
+
 static async Task<AuthToken?> LiveSetupCodeAsync(AppDbContext db, string? email, string? code, CancellationToken ct)
 {
     if (string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(code)) return null;
@@ -6426,10 +6589,16 @@ public sealed record SetupRequest(
     string? Pin = null,
     string? TimeZone = null,
     string? Theme = null,
-    string? RestoreId = null);
+    string? RestoreId = null,
+    string? TotpSecret = null,
+    string? TotpCode = null);
 
 public sealed record SetupEmailCodeRequest(string? Email);
 public sealed record SetupEmailVerifyRequest(string? Email, string? Code);
+public sealed record SetupTotpRequest(string? Account);
+public sealed record TotpVerifyRequest(string? Secret, string? Code);
+public sealed record TotpEnableRequest(string? Secret, string? Code, string? Password);
+public sealed record TotpRemoveRequest(string? Password);
 
 // A backup staged by POST /api/auth/setup/restore, waiting for POST /setup.
 public sealed record SetupRestoreMeta(
@@ -6438,7 +6607,8 @@ public sealed record SetupRestoreMeta(
 // How a git backup being restored is stored: "plain", or "encrypted" with its data
 // key (sealed for this server) and the repository key header (JSON).
 public sealed record GitRestoreSource(string Mode, string? SealedKey, string? HeaderJson);
-public sealed record EmailCodeRequest(string? Email);
+/// <param name="ViaEmail">Send the code by email even though an authenticator is set up.</param>
+public sealed record EmailCodeRequest(string? Email, bool ViaEmail = false);
 
 // Restore from a git backup: where it is, how to read it (the password it was
 // sealed with, when encrypted), and whether to keep backing up there afterwards.
@@ -6474,7 +6644,7 @@ public sealed record RecoveryLinkRequest(bool? SendEmail = null);
 // Every field optional: null = leave it as it is (older clients send no username).
 public sealed record ProfileRequest(
     string? Name, string? Email, string? Username = null, string? TimeZone = null,
-    string? Theme = null, string? EmailCode = null, string? CurrentPassword = null);
+    string? Theme = null, string? EmailCode = null, string? CurrentPassword = null, string? TotpCode = null);
 
 // Self-service password change: verify Current, set Next.
 public sealed record PasswordRequest(string? Current, string? Next);

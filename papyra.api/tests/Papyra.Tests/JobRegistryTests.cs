@@ -151,7 +151,7 @@ public sealed class JobRegistryTests
         try
         {
             var admin = factory.CreateClient();
-            await admin.PostAsJsonAsync("/api/auth/setup", new SetupRequest(
+            await admin.PostSetupAsync(new SetupRequest(
                 Username: "admin", Name: "Admin", Email: "a@b.c", Password: Pw));
 
             var jobs = (await admin.GetFromJsonAsync<JsonElement>("/api/jobs")).EnumerateArray().ToArray();
@@ -189,7 +189,7 @@ public sealed class JobRegistryTests
         try
         {
             var admin = factory.CreateClient();
-            await admin.PostAsJsonAsync("/api/auth/setup", new SetupRequest(
+            await admin.PostSetupAsync(new SetupRequest(
                 Username: "admin", Name: "Admin", Email: "a@b.c", Password: Pw));
 
             var res = await admin.PostAsync("/api/jobs/share-cleanup/run", null);
@@ -213,7 +213,7 @@ public sealed class JobRegistryTests
         try
         {
             var admin = factory.CreateClient();
-            await admin.PostAsJsonAsync("/api/auth/setup", new SetupRequest(
+            await admin.PostSetupAsync(new SetupRequest(
                 Username: "admin", Name: "Admin", Email: "a@b.c", Password: Pw));
 
             Assert.Equal(HttpStatusCode.BadRequest,
@@ -232,7 +232,7 @@ public sealed class JobRegistryTests
         try
         {
             var admin = factory.CreateClient();
-            await admin.PostAsJsonAsync("/api/auth/setup", new SetupRequest(
+            await admin.PostSetupAsync(new SetupRequest(
                 Username: "admin", Name: "Admin", Email: "a@b.c", Password: Pw));
             await admin.PostAsJsonAsync("/api/auth/users", new ProvisionRequest(
                 Username: "bea", Name: "Bea", Email: "b@b.c", Password: Pw, Role: "User"));

@@ -1,7 +1,7 @@
 import { useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { AlertTriangle, Mail, ShieldCheck, Trash2, X } from 'lucide-react';
+import { AlertTriangle, KeyRound, Mail, ShieldCheck, Trash2, X } from 'lucide-react';
 import VaultUnlock from './VaultUnlock';
 import { useAuth } from '../hooks/useAuth';
 import { useDialogFocus } from '../hooks/useDialogFocus';
@@ -10,12 +10,12 @@ import { vaultFetch } from '../lib/vault';
 import { NO_AUTOFILL } from '../lib/autofill';
 import './DeleteAccountSection.css';
 
-interface Status { scheduledUtc: string | null; blockers: string[]; graceDays: number }
+interface Status { scheduledUtc: string | null; blockers: string[]; graceDays: number; totp?: boolean; canEmail?: boolean }
 
 /**
  * Settings → Security → Delete account. Two warnings before anything can be
- * typed, then every check the server makes: password, vault, an emailed code,
- * the username typed out. It schedules deletion a week out; the server does
+ * typed, then every check the server makes: password, vault, a code (from the
+ * authenticator app, or emailed), the username typed out. It schedules deletion a week out; the server does
  * the rest (daily reminders, then the purge).
  */
 export default function DeleteAccountSection() {
@@ -32,11 +32,7 @@ export default function DeleteAccountSection() {
       <h2 id="delete-account" className="settings__subhead danger-zone__title">
         <AlertTriangle size={18} aria-hidden="true" /> Delete account
       </h2>
-      <p className="settings__hint">
-        Permanently erases your account and everything in it — every note, locked note, attachment, version and
-        setting. Deletion happens {status?.graceDays ?? 7} days after you confirm, so you can still change your mind;
-        you’ll be emailed each day until then.
-      </p>
+      <p className="settings__hint">Erases your account and every note. Happens {status?.graceDays ?? 7} days after you confirm — you can cancel until then.</p>
       {blocked && (
         <ul className="danger-zone__blockers">
           {status!.blockers.map((b) => <li key={b}>{b}</li>)}
@@ -50,7 +46,8 @@ export default function DeleteAccountSection() {
         <WarnDialog graceDays={status?.graceDays ?? 7} onCancel={() => setStage(null)} onContinue={() => setStage('confirm')} />
       )}
       {stage === 'confirm' && (
-        <ConfirmDialog graceDays={status?.graceDays ?? 7} onClose={() => { setStage(null); void refetch(); }} />
+        <ConfirmDialog graceDays={status?.graceDays ?? 7} totp={!!status?.totp} canEmail={!!status?.canEmail}
+          onClose={() => { setStage(null); void refetch(); }} />
       )}
     </section>
   );
@@ -97,7 +94,9 @@ function WarnDialog({ graceDays, onCancel, onContinue }: { graceDays: number; on
 }
 
 // Warning two, with every check.
-function ConfirmDialog({ graceDays, onClose }: { graceDays: number; onClose: () => void }) {
+function ConfirmDialog({ graceDays, totp, canEmail, onClose }: {
+  graceDays: number; totp: boolean; canEmail: boolean; onClose: () => void;
+}) {
   const { user } = useAuth();
   const queryClient = useQueryClient();
   const vaultOpen = useVaultOpen();
@@ -154,13 +153,20 @@ function ConfirmDialog({ graceDays, onClose }: { graceDays: number; onClose: () 
               onChange={(e) => { setPassword(e.target.value); setError(null); }} />
           </li>
           <li>
-            <span className="danger-dialog__step-head"><Mail size={15} aria-hidden="true" /> 2 · A code from your email</span>
+            {/* The authenticator's code first; an emailed one works too. */}
+            <span className="danger-dialog__step-head">
+              {totp && !sentTo
+                ? <><KeyRound size={15} aria-hidden="true" /> 2 · A code from your authenticator</>
+                : <><Mail size={15} aria-hidden="true" /> 2 · A code from your email</>}
+            </span>
             <div className="danger-dialog__row">
-              <input {...NO_AUTOFILL} inputMode="numeric" maxLength={6} placeholder="6-digit code" value={code}
+              <input {...NO_AUTOFILL} inputMode="numeric" autoComplete="one-time-code" maxLength={6} placeholder="6-digit code" value={code}
                 onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))} />
-              <button type="button" className="settings__btn" disabled={!password || busy === 'code'} onClick={() => void sendCode()}>
-                {busy === 'code' ? 'Sending…' : sentTo ? 'Send again' : 'Email me a code'}
-              </button>
+              {canEmail && (
+                <button type="button" className="settings__btn" disabled={!password || busy === 'code'} onClick={() => void sendCode()}>
+                  {busy === 'code' ? 'Sending…' : sentTo ? 'Send again' : totp ? 'Email one instead' : 'Email me a code'}
+                </button>
+              )}
             </div>
             {sentTo && <span className="danger-dialog__hint">Sent to {sentTo}. It works once, for 10 minutes.</span>}
           </li>

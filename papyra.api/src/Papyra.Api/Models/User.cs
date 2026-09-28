@@ -59,6 +59,15 @@ public class User
     public int VaultPinFailures { get; set; }
     public DateTime? VaultPinLockedUntilUtc { get; set; }
 
+    // ── Authenticator app (TOTP) ──────────────────────────────────────────────
+    // The first way to confirm a sensitive action (an emailed code is the second),
+    // and the only one on an instance with no outgoing mail. See Security/TotpService.
+    /// <summary>The shared Base32 secret, encrypted with the data-protection keys. Null = not set up.</summary>
+    public string? TotpSecret { get; set; }
+    /// <summary>The last time step a code was accepted for, so a code can't be replayed.</summary>
+    public long? TotpLastStep { get; set; }
+    public DateTime? TotpEnabledUtc { get; set; }
+
     /// <summary>
     /// IANA time zone the person reads times in ("Europe/Berlin"). Null = the
     /// server's own zone (the container's TZ), which /api/auth/me reports.

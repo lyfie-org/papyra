@@ -158,10 +158,7 @@ export default function UsersPanel() {
           <UserPlus size={16} /> Add someone
         </button>
       </div>
-      <p className="settings__hint">
-        Everyone who can sign in to this Papyra. Each person has their own private notes — an admin
-        can add, disable and remove accounts and change roles, but can’t read anyone else’s notes.
-      </p>
+      <p className="settings__hint">Admins manage accounts but can’t read anyone’s notes.</p>
 
       {isLoading && <LoadingBar label="Loading people" />}
       {isError && <p className="settings__error">Couldn’t load the list of accounts.</p>}

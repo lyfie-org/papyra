@@ -8,14 +8,18 @@ namespace Papyra.Api.Storage;
 /// what preferences are stored under — so rename the label freely, never the id.
 /// </summary>
 /// <param name="Critical">
-/// Always delivered and shown switched-on-but-locked. Reserved for mail whose
-/// absence is itself the danger: being told your password changed is how you
-/// find out it wasn't you.
+/// Always delivered and shown switched-on-but-locked. Kept to the handful whose
+/// absence is itself the danger — a new sign-in, a changed password or address,
+/// a pending deletion — so everything else stays the person's choice.
 /// </param>
 /// <param name="AdminOnly">Only offered to (and only ever sent to) administrators.</param>
+/// <param name="Listed">
+/// Shown on the Settings screen. Mail a person asked for in the moment (a reset
+/// link, a one-time code) is always sent and isn't a "notification" to choose.
+/// </param>
 public sealed record NotificationEvent(
     string Id, string Group, string Label, string Description,
-    bool Critical = false, bool DefaultOn = true, bool AdminOnly = false);
+    bool Critical = false, bool DefaultOn = true, bool AdminOnly = false, bool Listed = true);
 
 /// <summary>
 /// Every notification Papyra sends, in the order the Settings screen lists them.
@@ -29,7 +33,7 @@ public static class NotificationCatalog
     public const string Email = "email";
     public static readonly string[] Channels = [Email];
 
-    // Security — the account itself. All critical.
+    // Security — the account itself.
     public const string NewSignIn = "security.new_sign_in";
     public const string PasswordChanged = "security.password_changed";
     public const string PasswordReset = "security.password_reset";
@@ -39,6 +43,7 @@ public static class NotificationCatalog
     public const string VaultPinChanged = "security.vault_pin_changed";
     public const string VaultPinLocked = "security.vault_pin_locked";
     public const string ApiKeyCreated = "security.api_key_created";
+    public const string TotpChanged = "security.totp_changed";
     public const string EmailChanged = "security.email_changed";
     public const string AccountStatus = "account.status";
     public const string AccountDeletion = "account.deletion";
@@ -66,28 +71,30 @@ public static class NotificationCatalog
         new(PasswordChanged, "security", "Password changed",
             "Your password was changed or reset.", Critical: true),
         new(PasswordReset, "security", "Password reset links",
-            "A link to set a new password, when you or an administrator ask for one.", Critical: true),
+            "A link to set a new password, when you or an administrator ask for one.", Critical: true, Listed: false),
         new(VerificationCode, "security", "Verification codes",
-            "One-time codes Papyra asks for before something that can't be undone.", Critical: true),
+            "One-time codes Papyra asks for before something that can't be undone.", Critical: true, Listed: false),
         new(EmailChanged, "security", "Email address changed",
             "Sent to your old address when the address on your account changes.", Critical: true),
         new(PasskeyAdded, "security", "Passkey added",
-            "A device was registered to sign in and open your vault with biometrics.", Critical: true),
+            "A device was registered to sign in and open your vault with biometrics."),
         new(PasskeyRemoved, "security", "Passkey removed",
-            "A registered device can no longer sign in or open your vault.", Critical: true),
+            "A registered device can no longer sign in or open your vault."),
         new(VaultPinChanged, "security", "Vault PIN set or changed",
-            "The PIN that opens your locked notes was set, changed or reset.", Critical: true),
+            "The PIN that opens your locked notes was set, changed or reset."),
         new(VaultPinLocked, "security", "Vault PIN locked",
-            "Too many wrong PIN tries paused or switched off your vault PIN.", Critical: true),
+            "Too many wrong PIN tries paused or switched off your vault PIN."),
+        new(TotpChanged, "security", "Authenticator app changed",
+            "An authenticator app was set up, replaced or removed on your account."),
         new(ApiKeyCreated, "security", "API key created",
-            "A new key that can read and write your notes from scripts was made.", Critical: true),
+            "A new key that can read and write your notes from scripts was made."),
         new(AccountStatus, "security", "Account changes by an administrator",
-            "Your account was disabled or re-enabled, or your role changed.", Critical: true),
+            "Your account was disabled or re-enabled, or your role changed."),
         new(AccountDeletion, "security", "Account deletion",
             "Your account was scheduled for deletion, the deletion was cancelled, or it's about to happen.", Critical: true),
 
         new(ExportReady, "data", "Notes exported",
-            "A copy of all your notes was downloaded — so you'd know if it wasn't you.", Critical: true),
+            "A copy of all your notes was downloaded — so you'd know if it wasn't you."),
         new(BackupFailed, "data", "Backup failed",
             "Your git backup stopped working, or the repository diverged. Sent once, not on every retry."),
         new(BackupSucceeded, "data", "Backup succeeded",

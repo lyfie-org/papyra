@@ -60,7 +60,7 @@ public sealed class CookieSecurePolicyTests
             HandleCookies = false,
         });
 
-        var res = await client.PostAsJsonAsync("/api/auth/setup", new SetupRequest(
+        var res = await client.PostSetupAsync(new SetupRequest(
             Username: "admin", Name: "Admin", Email: "a@b.c", Password: "hunter2!"));
         Assert.Equal(HttpStatusCode.OK, res.StatusCode);
 
@@ -161,7 +161,7 @@ public sealed class CookieSecurePolicyTests
         try
         {
             var client = factory.CreateClient();   // follows cookies, like a browser
-            var setup = await client.PostAsJsonAsync("/api/auth/setup", new SetupRequest(
+            var setup = await client.PostSetupAsync(new SetupRequest(
                 Username: "admin", Name: "Admin", Email: "a@b.c", Password: "hunter2!"));
             Assert.Equal(HttpStatusCode.OK, setup.StatusCode);
 

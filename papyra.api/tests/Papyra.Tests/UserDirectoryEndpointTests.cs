@@ -39,7 +39,7 @@ public sealed class UserDirectoryEndpointTests
         const string Pw = "hunter2!";
 
         var adminClient = factory.CreateClient();
-        var setup = await adminClient.PostAsJsonAsync("/api/auth/setup", new SetupRequest(
+        var setup = await adminClient.PostSetupAsync(new SetupRequest(
             Username: "admin", Name: "Admin", Email: "a@b.c", Password: Pw));
         Assert.Equal(HttpStatusCode.OK, setup.StatusCode);
 

@@ -6,6 +6,7 @@ import {
   GitBranch, Loader2, Monitor, Moon, Sparkles, Sun, TriangleAlert, Upload,
 } from 'lucide-react';
 import TimeZonePicker from '../components/TimeZonePicker';
+import TotpQr from '../components/TotpQr';
 import GitRestorePanel from '../components/GitRestorePanel';
 import { summaryLine } from '../lib/backupSummary';
 import { usernameRule } from '../lib/profileRules';
@@ -21,23 +22,25 @@ import './AuthForm.css';
 import './SetupPage.css';
 
 // The first-run wizard for a brand-new Papyra. Before the account exists:
-//   welcome (fresh, or restore a backup first) → username → email → code →
-//   password → vault PIN → time zone → create.
+//   welcome (fresh, or restore a backup first) → username → authenticator →
+//   email → code → password → vault PIN → time zone → create.
+// The authenticator is required: a fresh Papyra usually can't send email yet,
+// so it is the account's proof of identity. Email (and its code) is optional.
 // Signed in afterwards:
 //   GitHub backup to restore? → imports (optional) → theme → the desk.
 // Restoring first prefills the account steps with what the backup remembered;
 // the person still chooses their username, email, password and PIN again.
 
 type Step =
-  | 'welcome' | 'restore' | 'username' | 'email' | 'code' | 'password' | 'pin' | 'timezone'
+  | 'welcome' | 'restore' | 'username' | 'authenticator' | 'email' | 'code' | 'password' | 'pin' | 'timezone'
   | 'backup' | 'import' | 'theme';
 
-const ACCOUNT_STEPS: Step[] = ['username', 'email', 'code', 'password', 'pin', 'timezone'];
+const ACCOUNT_STEPS: Step[] = ['username', 'authenticator', 'email', 'code', 'password', 'pin', 'timezone'];
 const AFTER_STEPS: Step[] = ['backup', 'import', 'theme'];
 const RESUME_KEY = 'papyra-setup-resume';
 
 const STEP_LABEL: Partial<Record<Step, string>> = {
-  username: 'Username', email: 'Email', code: 'Verify', password: 'Password', pin: 'Vault PIN',
+  username: 'Username', authenticator: 'Authenticator', email: 'Email', code: 'Verify', password: 'Password', pin: 'Vault PIN',
   timezone: 'Time zone', backup: 'Backup', import: 'Import', theme: 'Theme',
 };
 
@@ -89,6 +92,10 @@ export default function SetupPage() {
   const [pin, setPin] = useState('');
   const [pin2, setPin2] = useState('');
   const [zone, setZone] = useState(() => browserTimeZone());
+  // The authenticator: a secret from the server, proven once with a code.
+  const [totp, setTotp] = useState<{ secret: string; uri: string } | null>(null);
+  const [totpCode, setTotpCode] = useState('');
+  const [totpProven, setTotpProven] = useState(false);
 
   // A backup staged before the account exists.
   const [restoreId, setRestoreId] = useState<string | null>(null);
@@ -137,6 +144,28 @@ export default function SetupPage() {
 
   // ── Account steps ──────────────────────────────────────────────────────────
 
+  async function startAuthenticator() {
+    go('authenticator');
+    if (totp) return;
+    const { res, data } = await postJson('/api/auth/setup/totp', { account: username.trim() });
+    if (!res.ok || !data?.secret) { setError((data?.error as string) ?? 'Couldn’t start the authenticator.'); return; }
+    setTotp({ secret: data.secret as string, uri: data.uri as string });
+  }
+
+  async function verifyAuthenticator() {
+    if (!totp) return;
+    setBusy(true);
+    setError(null);
+    try {
+      const { res, data } = await postJson('/api/auth/setup/totp/verify', { secret: totp.secret, code: totpCode.trim() });
+      if (!res.ok) { setError((data?.error as string) ?? 'That code didn’t work.'); return; }
+      setTotpProven(true);
+      go('email');
+    } finally {
+      setBusy(false);
+    }
+  }
+
   async function sendCode() {
     setBusy(true);
     setError(null);
@@ -174,12 +203,13 @@ export default function SetupPage() {
         username: username.trim(), name: name.trim() || undefined, email: email.trim() || undefined,
         emailCode: skipVerify ? undefined : code.trim() || undefined,
         password, pin, timeZone: zone, theme, restoreId: restoreId ?? undefined,
+        totpSecret: totp?.secret,
       });
       if (!res.ok) {
         const field = data?.field as string | undefined;
         setError((data?.error as string) ?? 'Setup failed.');
         const back: Record<string, Step> = {
-          username: 'username', email: 'email', emailCode: 'code', password: 'password', pin: 'pin', timeZone: 'timezone', restore: 'welcome',
+          username: 'username', totpCode: 'authenticator', email: 'email', emailCode: 'code', password: 'password', pin: 'pin', timeZone: 'timezone', restore: 'welcome',
         };
         if (field && back[field]) setStep(back[field]);
         return;
@@ -276,7 +306,7 @@ export default function SetupPage() {
         )}
 
         {step === 'username' && (
-          <form className="setup__body" onSubmit={e => { e.preventDefault(); if (!usernameProblem && username.trim()) go('email'); }}>
+          <form className="setup__body" onSubmit={e => { e.preventDefault(); if (!usernameProblem && username.trim()) void startAuthenticator(); }}>
             <h1 className="auth__title">Choose a username</h1>
             {restoreSummary && (
               <p className="setup__note"><CheckCircle2 size={15} aria-hidden="true" /> Backup ready to restore: {summaryLine(restoreSummary)}. Now set up your account again.</p>
@@ -296,6 +326,20 @@ export default function SetupPage() {
           </form>
         )}
 
+        {step === 'authenticator' && (
+          <form className="setup__body" onSubmit={e => { e.preventDefault(); void verifyAuthenticator(); }}>
+            <h1 className="auth__title">Add an authenticator</h1>
+            <p className="auth__tagline">Scan with Google Authenticator, 1Password or similar. Its codes confirm sensitive changes.</p>
+            {totp ? <TotpQr secret={totp.secret} uri={totp.uri} /> : <Loader2 className="setup__spin" aria-label="Loading" />}
+            <label className="auth__field">Code from the app
+              <input value={totpCode} onChange={e => { setTotpCode(e.target.value.replace(/\D/g, '')); setTotpProven(false); }} inputMode="numeric"
+                autoComplete="one-time-code" maxLength={6} required className="setup__code" />
+            </label>
+            <Nav onBack={() => go('username')} nextDisabled={!totp || totpCode.length !== 6 || busy}
+              nextLabel={busy ? 'Checking…' : totpProven ? 'Continue' : 'Verify'} />
+          </form>
+        )}
+
         {step === 'email' && (
           <EmailStep
             email={email}
@@ -305,7 +349,7 @@ export default function SetupPage() {
             onConfigured={() => setStatus(s => s && { ...s, emailConfigured: true })}
             onSend={() => void sendCode()}
             onSkip={() => { setSkipVerify(true); go('password'); }}
-            onBack={() => go('username')}
+            onBack={() => go('authenticator')}
             onError={setError}
           />
         )}

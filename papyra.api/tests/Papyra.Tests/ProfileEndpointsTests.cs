@@ -26,7 +26,7 @@ public sealed class ProfileEndpointsTests
         try
         {
             var client = factory.CreateClient();
-            var res = await client.PostAsJsonAsync("/api/auth/setup", new SetupRequest(
+            var res = await client.PostSetupAsync(new SetupRequest(
                 Username: "admin", Name: "Admin", Email: "admin@example.com", Password: "hunter2!"));
             Assert.Equal(HttpStatusCode.OK, res.StatusCode);
             var uid = (await res.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetInt32().ToString();
@@ -41,8 +41,10 @@ public sealed class ProfileEndpointsTests
     }
 
     // With no mail configured, moving the email needs the account password.
-    private static Task<HttpResponseMessage> Put(HttpClient c, string? username = null, string? name = null, string? email = null)
-        => c.PutAsJsonAsync("/api/auth/profile", new ProfileRequest(name, email, username, CurrentPassword: "hunter2!"));
+    // The admin set up an authenticator at setup, so moving its email takes a code from it.
+    private static Task<HttpResponseMessage> Put(HttpClient c, string? username = null, string? name = null, string? email = null, bool totp = true)
+        => c.PutAsJsonAsync("/api/auth/profile", new ProfileRequest(name, email, username, CurrentPassword: "hunter2!",
+            TotpCode: totp && email is not null ? TestAuth.TotpCode(c) : null));
 
     private static async Task<JsonElement> Me(HttpClient c)
         => await c.GetFromJsonAsync<JsonElement>("/api/auth/me");
@@ -192,6 +194,10 @@ public sealed class ProfileEndpointsTests
     [Fact]
     public Task EmailChange_NeedsProof_FromTheAccount() => InApp(async (client, _, _, _) =>
     {
+        // Without an authenticator (and with no mail), the password is the proof.
+        Assert.Equal(HttpStatusCode.NoContent,
+            (await client.PostAsJsonAsync("/api/auth/totp/remove", new { password = "hunter2!" })).StatusCode);
+
         // No code (mail is off here) and no password: refused, address unchanged.
         var bare = await client.PutAsJsonAsync("/api/auth/profile", new ProfileRequest(null, "new@example.com"));
         Assert.Equal(HttpStatusCode.PreconditionRequired, bare.StatusCode);
@@ -206,7 +212,7 @@ public sealed class ProfileEndpointsTests
         Assert.Equal(HttpStatusCode.OK, code.StatusCode);
         Assert.True((await code.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("passwordRequired").GetBoolean());
 
-        Assert.Equal(HttpStatusCode.OK, (await Put(client, email: "new@example.com")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await Put(client, totp: false, email: "new@example.com")).StatusCode);
         Assert.Equal("new@example.com", (await Me(client)).GetProperty("email").GetString());
 
         // Same address, any case: not a change, nothing to prove.

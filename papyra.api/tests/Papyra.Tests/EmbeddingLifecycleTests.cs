@@ -160,7 +160,7 @@ public sealed class EmbeddingLifecycleTests
 
     private static async Task SeedAdminAsync(HttpClient client)
     {
-        var res = await client.PostAsJsonAsync("/api/auth/setup", new SetupRequest(
+        var res = await client.PostSetupAsync(new SetupRequest(
             Username: "admin", Name: "Admin", Email: "a@b.c", Password: "hunter2!"));
         Assert.Equal(HttpStatusCode.OK, res.StatusCode);
     }

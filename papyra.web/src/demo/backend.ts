@@ -45,8 +45,10 @@ const demoNotifyOff: Record<string, boolean> = { 'data.backup_succeeded': true }
 const DEMO_EVENTS = [
   ['security.new_sign_in', 'security', 'New sign-in', 'Someone signed in from a browser or device your account hasn’t seen before.', true],
   ['security.password_changed', 'security', 'Password changed', 'Your password was changed or reset.', true],
-  ['security.passkey_added', 'security', 'Passkey added', 'A device was registered to sign in and open your vault with biometrics.', true],
-  ['data.export', 'data', 'Notes exported', 'A copy of all your notes was downloaded — so you’d know if it wasn’t you.', true],
+  ['security.passkey_added', 'security', 'Passkey added', 'A device was registered to sign in and open your vault with biometrics.', false],
+  ['security.vault_pin_changed', 'security', 'Vault PIN set or changed', 'The PIN that opens your locked notes was set, changed or reset.', false],
+  ['security.api_key_created', 'security', 'API key created', 'A new key that can read and write your notes from scripts was made.', false],
+  ['data.export', 'data', 'Notes exported', 'A copy of all your notes was downloaded — so you’d know if it wasn’t you.', false],
   ['data.backup_failed', 'data', 'Backup failed', 'Your git backup stopped working. Sent once, not on every retry.', false],
   ['data.backup_succeeded', 'data', 'Backup succeeded', 'Each time your git backup pushes new changes.', false],
   ['collab.mention', 'collab', 'Mentions', 'Someone @mentions you in one of their notes.', false],
@@ -219,6 +221,8 @@ const routes: Route[] = [
   ],
   ['POST', /^\/api\/auth\/password$/, () => serverOnly('Changing your password')],
   ['POST', /^\/api\/auth\/avatar$/, () => serverOnly('Uploading a picture')],
+  ['GET', /^\/api\/auth\/totp$/, () => json({ enabled: false, enabledUtc: null })],
+  ['POST', /^\/api\/auth\/totp/, () => serverOnly('An authenticator app')],
   // No stored avatar: 404 is what the real API answers, and Avatar falls back
   // to the initial rather than showing a broken image.
   ['GET', /^\/api\/auth\/avatar/, () => new Response(null, { status: 404 })],
