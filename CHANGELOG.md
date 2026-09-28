@@ -6,6 +6,10 @@ a Docker Hub tag and a GitHub Release.
 
 <!-- new releases are inserted directly below this line -->
 
+## [0.1.18] - 2026-09-28
+
+- fix: UI polish — neutral caret/focus/hover edges, themed dropdowns, share user picker (bab9a17)
+
 ## [0.1.17] - 2026-09-27
 
 - feat: note-length-relative card heights; bump @lyfie/luthor to 2.10.3 (0f667c3)
