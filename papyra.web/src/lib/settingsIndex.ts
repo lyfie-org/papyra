@@ -49,7 +49,7 @@ export const SETTINGS_INDEX: SettingsEntry[] = [
   { tab: 'appearance', tabLabel: 'Appearance', section: 'formatting-toolbar', sectionLabel: 'Formatting toolbar', keywords: ['editor', 'toolbar', 'table', 'bullet list', 'heading', 'embed', 'always show'] },
 
   { tab: 'notifications', tabLabel: 'Notifications', keywords: ['alerts'] },
-  { tab: 'notifications', tabLabel: 'Notifications', section: 'email-notifications', sectionLabel: 'Email notifications', keywords: ['mentions', 'shares', 'digest'] },
+  { tab: 'notifications', tabLabel: 'Notifications', section: 'email-notifications', sectionLabel: 'What Papyra tells you about', keywords: ['email', 'mentions', 'shares', 'backup', 'new sign-in', 'login alert', 'security email', 'push'] },
 
   { tab: 'security', tabLabel: 'Security', keywords: ['privacy', 'lock'] },
   { tab: 'security', tabLabel: 'Security', section: 'biometric-unlock', sectionLabel: 'Biometric unlock', keywords: ['passkey', 'fingerprint', 'face', 'vault', 'webauthn', 'device'] },
@@ -66,8 +66,7 @@ export const SETTINGS_INDEX: SettingsEntry[] = [
   { tab: 'keys', tabLabel: 'API Keys', section: 'access-tokens', sectionLabel: 'Personal access tokens', keywords: ['token', 'api key', 'integration', 'webhook'] },
 
   { tab: 'sync', tabLabel: 'Backup', keywords: ['git', 'backup'] },
-  { tab: 'sync', tabLabel: 'Backup', section: 'git-backup', sectionLabel: 'Back up to a git repository', keywords: ['git', 'repository', 'remote', 'github', 'ssh key'] },
-  { tab: 'sync', tabLabel: 'Backup', section: 'run-a-sync', sectionLabel: 'Run a sync', keywords: ['push', 'pull', 'sync now'] },
+  { tab: 'sync', tabLabel: 'Backup', section: 'git-backup', sectionLabel: 'Back up to GitHub', keywords: ['git', 'repository', 'remote', 'github', 'set up backup', 'token', 'gitlab', 'back up now', 'sync now', 'push'] },
 
   { tab: 'sso', tabLabel: 'SSO', adminOnly: true, keywords: ['single sign-on', 'login'] },
   { tab: 'sso', tabLabel: 'SSO', section: 'oidc', sectionLabel: 'Single sign-on (OIDC)', adminOnly: true, keywords: ['oidc', 'oauth', 'identity provider', 'client id'] },
@@ -87,12 +86,10 @@ export const SETTINGS_INDEX: SettingsEntry[] = [
     { tab: 'ai', tabLabel: 'AI', section: 'hosted-models', sectionLabel: 'Or use a paid service', adminOnly: true, keywords: ['openai', 'anthropic', 'api key', 'hosted'] },
   ] : []),
 
-  // Managing people moved out of Settings to its own page, so its entries carry
-  // an href rather than a tab. They stay in this index because a person looking
-  // for "add a user" types it into the same box either way.
+  { tab: 'users', tabLabel: 'Users', adminOnly: true, keywords: ['admin', 'administration', 'accounts', 'manage users', 'people'] },
   {
-    tab: 'admin', tabLabel: 'Manage Users', href: '/admin', adminOnly: true,
-    keywords: ['admin', 'administration', 'accounts', 'people', 'create user', 'add user', 'new account', 'roles', 'reset password', 'recovery link'],
+    tab: 'users', tabLabel: 'Users', section: 'people', sectionLabel: 'People', adminOnly: true,
+    keywords: ['create user', 'add user', 'new account', 'roles', 'make admin', 'promote', 'demote', 'disable account', 'lock account', 'suspend', 'reset password', 'recovery link'],
   },
 
   { tab: 'jobs', tabLabel: 'Jobs', adminOnly: true, keywords: ['background', 'housekeeping', 'maintenance', 'tasks'] },

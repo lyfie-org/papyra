@@ -44,12 +44,29 @@ export interface SmtpConfigWrite extends Omit<SmtpConfig, 'hasPassword'> {
   password?: string;
 }
 
+/** One thing Papyra can tell you about, and whether it emails you. */
+export interface NotificationEvent {
+  id: string;
+  group: string;
+  label: string;
+  description: string;
+  /** Always sent; shown switched on and locked. */
+  critical: boolean;
+  email: boolean;
+}
+
 export interface NotificationPrefs {
   mention: boolean;
   share: boolean;
   emailConfigured: boolean;
   hasAddress: boolean;
+  /** Delivery channels the server knows. Email today; push joins later. */
+  channels: string[];
+  groups: { id: string; label: string }[];
+  events: NotificationEvent[];
 }
+
+export interface NotificationSwitch { id: string; enabled: boolean; channel?: string }
 
 async function getJson<T>(url: string): Promise<T> {
   const res = await fetch(url);
@@ -135,8 +152,24 @@ export function useNotificationPrefs() {
 export function useSaveNotificationPrefs() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (next: { mention?: boolean; share?: boolean }) =>
+    mutationFn: (next: { mention?: boolean; share?: boolean; events?: NotificationSwitch[] }) =>
       putJson('/api/auth/notifications', next),
-    onSuccess: () => qc.invalidateQueries({ queryKey: NOTIFY_KEY }),
+    // Flip the switch at once; the server's answer follows.
+    onMutate: async (next) => {
+      await qc.cancelQueries({ queryKey: NOTIFY_KEY });
+      const prev = qc.getQueryData<NotificationPrefs>(NOTIFY_KEY);
+      if (prev && next.events) {
+        const on = new Map(next.events.map(e => [e.id, e.enabled]));
+        qc.setQueryData<NotificationPrefs>(NOTIFY_KEY, {
+          ...prev,
+          events: prev.events.map(e => (on.has(e.id) ? { ...e, email: on.get(e.id)! } : e)),
+        });
+      }
+      return { prev };
+    },
+    onError: (_err, _next, context) => {
+      if (context?.prev) qc.setQueryData(NOTIFY_KEY, context.prev);
+    },
+    onSettled: () => qc.invalidateQueries({ queryKey: NOTIFY_KEY }),
   });
 }

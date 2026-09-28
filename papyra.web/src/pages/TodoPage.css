@@ -234,10 +234,34 @@
   opacity: 0.75;
 }
 
-/* While typing a new item the hover rail would sit over the field: step aside. */
-.todo-card:has(.todo-card__add-input:focus) .note-card__actions:not(:focus-within) {
-  opacity: 0;
-  pointer-events: none;
+/* The list's "…" menu: a muted glyph at the end of the add row that firms up
+   when the card is hovered or the menu is open — never a floating rail. */
+.todo-card__menu {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 28px;
+  flex-shrink: 0;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
+  opacity: 0.55;
+  cursor: pointer;
+  transition: opacity var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+.todo-card:hover .todo-card__menu,
+.todo-card__menu:focus-visible,
+.todo-card__menu[aria-expanded='true'] { opacity: 1; }
+.todo-card__menu:hover,
+.todo-card__menu[aria-expanded='true'] { background: var(--accent-bg); color: var(--accent-text); }
+.note-card--colored .todo-card__menu { color: var(--tint-ink-muted); }
+.note-card--colored .todo-card__menu:hover,
+.note-card--colored .todo-card__menu[aria-expanded='true'] {
+  background: color-mix(in srgb, var(--tint-ink) 14%, transparent);
+  color: var(--tint-ink);
 }
 
 /* Add-item on a coloured list: drawn in the note's own ink, on a lifted wash

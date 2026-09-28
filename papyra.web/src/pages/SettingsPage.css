@@ -33,8 +33,32 @@
 .settings__panel {
   display: flex;
   flex-direction: column;
-  gap: 1.5rem;
+  gap: var(--space-4);
 }
+
+/* ── Vertical rhythm ──────────────────────────────────────────────────────────
+   One spacing system for every tab, owned by the panel's gap rather than by
+   each element's own margins. The margins used to stack on top of the gap, so a
+   heading sat 32px above its own description and 40px above its form, while
+   the next section started only 24px below the last button — the parts of a
+   section looked further apart than the sections themselves.
+
+   Now: a section's heading hugs its description (8px), everything inside a
+   section is 16px apart, and a new section opens with a hairline and room
+   above it (≈48px), so the grouping reads at a glance. */
+.settings__panel > :is(.settings__hint, .settings__error, .settings__callout, .settings__details, .settings__msg) {
+  margin: 0;
+}
+.settings__panel > .settings__subhead {
+  margin: 0 0 calc(var(--space-2) - var(--space-4));
+}
+.settings__panel > .settings__subhead:not(:first-child) {
+  margin-top: var(--space-2);
+  padding-top: var(--space-6);
+  border-top: 1px solid var(--border);
+}
+/* A hint that trails a control (e.g. "No devices registered") belongs to it. */
+.settings__panel > :is(form, .settings__row, table) + .settings__hint { margin-top: calc(var(--space-2) - var(--space-4)); }
 
 .settings__details {
   display: grid;
@@ -332,6 +356,17 @@
     scrollbar-width: none;
   }
   .settings__rail::-webkit-scrollbar { display: none; }
+  /* In the pill row the group heading shrinks to a hairline between the groups. */
+  .settings__rail-group {
+    flex: none;
+    align-self: stretch;
+    width: 1px;
+    margin: var(--space-1) var(--space-1);
+    padding: 0;
+    overflow: hidden;
+    background: var(--border);
+    font-size: 0;
+  }
   .settings__rail-item {
     flex: none;
     scroll-snap-align: center;
@@ -356,6 +391,14 @@
   font-size: 0.92rem;
   text-align: left;
   cursor: pointer;
+}
+.settings__rail-group {
+  margin: var(--space-4) 0 var(--space-1);
+  padding: 0 0.8rem;
+  font: 500 var(--fs-2xs) / 1.2 var(--sans);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text);
 }
 .settings__rail-item:hover {
   background: var(--accent-bg);
@@ -1026,8 +1069,8 @@
   display: grid;
   justify-items: start;
   gap: var(--space-2);
-  margin-bottom: var(--space-4);
 }
+.settings__vault-unlock .settings__hint { margin: 0; }
 .settings__vault-unlock .vault-unlock { align-items: flex-start; }
 .settings__link:disabled {
   opacity: 0.5;

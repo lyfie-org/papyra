@@ -3,17 +3,20 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   User as UserIcon, Palette, Database, Info, Camera,
-  Sun, Moon, Monitor, Upload, Download, RefreshCw, KeyRound, Copy, Trash2, Lock, ShieldAlert,
+  Sun, Moon, Monitor, Upload, Download, KeyRound, Copy, Trash2, Lock, ShieldAlert,
   Fingerprint, CheckCircle2, GitBranch, AlertTriangle, Bell, Mail, KeySquare, Send, UserPlus,
-  Sparkles, Play, Cog, LockOpen, Type, Eye, LogOut, X,
+  Sparkles, Play, Cog, LockOpen, Type, Eye, LogOut, X, Users,
 } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { useDismiss } from '../hooks/useDismiss';
-import { useGitConfig, useSaveGitConfig, useRunGitSync } from '../hooks/useGitSync';
+import { useGitConfig, useSaveGitConfig } from '../hooks/useGitSync';
 import {
   useOidcConfig, useSaveOidcConfig, useSmtpConfig, useSaveSmtpConfig,
-  useSendTestEmail, useInviteUser, useNotificationPrefs, useSaveNotificationPrefs,
+  useSendTestEmail, useInviteUser,
 } from '../hooks/useInstanceConfig';
+import NotificationSettings from '../components/NotificationSettings';
+import UsersPanel from './ManageUsersPage';
+import GitSetupGuide from '../components/GitSetupGuide';
 import {
   useAiConfig, useSaveAiConfig, useAiStatus, useAiModels, usePullModel,
   type AiConfig, type PullProgress,
@@ -53,8 +56,12 @@ import { fetchWithProgress } from '../lib/progress';
 import { MASKED_SECRET, NO_AUTOFILL } from '../lib/autofill';
 import { allTimeZones } from '../lib/timeZone';
 
-type Tab = 'profile' | 'appearance' | 'notifications' | 'security' | 'data' | 'keys' | 'sync' | 'sso' | 'email' | 'ai' | 'jobs' | 'about';
+type Tab = 'profile' | 'appearance' | 'notifications' | 'security' | 'data' | 'keys' | 'sync'
+  | 'users' | 'sso' | 'email' | 'ai' | 'jobs' | 'about';
 
+// Two groups. The first is yours — it changes what happens to you, and everyone
+// sees it. "Administration" changes the whole instance and only admins see it;
+// the heading keeps the two from reading as the same kind of setting.
 const NAV: { id: Tab; label: string; icon: typeof UserIcon; adminOnly?: boolean }[] = [
   { id: 'profile', label: 'Profile', icon: UserIcon },
   { id: 'appearance', label: 'Appearance', icon: Palette },
@@ -63,11 +70,12 @@ const NAV: { id: Tab; label: string; icon: typeof UserIcon; adminOnly?: boolean 
   { id: 'data', label: 'Data & Storage', icon: Database },
   { id: 'keys', label: 'API Keys', icon: KeyRound },
   { id: 'sync', label: 'Backup', icon: GitBranch },
+  { id: 'about', label: 'About', icon: Info },
+  { id: 'users', label: 'Users', icon: Users, adminOnly: true },
   { id: 'sso', label: 'SSO', icon: KeySquare, adminOnly: true },
   { id: 'email', label: 'Email', icon: Mail, adminOnly: true },
   { id: 'ai', label: 'AI', icon: Sparkles, adminOnly: true },
   { id: 'jobs', label: 'Jobs', icon: Cog, adminOnly: true },
-  { id: 'about', label: 'About', icon: Info },
 ];
 
 // The AI tab is hidden while the assistant is held back for a later release.
@@ -141,17 +149,17 @@ export default function SettingsPage() {
         <div className="settings__side">
           <h1 className="page-title settings__title">Settings</h1>
           <nav className="settings__rail" aria-label="Settings sections" ref={railRef}>
-            {VISIBLE_NAV.filter(n => !n.adminOnly || isAdmin).map(({ id, label, icon: Icon }) => (
-              <button
-                key={id}
-                type="button"
-                className={`settings__rail-item${tab === id ? ' is-active' : ''}`}
-                aria-current={tab === id}
-                onClick={() => setTab(id)}
-              >
-                <Icon size={17} /> {label}
-              </button>
+            {VISIBLE_NAV.filter(n => !n.adminOnly).map(item => (
+              <RailItem key={item.id} item={item} active={tab === item.id} onSelect={setTab} />
             ))}
+            {isAdmin && (
+              <>
+                <p className="settings__rail-group" aria-hidden="true">Administration</p>
+                {VISIBLE_NAV.filter(n => n.adminOnly).map(item => (
+                  <RailItem key={item.id} item={item} active={tab === item.id} onSelect={setTab} />
+                ))}
+              </>
+            )}
           </nav>
         </div>
 
@@ -163,6 +171,7 @@ export default function SettingsPage() {
           {tab === 'data' && <DataTab />}
           {tab === 'keys' && <KeysTab />}
           {tab === 'sync' && <SyncTab />}
+          {tab === 'users' && isAdmin && <UsersPanel />}
           {tab === 'sso' && isAdmin && <SsoTab />}
           {tab === 'email' && isAdmin && <EmailTab />}
           {tab === 'ai' && isAdmin && AI_ENABLED && <AiTab />}
@@ -171,6 +180,22 @@ export default function SettingsPage() {
         </div>
       </div>
     </section>
+  );
+}
+
+function RailItem({ item, active, onSelect }: {
+  item: (typeof NAV)[number]; active: boolean; onSelect: (t: Tab) => void;
+}) {
+  const Icon = item.icon;
+  return (
+    <button
+      type="button"
+      className={`settings__rail-item${active ? ' is-active' : ''}`}
+      aria-current={active}
+      onClick={() => onSelect(item.id)}
+    >
+      <Icon size={17} /> {item.label}
+    </button>
   );
 }
 
@@ -1231,7 +1256,6 @@ function JobsTab() {
 function SyncTab() {
   const { data, isLoading, isError } = useGitConfig();
   const save = useSaveGitConfig();
-  const run = useRunGitSync();
 
   // null means "not edited yet", so the field shows whatever the server holds
   // without an effect copying it into state (which would cascade a render on
@@ -1254,164 +1278,80 @@ function SyncTab() {
   }
 
   if (isLoading) return <div className="settings__panel"><LoadingBar label="Loading settings" /></div>;
-  if (isError) return <div className="settings__panel"><p className="settings__error">Couldn’t load the git configuration.</p></div>;
+  if (isError) return <div className="settings__panel"><p className="settings__error">Couldn’t load the backup settings.</p></div>;
 
   return (
     <div className="settings__panel">
-      <h2 id="git-backup" className="settings__subhead">Back up to a git repository</h2>
-
+      <h2 id="git-backup" className="settings__subhead">Back up to GitHub</h2>
       <p className="settings__hint">
-        Keeps a copy of your notes in a git repository you control, so you have a
-        second copy off this server and a history of every change. This backs up
-        your notes only — nobody else’s, and no one else can see or configure it.
+        A second copy of your notes, off this server, with the history of every change. It backs up
+        your notes only — nobody else’s — and nobody else can see or change where it goes.
       </p>
+
+      <GitSetupGuide />
 
       <div className="settings__callout" role="note">
         <AlertTriangle size={18} aria-hidden="true" />
         <div>
           <strong>Anyone who can read the repository can read your notes.</strong>
           <p>
-            Your notes are copied there as plain text. Use a private repository, and
-            treat access to it as access to everything you have written.
+            They’re copied there as plain text — locked Vault notes included. Keep the repository
+            private, and treat access to it as access to everything you’ve written.
           </p>
-          <p>Papyra’s own files (<code>.papyra/</code>, <code>.trash/</code>) are left out.</p>
         </div>
       </div>
 
-      <form className="settings__form" onSubmit={submit}>
-        <label className="settings__field">Remote URL
-          <input
-            type="url"
-            value={remoteUrl}
-            placeholder="https://github.com/you/papyra-vault.git"
-            onChange={e => setRemoteUrl(e.target.value)}
-          />
-        </label>
-        <label className="settings__field">Branch
-          <input
-            type="text"
-            value={branch}
-            placeholder="main"
-            onChange={e => setBranch(e.target.value)}
-          />
-        </label>
-        <label className="settings__field">
-          Access token {data?.hasToken && <span className="settings__hint">(one is stored — leave blank to keep it)</span>}
-          <input
-            {...MASKED_SECRET}
-            value={token}
-            placeholder={data?.hasToken ? '••••••••' : 'Personal access token'}
-            onChange={e => setToken(e.target.value)}
-          />
-        </label>
-
-        <div className="settings__form-actions">
-          <button type="submit" className="settings__btn" disabled={save.isPending}>
-            {save.isPending ? 'Saving…' : 'Save configuration'}
-          </button>
-          {saved && <span className="settings__msg"><CheckCircle2 size={15} /> Saved</span>}
-          {save.isError && <span className="settings__error">Couldn’t save.</span>}
-        </div>
-      </form>
-
-      <h2 id="run-a-sync" className="settings__subhead">Run a sync</h2>
-      <p className="settings__hint">
-        Stages, commits and pushes every tenant’s vault. A diverged remote is never
-        force-pushed — the sync stops and flags a conflict instead.
-      </p>
-      <div className="settings__row">
-        <button
-          type="button"
-          className="settings__btn"
-          disabled={run.isPending || !data?.remoteUrl}
-          onClick={() => run.mutate()}
-        >
-          <RefreshCw size={16} /> {run.isPending ? 'Syncing…' : 'Sync now'}
-        </button>
-        {!data?.remoteUrl && <span className="settings__hint">Set a remote URL first.</span>}
-        {run.data && (
-          <span className="settings__msg">
-            <CheckCircle2 size={15} /> {run.data.status}{run.data.detail ? ` — ${run.data.detail}` : ''}
-          </span>
-        )}
-        {run.isError && <span className="settings__error">The sync failed to run.</span>}
-      </div>
-
-      <dl className="settings__details">
-        <div><dt>Last sync</dt>
-          <dd>{data?.lastSyncUtc ? new Date(data.lastSyncUtc).toLocaleString() : 'Never'}</dd></div>
-        <div><dt>Status</dt>
-          <dd>{data?.conflict ? 'Conflict — the remote has diverged' : 'OK'}</dd></div>
-        {data?.lastError && <div><dt>Last error</dt><dd>{data.lastError}</dd></div>}
-      </dl>
+      <details className="settings__advanced">
+        <summary>Another git host, or a different branch</summary>
+        <p className="settings__hint">
+          GitLab, Gitea, Codeberg or your own server work too: any https address that accepts a token
+          as the password. Papyra’s own files (<code>.papyra/</code>, <code>.trash/</code>) are left out.
+        </p>
+        <form className="settings__form" onSubmit={submit}>
+          <label className="settings__field">Repository address
+            <input
+              type="url"
+              value={remoteUrl}
+              placeholder="https://git.example.com/you/papyra-notes.git"
+              onChange={e => setRemoteUrl(e.target.value)}
+            />
+          </label>
+          <label className="settings__field">Branch
+            <input type="text" value={branch} placeholder="main" onChange={e => setBranch(e.target.value)} />
+          </label>
+          <label className="settings__field">
+            Access token {data?.hasToken && <span className="settings__hint">(one is saved — leave blank to keep it)</span>}
+            <input
+              {...MASKED_SECRET}
+              value={token}
+              placeholder={data?.hasToken ? '••••••••' : 'Personal access token'}
+              onChange={e => setToken(e.target.value)}
+            />
+          </label>
+          <div className="settings__form-actions">
+            <button type="submit" className="settings__btn" disabled={save.isPending}>
+              {save.isPending ? 'Saving…' : 'Save'}
+            </button>
+            {saved && <span className="settings__msg"><CheckCircle2 size={15} /> Saved</span>}
+            {save.isError && <span className="settings__error">Couldn’t save.</span>}
+          </div>
+        </form>
+      </details>
     </div>
   );
 }
 
 // ── Notifications (per user) ─────────────────────────────────────────────────────
-// Opt-out switches for courtesy email. The in-app inbox is never affected: turning
-// mention mail off stops the email, not the delivery — so the copy says so rather
-// than letting someone think they'll stop being mentioned.
 function NotificationsTab() {
-  const { data, isLoading } = useNotificationPrefs();
-  const save = useSaveNotificationPrefs();
-
-  if (isLoading) return <div className="settings__panel"><LoadingBar label="Loading settings" /></div>;
-
   return (
     <div className="settings__panel">
-      <h2 id="email-notifications" className="settings__subhead">Email notifications</h2>
+      <h2 id="email-notifications" className="settings__subhead">What Papyra tells you about</h2>
       <p className="settings__hint">
-        Papyra emails you when something needs your attention. These are courtesy copies —
-        the in-app notifications tray always receives everything regardless of what you choose here.
+        Choose what’s worth an email. Anything that keeps your account safe is always sent —
+        it’s listed so you know what to expect. These same choices will apply to phone
+        notifications when the Papyra app arrives.
       </p>
-
-      {!data?.emailConfigured && (
-        <div className="settings__callout" role="note">
-          <AlertTriangle size={18} aria-hidden="true" />
-          <div>
-            <strong>Email isn’t set up on this instance.</strong>
-            <p>
-              These preferences are saved, but nothing will be sent until an administrator
-              configures an SMTP server under Settings → Email.
-            </p>
-          </div>
-        </div>
-      )}
-
-      {data?.emailConfigured && !data.hasAddress && (
-        <div className="settings__callout" role="note">
-          <AlertTriangle size={18} aria-hidden="true" />
-          <div>
-            <strong>Your account has no email address.</strong>
-            <p>Add one on the Profile tab to receive notifications.</p>
-          </div>
-        </div>
-      )}
-
-      <label className="settings__field settings__field--inline">
-        <input
-          type="checkbox" role="switch" className="switch"
-          checked={data?.mention ?? true}
-          onChange={e => save.mutate({ mention: e.target.checked })}
-        />
-        Someone @mentions me in a note
-      </label>
-
-      <label className="settings__field settings__field--inline">
-        <input
-          type="checkbox" role="switch" className="switch"
-          checked={data?.share ?? true}
-          onChange={e => save.mutate({ share: e.target.checked })}
-        />
-        Someone shares a note with me
-      </label>
-
-      <p className="settings__hint">
-        Security email — a password reset, or confirmation that your password changed — is
-        always sent and can’t be switched off.
-      </p>
-      {save.isError && <p className="settings__error">Couldn’t save that preference.</p>}
+      <NotificationSettings />
     </div>
   );
 }

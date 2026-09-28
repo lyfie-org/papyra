@@ -4,6 +4,7 @@ import { describe, it, expect } from 'vitest';
 import settingsPage from '../pages/SettingsPage.tsx?raw';
 import aboutPanel from '../components/AboutPanel.tsx?raw';
 import deleteAccount from '../components/DeleteAccountSection.tsx?raw';
+import usersPanel from '../pages/ManageUsersPage.tsx?raw';
 import { SETTINGS_INDEX, searchSettings, settingsHref } from './settingsIndex';
 
 describe('settingsIndex', () => {
@@ -21,14 +22,15 @@ describe('settingsIndex', () => {
     }
   });
 
-  it('sends the Manage Users entry to its own page', () => {
+  it('sends the users entry to Settings → Users', () => {
     const [entry] = searchSettings('add user', true);
-    expect(entry.tabLabel).toBe('Manage Users');
-    expect(settingsHref(entry)).toBe('/admin');
+    expect(entry.tabLabel).toBe('Users');
+    expect(settingsHref(entry)).toBe('/settings?tab=users&s=people');
   });
 
-  it('keeps Manage Users out of a non-admin search', () => {
+  it('keeps Users out of a non-admin search', () => {
     expect(searchSettings('manage users', false)).toEqual([]);
+    expect(searchSettings('disable account', false)).toEqual([]);
     expect(searchSettings('manage users', true).length).toBeGreaterThan(0);
   });
 
@@ -38,6 +40,7 @@ describe('settingsIndex', () => {
       // The About tab is its own component.
       ...[...aboutPanel.matchAll(/<h2 id="([a-z-]+)"/g)].map(m => m[1]),
       ...[...deleteAccount.matchAll(/<h2 id="([a-z-]+)"/g)].map(m => m[1]),
+      ...[...usersPanel.matchAll(/<h2 id="([a-z-]+)"/g)].map(m => m[1]),
     ]);
     for (const entry of SETTINGS_INDEX) {
       if (entry.section) expect(ids).toContain(entry.section);
@@ -55,9 +58,9 @@ describe('settingsIndex', () => {
 
   it('hides admin pages from someone who is not an admin', () => {
     const asUser = searchSettings('users', false);
-    expect(asUser.some(e => e.tab === 'admin')).toBe(false);
+    expect(asUser.some(e => e.tab === 'users')).toBe(false);
     const asAdmin = searchSettings('users', true);
-    expect(asAdmin.some(e => e.tab === 'admin')).toBe(true);
+    expect(asAdmin.some(e => e.tab === 'users')).toBe(true);
   });
 
   it('ranks a heading match above a keyword-only match', () => {

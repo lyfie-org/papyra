@@ -1,12 +1,7 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 
-// Git mirroring config (admin, whole instance).
-//
-// Worth knowing before touching any of this: the mirrored repository is the
-// entire users/ directory, so a sync pushes EVERY tenant's notes and media to
-// this one remote — not only the signed-in admin's vault. The API documents it
-// on the endpoint; the Sync tab states it in the UI, which is where an admin
-// actually is when they paste a remote URL.
+// Git backup of the signed-in person's own vault. Per account: each person has
+// their own remote, token and schedule, and nobody can see or change another's.
 export interface GitConfig {
   remoteUrl: string;
   branch: string;
@@ -65,4 +60,20 @@ export function useRunGitSync() {
     // The run updates lastSyncUtc / lastError / conflict server-side.
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['git'] }),
   });
+}
+
+export type GitProbe =
+  | { ok: true; empty: boolean; branches: string[] }
+  | { ok: false; error: string };
+
+/** Try an address + token without saving them (the setup guide's check step). */
+export async function probeGitRemote(remoteUrl: string, token?: string): Promise<GitProbe> {
+  const res = await fetch('/api/git/test', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ remoteUrl, branch: 'main', token: token || undefined }),
+  });
+  const data = await res.json().catch(() => null) as (GitProbe & { error?: string }) | null;
+  if (!res.ok) return { ok: false, error: data?.error ?? 'Couldn’t check that repository.' };
+  return data ?? { ok: false, error: 'Couldn’t check that repository.' };
 }

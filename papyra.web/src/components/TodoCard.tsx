@@ -1,12 +1,11 @@
 import { memo, useId, useState, type CSSProperties } from 'react';
 import { Link, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { Archive, Pin, Plus, Share2, Trash2, X } from 'lucide-react';
+import { Pin, Plus, X } from 'lucide-react';
 import type { Note } from '../types/note';
 import { putNote } from '../lib/notesApi';
 import { patchNoteInCache } from '../lib/notesCache';
 import { useTrashNote } from '../hooks/useTrashNote';
-import { useSyncState } from '../hooks/useSync';
 import CardMenu from './CardMenu';
 import ShareDialog from './ShareDialog';
 import { InlineMarkdown } from './MarkdownPreview';
@@ -39,8 +38,6 @@ function TodoCard({ note }: { note: Note }) {
   const [shareOpen, setShareOpen] = useState(false);
   const trashNote = useTrashNote();
   const navigate = useNavigate();
-  const { online } = useSyncState();
-  const offlineHint = online ? undefined : 'Needs a connection';
   const idBase = useId();
   const { lines, items } = parse(note.body);
   const done = items.filter(i => i.checked).length;
@@ -163,7 +160,9 @@ function TodoCard({ note }: { note: Note }) {
         ))}
       </ul>
 
-      {/* The + leads, so the hover action rail (bottom-right) never sits on it. */}
+      {/* One quiet "…" at the end of the add row holds every list action. A
+          floating hover rail here sat over the field and competed with the
+          checklist's own controls; a single menu reads as part of the card. */}
       <div className="todo-card__add">
         <button type="button" className="todo-card__add-btn" aria-label="Add item" onClick={addItem}>
           <Plus size={16} />
@@ -175,32 +174,15 @@ function TodoCard({ note }: { note: Note }) {
           onChange={(e) => setDraft(e.target.value)}
           onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addItem(); } }}
         />
+        <CardMenu
+          note={note}
+          triggerClassName="todo-card__menu"
+          onShare={() => setShareOpen(true)}
+          onArchive={archive}
+          onDelete={() => trashNote(note)}
+        />
       </div>
 
-      {/* The same hover actions a note card has — to-do lists used to have none. */}
-      <div className="note-card__actions">
-        <button
-          type="button" className="note-card__action" aria-label="Archive list"
-          onClick={(e) => { stop(e); void archive(); }}
-        >
-          <Archive size={16} />
-        </button>
-        <button
-          type="button" className="note-card__action" aria-label="Share list"
-          disabled={!online} title={offlineHint}
-          onClick={(e) => { stop(e); setShareOpen(true); }}
-        >
-          <Share2 size={16} />
-        </button>
-        <button
-          type="button" className="note-card__action note-card__action--danger" aria-label="Delete list"
-          disabled={!online} title={offlineHint}
-          onClick={(e) => { stop(e); void trashNote(note); }}
-        >
-          <Trash2 size={16} />
-        </button>
-        <CardMenu note={note} onShare={() => setShareOpen(true)} />
-      </div>
       {shareOpen && <ShareDialog note={note} onClose={() => setShareOpen(false)} />}
     </article>
   );

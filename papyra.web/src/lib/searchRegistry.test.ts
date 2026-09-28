@@ -22,11 +22,11 @@ describe('searchRegistry', () => {
     expect(noteResult(hit('a', ''), 'note', 0).title).toBe('Untitled');
   });
 
-  it('groups a page-level entry under Pages, not Settings', () => {
-    const [manageUsers] = settingsResults('manage users', true);
-    expect(manageUsers.source).toBe('page');
-    expect(manageUsers.breadcrumb).toEqual(['Page']);
-    expect(manageUsers.to).toBe('/admin');
+  it('files Users under Settings now that it is a tab', () => {
+    const [users] = settingsResults('manage users', true);
+    expect(users.source).toBe('settings');
+    expect(users.breadcrumb[0]).toBe('Settings');
+    expect(users.to).toBe('/settings?tab=users');
   });
 
   it('breadcrumbs a settings section under its tab', () => {

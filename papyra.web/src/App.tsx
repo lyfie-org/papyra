@@ -10,7 +10,6 @@ import VaultPage from './pages/VaultPage';
 import TokenPage from './pages/TokenPage';
 import TrashPage from './pages/TrashPage';
 import SettingsPage from './pages/SettingsPage';
-import ManageUsersPage from './pages/ManageUsersPage';
 import ChoosePasswordPage from './pages/ChoosePasswordPage';
 import SharedNotePage from './pages/SharedNotePage';
 import LoginPage from './pages/LoginPage';
@@ -70,15 +69,6 @@ function RequireAuth() {
   );
 }
 
-// Admin-only route wrapper. `loading` matters: the roster would flash "not for
-// you" for a beat while /me is still in flight.
-function RequireAdmin() {
-  const { state, user } = useAuth();
-  if (state === 'loading') return <div className="app-bootstrap"><LoadingBar label="Loading Papyra" /></div>;
-  if (user?.role !== 'Admin') return <Navigate to="/settings" replace />;
-  return <ManageUsersPage />;
-}
-
 export default function App() {
   // While a note is open the URL is /note/:id, but the page behind it should be the
   // one it was opened from. Routing the main outlet by that page — and letting the
@@ -113,10 +103,8 @@ export default function App() {
         <Route path="archive" element={<ArchivePage />} />
         <Route path="trash" element={<TrashPage />} />
         <Route path="settings" element={<SettingsPage />} />
-        {/* Managing other people is not a preference, so it is its own place
-            rather than a tab inside Settings. Non-admins are bounced: the API
-            refuses them anyway, and a dead page is worse than no page. */}
-        <Route path="admin" element={<RequireAdmin />} />
+        {/* Managing people is Settings → Users now (admins only); old links land there. */}
+        <Route path="admin" element={<Navigate to="/settings?tab=users" replace />} />
       </Route>
     </Routes>
     </RealLocationContext.Provider>

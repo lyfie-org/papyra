@@ -8,7 +8,16 @@ import './AuthForm.css';
 export default function LoginPage() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
-  const [error, setError] = useState<string | null>(null);
+  // Arriving here because an admin disabled the account — mid-session (the
+  // auth probe says why) or back from single sign-on (?disabled=1).
+  const queryClient = useQueryClient();
+  const [error, setError] = useState<string | null>(() => {
+    const probe = queryClient.getQueryData<{ reason?: string }>(['auth']);
+    const fromSso = new URLSearchParams(window.location.search).has('disabled');
+    return probe?.reason === 'account_disabled' || fromSso
+      ? 'This account has been disabled. Ask your Papyra administrator.'
+      : null;
+  });
   const [busy, setBusy] = useState(false);
   // Whether an SSO button belongs on this screen (server tells us if OIDC is on).
   const [sso, setSso] = useState<{ enabled: boolean; name: string } | null>(null);
@@ -41,7 +50,6 @@ export default function LoginPage() {
     }
   }
   const navigate = useNavigate();
-  const queryClient = useQueryClient();
   const usernameRef = useRef<HTMLInputElement | null>(null);
   // Passkeys need the WebAuthn API and a secure context (HTTPS or localhost).
   const canPasskey = isWebAuthnAvailable();
@@ -116,7 +124,9 @@ export default function LoginPage() {
         body: JSON.stringify({ username, password }),
       });
       if (!res.ok) {
-        setError('Invalid credentials.');
+        // A disabled account or a lockout says so; anything else stays vague.
+        const data = await res.json().catch(() => null) as { error?: string; code?: string } | null;
+        setError(data?.code === 'account_disabled' || res.status === 429 ? (data?.error ?? 'Try again later.') : 'Invalid credentials.');
         return;
       }
       signedIn(await res.json());

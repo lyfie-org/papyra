@@ -7,6 +7,7 @@ namespace Papyra.Api.Storage;
 public sealed record EmailResult(bool Sent, string? Error = null)
 {
     public static readonly EmailResult NotConfigured = new(false, "Email is not configured.");
+    public static readonly EmailResult OptedOut = new(false, "The recipient switched this email off.");
     public static EmailResult Ok() => new(true);
     public static EmailResult Fail(string error) => new(false, error);
 }
@@ -51,6 +52,31 @@ public sealed class EmailSender
         _config.Has(SmtpKeys.PublicUrl)
             ? _config.GetOrEmpty(SmtpKeys.PublicUrl).TrimEnd('/')
             : requestOrigin.TrimEnd('/');
+
+    /// <summary>
+    /// Send a notification to a person, if they want it (see
+    /// <see cref="NotificationCatalog"/> and <see cref="NotificationPrefs"/>).
+    /// The one door every notification goes through, so a preference can't be
+    /// forgotten at a call site — and the door push will go through later.
+    /// </summary>
+    public Task<EmailResult> NotifyAsync(
+        Models.User user, string eventId, string subject, string body,
+        IReadOnlyList<EmailDetail>? details = null, CancellationToken ct = default) =>
+        NotifyAsync(user, user.Email, eventId, subject, body, details, ct);
+
+    /// <summary>As above, to an explicit address (e.g. the old one, after a change).</summary>
+    public async Task<EmailResult> NotifyAsync(
+        Models.User user, string? toAddress, string eventId, string subject, string body,
+        IReadOnlyList<EmailDetail>? details = null, CancellationToken ct = default)
+    {
+        if (!NotificationPrefs.Wants(user, eventId)) return EmailResult.OptedOut;
+        if (string.IsNullOrWhiteSpace(toAddress)) return EmailResult.Fail("No recipient address.");
+        var ev = NotificationCatalog.Find(eventId);
+        // Anything a person can switch off says where, in the mail itself.
+        if (ev is { Critical: false })
+            body = body.TrimEnd() + "\n\nDon't want these? Switch them off in Papyra under Settings → Notifications.";
+        return await SendAsync(toAddress, subject, body, details, ct);
+    }
 
     public Task<EmailResult> SendAsync(
         string toAddress, string subject, string body, CancellationToken ct = default) =>

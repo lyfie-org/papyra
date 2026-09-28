@@ -41,12 +41,15 @@ public sealed class VaultPinService
     private readonly AppDbContext _db;
     private readonly UnlockTokenStore _unlockTokens;
     private readonly ILogger<VaultPinService> _logger;
+    private readonly EmailSender? _email;
 
-    public VaultPinService(AppDbContext db, UnlockTokenStore unlockTokens, ILogger<VaultPinService> logger)
+    public VaultPinService(
+        AppDbContext db, UnlockTokenStore unlockTokens, ILogger<VaultPinService> logger, EmailSender? email = null)
     {
         _db = db;
         _unlockTokens = unlockTokens;
         _logger = logger;
+        _email = email;
     }
 
     public async Task<PinVerdict> CheckAsync(int userId, string? pin, CancellationToken ct)
@@ -92,8 +95,24 @@ public sealed class VaultPinService
             {
                 // Nothing unlocked under this PIN should outlive it being disabled.
                 _unlockTokens.RevokeUser(userId.ToString());
+                if (_email is not null)
+                    await _email.NotifyAsync(user, NotificationCatalog.VaultPinLocked,
+                        "Your vault PIN has been switched off",
+                        "Too many wrong PINs were entered for your vault, so Papyra has switched the PIN off. "
+                        + "Your locked notes stay locked.\n\n"
+                        + "To turn it back on, set a new PIN under Settings → Security using your account password. "
+                        + "If you didn't make those attempts, change your password too.",
+                        [new("When", SignInNotices.When(user, now))], ct);
                 return new PinVerdict(PinCheck.Disabled, 0, null);
             }
+            // The first timed pause is worth a heads-up; later ones would be noise.
+            if (wait is not null && _email is not null && user.VaultPinFailures == VaultPin.FirstLockoutAt)
+                await _email.NotifyAsync(user, NotificationCatalog.VaultPinLocked,
+                    "Wrong vault PINs on your account",
+                    $"{user.VaultPinFailures} wrong PINs in a row were entered for your vault, so it is paused for a while.\n\n"
+                    + "If that was you, just wait and try again. If it wasn't, someone has your session — sign out "
+                    + "everywhere by changing your password.",
+                    [new("When", SignInNotices.When(user, now))], ct);
             return new PinVerdict(PinCheck.Wrong, VaultPin.AttemptsLeft(user.VaultPinFailures), user.VaultPinLockedUntilUtc);
         }
         finally
@@ -114,5 +133,11 @@ public sealed class VaultPinService
         await _db.SaveChangesAsync(ct);
         _unlockTokens.RevokeUser(user.Id.ToString());
         _logger.LogInformation("Vault PIN set for user {UserId}", user.Id);
+        if (_email is not null)
+            await _email.NotifyAsync(user, NotificationCatalog.VaultPinChanged,
+                "Your vault PIN was changed",
+                "The PIN that opens your locked notes was just set or changed.\n\n"
+                + "If that wasn't you, change your account password and reset the PIN under Settings → Security.",
+                [new("When", SignInNotices.When(user, DateTime.UtcNow))], ct);
     }
 }

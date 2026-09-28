@@ -4,6 +4,7 @@ using Microsoft.EntityFrameworkCore;
 using Papyra.Api.Data;
 using Papyra.Api.Hubs;
 using Papyra.Api.Models;
+using Papyra.Api.Security;
 
 namespace Papyra.Api.Storage;
 
@@ -56,19 +57,22 @@ public sealed class GitSyncService : BackgroundService
     private readonly IHostEnvironment _env;
     private readonly IHubContext<NotesHub> _hub;
     private readonly ILogger<GitSyncService> _logger;
+    private readonly EmailSender? _email;
 
     public GitSyncService(
         IServiceScopeFactory scopes,
         IConfiguration config,
         IHostEnvironment env,
         IHubContext<NotesHub> hub,
-        ILogger<GitSyncService> logger)
+        ILogger<GitSyncService> logger,
+        EmailSender? email = null)
     {
         _scopes = scopes;
         _config = config;
         _env = env;
         _hub = hub;
         _logger = logger;
+        _email = email;
     }
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
@@ -155,6 +159,40 @@ public sealed class GitSyncService : BackgroundService
         return result;
     }
 
+    /// <summary>
+    /// Check a remote and token before saving them — the setup guide's "Test"
+    /// step. Lists the remote's branches without cloning anything. Returns a
+    /// plain-language problem, or null with the branches it found (none for a
+    /// brand-new, empty repository, which is exactly what setup expects).
+    /// </summary>
+    public static (string? Problem, IReadOnlyList<string> Branches) Probe(string remoteUrl, string? token)
+    {
+        try
+        {
+            var refs = Repository.ListRemoteReferences(remoteUrl, (_, _, _) =>
+                new UsernamePasswordCredentials { Username = "x-access-token", Password = token ?? string.Empty });
+            var branches = refs
+                .Where(r => r.CanonicalName.StartsWith("refs/heads/", StringComparison.Ordinal))
+                .Select(r => r.CanonicalName["refs/heads/".Length..])
+                .ToList();
+            return (null, branches);
+        }
+        catch (LibGit2SharpException ex)
+        {
+            var m = ex.Message;
+            if (m.Contains("401") || m.Contains("403") || m.Contains("authentication", StringComparison.OrdinalIgnoreCase)
+                || m.Contains("credentials", StringComparison.OrdinalIgnoreCase))
+                return ("The repository turned the access token down. Check it was copied whole, hasn't expired, "
+                    + "and is allowed to write to this repository.", []);
+            if (m.Contains("404") || m.Contains("not found", StringComparison.OrdinalIgnoreCase))
+                return ("No repository at that address — or the token can't see it. Check the address, and that "
+                    + "the token has access to this repository.", []);
+            if (m.Contains("resolve", StringComparison.OrdinalIgnoreCase) || m.Contains("connect", StringComparison.OrdinalIgnoreCase))
+                return ("This server couldn't reach that address. Check it, and that the server can get to the internet.", []);
+            return ($"The repository didn't answer as expected: {m}", []);
+        }
+    }
+
     private GitSyncResult RunSync(string dir, string remoteUrl, string branch, string? token)
     {
         if (!Repository.IsValid(dir))
@@ -223,12 +261,45 @@ public sealed class GitSyncService : BackgroundService
     {
         using var scope = _scopes.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        // Whether it was already failing, so a broken backup is reported once when
+        // it breaks — not every half hour until someone fixes it.
+        var wasFailing = !string.IsNullOrEmpty(await ReadSetting(db, GitKeys.LastError(userId), ct))
+            || await ReadSetting(db, GitKeys.Conflict(userId), ct) == "true";
         await WriteSetting(db, GitKeys.Conflict(userId), result.Status == "conflict" ? "true" : string.Empty, ct);
         await WriteSetting(db, GitKeys.LastError(userId), result.Status == "error" ? (result.Detail ?? "error") : string.Empty, ct);
         if (result.Status is "pushed" or "clean")
             await WriteSetting(db, GitKeys.LastSyncUtc(userId), DateTime.UtcNow.ToString("o"), ct);
         await db.SaveChangesAsync(ct);
+
+        if (_email is null || !int.TryParse(userId, out var uid)) return;
+        if (await db.Users.FindAsync([uid], ct) is not { } user) return;
+        var failing = result.Status is "error" or "conflict";
+        if (failing && !wasFailing)
+        {
+            await _email.NotifyAsync(user, NotificationCatalog.BackupFailed,
+                result.Status == "conflict" ? "Your Papyra backup needs attention" : "Your Papyra backup failed",
+                result.Status == "conflict"
+                    ? "The git repository your notes back up to has changes Papyra doesn't have, so it stopped "
+                      + "rather than overwrite them. Nothing was lost on either side.\n\n"
+                      + "Open Settings → Backup in Papyra to see what to do."
+                    : "Papyra couldn't push your notes to your git repository. It will keep trying every half hour, "
+                      + "but won't email again until it has worked once.\n\n"
+                      + "Open Settings → Backup in Papyra to check the repository address and access token.",
+                [new("What happened", Short(result.Detail ?? result.Status))], ct);
+        }
+        else if (result.Status == "pushed")
+        {
+            // Recovery is news to whoever heard about the failure.
+            await _email.NotifyAsync(user, wasFailing ? NotificationCatalog.BackupFailed : NotificationCatalog.BackupSucceeded,
+                wasFailing ? "Your Papyra backup is working again" : "Your notes were backed up",
+                wasFailing
+                    ? "Your git backup pushed successfully after failing before. Everything is up to date."
+                    : "Papyra pushed your latest changes to your git repository.",
+                [new("When", SignInNotices.When(user, DateTime.UtcNow))], ct);
+        }
     }
+
+    private static string Short(string text) => text.Length > 300 ? text[..300] + "…" : text;
 
     private static async Task<string?> ReadSetting(AppDbContext db, string key, CancellationToken ct) =>
         (await db.Settings.FirstOrDefaultAsync(s => s.Key == key, ct))?.Value;

@@ -28,12 +28,17 @@ export type AuthState = 'loading' | 'authed' | 'login' | 'setup' | 'error';
 interface AuthProbe {
   state: Exclude<AuthState, 'loading'>;
   user: AuthUser | null;
+  /** Why the session ended, when the server said — the sign-in page explains it. */
+  reason?: 'account_disabled';
 }
 
 async function probeAuth(): Promise<AuthProbe> {
   const res = await fetch('/api/auth/me');
   if (res.status === 428) return { state: 'setup', user: null };
-  if (res.status === 401) return { state: 'login', user: null };
+  if (res.status === 401) {
+    const body = await res.json().catch(() => null) as { code?: string } | null;
+    return { state: 'login', user: null, reason: body?.code === 'account_disabled' ? 'account_disabled' : undefined };
+  }
   if (!res.ok) return { state: 'error', user: null };
   return { state: 'authed', user: (await res.json()) as AuthUser };
 }

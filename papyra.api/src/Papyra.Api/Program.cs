@@ -363,6 +363,16 @@ builder.Services.ConfigureOptions<OidcOptionsConfigurator>();
                     observer.WatchUser(user.Id.ToString()); // create + watch the tenant vault so PathGuard won't fail
                 }
 
+                if (user.DisabledUtc is not null)
+                {
+                    // Back to the sign-in page with the reason, not an error page.
+                    ctx.HandleResponse();
+                    ctx.Response.Redirect("/login?disabled=1");
+                    return;
+                }
+                await SignInNotices.RecordAsync(
+                    ctx.HttpContext, db, sp.GetRequiredService<EmailSender>(), user, "Single sign-on", ctx.HttpContext.RequestAborted);
+
                 var identity = new ClaimsIdentity(CookieAuthenticationDefaults.AuthenticationScheme);
                 identity.AddClaim(new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()));
                 identity.AddClaim(new Claim(ClaimTypes.Name, user.Username));
@@ -659,6 +669,21 @@ app.UseStaticFiles(new StaticFileOptions
         "Re-reads a note the moment it changes so searching finds what you wrote a second ago.");
     jobs.RegisterContinuous("webhooks", "Send webhooks",
         "Passes changes on to anything you have connected to Papyra, retrying if it can't be reached.");
+
+    // A housekeeping job that starts failing is the admins' business.
+    var scopes = app.Services.GetRequiredService<IServiceScopeFactory>();
+    var mailer = app.Services.GetRequiredService<EmailSender>();
+    jobs.OnFailure = async (job, error) =>
+    {
+        using var scope = scopes.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        foreach (var admin in await db.Users.Where(u => u.Role == "Admin" && u.DisabledUtc == null).ToListAsync())
+            await mailer.NotifyAsync(admin, NotificationCatalog.AdminJobFailed,
+                $"“{job.Name}” failed on your Papyra",
+                $"The background job “{job.Name}” failed. It will try again on its next run; you'll hear again only "
+                + "if it fails after working.\n\nSee Settings → Jobs in Papyra for details, or run it again from there.",
+                [new("Job", job.Name), new("Error", error.Length > 300 ? error[..300] + "…" : error)]);
+    };
 }
 
 app.UseAuthentication();
@@ -754,43 +779,68 @@ app.Use(async (context, next) =>
     await next();
 });
 
-// ── Forced password change ────────────────────────────────────────────────────
-// An account an admin provisioned (or reset) carries MustChangePassword until
-// its owner picks their own. A flag the client could ignore would be decoration,
-// so the refusal lives here: while it is set, every API call fails with
-// `password_change_required` except the handful needed to see who you are, set a
-// new password, and sign out.
+// ── Account standing: disabled, role, forced password change, deletion ───────
+// Read from the database on every authenticated request rather than trusted from
+// the cookie, so an administrator's decision takes effect on sessions that are
+// already open — not at their next sign-in, up to a week later.
 //
-// The flag is read from the database rather than carried in the cookie: an admin
-// resetting an account has to take effect on the session that account already
-// has open, not at its next sign-in.
+//   • Disabled: nothing gets through, API keys and the live-update socket
+//     included, and the cookie is cleared so the browser lands on the sign-in page.
+//   • Role: the claim is replaced with the current one, so a demoted admin loses
+//     the admin routes on their very next request (and a promotion needs no
+//     sign-out either).
+//   • MustChangePassword: an account an admin provisioned (or reset) can only see
+//     who it is, set a new password, and sign out. A flag the client could ignore
+//     would be decoration, so the refusal lives here.
+//   • Deletion scheduled: the account can only cancel.
 app.Use(async (context, next) =>
 {
     var path = context.Request.Path;
     if (context.User.Identity?.IsAuthenticated == true
-        && path.StartsWithSegments("/api")
-        && !path.StartsWithSegments("/api/auth/me")
-        && !path.StartsWithSegments("/api/auth/password")
-        && !path.StartsWithSegments("/api/auth/logout"))
+        && (path.StartsWithSegments("/api") || path.StartsWithSegments("/hubs"))
+        && int.TryParse(context.User.FindFirstValue(ClaimTypes.NameIdentifier), out var callerId))
     {
-        var claim = context.User.FindFirstValue(ClaimTypes.NameIdentifier);
-        if (int.TryParse(claim, out var callerId))
+        var db = context.RequestServices.GetRequiredService<AppDbContext>();
+        var flags = await db.Users
+            .Where(u => u.Id == callerId)
+            .Select(u => new { u.MustChangePassword, u.DeletionScheduledUtc, u.DisabledUtc, u.Role })
+            .FirstOrDefaultAsync(context.RequestAborted);
+
+        if (flags?.DisabledUtc is not null && !path.StartsWithSegments("/api/auth/logout"))
         {
-            var db = context.RequestServices.GetRequiredService<AppDbContext>();
-            var flags = await db.Users
-                .Where(u => u.Id == callerId)
-                .Select(u => new { u.MustChangePassword, u.DeletionScheduledUtc })
-                .FirstOrDefaultAsync(context.RequestAborted);
+            if (context.User.Identity.AuthenticationType == CookieAuthenticationDefaults.AuthenticationScheme)
+                await context.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+            context.RequestServices.GetRequiredService<UnlockTokenStore>().RevokeUser(callerId.ToString());
+            await Results.Json(
+                new { error = "This account has been disabled. Ask your Papyra administrator.", code = "account_disabled" },
+                statusCode: StatusCodes.Status401Unauthorized).ExecuteAsync(context);
+            return;
+        }
+
+        if (flags is not null && context.User.FindFirstValue(ClaimTypes.Role) != flags.Role
+            && context.User.Identity is ClaimsIdentity current)
+        {
+            var identity = new ClaimsIdentity(
+                current.Claims.Where(c => c.Type != ClaimTypes.Role).Append(new Claim(ClaimTypes.Role, flags.Role)),
+                current.AuthenticationType);
+            context.User = new ClaimsPrincipal(identity);
+        }
+
+        var exempt = path.StartsWithSegments("/hubs")
+            || path.StartsWithSegments("/api/auth/me")
+            || path.StartsWithSegments("/api/auth/password")
+            || path.StartsWithSegments("/api/auth/logout");
+        if (!exempt && flags is not null)
+        {
             // An account on its way out can do one thing: cancel.
-            if (flags?.DeletionScheduledUtc is not null && !path.StartsWithSegments("/api/account/delete"))
+            if (flags.DeletionScheduledUtc is not null && !path.StartsWithSegments("/api/account/delete"))
             {
                 await Results.Json(
                     new { error = "This account is scheduled for deletion.", code = "deletion_scheduled" },
                     statusCode: StatusCodes.Status403Forbidden).ExecuteAsync(context);
                 return;
             }
-            var mustChange = flags?.MustChangePassword ?? false;
-            if (mustChange)
+            if (flags.MustChangePassword)
             {
                 await Results.Json(
                     new { error = "Choose your own password before you carry on.", code = "password_change_required" },
@@ -922,7 +972,8 @@ auth.MapPost("/setup", async (SetupRequest body, HttpContext http, AppDbContext 
 
 // Validate credentials against the BCrypt hash and mint the session cookie. Same
 // generic 401 for unknown user and bad password so we don't leak which one failed.
-auth.MapPost("/login", async (LoginRequest body, HttpContext http, AppDbContext db, LoginThrottle throttle, CancellationToken ct) =>
+auth.MapPost("/login", async (
+    LoginRequest body, HttpContext http, AppDbContext db, LoginThrottle throttle, EmailSender email, CancellationToken ct) =>
 {
     if (string.IsNullOrWhiteSpace(body.Username) || string.IsNullOrWhiteSpace(body.Password))
         return Results.BadRequest(new { error = "Username and password are required." });
@@ -956,8 +1007,12 @@ auth.MapPost("/login", async (LoginRequest body, HttpContext http, AppDbContext 
     }
 
     throttle.Reset(body.Username);
-    await SignInAsync(http, user!);
-    return Results.Ok(new { user!.Id, user.Username, user.Name, user.Email, user.Role, user.TimeZone, serverTimeZone = ServerTimeZoneId() });
+    // Only after the password checks out, so "disabled" is never a free answer
+    // to "does this account exist".
+    if (user!.DisabledUtc is not null) return AccountDisabled();
+    await SignInAsync(http, user);
+    await SignInNotices.RecordAsync(http, db, email, user, "Password", ct);
+    return Results.Ok(new { user.Id, user.Username, user.Name, user.Email, user.Role, user.TimeZone, serverTimeZone = ServerTimeZoneId() });
 }).RequireRateLimiting(AuthRateLimit);
 
 // ── Sign in with a passkey ──────────────────────────────────────────────────────
@@ -983,7 +1038,7 @@ auth.MapPost("/passkey/options", async (
 
 auth.MapPost("/passkey/verify", async (
     PasskeyVerifyRequest body, HttpContext http, IConfiguration config, AppDbContext db,
-    BiometricAuthService bio, LoginThrottle throttle, CancellationToken ct) =>
+    BiometricAuthService bio, LoginThrottle throttle, EmailSender email, CancellationToken ct) =>
 {
     var username = body.Username?.Trim() ?? string.Empty;
     if (username.Length == 0 || body.Response is null)
@@ -1003,7 +1058,9 @@ auth.MapPost("/passkey/verify", async (
     }
 
     throttle.Reset(username);
+    if (user.DisabledUtc is not null) return AccountDisabled();
     await SignInAsync(http, user);
+    await SignInNotices.RecordAsync(http, db, email, user, "Passkey", ct);
     return Results.Ok(new { user.Id, user.Username, user.Name, user.Email, user.Role, user.TimeZone, serverTimeZone = ServerTimeZoneId() });
 }).RequireRateLimiting(AuthRateLimit);
 
@@ -1059,7 +1116,7 @@ auth.MapPost("/forgot-password", async (
 
     var user = await db.Users.FirstOrDefaultAsync(
         u => u.Username == identifier || u.Email == identifier, ct);
-    if (user is null || string.IsNullOrWhiteSpace(user.Email)) return vague;
+    if (user is null || string.IsNullOrWhiteSpace(user.Email) || user.DisabledUtc is not null) return vague;
 
     var (token, hash) = NewAuthToken();
     db.AuthTokens.Add(new AuthToken
@@ -1076,14 +1133,14 @@ auth.MapPost("/forgot-password", async (
     await db.SaveChangesAsync(ct);
 
     var link = $"{email.PublicUrl($"{http.Request.Scheme}://{http.Request.Host}")}/reset-password?token={token}";
-    await email.SendAsync(
-        user.Email,
+    await email.NotifyAsync(
+        user, NotificationCatalog.PasswordReset,
         "Reset your Papyra password",
         $"Someone asked to reset the password for \"{user.Username}\".\n\n"
         + $"Set a new one here:\n{link}\n\n"
         + "This link expires in 1 hour and can be used once. "
         + "If this wasn't you, ignore this email — nothing has changed.",
-        ct);
+        ct: ct);
 
     return vague;
 })
@@ -1113,6 +1170,7 @@ auth.MapPost("/reset-password", async (
 
     var user = await db.Users.FindAsync([row.UserId.Value], ct);
     if (user is null) return Results.BadRequest(new { error = "This link is invalid or has expired." });
+    if (user.DisabledUtc is not null) return AccountDisabled();
 
     user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(body.Password!);
     user.PasswordChangedUtc = DateTime.UtcNow;
@@ -1122,12 +1180,12 @@ auth.MapPost("/reset-password", async (
 
     // Security mail, sent regardless of notification preferences: being told your
     // password changed is how you find out it wasn't you who changed it.
-    await email.SendAsync(
-        user.Email,
+    await email.NotifyAsync(
+        user, NotificationCatalog.PasswordChanged,
         "Your Papyra password was changed",
         $"The password for \"{user.Username}\" was just reset.\n\n"
         + "If that wasn't you, contact your Papyra administrator immediately.",
-        ct);
+        [new("When", SignInNotices.When(user, DateTime.UtcNow))], ct);
 
     return Results.NoContent();
 })
@@ -1368,7 +1426,8 @@ webauthn.MapPost("/register/challenge", async (
 
 webauthn.MapPost("/register/verify", async (
     WebAuthnRegisterRequest body, ClaimsPrincipal principal, HttpRequest request, AppDbContext db,
-    IConfiguration config, BiometricAuthService bio, UnlockTokenStore unlockTokens, CancellationToken ct) =>
+    IConfiguration config, BiometricAuthService bio, UnlockTokenStore unlockTokens, EmailSender email,
+    HttpContext http, CancellationToken ct) =>
 {
     if (body.Response is null) return Results.BadRequest(new { error = "Missing attestation response." });
     var user = await db.Users.FindAsync([int.Parse(Uid(principal))], ct);
@@ -1379,9 +1438,14 @@ webauthn.MapPost("/register/verify", async (
     try
     {
         var error = await bio.RegisterVerifyAsync(user, body.Response, body.Name, party, ct);
-        return error is null
-            ? Results.Ok(new { registered = true })
-            : Results.BadRequest(new { error });
+        if (error is not null) return Results.BadRequest(new { error });
+        await email.NotifyAsync(user, NotificationCatalog.PasskeyAdded,
+            "A passkey was added to your Papyra account",
+            "A device was registered to sign in to your account and open your vault with biometrics.\n\n"
+            + "If that wasn't you, remove it under Settings → Security and change your password.",
+            [new("Device name", string.IsNullOrWhiteSpace(body.Name) ? "(unnamed)" : body.Name.Trim()),
+             new("Works at", party.RpId), .. RequestDetails(user, http)], ct);
+        return Results.Ok(new { registered = true });
     }
     catch (Fido2NetLib.Fido2VerificationException ex)
     {
@@ -1417,7 +1481,7 @@ webauthn.MapPost("/verify", async (
 
 webauthn.MapDelete("/credentials/{id:int}", async (
     int id, ClaimsPrincipal principal, HttpRequest request, AppDbContext db, UnlockTokenStore unlockTokens,
-    CancellationToken ct) =>
+    EmailSender email, HttpContext http, CancellationToken ct) =>
 {
     var uid = int.Parse(Uid(principal));
     var user = await db.Users.FindAsync([uid], ct);
@@ -1427,6 +1491,10 @@ webauthn.MapDelete("/credentials/{id:int}", async (
     if (credential is null) return Results.NotFound();
     db.WebAuthnCredentials.Remove(credential);
     await db.SaveChangesAsync(ct);
+    await email.NotifyAsync(user, NotificationCatalog.PasskeyRemoved,
+        "A passkey was removed from your Papyra account",
+        "A registered device can no longer sign in to your account or open your vault.",
+        [new("Device name", credential.Name), .. RequestDetails(user, http)], ct);
     return Results.NoContent();
 });
 
@@ -1434,7 +1502,8 @@ webauthn.MapDelete("/credentials/{id:int}", async (
 // The signed-in user edits their own display name + email, changes their password,
 // and uploads an avatar. Avatar lives under the user's hidden .papyra dir (UI
 // state, not the notes vault).
-auth.MapPut("/profile", async (ProfileRequest body, HttpContext http, ClaimsPrincipal principal, AppDbContext db, CancellationToken ct) =>
+auth.MapPut("/profile", async (
+    ProfileRequest body, HttpContext http, ClaimsPrincipal principal, AppDbContext db, EmailSender mail, CancellationToken ct) =>
 {
     var id = int.Parse(Uid(principal));
     var user = await db.Users.FindAsync([id], ct);
@@ -1446,6 +1515,7 @@ auth.MapPut("/profile", async (ProfileRequest body, HttpContext http, ClaimsPrin
     // reads the live row. What does not follow a rename is text: an `@oldname`
     // already typed into someone's note stays as written.
     var renamed = false;
+    var previousEmail = user.Email;
     if (body.Username is not null)
     {
         var wanted = body.Username.Trim();
@@ -1506,6 +1576,16 @@ auth.MapPut("/profile", async (ProfileRequest body, HttpContext http, ClaimsPrin
     if (renamed && principal.Identity?.AuthenticationType == CookieAuthenticationDefaults.AuthenticationScheme)
         await SignInAsync(http, user);
 
+    // To the address being replaced: it's the one an attacker who took the
+    // session would want to stop hearing from Papyra.
+    if (!string.IsNullOrWhiteSpace(previousEmail)
+        && !string.Equals(previousEmail, user.Email, StringComparison.OrdinalIgnoreCase))
+        await mail.NotifyAsync(user, previousEmail, NotificationCatalog.EmailChanged,
+            "The email on your Papyra account changed",
+            $"The email address on \"{user.Username}\" was changed, so Papyra will write to the new one from now on.\n\n"
+            + "If that wasn't you, sign in and change your password, then put your address back under Settings → Profile.",
+            [new("New address", string.IsNullOrWhiteSpace(user.Email) ? "(none)" : user.Email), .. RequestDetails(user, http)], ct);
+
     return Results.Ok(new { user.Id, user.Username, user.Name, user.Email, user.Role, user.TimeZone, serverTimeZone = ServerTimeZoneId() });
 }).RequireAuthorization();
 
@@ -1519,7 +1599,8 @@ auth.MapDelete("/avatar", (ClaimsPrincipal principal, IConfiguration config, IHo
 }).RequireAuthorization();
 
 auth.MapPost("/password", async (
-    PasswordRequest body, ClaimsPrincipal principal, AppDbContext db, UnlockTokenStore unlockTokens, CancellationToken ct) =>
+    PasswordRequest body, ClaimsPrincipal principal, AppDbContext db, UnlockTokenStore unlockTokens,
+    EmailSender email, HttpContext http, CancellationToken ct) =>
 {
     if (PasswordPolicy.Validate(body.Next) is { } weak)
         return Results.BadRequest(new { error = weak });
@@ -1537,6 +1618,11 @@ auth.MapPost("/password", async (
     user.MustChangePassword = false;
     await db.SaveChangesAsync(ct);
     unlockTokens.RevokeUser(user.Id.ToString());
+    await email.NotifyAsync(user, NotificationCatalog.PasswordChanged,
+        "Your Papyra password was changed",
+        $"The password for \"{user.Username}\" was just changed from inside Papyra.\n\n"
+        + "If that wasn't you, reset it from the sign-in page straight away and tell your Papyra administrator.",
+        RequestDetails(user, http), ct);
     return Results.NoContent();
 }).RequireAuthorization();
 
@@ -1647,10 +1733,16 @@ jobsApi.MapPost("/{id}/run", async (string id, JobRegistry jobs, CancellationTok
 var admin = auth.MapGroup("/users").RequireAuthorization(p => p.RequireRole("Admin")).WithTags("Admin");
 
 admin.MapGet("/", async (AppDbContext db, CancellationToken ct) =>
-    Results.Ok(await db.Users
-        .OrderBy(u => u.Id)
-        .Select(u => new { u.Id, u.Username, u.Name, u.Email, u.Role, u.MustChangePassword })
-        .ToListAsync(ct)));
+    Results.Ok((await db.Users.OrderBy(u => u.Id).ToListAsync(ct)).Select(u => new
+    {
+        u.Id, u.Username, u.Name, u.Email, u.Role, u.MustChangePassword,
+        disabled = u.DisabledUtc is not null,
+        disabledUtc = AsUtc(u.DisabledUtc),
+        u.DisabledReason,
+        lastSignInUtc = AsUtc(u.LastSignInUtc),
+        sso = u.ExternalId is not null,
+        deletionScheduledUtc = AsUtc(u.DeletionScheduledUtc),
+    })));
 
 // Create an account on someone's behalf. The admin may type a first password or
 // leave it blank for a generated one; either way the account is flagged
@@ -1738,13 +1830,13 @@ admin.MapPost("/{id:int}/reset", async (
     var emailed = false;
     if (body.SendEmail == true && !string.IsNullOrWhiteSpace(user.Email))
     {
-        var sent = await email.SendAsync(
-            user.Email,
+        var sent = await email.NotifyAsync(
+            user, NotificationCatalog.PasswordReset,
             "Your Papyra password was reset",
             $"An administrator reset the password for \"{user.Username}\".\n\n"
             + $"Temporary password: {password}\n\n"
             + "You will be asked to choose your own the next time you sign in.",
-            ct);
+            ct: ct);
         emailed = sent.Sent;
     }
 
@@ -1782,13 +1874,13 @@ admin.MapPost("/{id:int}/recovery-link", async (
     var emailed = false;
     if (body.SendEmail == true)
     {
-        var sent = await email.SendAsync(
-            user.Email,
+        var sent = await email.NotifyAsync(
+            user, NotificationCatalog.PasswordReset,
             "Reset your Papyra password",
             $"An administrator started a password reset for \"{user.Username}\".\n\n"
             + $"Set a new one here:\n{link}\n\n"
             + "This link expires in 1 hour and can be used once.",
-            ct);
+            ct: ct);
         emailed = sent.Sent;
     }
 
@@ -1799,7 +1891,7 @@ admin.MapPost("/{id:int}/recovery-link", async (
 // removing the last admin. Clears the account's API keys + shares (owned and
 // received); the user's note files stay on disk (the source of truth) so nothing
 // is silently destroyed — a self-hoster can reclaim or re-import them.
-admin.MapDelete("/{id:int}", async (int id, ClaimsPrincipal me, AppDbContext db, CancellationToken ct) =>
+admin.MapDelete("/{id:int}", async (int id, ClaimsPrincipal me, AppDbContext db, EmailSender email, CancellationToken ct) =>
 {
     if (id == int.Parse(Uid(me)))
         return Results.BadRequest(new { error = "You can't delete your own account." });
@@ -1814,8 +1906,109 @@ admin.MapDelete("/{id:int}", async (int id, ClaimsPrincipal me, AppDbContext db,
     db.Shares.RemoveRange(db.Shares.Where(s => s.OwnerId == id || s.GranteeUserId == id));
     db.AccessRequests.RemoveRange(db.AccessRequests.Where(r => r.OwnerId == id || r.RequesterUserId == id));
     db.Notifications.RemoveRange(db.Notifications.Where(n => n.UserId == id || n.ActorUserId == id));
+    db.KnownDevices.RemoveRange(db.KnownDevices.Where(d => d.UserId == id));
     db.Users.Remove(user);
     await db.SaveChangesAsync(ct);
+    await TellOtherAdmins(db, email, int.Parse(Uid(me)), $"{user.Username}'s account was deleted",
+        $"The account \"{user.Username}\" was deleted by @{me.Identity?.Name}. Their note files stay on the server's disk.", ct);
+    return Results.NoContent();
+});
+
+// Promote to admin or return to a regular account. Takes effect on the person's
+// very next request (the account-standing middleware re-reads the role), so no
+// sign-out is needed either way. You can't change your own role — another admin
+// has to — and the last active admin can't be demoted, or nobody could manage
+// the instance any more.
+admin.MapPut("/{id:int}/role", async (
+    int id, RoleChangeRequest body, ClaimsPrincipal me, AppDbContext db, EmailSender email,
+    IHubContext<NotesHub> hub, CancellationToken ct) =>
+{
+    var role = body.Role switch { "Admin" => "Admin", "User" => "User", _ => null };
+    if (role is null) return Results.BadRequest(new { error = "Role must be Admin or User." });
+    if (id == int.Parse(Uid(me)))
+        return Results.BadRequest(new { error = "You can't change your own role. Ask another admin." });
+
+    var user = await db.Users.FindAsync([id], ct);
+    if (user is null) return Results.NotFound();
+    if (user.Role == role) return Results.Ok(new { user.Id, user.Role });
+
+    if (user.Role == "Admin" && await ActiveAdminsOtherThan(db, id, ct) == 0)
+        return Results.BadRequest(new { error = "That's the last active admin. Make someone else an admin first." });
+
+    user.Role = role;
+    await db.SaveChangesAsync(ct);
+    // Their open tabs re-read who they are, so admin pages appear or go at once.
+    await hub.Clients.User(id.ToString()).SendAsync("AccountChanged", ct);
+
+    await email.NotifyAsync(user, NotificationCatalog.AccountStatus,
+        role == "Admin" ? "You're now an administrator on Papyra" : "Your Papyra account is now a regular account",
+        role == "Admin"
+            ? $"@{me.Identity?.Name} made \"{user.Username}\" an administrator. You can now manage accounts and "
+              + "this server's settings from Settings. Administrators still can't read anyone else's notes."
+            : $"@{me.Identity?.Name} changed \"{user.Username}\" back to a regular account. Your notes are untouched; "
+              + "the administration pages are no longer available to you.",
+        ct: ct);
+    await TellOtherAdmins(db, email, int.Parse(Uid(me)),
+        $"{user.Username} is now {(role == "Admin" ? "an admin" : "a regular user")}",
+        $"@{me.Identity?.Name} changed the role of \"{user.Username}\" to {role}.", ct, exceptUserId: user.Id);
+    return Results.Ok(new { user.Id, user.Role });
+});
+
+// Lock an account out — a leaked password, a person who left — without deleting
+// anything. Every way in is refused while it is disabled (password, passkey,
+// SSO, API keys, reset links) and sessions already open end on their next request.
+admin.MapPost("/{id:int}/disable", async (
+    int id, DisableRequest body, ClaimsPrincipal me, AppDbContext db, EmailSender email,
+    UnlockTokenStore unlockTokens, IHubContext<NotesHub> hub, CancellationToken ct) =>
+{
+    if (id == int.Parse(Uid(me)))
+        return Results.BadRequest(new { error = "You can't disable your own account." });
+    var user = await db.Users.FindAsync([id], ct);
+    if (user is null) return Results.NotFound();
+    if (user.DisabledUtc is not null) return Results.NoContent();
+    if (user.Role == "Admin" && await ActiveAdminsOtherThan(db, id, ct) == 0)
+        return Results.BadRequest(new { error = "That's the last active admin." });
+
+    var reason = body.Reason?.Trim();
+    user.DisabledUtc = DateTime.UtcNow;
+    user.DisabledReason = string.IsNullOrEmpty(reason) ? null : reason[..Math.Min(reason.Length, 200)];
+    // Outstanding reset links would be a way back in.
+    await db.AuthTokens.Where(t => t.UserId == id && t.UsedUtc == null)
+        .ExecuteUpdateAsync(u => u.SetProperty(t => t.UsedUtc, DateTime.UtcNow), ct);
+    await db.SaveChangesAsync(ct);
+    unlockTokens.RevokeUser(id.ToString());
+    // Open tabs find out now rather than at their next save.
+    await hub.Clients.User(id.ToString()).SendAsync("AccountDisabled", ct);
+
+    await email.NotifyAsync(user, NotificationCatalog.AccountStatus,
+        "Your Papyra account has been disabled",
+        $"An administrator disabled \"{user.Username}\". You can't sign in until it is turned back on. "
+        + "Your notes are kept exactly as they were.\n\n"
+        + "If you weren't expecting this, contact the person who runs your Papyra.",
+        ct: ct);
+    await TellOtherAdmins(db, email, int.Parse(Uid(me)), $"{user.Username}'s account was disabled",
+        $"@{me.Identity?.Name} disabled \"{user.Username}\"."
+        + (user.DisabledReason is null ? string.Empty : $"\n\nReason given: {user.DisabledReason}"), ct, exceptUserId: user.Id);
+    return Results.NoContent();
+});
+
+admin.MapPost("/{id:int}/enable", async (
+    int id, ClaimsPrincipal me, AppDbContext db, EmailSender email, CancellationToken ct) =>
+{
+    var user = await db.Users.FindAsync([id], ct);
+    if (user is null) return Results.NotFound();
+    if (user.DisabledUtc is null) return Results.NoContent();
+    user.DisabledUtc = null;
+    user.DisabledReason = null;
+    await db.SaveChangesAsync(ct);
+
+    await email.NotifyAsync(user, NotificationCatalog.AccountStatus,
+        "Your Papyra account is active again",
+        $"An administrator turned \"{user.Username}\" back on — you can sign in again.\n\n"
+        + "If your password may have leaked, choose a new one under Settings → Profile after you sign in.",
+        ct: ct);
+    await TellOtherAdmins(db, email, int.Parse(Uid(me)), $"{user.Username}'s account was re-enabled",
+        $"@{me.Identity?.Name} turned \"{user.Username}\" back on.", ct, exceptUserId: user.Id);
     return Results.NoContent();
 });
 
@@ -1865,21 +2058,34 @@ directory.MapGet("/search", async (string? q, ClaimsPrincipal me, AppDbContext d
     return Results.Ok(matches);
 }).RequireRateLimiting(UserSearchRateLimit);
 
-// ── Per-user email notification preferences ───────────────────────────────────
-// Opt-out switches for the courtesy emails. The in-app inbox is never affected:
-// turning mention mail off stops the email, not the delivery.
+// ── Per-user notification preferences ────────────────────────────────────────
+// The catalog of everything Papyra can tell a person about, with their switch for
+// each. Critical ones come back locked on. Email is the only channel today;
+// `channels` is how the settings screen will learn about push.
 auth.MapGet("/notifications", async (ClaimsPrincipal me, AppDbContext db, EmailSender email, CancellationToken ct) =>
 {
     var user = await db.Users.FindAsync([int.Parse(Uid(me))], ct);
     if (user is null) return Results.NotFound();
     return Results.Ok(new
     {
-        mention = user.NotifyOnMention,
-        share = user.NotifyOnShare,
         // The UI explains why the switches do nothing on an instance with no
         // mail configured, rather than silently pretending they work.
         emailConfigured = email.IsConfigured,
         hasAddress = !string.IsNullOrWhiteSpace(user.Email),
+        channels = NotificationCatalog.Channels,
+        groups = NotificationCatalog.Groups
+            .Where(g => g.Key != "admin" || user.Role == "Admin")
+            .Select(g => new { id = g.Key, label = g.Value }),
+        events = NotificationCatalog.Events
+            .Where(e => !e.AdminOnly || user.Role == "Admin")
+            .Select(e => new
+            {
+                e.Id, e.Group, e.Label, e.Description, e.Critical,
+                email = NotificationPrefs.Wants(user, e.Id, NotificationCatalog.Email),
+            }),
+        // The two original switches, for clients that predate the catalog.
+        mention = NotificationPrefs.Wants(user, NotificationCatalog.Mention),
+        share = NotificationPrefs.Wants(user, NotificationCatalog.Shared),
     });
 }).RequireAuthorization();
 
@@ -1888,8 +2094,20 @@ auth.MapPut("/notifications", async (
 {
     var user = await db.Users.FindAsync([int.Parse(Uid(me))], ct);
     if (user is null) return Results.NotFound();
-    if (body.Mention is { } m) user.NotifyOnMention = m;
-    if (body.Share is { } s) user.NotifyOnShare = s;
+    if (body.Mention is { } m) NotificationPrefs.Set(user, NotificationCatalog.Mention, m);
+    if (body.Share is { } sh)
+    {
+        NotificationPrefs.Set(user, NotificationCatalog.Shared, sh);
+        NotificationPrefs.Set(user, NotificationCatalog.AccessRequested, sh);
+        NotificationPrefs.Set(user, NotificationCatalog.AccessAnswered, sh);
+    }
+    foreach (var change in body.Events ?? [])
+    {
+        if (!NotificationPrefs.Set(user, change.Id ?? string.Empty, change.Enabled, change.Channel ?? NotificationCatalog.Email))
+            return Results.BadRequest(new { error = NotificationCatalog.Find(change.Id ?? string.Empty) is { Critical: true }
+                ? "That notification is always sent — it keeps your account safe."
+                : "No such notification." });
+    }
     await db.SaveChangesAsync(ct);
     return Results.NoContent();
 }).RequireAuthorization();
@@ -2758,7 +2976,8 @@ keys.MapGet("/", async (ClaimsPrincipal user, AppDbContext db, CancellationToken
         .ToListAsync(ct));
 });
 
-keys.MapPost("/", async (ApiKeyWrite body, ClaimsPrincipal user, AppDbContext db, CancellationToken ct) =>
+keys.MapPost("/", async (
+    ApiKeyWrite body, ClaimsPrincipal user, AppDbContext db, EmailSender email, HttpContext http, CancellationToken ct) =>
 {
     var uid = int.Parse(Uid(user));
     var name = string.IsNullOrWhiteSpace(body.Name) ? "Untitled key" : body.Name.Trim();
@@ -2780,6 +2999,13 @@ keys.MapPost("/", async (ApiKeyWrite body, ClaimsPrincipal user, AppDbContext db
     };
     db.ApiKeys.Add(key);
     await db.SaveChangesAsync(ct);
+
+    if (await db.Users.FindAsync([uid], ct) is { } owner)
+        await email.NotifyAsync(owner, NotificationCatalog.ApiKeyCreated,
+            "A new API key was created on your Papyra account",
+            "A key that can read and change your notes from scripts and other apps was just created.\n\n"
+            + "If that wasn't you, delete it under Settings → API Keys and change your password.",
+            [new("Key name", name), new("Starts with", prefix), .. RequestDetails(owner, http)], ct);
 
     // token is shown to the caller this once, never persisted in the clear.
     return Results.Ok(new { key.Id, key.Name, key.Prefix, key.CreatedUtc, token });
@@ -2974,6 +3200,26 @@ gitApi.MapPut("/", async (GitConfigWrite body, ClaimsPrincipal user, AppDbContex
         "Sets the remote for a mirror of the caller's vault only. Papyra's own state "
         + "(.papyra/, .trash/) is gitignored. Each account has its own repository and "
         + "its own credentials; no account can configure or trigger another's.");
+
+// The guided setup's "Check the connection" step: try the address and token
+// before anything is saved, and say in plain words what's wrong. A stored token
+// is used when none is typed, so re-checking an existing setup needs no retyping.
+gitApi.MapPost("/test", async (GitConfigWrite body, ClaimsPrincipal user, AppDbContext db, CancellationToken ct) =>
+{
+    var remote = body.RemoteUrl?.Trim() ?? string.Empty;
+    if (!Uri.TryCreate(remote, UriKind.Absolute, out var uri) || uri.Scheme is not ("https" or "http"))
+        return Results.BadRequest(new { error = "Paste the repository's https address, e.g. https://github.com/you/papyra-notes.git" });
+    var tokenKey = GitKeys.Token(Uid(user));
+    var token = string.IsNullOrWhiteSpace(body.Token)
+        ? (await db.Settings.FirstOrDefaultAsync(s => s.Key == tokenKey, ct))?.Value
+        : body.Token.Trim();
+    var (problem, branches) = await Task.Run(() => GitSyncService.Probe(remote, token), ct);
+    return problem is null
+        ? Results.Ok(new { ok = true, empty = branches.Count == 0, branches })
+        : Results.Ok(new { ok = false, error = problem });
+})
+    .RequireRateLimiting(AuthRateLimit)
+    .WithSummary("Check a git remote and token without saving them");
 
 gitApi.MapPost("/sync", async (ClaimsPrincipal user, GitSyncService git, CancellationToken ct) =>
 {
@@ -3779,17 +4025,17 @@ accessRequests.MapPost("/", async (
     await hub.Clients.User(ownerUid).SendAsync("AccessRequested", new { request.Id }, ct);
     await hub.Clients.User(ownerUid).SendAsync("NotificationsChanged", ct);
     var owner = await db.Users.FindAsync([ownerId], ct);
-    if (owner is { NotifyOnShare: true } && !string.IsNullOrWhiteSpace(owner.Email) && email.IsConfigured)
+    if (owner is not null && NotificationPrefs.Wants(owner, NotificationCatalog.AccessRequested) && email.IsConfigured)
     {
         var who = await db.Users.Where(u => u.Id == uid).Select(u => u.Username).FirstOrDefaultAsync(ct);
         var url = email.PublicUrl($"{http.Request.Scheme}://{http.Request.Host}");
         var verb = access == "edit" ? "edit" : "view";
         var name = string.IsNullOrWhiteSpace(note.Title) ? "Untitled" : note.Title;
-        await email.SendAsync(owner.Email,
+        await email.NotifyAsync(owner, NotificationCatalog.AccessRequested,
             $"@{who} is asking to {verb} a note",
             $"@{who} asked for {verb} access to “{name}”.\n\n"
             + $"Approve or decline it in Papyra: {url}/?notifications=1",
-            ct);
+            ct: ct);
     }
     return Results.Ok(new { request.Id, request.Access, request.Status });
 })
@@ -3873,7 +4119,7 @@ accessRequests.MapPost("/{id:int}/approve", async (
 .WithSummary("Approve an access request");
 
 accessRequests.MapPost("/{id:int}/deny", async (
-    int id, ClaimsPrincipal user, AppDbContext db, IHubContext<NotesHub> hub, CancellationToken ct) =>
+    int id, ClaimsPrincipal user, AppDbContext db, IHubContext<NotesHub> hub, EmailSender email, CancellationToken ct) =>
 {
     var uid = int.Parse(Uid(user));
     var request = await db.AccessRequests.FirstOrDefaultAsync(r => r.Id == id && r.OwnerId == uid, ct);
@@ -3891,6 +4137,12 @@ accessRequests.MapPost("/{id:int}/deny", async (
     // The requester's button goes back to "Request", and their tray says so.
     await hub.Clients.User(request.RequesterUserId.ToString()).SendAsync("SharesChanged", ct);
     await hub.Clients.User(request.RequesterUserId.ToString()).SendAsync("NotificationsChanged", ct);
+    // No title: a declined requester was never let into the note.
+    if (await db.Users.FindAsync([request.RequesterUserId], ct) is { } requester)
+        await email.NotifyAsync(requester, NotificationCatalog.AccessAnswered,
+            $"@{user.Identity?.Name} declined your request",
+            $"@{user.Identity?.Name} declined your request to see one of their notes. You can ask again later from the mention.",
+            ct: ct);
     return Results.NoContent();
 })
 .WithSummary("Decline an access request");
@@ -4979,12 +5231,12 @@ app.MapGet("/api/export", async (
             new("Archive size", size >= 1_048_576 ? $"{size / 1_048_576.0:0.0} MB" : $"{Math.Max(1, size / 1024)} KB"),
             new("Server", email.PublicUrl($"{http.Request.Scheme}://{http.Request.Host}")),
         };
-        var sendTo = me.Email;
+        var owner = me;
         _ = Task.Run(async () =>
         {
             try
             {
-                await email.SendAsync(sendTo, "Your notes were exported",
+                await email.NotifyAsync(owner, NotificationCatalog.ExportReady, "Your notes were exported",
                     "A full export of your Papyra notes — including your vault — was just downloaded.\n\n"
                     + "If that was you, there's nothing to do. If it wasn't, change your password and vault PIN "
                     + "straight away, and tell your Papyra administrator.",
@@ -5184,7 +5436,8 @@ static async Task AnnounceShare(
     await hub.Clients.User(recipient.Id.ToString()).SendAsync("SharesChanged", ct);
     await hub.Clients.User(recipient.Id.ToString()).SendAsync("NotificationsChanged", ct);
 
-    if (!recipient.NotifyOnShare || string.IsNullOrWhiteSpace(recipient.Email) || !email.IsConfigured) return;
+    var eventId = kind == "access_approved" ? NotificationCatalog.AccessAnswered : NotificationCatalog.Shared;
+    if (!NotificationPrefs.Wants(recipient, eventId) || !email.IsConfigured) return;
     var who = sharer.FindFirstValue(ClaimTypes.Name) ?? "Someone";
     var name = string.IsNullOrWhiteSpace(title) ? "Untitled" : title;
     var url = email.PublicUrl($"{http.Request.Scheme}://{http.Request.Host}");
@@ -5195,7 +5448,7 @@ static async Task AnnounceShare(
         "access_approved" => ($"@{who} approved your request", $"@{who} approved your request — you {role} “{name}”."),
         _ => ($"@{who} shared “{name}” with you", $"@{who} shared “{name}” with you ({role})."),
     };
-    await email.SendAsync(recipient.Email, subject, $"{lead}\n\nOpen it in Papyra: {url}/shared-with-me", ct);
+    await email.NotifyAsync(recipient, eventId, subject, $"{lead}\n\nOpen it in Papyra: {url}/shared-with-me", ct: ct);
 }
 
 // A card-sized plain-text taste of a note body.
@@ -5473,6 +5726,39 @@ static Note RedactSecure(Note note)
     };
 }
 
+// The refusal for a disabled account. Only ever given after the credential
+// checked out, so it never tells a stranger whether an account exists.
+static IResult AccountDisabled() => Results.Json(
+    new { error = "This account has been disabled. Ask your Papyra administrator.", code = "account_disabled" },
+    statusCode: StatusCodes.Status403Forbidden);
+
+// SQLite hands DateTime back unmarked; the API always means UTC.
+static DateTime? AsUtc(DateTime? value) => value is { } v ? DateTime.SpecifyKind(v, DateTimeKind.Utc) : null;
+
+// When/browser/address rows for a security email about something done in a request.
+static EmailDetail[] RequestDetails(User user, HttpContext http) =>
+[
+    new("When", SignInNotices.When(user, DateTime.UtcNow)),
+    new("Browser", SignInNotices.Describe(http.Request.Headers.UserAgent.ToString())),
+    new("Address", http.Connection.RemoteIpAddress?.ToString() ?? "unknown"),
+];
+
+// Admins who could still run the instance if this one stopped being one.
+static Task<int> ActiveAdminsOtherThan(AppDbContext db, int userId, CancellationToken ct) =>
+    db.Users.CountAsync(u => u.Role == "Admin" && u.Id != userId && u.DisabledUtc == null && u.DeletionScheduledUtc == null, ct);
+
+// Account changes are told to the admins who didn't make them — two people
+// running one server should each know when the other locks someone out.
+static async Task TellOtherAdmins(
+    AppDbContext db, EmailSender email, int actorId, string subject, string body, CancellationToken ct, int? exceptUserId = null)
+{
+    var admins = await db.Users
+        .Where(u => u.Role == "Admin" && u.Id != actorId && u.Id != exceptUserId && u.DisabledUtc == null)
+        .ToListAsync(ct);
+    foreach (var a in admins)
+        await email.NotifyAsync(a, NotificationCatalog.AdminAccountChanges, subject, body, ct: ct);
+}
+
 // The JSON body delivered to webhooks for a note event.
 static object WebhookPayload(string eventName, Note note) => new
 {
@@ -5616,7 +5902,10 @@ public sealed record ForgotPasswordRequest(string? UsernameOrEmail);
 public sealed record ResetPasswordRequest(string? Token, string? Password);
 
 // Which courtesy emails a user wants. Security mail is not listed: it is not optional.
-public sealed record NotificationPrefsWrite(bool? Mention, bool? Share);
+public sealed record RoleChangeRequest(string? Role);
+public sealed record DisableRequest(string? Reason);
+public sealed record NotificationSwitch(string? Id, bool Enabled, string? Channel = null);
+public sealed record NotificationPrefsWrite(bool? Mention, bool? Share, NotificationSwitch[]? Events = null);
 
 // One mention-typeahead row. Deliberately just these two fields: the handle you
 // have to type to ping someone, and enough to tell two similar handles apart.

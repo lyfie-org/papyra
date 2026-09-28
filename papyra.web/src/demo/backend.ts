@@ -39,6 +39,35 @@ const sameContent = (body: string): string =>
   stripBlockAnchors(body.replace(/\r\n?/g, '\n')).replace(/[ \t]+$/gm, '').replace(/\n+$/, '');
 
 /** For the parts that genuinely cannot exist without a server. */
+// Settings → Notifications. The real list comes from the server's catalog; the
+// demo carries a representative slice of it so the screen can be tried out.
+const demoNotifyOff: Record<string, boolean> = { 'data.backup_succeeded': true };
+const DEMO_EVENTS = [
+  ['security.new_sign_in', 'security', 'New sign-in', 'Someone signed in from a browser or device your account hasn’t seen before.', true],
+  ['security.password_changed', 'security', 'Password changed', 'Your password was changed or reset.', true],
+  ['security.passkey_added', 'security', 'Passkey added', 'A device was registered to sign in and open your vault with biometrics.', true],
+  ['data.export', 'data', 'Notes exported', 'A copy of all your notes was downloaded — so you’d know if it wasn’t you.', true],
+  ['data.backup_failed', 'data', 'Backup failed', 'Your git backup stopped working. Sent once, not on every retry.', false],
+  ['data.backup_succeeded', 'data', 'Backup succeeded', 'Each time your git backup pushes new changes.', false],
+  ['collab.mention', 'collab', 'Mentions', 'Someone @mentions you in one of their notes.', false],
+  ['collab.shared', 'collab', 'Shared with you', 'Someone shares a note with you, or gives you edit access.', false],
+] as const;
+const demoNotificationPrefs = () => ({
+  emailConfigured: false,
+  hasAddress: true,
+  channels: ['email'],
+  groups: [
+    { id: 'security', label: 'Security & account' },
+    { id: 'data', label: 'Your notes & backups' },
+    { id: 'collab', label: 'Other people' },
+  ],
+  events: DEMO_EVENTS.map(([id, group, label, description, critical]) => ({
+    id, group, label, description, critical, email: critical || !demoNotifyOff[id],
+  })),
+  mention: !demoNotifyOff['collab.mention'],
+  share: !demoNotifyOff['collab.shared'],
+});
+
 const serverOnly = (what: string): Response =>
   json(
     {
@@ -176,8 +205,13 @@ const routes: Route[] = [
   // ---------------------------------------------------------------- identity
   ['GET', /^\/api\/auth\/me$/, () => json(DEMO_USER)],
   ['GET', /^\/api\/auth\/providers$/, () => json({ password: true, oidc: null })],
-  ['GET', /^\/api\/auth\/notifications$/, () => json({ mentions: true, shares: true })],
-  ['PUT', /^\/api\/auth\/notifications$/, async ({ body }) => json(await body())],
+  ['GET', /^\/api\/auth\/notifications$/, () => json(demoNotificationPrefs())],
+  ['PUT', /^\/api\/auth\/notifications$/, async ({ body }) => {
+    const next = await body() as { events?: { id: string; enabled: boolean }[] };
+    for (const e of next.events ?? []) demoNotifyOff[e.id] = !e.enabled;
+    return noContent();
+  }],
+  ['GET', /^\/api\/account\/delete$/, () => json({ graceDays: 7, blockers: [], scheduledUtc: null, needsEmailCode: false })],
   [
     'PUT',
     /^\/api\/auth\/profile$/,
@@ -761,6 +795,7 @@ const routes: Route[] = [
   ['GET', /^\/api\/git$/, () => json({ enabled: false, remoteUrl: '', branch: 'main', lastSyncUtc: null, lastError: null })],
   ['PUT', /^\/api\/git$/, () => serverOnly('Git backup')],
   ['POST', /^\/api\/git\/sync$/, () => serverOnly('Git backup')],
+  ['POST', /^\/api\/git\/test$/, () => serverOnly('Git backup')],
   [
     'GET',
     /^\/api\/jobs$/,
