@@ -484,7 +484,8 @@
 
 /* Sign out lives in the hero's top-right, away from every form below. */
 .profile-hero__signout {
-  align-self: flex-start;
+  /* Centred on the photo and the name beside it, not hung from the top edge. */
+  align-self: center;
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);

@@ -22,6 +22,7 @@ import './App.css';
 import { backgroundPage } from './lib/noteLink';
 import { RealLocationContext } from './lib/realLocation';
 import LoadingBar from './components/LoadingBar';
+import SharedWithMePage from './pages/SharedWithMePage';
 
 // Gate the workspace behind a live session. The /me probe decides where an
 // unauthenticated visitor lands: /setup before any admin exists, else /login.
@@ -102,8 +103,9 @@ export default function App() {
         {/* Tags now live on the Collections page. */}
         <Route path="categories" element={<Navigate to="/collections" replace />} />
         <Route path="collections" element={<CollectionsPage />} />
-        {/* Shared notes live on the desk now, behind the "Shared with me" filter. */}
-        <Route path="shared-with-me" element={<SharedWithMeRedirect />} />
+        {/* Just the notes shared with you. They also sit on the Notes desk,
+            behind its "Shared with me" filter. */}
+        <Route path="shared-with-me" element={<SharedWithMePage />} />
         <Route path="vault" element={<VaultPage />} />
         <Route path="archive" element={<ArchivePage />} />
         <Route path="trash" element={<TrashPage />} />
@@ -118,10 +120,3 @@ export default function App() {
   );
 }
 
-/** Old /shared-with-me links (emails, bookmarks) land on the filtered desk, keeping `?open=`. */
-function SharedWithMeRedirect() {
-  const { search } = useLocation();
-  const params = new URLSearchParams(search);
-  params.set('scope', 'shared');
-  return <Navigate to={`/?${params.toString()}`} replace />;
-}

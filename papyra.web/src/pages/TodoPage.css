@@ -69,9 +69,10 @@
   margin-top: 20px;
 }
 
-/* TodoCard reuses the .note-card shell; these add the checklist UI. */
+/* TodoCard reuses the .note-card shell; these add the checklist UI. The whole
+   card opens the list, like a note card does. */
 .todo-card {
-  cursor: default;
+  cursor: pointer;
 }
 .todo-card__title-link {
   text-decoration: none;
@@ -127,8 +128,36 @@
   border-color: var(--accent);
 }
 .todo-card__text {
+  flex: 1;
+  min-width: 0;
   overflow-wrap: anywhere;
 }
+
+/* Remove an item: a small × at the row's end, shown while the row is hovered
+   (always on touch screens, which have no hover). */
+.todo-card__remove {
+  flex-shrink: 0;
+  display: inline-grid;
+  place-items: center;
+  width: 20px;
+  height: 20px;
+  margin-top: 0;
+  padding: 0;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity var(--dur-fast) var(--ease), background-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+.todo-card__item:hover .todo-card__remove,
+.todo-card__remove:focus-visible { opacity: 1; }
+.todo-card__remove:hover { background: var(--danger-bg); color: var(--danger); }
+@media (hover: none) {
+  .todo-card__remove { opacity: 0.7; }
+}
+.note-card--colored .todo-card__remove { color: var(--tint-ink-muted); }
 
 .todo-card__add {
   display: flex;
@@ -204,3 +233,32 @@
   color: var(--tint-ink-muted);
   opacity: 0.75;
 }
+
+/* While typing a new item the hover rail would sit over the field: step aside. */
+.todo-card:has(.todo-card__add-input:focus) .note-card__actions:not(:focus-within) {
+  opacity: 0;
+  pointer-events: none;
+}
+
+/* Add-item on a coloured list: drawn in the note's own ink, on a lifted wash
+   of the tint, so it reads as a field on every colour — the theme's sage and
+   tan washed out to near-invisible on pastels. */
+.note-card--colored .todo-card__add-input {
+  border-color: color-mix(in srgb, var(--tint-ink) 35%, transparent);
+  background: color-mix(in srgb, var(--tint-lift) 45%, transparent);
+}
+.note-card--colored .todo-card__add-input::placeholder {
+  color: var(--tint-ink-muted);
+  opacity: 1;
+}
+.note-card--colored .todo-card__add-btn {
+  background: color-mix(in srgb, var(--tint-ink) 14%, transparent);
+  color: var(--tint-ink);
+}
+.note-card--colored .todo-card__add-btn:hover {
+  background: var(--tint-ink);
+  color: color-mix(in srgb, var(--note-tint) 60%, var(--tint-lift));
+}
+/* Plain paper: a touch more presence than a dashed hairline. */
+.todo-card__add-input::placeholder { color: var(--text); opacity: 0.9; }
+.todo-card__add-input:focus { border-style: solid; }

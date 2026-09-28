@@ -13,6 +13,10 @@ export interface AuthUser {
    * letting every request on the page fail.
    */
   mustChangePassword?: boolean;
+  /** IANA zone chosen under Settings → Profile; null/absent = the server's. */
+  timeZone?: string | null;
+  /** The server's own zone (the container's TZ), as an IANA name. */
+  serverTimeZone?: string;
 }
 
 // 'setup' = no admin yet (428 → /setup); 'login' = unauthenticated (401 → /login);

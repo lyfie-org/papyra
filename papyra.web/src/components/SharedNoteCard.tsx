@@ -5,6 +5,7 @@ import type { IncomingShare } from '../hooks/useShares';
 import { useResolvedTheme } from '../hooks/useTheme';
 import { tintInkClass } from '../lib/noteColors';
 import MarkdownPreview from './MarkdownPreview';
+import { dayLabel, fullStamp, useMinuteTick, useTimeZone } from '../lib/timeZone';
 import './NoteCard.css';
 import './SharedNoteCard.css';
 
@@ -14,8 +15,15 @@ import './SharedNoteCard.css';
  * preview — with one quiet line saying whose it is and what you may do.
  * Opens over the current page via `?open=<shareId>`.
  */
-export default function SharedNoteCard({ share }: { share: IncomingShare }) {
+export default function SharedNoteCard({ share, showSharedDate = false }: {
+  share: IncomingShare;
+  /** Add "Shared 12 Sep" under the owner (the Shared with me page). */
+  showSharedDate?: boolean;
+}) {
   const theme = useResolvedTheme();
+  const zone = useTimeZone();
+  const now = useMinuteTick();
+  const shared = showSharedDate && share.sharedUtc ? dayLabel(share.sharedUtc, zone, now) : null;
   const [params] = useSearchParams();
   const style = share.color ? ({ '--note-tint': share.color } as CSSProperties) : undefined;
   const className = `note-card shared-card${share.color ? ` note-card--colored${tintInkClass(share.color, theme)}` : ''}`;
@@ -38,6 +46,11 @@ export default function SharedNoteCard({ share }: { share: IncomingShare }) {
           <span className="shared-card__owner">@{share.owner}</span>
           <span className="shared-card__access">{access}</span>
         </p>
+        {shared && (
+          <p className="shared-card__when">
+            <time dateTime={share.sharedUtc} title={fullStamp(share.sharedUtc!, zone)}>Shared {shared}</time>
+          </p>
+        )}
       </article>
     </Link>
   );

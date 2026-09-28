@@ -37,7 +37,7 @@
   cursor: pointer;
   transition: background-color var(--dur-fast) var(--ease);
 }
-.vault-pill__state { padding: 0 var(--space-2) 0 var(--space-3); }
+.vault-pill__state { padding: 0 var(--space-2) 0 var(--space-4); }
 .vault-pill__lock {
   padding: 0 var(--space-3) 0 var(--space-2);
   border-left: 1px solid var(--pill-edge);
@@ -62,15 +62,56 @@
   opacity: 0.85;
 }
 
-/* Narrow navbar: icon + time, and a bare lock icon. */
+/* The Lock button carries the open padlock; pressing it snaps it shut. */
+.vault-pill__padlock {
+  position: relative;
+  display: inline-grid;
+  width: 14px;
+  height: 14px;
+}
+.vault-pill__padlock > svg {
+  grid-area: 1 / 1;
+  transition: opacity var(--dur-fast) var(--ease), transform var(--dur) var(--ease);
+}
+.vault-pill__padlock-shut { opacity: 0; transform: translateY(-2px) scale(0.8); }
+.vault-pill.is-locked .vault-pill__padlock-open { opacity: 0; transform: scale(0.8); }
+.vault-pill.is-locked .vault-pill__padlock-shut {
+  opacity: 1;
+  transform: none;
+  animation: vault-pill-click var(--dur) var(--ease);
+}
+@keyframes vault-pill-click {
+  0% { transform: translateY(-2px) scale(0.8); }
+  60% { transform: translateY(1px) scale(1.12); }
+  100% { transform: none; }
+}
+/* Locked: neutral ink (nothing is open any more), then fade and fold away. */
+.vault-pill.is-locked {
+  --pill-ink: var(--text-h);
+  --pill-bg: color-mix(in srgb, var(--text) 10%, transparent);
+  --pill-edge: var(--border);
+  transition: opacity 280ms var(--ease), transform 280ms var(--ease),
+    background-color var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+.vault-pill.is-fading {
+  opacity: 0;
+  transform: translateY(-4px) scale(0.96);
+}
+.vault-pill.is-locked .vault-pill__lock { cursor: default; }
+.vault-pill.is-locked .vault-pill__lock:disabled { opacity: 1; }
+
+/* Narrow navbar: time + a bare padlock. */
 @media (max-width: 760px) {
   .vault-pill__label,
   .vault-pill__lock-label { display: none; }
+  .vault-pill.is-locked .vault-pill__label { display: inline; }
 }
 @media (max-width: 420px) {
   .vault-pill__time { display: none; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .vault-pill { animation: none; }
+  .vault-pill,
+  .vault-pill.is-locked .vault-pill__padlock-shut { animation: none; }
+  .vault-pill.is-fading { transform: none; }
 }

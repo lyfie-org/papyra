@@ -25,3 +25,10 @@
 [data-theme='dark'] .note-card--colored .shared-card__foot,
 [data-theme='dark'] .note-card--colored .shared-card__foot svg { color: var(--tint-ink-soft); }
 .note-card--colored .shared-card__owner { color: var(--tint-ink); }
+
+.shared-card__when {
+  margin: 0;
+  font: 400 var(--fs-2xs) / 1.4 var(--sans);
+  color: var(--text);
+}
+.note-card--colored .shared-card__when { color: var(--tint-ink-muted); }

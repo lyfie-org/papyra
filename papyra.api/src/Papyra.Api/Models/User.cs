@@ -41,6 +41,12 @@ public class User
     public string? VaultPinHash { get; set; }
     public int VaultPinFailures { get; set; }
     public DateTime? VaultPinLockedUntilUtc { get; set; }
+
+    /// <summary>
+    /// IANA time zone the person reads times in ("Europe/Berlin"). Null = the
+    /// server's own zone (the container's TZ), which /api/auth/me reports.
+    /// </summary>
+    public string? TimeZone { get; set; }
 }
 
 // A one-time token for a password reset or an invitation. Rows are short-lived

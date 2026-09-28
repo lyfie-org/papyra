@@ -20,10 +20,13 @@
     -->
     <script>
       (function () {
-        var saved = localStorage.getItem('papyra-theme');
+        var saved = null;
+        try { saved = localStorage.getItem('papyra-theme'); } catch (e) {}
         var theme =
           saved === 'light' || saved === 'dark'
             ? saved
+            : saved !== 'system' && location.pathname.indexOf('/shared/') === 0
+            ? 'light' // a share-link visitor starts on paper (see ThemeProvider)
             : window.matchMedia('(prefers-color-scheme: dark)').matches
             ? 'dark'
             : 'light';

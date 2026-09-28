@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -49,6 +49,7 @@ import LoadingBar from '../components/LoadingBar';
 import AboutPanel from '../components/AboutPanel';
 import { fetchWithProgress } from '../lib/progress';
 import { MASKED_SECRET, NO_AUTOFILL } from '../lib/autofill';
+import { allTimeZones } from '../lib/timeZone';
 
 type Tab = 'profile' | 'appearance' | 'notifications' | 'security' | 'data' | 'keys' | 'sync' | 'sso' | 'email' | 'ai' | 'jobs' | 'about';
 
@@ -117,12 +118,9 @@ export default function SettingsPage() {
   const tab: Tab = valid?.id ?? 'profile';
   // Clearing `s` on a manual tab click stops a stale section from being chased
   // after the user has navigated somewhere else themselves.
-  const rootRef = useRef<HTMLElement | null>(null);
-  const setTab = (t: Tab) => {
-    setParams(t === 'profile' ? {} : { tab: t }, { replace: true });
-    // A new section starts at its top, not wherever the last one was scrolled to.
-    rootRef.current?.closest('.workspace__desk')?.scrollTo({ top: 0 });
-  };
+  // (The desk scrolls back to the top on its own: the tab is in the URL, and a
+  // new URL is a new page — see DeskScrollReset.)
+  const setTab = (t: Tab) => setParams(t === 'profile' ? {} : { tab: t }, { replace: true });
   useScrollToSection(params.get('s'), tab);
 
   // On a phone the sections are one swipeable row; keep the active pill in
@@ -136,7 +134,7 @@ export default function SettingsPage() {
   }, [tab]);
 
   return (
-    <section className="settings" ref={rootRef}>
+    <section className="settings">
       <div className="settings__shell">
         <div className="settings__side">
           <h1 className="page-title settings__title">Settings</h1>
@@ -184,7 +182,10 @@ function PhotoViewer({ name, onClose }: { name: string; onClose: () => void }) {
   }, [onClose]);
   return createPortal(
     <div className="photo-viewer" role="dialog" aria-modal="true" aria-label={`${name}’s photo`} onClick={onClose}>
-      <img className="photo-viewer__img" src={`/api/auth/avatar?v=${avatarVersion}`} alt={`${name}’s profile photo`} />
+      {/* The same URL the profile's <Avatar> loads, so it is the same picture:
+          a different query string was a different cache entry, and it could
+          hold a previous upload. */}
+      <img className="photo-viewer__img" src={avatarVersion ? `/api/auth/avatar?v=${avatarVersion}` : '/api/auth/avatar'} alt={`${name}’s profile photo`} />
       <button type="button" className="photo-viewer__close" aria-label="Close" autoFocus onClick={onClose}>
         <X size={20} />
       </button>
@@ -203,6 +204,9 @@ function ProfileTab({ user }: { user: AuthUser | null }) {
   const [username, setUsername] = useState(user?.username ?? '');
   const [name, setName] = useState(user?.name ?? '');
   const [email, setEmail] = useState(user?.email ?? '');
+  // '' = follow the server's zone.
+  const [timeZone, setTimeZone] = useState(user?.timeZone ?? '');
+  const zones = useMemo(() => allTimeZones(), []);
   const [savedMsg, setSavedMsg] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   // A server refusal names the field it is about, so it is shown under that field.
@@ -238,7 +242,8 @@ function ProfileTab({ user }: { user: AuthUser | null }) {
   const usernameProblem = usernameRule(username.trim());
   const dirty = username.trim() !== (user?.username ?? '')
     || name.trim() !== (user?.name ?? '')
-    || email.trim() !== (user?.email ?? '');
+    || email.trim() !== (user?.email ?? '')
+    || timeZone !== (user?.timeZone ?? '');
 
   async function saveProfile(e: React.FormEvent) {
     e.preventDefault();
@@ -250,13 +255,14 @@ function ProfileTab({ user }: { user: AuthUser | null }) {
       const res = await fetch('/api/auth/profile', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: username.trim(), name: name.trim(), email: email.trim() }),
+        body: JSON.stringify({ username: username.trim(), name: name.trim(), email: email.trim(), timeZone }),
       });
       if (res.ok) {
         const saved = (await res.json()) as AuthUser;
         setUsername(saved.username);
         setName(saved.name);
         setEmail(saved.email);
+        setTimeZone(saved.timeZone ?? '');
         await queryClient.invalidateQueries({ queryKey: ['auth'] });
         setSavedMsg('Saved.');
       } else {
@@ -454,6 +460,22 @@ function ProfileTab({ user }: { user: AuthUser | null }) {
             {fieldError?.field === 'email' ? fieldError.error : 'For password resets and the notifications you choose.'}
           </span>
         </label>
+        <label className="settings__field">Time zone
+          <select
+            className="settings__select"
+            value={timeZone}
+            aria-invalid={fieldError?.field === 'timeZone'}
+            onChange={e => { setTimeZone(e.target.value); setFieldError(null); setSavedMsg(null); }}
+          >
+            <option value="">Server default{user?.serverTimeZone ? ` (${user.serverTimeZone.replace(/_/g, ' ')})` : ''}</option>
+            {zones.map(z => <option key={z} value={z}>{z.replace(/_/g, ' ')}</option>)}
+          </select>
+          <span className={fieldError?.field === 'timeZone' ? 'settings__field-error' : 'settings__hint'}>
+            {fieldError?.field === 'timeZone'
+              ? fieldError.error
+              : 'Used for “last edited” times on your notes.'}
+          </span>
+        </label>
         <div className="settings__form-actions">
           <button type="submit" className="settings__btn" disabled={!dirty || saving}>
             {saving ? 'Saving…' : 'Save changes'}
@@ -462,7 +484,7 @@ function ProfileTab({ user }: { user: AuthUser | null }) {
             <button
               type="button"
               className="settings__btn settings__btn--quiet"
-              onClick={() => { setUsername(user?.username ?? ''); setName(user?.name ?? ''); setEmail(user?.email ?? ''); setFieldError(null); }}
+              onClick={() => { setUsername(user?.username ?? ''); setName(user?.name ?? ''); setEmail(user?.email ?? ''); setTimeZone(user?.timeZone ?? ''); setFieldError(null); }}
             >
               Discard
             </button>

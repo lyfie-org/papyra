@@ -168,8 +168,8 @@ public sealed class BulkActionsTests
 
             var notes = await NotesAsync(client);
             Assert.Equal(["live"], notes.Select(n => n.Id).ToArray());
-            Assert.False(File.Exists(Path.Combine(dir, "users", uid, "notes", "binned1.md")));
-            Assert.True(File.Exists(Path.Combine(dir, "users", uid, "notes", "live.md")));
+            Assert.Null(NoteFiles.TryFind(Path.Combine(dir, "users", uid, "notes"), "binned1"));
+            Assert.NotNull(NoteFiles.TryFind(Path.Combine(dir, "users", uid, "notes"), "live"));
 
             // Deleting again is just "not found", not an error.
             Assert.Equal("notFound", Statuses(await BulkAsync(client, "delete", "binned1"))["binned1"]);

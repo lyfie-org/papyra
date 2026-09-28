@@ -176,7 +176,7 @@ public sealed class SnapshotEndpointsTests
         var notes = await client.GetFromJsonAsync<List<Note>>("/api/notes");
         var restored = Assert.Single(notes!, n => n.Id == "r3");
         Assert.Equal("old body", restored.Body.Trim());
-        var raw = await File.ReadAllTextAsync(Path.Combine(dir, "users", uid, "notes", "r3.md"));
+        var raw = await File.ReadAllTextAsync(NoteFiles.Find(Path.Combine(dir, "users", uid, "notes"), "r3"));
         Assert.Contains("aliases", raw); // foreign frontmatter survives the id fix-up
     });
 
@@ -228,7 +228,7 @@ public sealed class SnapshotEndpointsTests
             Assert.Contains("first version", archived!.Body);
 
             // Truncate the live note externally, then restore from the snapshot.
-            var mdPath = Path.Combine(dir, "users", uid, "notes", "s1.md");
+            var mdPath = NoteFiles.Find(Path.Combine(dir, "users", uid, "notes"), "s1");
             await File.WriteAllTextAsync(mdPath, "");
 
             var restore = await client.PostAsync($"/api/notes/s1/restore/{snap.Id}", content: null);

@@ -21,6 +21,11 @@ services:
       - papyra-data:/data
 
     environment:
+      # ── Time zone ──────────────────────────────────────────────────────────────
+      # The zone Papyra shows times in by default (an IANA name, e.g.
+      # "Europe/London", "America/New_York", "Asia/Kolkata"). Each person can
+      # pick their own under Settings → Profile. Unset = UTC.
+      TZ: "UTC"
       # ── Reaching Papyra over plain http (no https) ───────────────────────────
       # Turn ON if you open Papyra at a bare address like http://192.168.1.50:8080
       # or over a Tailscale/WireGuard IP. Without it, signing in appears to work

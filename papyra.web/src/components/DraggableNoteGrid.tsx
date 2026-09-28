@@ -43,6 +43,8 @@ interface Props {
    * pinned or selected here.
    */
   shared?: IncomingShare[];
+  /** Say on each shared card when it was shared (the Shared with me page). */
+  showSharedDate?: boolean;
 }
 
 type Section = 'pinned' | 'others';
@@ -142,6 +144,7 @@ const AbsCard = memo(function AbsCard({
 
 export default function DraggableNoteGrid({
   notes, conflictsByParent, onResolveConflict, includeTodos = false, todosOnly = false, shared = [],
+  showSharedDate = false,
 }: Props) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -443,7 +446,7 @@ export default function DraggableNoteGrid({
             const box = othersLayout.boxes.get(sharedIds[i]);
             return (
               <SharedCell key={sharedIds[i]} id={sharedIds[i]} x={box?.x ?? 0} y={box?.y ?? 0} colW={colW} onMeasure={onMeasure}>
-                <SharedNoteCard share={s} />
+                <SharedNoteCard share={s} showSharedDate={showSharedDate} />
               </SharedCell>
             );
           })}

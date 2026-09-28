@@ -38,6 +38,18 @@ public sealed class UnlockTokenStore
         return string.Equals(entry.UserId, userId, StringComparison.Ordinal);
     }
 
+    /// <summary>
+    /// Push a live token's expiry out to a full lifetime from now — the vault
+    /// stays open while it is being used, and closes after five idle minutes.
+    /// False (and nothing extended) for a dead or foreign token.
+    /// </summary>
+    public bool Touch(string? token, string userId)
+    {
+        if (!IsValid(token, userId)) return false;
+        _tokens[token!] = (userId, DateTime.UtcNow.Add(Lifetime));
+        return true;
+    }
+
     public void Revoke(string token) => _tokens.TryRemove(token, out _);
 
     // Drop every live unlock for this user — on sign-out, a password change, or a
