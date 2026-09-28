@@ -56,6 +56,11 @@ public static class PapyraPaths
     public static string UserDotPapyra(IConfiguration config, string contentRoot, string userId)
         => Path.Combine(UsersDir(config, contentRoot), userId, ".papyra");
 
+    // The git backup's working copy: a mirror of the vault in the backup layout
+    // (see BackupLayout), regenerated each sync. Papyra state, not notes.
+    public static string UserGitMirrorDir(IConfiguration config, string contentRoot, string userId)
+        => Path.Combine(UsersDir(config, contentRoot), userId, ".papyra", "git-mirror");
+
     public static string DbPath(IConfiguration config, string contentRoot)
         => Path.Combine(DotPapyra(config, contentRoot), "papyra.db");
 

@@ -3,7 +3,7 @@ import { Link, NavLink, Outlet, matchPath, useLocation, useNavigate } from 'reac
 import { useQueryClient } from '@tanstack/react-query';
 import {
   Menu, StickyNote, ListTodo, Archive, Settings, Trash2, ShieldCheck, LockOpen,
-  User, Shield, LogOut, Sun, Moon, Layers, Sparkles, CircleQuestionMark, Users,
+  User, LogOut, Sun, Moon, Layers, Sparkles, CircleQuestionMark, Users,
 } from 'lucide-react';
 import ChatPanel from '../components/ChatPanel';
 import SearchBar from '../components/SearchBar';
@@ -77,7 +77,6 @@ export default function WorkspaceLayout() {
         : 'Offline — Papyra is running from this device. Edits are saved here and upload when the server is reachable.')
       : sync.pending > 0 ? `${sync.pending} edit(s) waiting to upload` : 'Connected to your vault';
 
-  const isAdmin = user?.role === 'Admin';
 
   useEffect(() => {
     if (!menuOpen) return;
@@ -175,11 +174,6 @@ export default function WorkspaceLayout() {
                 <button type="button" role="menuitem" onClick={() => go('/settings')}>
                   <Settings size={15} /> Settings
                 </button>
-                {isAdmin && (
-                  <button type="button" role="menuitem" onClick={() => go('/settings?tab=users')}>
-                    <Shield size={15} /> Manage users
-                  </button>
-                )}
                 <div className="workspace__avatar-sep" />
                 <button type="button" role="menuitem" onClick={() => void logout()}>
                   <LogOut size={15} /> Log out

@@ -1,4 +1,8 @@
+using System.Security.Cryptography;
+using System.Text.Json;
 using LibGit2Sharp;
+using LibGit2Sharp.Handlers;
+using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 using Papyra.Api.Data;
@@ -23,6 +27,12 @@ public static class GitKeys
     public static string Conflict(string userId) => Prefix(userId) + "conflict";
     public static string LastSyncUtc(string userId) => Prefix(userId) + "lastSyncUtc";
     public static string LastError(string userId) => Prefix(userId) + "lastError";
+    /// <summary>"plain" (readable files) or "encrypted" (see <see cref="EncryptedGitCodec"/>).</summary>
+    public static string Mode(string userId) => Prefix(userId) + "mode";
+    /// <summary>The encrypted mode's data key, sealed with ASP.NET Data Protection.</summary>
+    public static string DataKey(string userId) => Prefix(userId) + "dataKey";
+    /// <summary>The <see cref="EncryptedGitHeader"/> (JSON) written into the repository.</summary>
+    public static string Crypto(string userId) => Prefix(userId) + "crypto";
 
     /// <summary>
     /// The pre-per-user keys. Git sync used to be one instance-wide config that
@@ -33,18 +43,23 @@ public static class GitKeys
         ["git.remoteUrl", "git.branch", "git.token", "git.conflict", "git.lastSyncUtc", "git.lastError"];
 }
 
-// Native git backup of a user's own vault. On a ~30-minute loop (and on demand),
-// if the vault is dirty it stages the notes, makes a timestamped commit, and pushes
-// to that user's configured remote using their stored token. A push rejected as
-// non-fast-forward (the remote moved on) is treated as a conflict: it is flagged
-// and broadcast over SignalR rather than force-pushed, so nothing is clobbered.
+// Native git backup of a user's own vault. On a ~30-minute loop (and on demand)
+// it rebuilds the backup, makes a timestamped commit if anything changed, and
+// pushes to that user's configured remote using their stored token. A push
+// rejected as non-fast-forward (the remote moved on) is treated as a conflict: it
+// is flagged and broadcast over SignalR rather than force-pushed, so nothing is
+// clobbered.
 //
-// One repository per user, rooted at users/{userId}/. This is the whole point of
-// the design: the previous version initialised a single repo over the *users*
-// directory, so any admin who configured a remote pushed every tenant's notes to
-// it. Backing up your notes is a personal decision about your own data, so the
-// remote, the token and the schedule all belong to the account that owns them —
-// and an admin has no route through Papyra to another user's vault.
+// One repository per user. Backing up your notes is a personal decision about
+// your own data, so the remote, the token and the schedule all belong to the
+// account that owns them — and an admin has no route through Papyra to another
+// user's vault.
+//
+// What is pushed is not the live user directory but a mirror of it in the backup
+// layout (see BackupLayout): notes/, todos/, vault/, media/{images,documents,…}/
+// and settings/ — or, in encrypted mode, the same folders holding sealed files
+// (see EncryptedGitCodec). The mirror is its own repository under
+// users/{userId}/.papyra/git-mirror, regenerated from the vault on each pass.
 //
 // Config + status live in the AppSettings table under git.u{userId}.* keys.
 // Disabled (idle) for a user until they set a remote URL.
@@ -52,12 +67,19 @@ public sealed class GitSyncService : BackgroundService
 {
     private static readonly TimeSpan Interval = TimeSpan.FromMinutes(30);
 
+    internal static readonly JsonSerializerOptions JsonOpts = new(JsonSerializerDefaults.Web) { WriteIndented = true };
+
     private readonly IServiceScopeFactory _scopes;
     private readonly IConfiguration _config;
     private readonly IHostEnvironment _env;
     private readonly IHubContext<NotesHub> _hub;
     private readonly ILogger<GitSyncService> _logger;
     private readonly EmailSender? _email;
+    private readonly IDataProtector _keyProtector;
+    private readonly BackupLayout _layout;
+    // One pass at a time: the half-hourly sweep and a "Back up now" click must not
+    // both rewrite the same mirror.
+    private readonly SemaphoreSlim _gate = new(1, 1);
 
     public GitSyncService(
         IServiceScopeFactory scopes,
@@ -65,6 +87,8 @@ public sealed class GitSyncService : BackgroundService
         IHostEnvironment env,
         IHubContext<NotesHub> hub,
         ILogger<GitSyncService> logger,
+        IDataProtectionProvider dataProtection,
+        BackupLayout layout,
         EmailSender? email = null)
     {
         _scopes = scopes;
@@ -73,7 +97,12 @@ public sealed class GitSyncService : BackgroundService
         _hub = hub;
         _logger = logger;
         _email = email;
+        _keyProtector = dataProtection.CreateProtector("Papyra.GitBackupKey.v1");
+        _layout = layout;
     }
+
+    public string ProtectKey(byte[] dataKey) => _keyProtector.Protect(Convert.ToBase64String(dataKey));
+    public byte[] UnprotectKey(string sealedKey) => Convert.FromBase64String(_keyProtector.Unprotect(sealedKey));
 
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
@@ -116,40 +145,83 @@ public sealed class GitSyncService : BackgroundService
             .ToList();
     }
 
-    // One sync pass for one user. Reads their config, runs the git work off-thread,
-    // persists status, and broadcasts a conflict if the push was rejected. Exposed
-    // for the manual-trigger endpoint and tests.
+    // One sync pass for one user. Reads their config, builds the backup, runs the
+    // git work off-thread, persists status, and broadcasts a conflict if the push
+    // was rejected. Exposed for the manual-trigger endpoint and tests.
     internal async Task<GitSyncResult> SyncOnceAsync(string userId, CancellationToken ct)
     {
-        string? remoteUrl, branch, token;
-        using (var scope = _scopes.CreateScope())
-        {
-            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-            remoteUrl = await ReadSetting(db, GitKeys.RemoteUrl(userId), ct);
-            branch = await ReadSetting(db, GitKeys.Branch(userId), ct);
-            token = await ReadSetting(db, GitKeys.Token(userId), ct);
-        }
+        await _gate.WaitAsync(ct);
+        try { return await SyncCoreAsync(userId, ct); }
+        finally { _gate.Release(); }
+    }
 
-        if (string.IsNullOrWhiteSpace(remoteUrl)) return new GitSyncResult("disabled", null);
-        branch = string.IsNullOrWhiteSpace(branch) ? "main" : branch.Trim();
-
-        // The user's own directory — not the users root. Their notes, their media,
-        // nobody else's.
-        var userDir = Path.Combine(PapyraPaths.UsersDir(_config, _env.ContentRootPath), userId);
-        Directory.CreateDirectory(userDir);
-        EnsureGitignore(userDir);
-
+    private async Task<GitSyncResult> SyncCoreAsync(string userId, CancellationToken ct)
+    {
+        var stage = Path.Combine(Path.GetTempPath(), $"papyra-git-{Guid.NewGuid():N}");
+        var mirror = PapyraPaths.UserGitMirrorDir(_config, _env.ContentRootPath, userId);
         GitSyncResult result;
         try
         {
-            result = await Task.Run(() => RunSync(userDir, remoteUrl!, branch!, token), ct);
+            string? remoteUrl, branch, token, mode, sealedKey, crypto;
+            var plain = Path.Combine(stage, "plain");
+            using (var scope = _scopes.CreateScope())
+            {
+                var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+                remoteUrl = await ReadSetting(db, GitKeys.RemoteUrl(userId), ct);
+                if (string.IsNullOrWhiteSpace(remoteUrl)) return new GitSyncResult("disabled", null);
+                if (!int.TryParse(userId, out var uid) || await db.Users.FindAsync([uid], ct) is not { } user)
+                    return new GitSyncResult("disabled", null);
+
+                branch = await ReadSetting(db, GitKeys.Branch(userId), ct);
+                token = await ReadSetting(db, GitKeys.Token(userId), ct);
+                mode = await ReadSetting(db, GitKeys.Mode(userId), ct);
+                sealedKey = await ReadSetting(db, GitKeys.DataKey(userId), ct);
+                crypto = await ReadSetting(db, GitKeys.Crypto(userId), ct);
+
+                // The backup, in its published shape, built fresh from the vault.
+                await _layout.BuildAsync(user, db, plain, ct);
+            }
+            branch = string.IsNullOrWhiteSpace(branch) ? "main" : branch.Trim();
+
+            var content = plain;
+            if (mode == "encrypted")
+            {
+                if (string.IsNullOrEmpty(sealedKey) || string.IsNullOrEmpty(crypto))
+                    return await FinishAsync(userId, new GitSyncResult("error",
+                        "The encrypted backup has lost its key. Switch encryption off and on again in Settings → Backup."), ct);
+                var header = JsonSerializer.Deserialize<EncryptedGitHeader>(crypto, JsonOpts)!;
+                var key = UnprotectKey(sealedKey);
+                try
+                {
+                    var sealedRoot = Path.Combine(stage, "sealed");
+                    Directory.CreateDirectory(sealedRoot);
+                    EncryptedGitCodec.EncryptTree(plain, sealedRoot, key);
+                    await File.WriteAllTextAsync(Path.Combine(sealedRoot, BackupManifest.FileName), JsonSerializer.Serialize(
+                        new BackupManifest(BackupManifest.FormatName, BackupManifest.CurrentVersion, true, Crypto: header), JsonOpts), ct);
+                    await File.WriteAllTextAsync(Path.Combine(sealedRoot, "README.md"), BackupLayout.Readme(encrypted: true), ct);
+                    content = sealedRoot;
+                }
+                finally { CryptographicOperations.ZeroMemory(key); }
+            }
+
+            result = await Task.Run(() => RunSync(mirror, content, remoteUrl!, branch, token), ct);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not OperationCanceledException)
         {
             _logger.LogWarning(ex, "Git sync failed for user {User}", userId);
             result = new GitSyncResult("error", ex.Message);
         }
+        finally
+        {
+            try { if (Directory.Exists(stage)) Directory.Delete(stage, recursive: true); }
+            catch (IOException) { /* a temp dir; the OS reclaims it */ }
+        }
 
+        return await FinishAsync(userId, result, ct);
+    }
+
+    private async Task<GitSyncResult> FinishAsync(string userId, GitSyncResult result, CancellationToken ct)
+    {
         await PersistStatus(userId, result, ct);
         if (result.Status == "conflict")
         {
@@ -193,8 +265,34 @@ public sealed class GitSyncService : BackgroundService
         }
     }
 
-    private GitSyncResult RunSync(string dir, string remoteUrl, string branch, string? token)
+    /// <summary>
+    /// Clone a backup repository into <paramref name="dest"/> for a restore.
+    /// Returns a plain-language problem, or null on success.
+    /// </summary>
+    public static string? CloneForRestore(string remoteUrl, string branch, string? token, string dest)
     {
+        var (problem, branches) = Probe(remoteUrl, token);
+        if (problem is not null) return problem;
+        if (branches.Count == 0) return "That repository is empty — there is no backup in it yet.";
+        if (!branches.Contains(branch))
+            return $"There is no branch called \"{branch}\" in that repository. It has: {string.Join(", ", branches.Take(8))}.";
+        try
+        {
+            var options = new CloneOptions { BranchName = branch, Checkout = true };
+            options.FetchOptions.CredentialsProvider = (_, _, _) =>
+                new UsernamePasswordCredentials { Username = "x-access-token", Password = token ?? string.Empty };
+            Repository.Clone(remoteUrl, dest, options);
+            return null;
+        }
+        catch (LibGit2SharpException ex)
+        {
+            return $"The repository couldn't be downloaded: {ex.Message}";
+        }
+    }
+
+    private static GitSyncResult RunSync(string dir, string content, string remoteUrl, string branch, string? token)
+    {
+        Directory.CreateDirectory(dir);
         if (!Repository.IsValid(dir))
         {
             Repository.Init(dir);
@@ -207,7 +305,45 @@ public sealed class GitSyncService : BackgroundService
         if (repo.Network.Remotes["origin"] is null) repo.Network.Remotes.Add("origin", remoteUrl);
         else repo.Network.Remotes.Update("origin", r => r.Url = remoteUrl);
 
-        Commands.Stage(repo, "*"); // .gitignore keeps .papyra/.trash out
+        CredentialsHandler? credentials = string.IsNullOrWhiteSpace(token) ? null : (_, _, _) =>
+            new UsernamePasswordCredentials { Username = "x-access-token", Password = token };
+
+        // A brand-new mirror pointed at a repository that already has history —
+        // the backup an older Papyra wrote, or the one this account was restored
+        // from — continues that history instead of being refused as unrelated.
+        if (repo.Head.Tip is null)
+        {
+            var (_, branches) = Probe(remoteUrl, token);
+            if (branches.Contains(branch))
+            {
+                var fetch = new FetchOptions();
+                if (credentials is not null) fetch.CredentialsProvider = credentials;
+                Commands.Fetch(repo, "origin", [$"+refs/heads/{branch}:refs/remotes/origin/{branch}"], fetch, null);
+                if (repo.Branches[$"origin/{branch}"]?.Tip is { } remoteTip)
+                {
+                    repo.Refs.Add($"refs/heads/{branch}", remoteTip.Id, allowOverwrite: true);
+                    repo.Refs.UpdateTarget("HEAD", $"refs/heads/{branch}");
+                    repo.Reset(ResetMode.Mixed, remoteTip);
+                }
+            }
+        }
+
+        // Replace the working tree with the freshly built backup. A deleted note
+        // disappears from the tree, and staging records the deletion.
+        foreach (var entry in Directory.EnumerateFileSystemEntries(dir))
+        {
+            if (Path.GetFileName(entry) == ".git") continue;
+            if (Directory.Exists(entry)) Directory.Delete(entry, recursive: true);
+            else File.Delete(entry);
+        }
+        foreach (var file in Directory.EnumerateFiles(content, "*", SearchOption.AllDirectories))
+        {
+            var target = Path.Combine(dir, Path.GetRelativePath(content, file));
+            Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+            File.Copy(file, target, overwrite: true);
+        }
+
+        Commands.Stage(repo, "*");
         var committed = false;
         if (repo.RetrieveStatus().IsDirty)
         {
@@ -224,9 +360,7 @@ public sealed class GitSyncService : BackgroundService
         {
             OnPushStatusError = err => { rejected = true; rejectMsg = err.Message; },
         };
-        if (!string.IsNullOrWhiteSpace(token))
-            pushOptions.CredentialsProvider = (_, _, _) =>
-                new UsernamePasswordCredentials { Username = "x-access-token", Password = token };
+        if (credentials is not null) pushOptions.CredentialsProvider = credentials;
 
         var localBranch = repo.Head.FriendlyName;
         try
@@ -246,15 +380,6 @@ public sealed class GitSyncService : BackgroundService
 
         if (rejected) return new GitSyncResult("conflict", rejectMsg);
         return new GitSyncResult(committed ? "pushed" : "clean", null);
-    }
-
-    private static void EnsureGitignore(string dir)
-    {
-        var path = Path.Combine(dir, ".gitignore");
-        if (File.Exists(path)) return;
-        // Papyra-owned state (snapshots, order, categories, avatar) and the trash
-        // bin are UI/disposable, never the synced note truth.
-        File.WriteAllText(path, ".papyra/\n.trash/\n");
     }
 
     private async Task PersistStatus(string userId, GitSyncResult result, CancellationToken ct)

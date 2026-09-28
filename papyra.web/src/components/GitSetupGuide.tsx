@@ -1,8 +1,9 @@
 import { useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import {
-  ArrowLeft, ArrowRight, Check, CheckCircle2, ExternalLink, GitBranch, Loader2, RefreshCw, TriangleAlert, X,
+  ArrowLeft, ArrowRight, Check, CheckCircle2, ExternalLink, FileText, GitBranch, Loader2, Lock, RefreshCw, TriangleAlert, X,
 } from 'lucide-react';
+import GitRestorePanel from './GitRestorePanel';
 import { useDialogFocus } from '../hooks/useDialogFocus';
 import {
   probeGitRemote, useGitConfig, useRunGitSync, useSaveGitConfig, type GitProbe,
@@ -37,8 +38,11 @@ export default function GitSetupGuide() {
   const run = useRunGitSync();
   const save = useSaveGitConfig();
   const [guideOpen, setGuideOpen] = useState(false);
+  const [switching, setSwitching] = useState(false);
+  const [restoreOpen, setRestoreOpen] = useState(false);
 
   const configured = Boolean(data?.remoteUrl);
+  const encrypted = data?.mode === 'encrypted';
   const failing = Boolean(data?.conflict || data?.lastError);
 
   return (
@@ -75,6 +79,11 @@ export default function GitSetupGuide() {
                 {repoLabel(data!.remoteUrl)} <ExternalLink size={12} aria-hidden="true" /></a></dd></div>
               <div><dt>Last backup</dt><dd>{when(data!.lastSyncUtc)}</dd></div>
               <div><dt>Schedule</dt><dd>Every 30 minutes, when something changed</dd></div>
+              <div><dt>Format</dt><dd>
+                {encrypted
+                  ? <><Lock size={12} aria-hidden="true" /> Encrypted — your Papyra password unlocks it</>
+                  : <><FileText size={12} aria-hidden="true" /> Readable files — notes/, todos/, vault/, media/, settings/</>}
+              </dd></div>
             </dl>
             {data!.lastError && <p className="git-card__problem">{data!.lastError}</p>}
             {data!.conflict && (
@@ -90,6 +99,9 @@ export default function GitSetupGuide() {
               </button>
               <button type="button" className="settings__btn settings__btn--ghost" onClick={() => setGuideOpen(true)}>
                 Change repository or token
+              </button>
+              <button type="button" className="settings__btn settings__btn--ghost" onClick={() => setSwitching(s => !s)}>
+                {encrypted ? 'Stop encrypting' : 'Encrypt backup'}
               </button>
               <button
                 type="button"
@@ -110,9 +122,33 @@ export default function GitSetupGuide() {
               </p>
             )}
             {run.isError && <p className="settings__error">The backup couldn’t be started.</p>}
+            {switching && (
+              <ModeSwitch
+                to={encrypted ? 'plain' : 'encrypted'}
+                remoteUrl={data!.remoteUrl}
+                branch={data!.branch}
+                onDone={() => { setSwitching(false); run.mutate(); }}
+                onCancel={() => setSwitching(false)}
+              />
+            )}
           </div>
         </div>
       )}
+
+      <div className="git-restore-box">
+        <button type="button" className="settings__link" aria-expanded={restoreOpen} onClick={() => setRestoreOpen(o => !o)}>
+          {restoreOpen ? 'Hide' : 'Restore notes from a GitHub backup…'}
+        </button>
+        {restoreOpen && (
+          <>
+            <p className="settings__hint">
+              Brings back notes, to-do lists, locked notes, attachments and settings from a backup Papyra
+              made — readable or encrypted, from this server or another one.
+            </p>
+            <GitRestorePanel />
+          </>
+        )}
+      </div>
       {guideOpen && <SetupGuide initialUrl={data?.remoteUrl ?? ''} hasToken={Boolean(data?.hasToken)} onClose={() => setGuideOpen(false)} />}
     </>
   );
@@ -134,6 +170,9 @@ function SetupGuide({ initialUrl, hasToken, onClose }: { initialUrl: string; has
   const [probe, setProbe] = useState<GitProbe | null>(null);
   const [checking, setChecking] = useState(false);
   const [finished, setFinished] = useState<string | null>(null);
+  const [mode, setMode] = useState<'plain' | 'encrypted'>('encrypted');
+  const [password, setPassword] = useState('');
+  const [saveError, setSaveError] = useState<string | null>(null);
 
   const repoUrl = normaliseRepoUrl(repoInput);
   const canUseStoredToken = hasToken && !token && initialUrl !== '';
@@ -154,7 +193,16 @@ function SetupGuide({ initialUrl, hasToken, onClose }: { initialUrl: string; has
   async function finish() {
     if (!repoUrl || !probe?.ok) return;
     const branch = probe.branches.includes('main') || probe.branches.length === 0 ? 'main' : probe.branches[0];
-    await save.mutateAsync({ remoteUrl: repoUrl, branch, token: token.trim() || undefined });
+    setSaveError(null);
+    try {
+      await save.mutateAsync({
+        remoteUrl: repoUrl, branch, token: token.trim() || undefined,
+        mode, password: mode === 'encrypted' ? password : undefined,
+      });
+    } catch (err) {
+      setSaveError(err instanceof Error ? err.message : 'Couldn’t save the backup settings.');
+      return;
+    }
     const result = await run.mutateAsync();
     setFinished(result.status);
   }
@@ -311,6 +359,29 @@ function SetupGuide({ initialUrl, hasToken, onClose }: { initialUrl: string; has
                   )}
                 </div>
               )}
+              {!finished && probe?.ok && (
+                <fieldset className="git-guide__mode">
+                  <legend>How should it be stored?</legend>
+                  <label className={`git-guide__mode-opt${mode === 'encrypted' ? ' is-on' : ''}`}>
+                    <input type="radio" name="git-mode" checked={mode === 'encrypted'} onChange={() => setMode('encrypted')} />
+                    <span><strong><Lock size={13} aria-hidden="true" /> Encrypted</strong> — GitHub (or anyone who gets into the
+                      repository) sees only sealed files. Restoring needs your Papyra password.</span>
+                  </label>
+                  <label className={`git-guide__mode-opt${mode === 'plain' ? ' is-on' : ''}`}>
+                    <input type="radio" name="git-mode" checked={mode === 'plain'} onChange={() => setMode('plain')} />
+                    <span><strong><FileText size={13} aria-hidden="true" /> Readable files</strong> — Markdown you can open
+                      on GitHub, including your locked notes, in plain text.</span>
+                  </label>
+                  {mode === 'encrypted' && (
+                    <label className="git-guide__field">
+                      Your Papyra password
+                      <input type="password" value={password} autoComplete="current-password" onChange={e => setPassword(e.target.value)} />
+                      <span className="git-guide__aside">Not stored as typed — it seals the backup’s key. Change your password later and
+                        the backup follows.</span>
+                    </label>
+                  )}
+                </fieldset>
+              )}
               {finished && (
                 <div className="git-guide__check" role="status">
                   {finished === 'pushed' || finished === 'clean' ? (
@@ -326,7 +397,8 @@ function SetupGuide({ initialUrl, hasToken, onClose }: { initialUrl: string; has
                   )}
                 </div>
               )}
-              {(save.isError || run.isError) && <p className="settings__error">Couldn’t save the backup settings.</p>}
+              {saveError && <p className="settings__error" role="alert">{saveError}</p>}
+              {run.isError && <p className="settings__error">Couldn’t start the first backup.</p>}
             </>
           )}
         </div>
@@ -347,7 +419,8 @@ function SetupGuide({ initialUrl, hasToken, onClose }: { initialUrl: string; has
             <button type="button" className="git-card__cta" onClick={() => void check()}>Check again</button>
           )}
           {step === 3 && !finished && probe?.ok && (
-            <button type="button" className="git-card__cta" disabled={save.isPending || run.isPending} onClick={() => void finish()}>
+            <button type="button" className="git-card__cta"
+              disabled={save.isPending || run.isPending || (mode === 'encrypted' && !password)} onClick={() => void finish()}>
               {save.isPending || run.isPending ? 'Backing up…' : 'Save and back up now'}
             </button>
           )}
@@ -356,5 +429,54 @@ function SetupGuide({ initialUrl, hasToken, onClose }: { initialUrl: string; has
       </div>
     </div>,
     document.body,
+  );
+}
+
+// Turn encryption on (needs the account password, which seals the key) or off.
+// Either way the next backup rewrites the repository in the new form; history
+// written before stays as it was, which the warning says.
+function ModeSwitch({ to, remoteUrl, branch, onDone, onCancel }: {
+  to: 'plain' | 'encrypted'; remoteUrl: string; branch: string; onDone: () => void; onCancel: () => void;
+}) {
+  const save = useSaveGitConfig();
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState<string | null>(null);
+
+  async function apply() {
+    setError(null);
+    try {
+      await save.mutateAsync({ remoteUrl, branch, mode: to, password: to === 'encrypted' ? password : undefined });
+      onDone();
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Couldn’t change the backup.');
+    }
+  }
+
+  return (
+    <div className="git-mode-switch">
+      {to === 'encrypted' ? (
+        <>
+          <p className="settings__hint">
+            From the next backup on, every file in the repository is sealed and only your Papyra password opens it.
+            Earlier commits still hold readable copies — for a clean start, point Papyra at a new, empty repository.
+          </p>
+          <label className="settings__field">Your Papyra password
+            <input type="password" value={password} autoComplete="current-password" onChange={e => setPassword(e.target.value)} />
+          </label>
+        </>
+      ) : (
+        <p className="settings__hint">
+          The next backup writes readable Markdown again — including your locked notes — where anyone with access
+          to the repository can read it.
+        </p>
+      )}
+      {error && <p className="settings__error" role="alert">{error}</p>}
+      <div className="git-card__actions">
+        <button type="button" className="settings__btn" disabled={save.isPending || (to === 'encrypted' && !password)} onClick={() => void apply()}>
+          {to === 'encrypted' ? 'Encrypt and back up' : 'Switch to readable files'}
+        </button>
+        <button type="button" className="settings__btn settings__btn--ghost" onClick={onCancel}>Cancel</button>
+      </div>
+    </div>
   );
 }

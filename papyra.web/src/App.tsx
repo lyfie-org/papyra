@@ -14,6 +14,7 @@ import ChoosePasswordPage from './pages/ChoosePasswordPage';
 import SharedNotePage from './pages/SharedNotePage';
 import LoginPage from './pages/LoginPage';
 import SetupPage from './pages/SetupPage';
+import ThemeAccountSync from './components/ThemeAccountSync';
 import { useAuth } from './hooks/useAuth';
 import { clearSessionData } from './lib/session';
 import { FocusProvider } from './hooks/FocusProvider';
@@ -64,6 +65,7 @@ function RequireAuth() {
   if (user?.mustChangePassword) return <ChoosePasswordPage username={user.username} />;
   return (
     <FocusProvider>
+      <ThemeAccountSync key={user?.id} />
       <WorkspaceLayout />
     </FocusProvider>
   );

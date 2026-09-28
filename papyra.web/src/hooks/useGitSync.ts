@@ -9,6 +9,8 @@ export interface GitConfig {
   conflict: boolean;
   lastSyncUtc: string | null;
   lastError: string | null;
+  /** 'encrypted': every file sealed, unlocked by the account password. */
+  mode: 'plain' | 'encrypted';
 }
 
 export interface GitConfigWrite {
@@ -17,6 +19,10 @@ export interface GitConfigWrite {
   // Omitted (undefined) leaves the stored token untouched, so saving the form
   // without retyping a token doesn't wipe it.
   token?: string;
+  /** Omitted keeps the current mode. */
+  mode?: 'plain' | 'encrypted';
+  /** The account password — required to turn encryption on. */
+  password?: string;
 }
 
 export interface GitSyncResult {
@@ -43,7 +49,10 @@ export function useSaveGitConfig() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(next),
       });
-      if (!res.ok) throw new Error(`PUT /api/git failed: ${res.status}`);
+      if (!res.ok) {
+        const data = await res.json().catch(() => null) as { error?: string } | null;
+        throw new Error(data?.error ?? `PUT /api/git failed: ${res.status}`);
+      }
     },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['git'] }),
   });
@@ -76,4 +85,34 @@ export async function probeGitRemote(remoteUrl: string, token?: string): Promise
   const data = await res.json().catch(() => null) as (GitProbe & { error?: string }) | null;
   if (!res.ok) return { ok: false, error: data?.error ?? 'Couldn’t check that repository.' };
   return data ?? { ok: false, error: 'Couldn’t check that repository.' };
+}
+
+export interface BackupSummary {
+  version: number;
+  legacy: boolean;
+  counts: { notes: number; todos: number; vault: number; media: number };
+  account: { username?: string; name?: string; email?: string; timeZone?: string; theme?: string } | null;
+}
+
+export type GitRestoreResult =
+  | { ok: true; restored: number; summary: BackupSummary }
+  | { ok: false; error: string; code?: string };
+
+/**
+ * Replace the signed-in account's notes, media and settings with a git backup
+ * (plain or encrypted), and by default keep backing up to it.
+ */
+export async function restoreFromGit(req: {
+  remoteUrl: string; branch?: string; token?: string; password?: string;
+  keepSyncing?: boolean; accountPassword?: string;
+}): Promise<GitRestoreResult> {
+  const res = await fetch('/api/backups/restore-git', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ keepSyncing: true, ...req }),
+  });
+  const data = await res.json().catch(() => null) as
+    ({ restored: number; summary: BackupSummary } & { error?: string; code?: string }) | null;
+  if (!res.ok || !data) return { ok: false, error: data?.error ?? 'The restore didn’t work.', code: data?.code };
+  return { ok: true, restored: data.restored, summary: data.summary };
 }

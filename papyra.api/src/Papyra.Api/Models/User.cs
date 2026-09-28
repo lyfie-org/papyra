@@ -65,6 +65,13 @@ public class User
     /// </summary>
     public string? TimeZone { get; set; }
 
+    /// <summary>
+    /// "light", "dark" or "system" — chosen at setup, changed from the app's theme
+    /// toggle. Stored on the account so every browser this person signs in to
+    /// opens in it. Null = never chosen (the browser decides).
+    /// </summary>
+    public string? Theme { get; set; }
+
     // ── Password age + account deletion ───────────────────────────────────────
     /// <summary>When the password was last set. Deleting the account needs it to be over a day old.</summary>
     public DateTime? PasswordChangedUtc { get; set; }

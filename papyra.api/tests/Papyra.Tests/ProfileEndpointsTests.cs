@@ -40,8 +40,9 @@ public sealed class ProfileEndpointsTests
         }
     }
 
+    // With no mail configured, moving the email needs the account password.
     private static Task<HttpResponseMessage> Put(HttpClient c, string? username = null, string? name = null, string? email = null)
-        => c.PutAsJsonAsync("/api/auth/profile", new ProfileRequest(name, email, username));
+        => c.PutAsJsonAsync("/api/auth/profile", new ProfileRequest(name, email, username, CurrentPassword: "hunter2!"));
 
     private static async Task<JsonElement> Me(HttpClient c)
         => await c.GetFromJsonAsync<JsonElement>("/api/auth/me");
@@ -187,5 +188,60 @@ public sealed class ProfileEndpointsTests
 
         Assert.Equal(HttpStatusCode.NoContent, (await client.DeleteAsync("/api/auth/avatar")).StatusCode);
         Assert.Equal(HttpStatusCode.NotFound, (await client.GetAsync("/api/auth/avatar")).StatusCode);
+    });
+    [Fact]
+    public Task EmailChange_NeedsProof_FromTheAccount() => InApp(async (client, _, _, _) =>
+    {
+        // No code (mail is off here) and no password: refused, address unchanged.
+        var bare = await client.PutAsJsonAsync("/api/auth/profile", new ProfileRequest(null, "new@example.com"));
+        Assert.Equal(HttpStatusCode.PreconditionRequired, bare.StatusCode);
+        Assert.Equal("currentPassword", await ErrorField(bare));
+
+        var wrong = await client.PutAsJsonAsync("/api/auth/profile", new ProfileRequest(null, "new@example.com", CurrentPassword: "nope"));
+        Assert.Equal(HttpStatusCode.PreconditionRequired, wrong.StatusCode);
+        Assert.Equal("admin@example.com", (await Me(client)).GetProperty("email").GetString());
+
+        // Asking for a code says a password is what counts on this server.
+        var code = await client.PostAsJsonAsync("/api/auth/email/code", new EmailCodeRequest("new@example.com"));
+        Assert.Equal(HttpStatusCode.OK, code.StatusCode);
+        Assert.True((await code.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("passwordRequired").GetBoolean());
+
+        Assert.Equal(HttpStatusCode.OK, (await Put(client, email: "new@example.com")).StatusCode);
+        Assert.Equal("new@example.com", (await Me(client)).GetProperty("email").GetString());
+
+        // Same address, any case: not a change, nothing to prove.
+        var same = await client.PutAsJsonAsync("/api/auth/profile", new ProfileRequest("Admin", "NEW@example.com"));
+        Assert.Equal(HttpStatusCode.OK, same.StatusCode);
+    });
+
+    [Fact]
+    public Task UsernameAvailability_IsPerInstance_AndCaseInsensitive() => InApp(async (client, _, _, _) =>
+    {
+        var provision = await client.PostAsJsonAsync("/api/auth/users",
+            new ProvisionRequest("Bea", "Bea", "bea@example.com", "hunter2!x", "User", false));
+        Assert.True(provision.IsSuccessStatusCode);
+
+        async Task<JsonElement> Check(string n) => await client.GetFromJsonAsync<JsonElement>($"/api/auth/username-available?name={n}");
+        Assert.False((await Check("bea")).GetProperty("available").GetBoolean());
+        Assert.True((await Check("admin")).GetProperty("available").GetBoolean()); // your own name
+        Assert.True((await Check("someone")).GetProperty("available").GetBoolean());
+        var bad = await Check("bea.");
+        Assert.False(bad.GetProperty("available").GetBoolean());
+        Assert.False(string.IsNullOrEmpty(bad.GetProperty("problem").GetString()));
+    });
+
+    [Fact]
+    public Task Theme_IsStoredOnTheAccount_AndValidated() => InApp(async (client, _, _, factory) =>
+    {
+        Assert.Equal(JsonValueKind.Null, (await Me(client)).GetProperty("theme").ValueKind);
+        var bad = await client.PutAsJsonAsync("/api/auth/profile", new ProfileRequest(null, null, Theme: "purple"));
+        Assert.Equal(HttpStatusCode.BadRequest, bad.StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await client.PutAsJsonAsync("/api/auth/profile", new ProfileRequest(null, null, Theme: "dark"))).StatusCode);
+
+        // A new browser signing in gets it straight away.
+        var other = factory.CreateClient();
+        var login = await other.PostAsJsonAsync("/api/auth/login", new { username = "admin", password = "hunter2!" });
+        Assert.Equal("dark", (await login.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("theme").GetString());
+        Assert.Equal("dark", (await Me(other)).GetProperty("theme").GetString());
     });
 }

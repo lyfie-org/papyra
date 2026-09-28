@@ -1,0 +1,68 @@
+.git-restore {
+  display: flex;
+  flex-direction: column;
+  gap: 0.75rem;
+  max-width: 36rem;
+}
+
+.git-restore__row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.75rem;
+}
+
+.git-restore__field {
+  display: flex;
+  flex-direction: column;
+  gap: 0.3rem;
+  color: var(--text-h);
+  font-size: 0.85rem;
+  min-width: 0;
+}
+.git-restore__field--grow { flex: 1 1 14rem; }
+
+.git-restore__field input {
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--text-h);
+  font-family: var(--sans);
+  font-size: 0.9rem;
+}
+.git-restore__field input:hover { border-color: var(--border-hover); }
+.git-restore__field input:focus-visible { border-color: var(--border-focus); }
+
+.git-restore__hint {
+  color: var(--text);
+  font-size: 0.8rem;
+  font-weight: 400;
+}
+
+.git-restore__check {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.5rem;
+  color: var(--text);
+  font-size: 0.85rem;
+  line-height: 1.4;
+}
+.git-restore__check input { margin-top: 0.15rem; }
+
+.git-restore__good,
+.git-restore__bad {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.4rem;
+  margin: 0;
+  font-size: 0.85rem;
+  line-height: 1.45;
+}
+.git-restore__good { color: var(--text-h); }
+.git-restore__bad { color: var(--danger); }
+.git-restore__good svg,
+.git-restore__bad svg { flex-shrink: 0; margin-top: 0.15rem; }
+
+.git-restore .git-spin { animation: git-restore-spin 1s linear infinite; }
+@keyframes git-restore-spin { to { rotate: 360deg; } }
+@media (prefers-reduced-motion: reduce) { .git-restore .git-spin { animation: none; } }

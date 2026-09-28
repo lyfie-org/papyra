@@ -103,6 +103,7 @@ builder.Services.AddSingleton<SearchIndexService>();
 
 // AES-GCM encrypted, password-derived vault backups (generate + restore).
 builder.Services.AddSingleton<EncryptedBackupService>();
+builder.Services.AddSingleton<BackupLayout>();
 
 // Timestamped version history per note (throttled + age-pruned), for recovery.
 builder.Services.AddSingleton<SnapshotService>();
@@ -941,34 +942,250 @@ var auth = app.MapGroup("/api/auth").WithTags("Auth");
 // login for an account that doesn't exist as on one that does. Computed once.
 var DummyPasswordHash = BCrypt.Net.BCrypt.HashPassword(Guid.NewGuid().ToString("N"));
 
-auth.MapPost("/setup", async (SetupRequest body, HttpContext http, AppDbContext db, VaultObserver observer, CancellationToken ct) =>
+// ── First-run setup (guided) ─────────────────────────────────────────────────
+// Every /setup route answers only while the instance has no accounts: the first
+// person to reach a fresh Papyra is, by definition, the one setting it up — the
+// rule POST /setup always had. Once the admin exists they all answer 409.
+//
+// The flow the SPA walks: (optionally) stage a backup to restore → username →
+// email + a code sent to it (configuring outbound mail first if needed) →
+// password → vault PIN → time zone → POST /setup, which creates the admin, sets
+// the PIN and applies the staged backup in one go. Import and theme follow,
+// signed in, through the ordinary endpoints.
+auth.MapGet("/setup/status", async (AppDbContext db, EmailSender email, InstanceConfigStore config, CancellationToken ct) =>
+{
+    await config.EnsureLoadedAsync(ct);
+    return Results.Ok(new
+    {
+        needsSetup = !await db.Users.AnyAsync(ct),
+        emailConfigured = email.IsConfigured,
+        serverTimeZone = ServerTimeZoneId(),
+    });
+});
+
+// Outbound mail, so the verification code has a way out. Same validation as the
+// admin form; saving here switches mail on.
+auth.MapPut("/setup/smtp", async (SmtpConfigWrite body, AppDbContext db, InstanceConfigStore config, CancellationToken ct) =>
+{
+    if (await db.Users.AnyAsync(ct)) return Results.Conflict(new { error = "Already initialized." });
+    var (values, problem) = SmtpValues(body with { Enabled = true });
+    if (problem is not null) return Results.BadRequest(new { error = problem });
+    await config.SetAsync(values!, ct);
+    return Results.NoContent();
+}).RequireRateLimiting(AuthRateLimit);
+
+auth.MapPost("/setup/email/code", async (
+    SetupEmailCodeRequest body, AppDbContext db, EmailSender email, CancellationToken ct) =>
+{
+    if (await db.Users.AnyAsync(ct)) return Results.Conflict(new { error = "Already initialized." });
+    var address = body.Email?.Trim() ?? string.Empty;
+    if (!ProfileRules.IsEmail(address))
+        return Results.BadRequest(new { error = "That doesn’t look like an email address.", field = "email" });
+    if (!email.IsConfigured)
+        return Results.BadRequest(new { error = "Papyra can't send email yet. Set up outgoing mail first.", code = "email_not_configured" });
+
+    var code = System.Security.Cryptography.RandomNumberGenerator.GetInt32(0, 1_000_000).ToString("D6");
+    db.AuthTokens.RemoveRange(db.AuthTokens.Where(t => t.Kind == "setup-email"));
+    db.AuthTokens.Add(new AuthToken
+    {
+        TokenHash = SetupCodeHash(address, code),
+        Kind = "setup-email",
+        Email = address,
+        ExpiresUtc = DateTime.UtcNow.AddMinutes(15),
+    });
+    await db.SaveChangesAsync(ct);
+
+    var sent = await email.SendAsync(address, $"{code} is your Papyra setup code",
+        $"You're setting up a new Papyra. Enter this code to confirm your email address:\n\n{code}\n\n"
+        + "It works for 15 minutes. If you aren't setting up Papyra, ignore this email.",
+        [new EmailDetail("Code", code)], ct);
+    return sent.Sent
+        ? Results.Ok(new { sentTo = address })
+        : Results.BadRequest(new { error = $"The code couldn't be emailed: {sent.Error}", code = "send_failed" });
+}).RequireRateLimiting(AuthRateLimit);
+
+// Check a code without spending it, so the wizard can move on with confidence;
+// POST /setup spends it.
+auth.MapPost("/setup/email/verify", async (SetupEmailVerifyRequest body, AppDbContext db, CancellationToken ct) =>
+{
+    if (await db.Users.AnyAsync(ct)) return Results.Conflict(new { error = "Already initialized." });
+    return await LiveSetupCodeAsync(db, body.Email, body.Code, ct) is null
+        ? Results.BadRequest(new { error = "That code is wrong or has expired.", field = "emailCode" })
+        : Results.Ok(new { ok = true });
+}).RequireRateLimiting(AuthRateLimit);
+
+// Stage a backup to restore into the account about to be created: decrypt and
+// unpack it now (so a wrong password is caught before anything else), report
+// what it holds and the preferences it carries, and keep it until POST /setup.
+// Multipart: kind=file (file + password) or kind=git (remoteUrl, branch, token,
+// password when the repository is encrypted).
+auth.MapPost("/setup/restore", async (
+    HttpRequest request, AppDbContext db, EncryptedBackupService backup, GitSyncService git,
+    IConfiguration config, IHostEnvironment env, CancellationToken ct) =>
+{
+    if (await db.Users.AnyAsync(ct)) return Results.Conflict(new { error = "Already initialized." });
+    if (!request.HasFormContentType) return Results.BadRequest(new { error = "Expected a multipart upload." });
+    var form = await request.ReadFormAsync(ct);
+    var kind = form["kind"].ToString();
+    var password = form["password"].ToString();
+
+    // One staged restore at a time: starting another replaces it.
+    var stagingRoot = SetupStagingRoot(config, env);
+    if (Directory.Exists(stagingRoot)) DeleteDirectoryForce(stagingRoot);
+    var id = Guid.NewGuid().ToString("N");
+    var dir = Path.Combine(stagingRoot, id);
+    var plain = Path.Combine(dir, "plain");
+    Directory.CreateDirectory(dir);
+
+    try
+    {
+        SetupRestoreMeta meta;
+        if (kind == "file")
+        {
+            var file = form.Files["file"];
+            if (file is null || file.Length == 0 || string.IsNullOrEmpty(password))
+                return Results.BadRequest(new { error = "Choose the backup file and enter the password it was made with." });
+            Directory.CreateDirectory(plain);
+            await using var upload = file.OpenReadStream();
+            try { await backup.RestoreAsync(upload, password, plain, ct); }
+            catch (System.Security.Cryptography.CryptographicException)
+            { return Results.BadRequest(new { error = "Wrong password, or the file is damaged.", code = "password_wrong" }); }
+            catch (InvalidDataException)
+            { return Results.BadRequest(new { error = "That isn't a Papyra backup file (.papyra-vault)." }); }
+            meta = new SetupRestoreMeta(null, null, null, null, null, null);
+        }
+        else if (kind == "git")
+        {
+            var remote = form["remoteUrl"].ToString().Trim();
+            if (!Uri.TryCreate(remote, UriKind.Absolute, out var uri) || uri.Scheme is not ("https" or "http"))
+                return Results.BadRequest(new { error = "Paste the repository's https address, e.g. https://github.com/you/papyra-notes.git" });
+            var branch = string.IsNullOrWhiteSpace(form["branch"]) ? "main" : form["branch"].ToString().Trim();
+            var token = form["token"].ToString().Trim();
+            var staged = await StageGitBackupAsync(remote, branch, token, password, plain, git, ct);
+            if (staged.Error is not null) return Results.BadRequest(new { error = staged.Error, code = staged.Code });
+            meta = new SetupRestoreMeta(remote, branch, token, staged.Source!.Mode, staged.Source.SealedKey, staged.Source.HeaderJson);
+        }
+        else return Results.BadRequest(new { error = "Restore from a file or a git repository." });
+
+        await File.WriteAllTextAsync(Path.Combine(dir, "meta.json"), System.Text.Json.JsonSerializer.Serialize(meta), ct);
+        return Results.Ok(new { restoreId = id, summary = BackupLayout.Summarize(plain) });
+    }
+    catch
+    {
+        DeleteDirectoryForce(dir);
+        throw;
+    }
+    finally
+    {
+        // A failed attempt leaves nothing staged.
+        if (!File.Exists(Path.Combine(dir, "meta.json")) && Directory.Exists(dir)) DeleteDirectoryForce(dir);
+    }
+}).DisableAntiforgery().RequireRateLimiting(AuthRateLimit);
+
+auth.MapPost("/setup", async (
+    SetupRequest body, HttpContext http, AppDbContext db, VaultObserver observer, EmailSender email,
+    VaultPinService pins, BackupLayout layout, GitSyncService git, VaultState state, MarkdownStorageService storage,
+    SearchIndexService search, IHubContext<NotesHub> hub, IConfiguration config, IHostEnvironment env, CancellationToken ct) =>
 {
     if (await db.Users.AnyAsync(ct))
         return Results.Conflict(new { error = "Already initialized." });
 
     if (string.IsNullOrWhiteSpace(body.Username) || string.IsNullOrWhiteSpace(body.Password))
         return Results.BadRequest(new { error = "Username and password are required." });
+    var username = body.Username.Trim();
+    if (ProfileRules.UsernameProblem(username) is { } badName)
+        return Results.BadRequest(new { error = badName, field = "username" });
 
     if (PasswordPolicy.Validate(body.Password) is { } setupWeak)
-        return Results.BadRequest(new { error = setupWeak });
+        return Results.BadRequest(new { error = setupWeak, field = "password" });
+
+    // An address is confirmed with the code sent to it whenever this Papyra can
+    // send mail. Without mail there is nothing to confirm it with, and it is
+    // kept as typed.
+    var address = body.Email?.Trim() ?? string.Empty;
+    AuthToken? emailToken = null;
+    if (address.Length > 0)
+    {
+        if (!ProfileRules.IsEmail(address))
+            return Results.BadRequest(new { error = "That doesn’t look like an email address.", field = "email" });
+        if (email.IsConfigured)
+        {
+            emailToken = await LiveSetupCodeAsync(db, address, body.EmailCode, ct);
+            if (emailToken is null)
+                return Results.BadRequest(new { error = "Confirm your email with the code we sent to it.", field = "emailCode" });
+        }
+    }
+
+    if (body.Pin is { Length: > 0 } && VaultPin.Validate(body.Pin) is { } badPin)
+        return Results.BadRequest(new { error = badPin, field = "pin" });
+    var zone = body.TimeZone?.Trim();
+    if (!string.IsNullOrEmpty(zone) && !TimeZoneInfo.TryFindSystemTimeZoneById(zone, out _))
+        return Results.BadRequest(new { error = "That isn’t a time zone this server recognises.", field = "timeZone" });
+    if (body.Theme is not (null or "light" or "dark" or "system"))
+        return Results.BadRequest(new { error = "Theme is light, dark or system.", field = "theme" });
+
+    // A staged restore is addressed by the id /setup/restore handed out — a GUID,
+    // parsed as one so it can never name a path.
+    string? restoreDir = null;
+    if (!string.IsNullOrEmpty(body.RestoreId))
+    {
+        if (!Guid.TryParseExact(body.RestoreId, "N", out _)
+            || !File.Exists(Path.Combine(SetupStagingRoot(config, env), body.RestoreId, "meta.json")))
+            return Results.BadRequest(new { error = "The backup you chose is no longer staged. Choose it again.", field = "restore" });
+        restoreDir = Path.Combine(SetupStagingRoot(config, env), body.RestoreId);
+    }
 
     var user = new User
     {
-        Username = body.Username.Trim(),
-        Name = string.IsNullOrWhiteSpace(body.Name) ? body.Username.Trim() : body.Name.Trim(),
-        Email = body.Email?.Trim() ?? string.Empty,
+        Username = username,
+        Name = string.IsNullOrWhiteSpace(body.Name) ? username : body.Name.Trim(),
+        Email = address,
         PasswordHash = BCrypt.Net.BCrypt.HashPassword(body.Password),
         PasswordChangedUtc = DateTime.UtcNow,
         Role = "Admin",
+        TimeZone = string.IsNullOrEmpty(zone) ? null : zone,
+        Theme = body.Theme,
     };
 
     db.Users.Add(user);
+    if (emailToken is not null) emailToken.UsedUtc = DateTime.UtcNow;
     await db.SaveChangesAsync(ct);
 
     observer.WatchUser(user.Id.ToString()); // create + watch the new tenant's vault
+    if (body.Pin is { Length: > 0 }) await pins.SetAsync(user, body.Pin, ct);
+
+    var restored = 0;
+    if (restoreDir is not null)
+    {
+        try
+        {
+            await layout.ApplyAsync(Path.Combine(restoreDir, "plain"), user, db, restoreProfile: true, ct);
+            // What was just chosen in the wizard beats what the backup remembered.
+            if (!string.IsNullOrEmpty(zone)) user.TimeZone = zone;
+            if (body.Theme is not null) user.Theme = body.Theme;
+            if (!string.IsNullOrWhiteSpace(body.Name)) user.Name = body.Name.Trim();
+            await db.SaveChangesAsync(ct);
+            restored = await RescanUserAsync(user.Id.ToString(), config, env, state, storage, search, observer, hub, ct);
+
+            var meta = System.Text.Json.JsonSerializer.Deserialize<SetupRestoreMeta>(
+                await File.ReadAllTextAsync(Path.Combine(restoreDir, "meta.json"), ct));
+            if (meta?.RemoteUrl is { Length: > 0 })
+                await SaveGitBackupConfigAsync(db, git, user.Id.ToString(), meta.RemoteUrl, meta.Branch ?? "main", meta.Token,
+                    new GitRestoreSource(meta.Mode ?? "plain", meta.SealedKey, meta.HeaderJson), body.Password, config, env, ct);
+        }
+        finally
+        {
+            DeleteDirectoryForce(restoreDir);
+        }
+    }
+
     await SignInAsync(http, user); // the first admin starts signed in
-    return Results.Ok(new { user.Id, user.Username, user.Name, user.Email, user.Role });
-});
+    return Results.Ok(new
+    {
+        user.Id, user.Username, user.Name, user.Email, user.Role, user.TimeZone, user.Theme,
+        serverTimeZone = ServerTimeZoneId(), restored,
+    });
+}).RequireRateLimiting(AuthRateLimit);
 
 // Validate credentials against the BCrypt hash and mint the session cookie. Same
 // generic 401 for unknown user and bad password so we don't leak which one failed.
@@ -1012,7 +1229,7 @@ auth.MapPost("/login", async (
     if (user!.DisabledUtc is not null) return AccountDisabled();
     await SignInAsync(http, user);
     await SignInNotices.RecordAsync(http, db, email, user, "Password", ct);
-    return Results.Ok(new { user.Id, user.Username, user.Name, user.Email, user.Role, user.TimeZone, serverTimeZone = ServerTimeZoneId() });
+    return Results.Ok(new { user.Id, user.Username, user.Name, user.Email, user.Role, user.TimeZone, user.Theme, serverTimeZone = ServerTimeZoneId() });
 }).RequireRateLimiting(AuthRateLimit);
 
 // ── Sign in with a passkey ──────────────────────────────────────────────────────
@@ -1061,7 +1278,7 @@ auth.MapPost("/passkey/verify", async (
     if (user.DisabledUtc is not null) return AccountDisabled();
     await SignInAsync(http, user);
     await SignInNotices.RecordAsync(http, db, email, user, "Passkey", ct);
-    return Results.Ok(new { user.Id, user.Username, user.Name, user.Email, user.Role, user.TimeZone, serverTimeZone = ServerTimeZoneId() });
+    return Results.Ok(new { user.Id, user.Username, user.Name, user.Email, user.Role, user.TimeZone, user.Theme, serverTimeZone = ServerTimeZoneId() });
 }).RequireRateLimiting(AuthRateLimit);
 
 auth.MapPost("/logout", async (HttpContext http, UnlockTokenStore unlockTokens) =>
@@ -1159,7 +1376,7 @@ auth.MapGet("/token/{token}", async (string token, AppDbContext db, Cancellation
     .RequireRateLimiting(AuthRateLimit);
 
 auth.MapPost("/reset-password", async (
-    ResetPasswordRequest body, AppDbContext db, EmailSender email, CancellationToken ct) =>
+    ResetPasswordRequest body, AppDbContext db, EmailSender email, GitSyncService git, CancellationToken ct) =>
 {
     if (PasswordPolicy.Validate(body.Password) is { } weak)
         return Results.BadRequest(new { error = weak });
@@ -1176,6 +1393,7 @@ auth.MapPost("/reset-password", async (
     user.PasswordChangedUtc = DateTime.UtcNow;
     user.MustChangePassword = false; // they chose this one themselves
     row.UsedUtc = DateTime.UtcNow;   // burn it in the same transaction as the change
+    await RewrapGitBackupKeyAsync(db, git, user.Id.ToString(), body.Password!, ct);
     await db.SaveChangesAsync(ct);
 
     // Security mail, sent regardless of notification preferences: being told your
@@ -1258,6 +1476,8 @@ auth.MapGet("/me", async (HttpContext http, AppDbContext db, CancellationToken c
         // container's TZ) — the client falls back from one to the other.
         user.TimeZone,
         serverTimeZone = ServerTimeZoneId(),
+        // The theme follows the person, not the browser: every sign-in opens in it.
+        user.Theme,
     });
 });
 
@@ -1503,7 +1723,8 @@ webauthn.MapDelete("/credentials/{id:int}", async (
 // and uploads an avatar. Avatar lives under the user's hidden .papyra dir (UI
 // state, not the notes vault).
 auth.MapPut("/profile", async (
-    ProfileRequest body, HttpContext http, ClaimsPrincipal principal, AppDbContext db, EmailSender mail, CancellationToken ct) =>
+    ProfileRequest body, HttpContext http, ClaimsPrincipal principal, AppDbContext db, EmailSender mail,
+    LoginThrottle throttle, CancellationToken ct) =>
 {
     var id = int.Parse(Uid(principal));
     var user = await db.Users.FindAsync([id], ct);
@@ -1555,7 +1776,48 @@ auth.MapPut("/profile", async (
             if (await db.Users.AnyAsync(u => u.Id != id && u.Email.ToLower() == lower, ct))
                 return Results.Conflict(new { error = "Another account already uses that email.", field = "email" });
         }
+
+        // Moving the account to another address is how a stolen session becomes
+        // a stolen account: every reset link would follow it. So the change needs
+        // proof from the address it is leaving — a code sent there — or, where
+        // this Papyra can't send mail, the account password.
+        if (!string.Equals(email, user.Email, StringComparison.OrdinalIgnoreCase)
+            && !string.IsNullOrWhiteSpace(user.Email))
+        {
+            var key = $"email-change:{user.Id}";
+            if (throttle.IsLockedOut(key))
+                return Results.Json(new { error = "Too many attempts. Try again later.", field = "emailCode" }, statusCode: 429);
+            if (mail.IsConfigured)
+            {
+                var code = body.EmailCode?.Trim() ?? string.Empty;
+                if (code.Length == 0)
+                    return Results.Json(new { error = "Enter the code we emailed to your current address.", field = "emailCode", code = "email_code_required" },
+                        statusCode: StatusCodes.Status428PreconditionRequired);
+                var hash = EmailChangeCodeHash(user.Id, email, code);
+                var token = await db.AuthTokens.FirstOrDefaultAsync(t => t.UserId == user.Id && t.Kind == "email-change" && t.TokenHash == hash, ct);
+                if (token is null || token.UsedUtc is not null || token.ExpiresUtc < DateTime.UtcNow)
+                {
+                    throttle.RecordFailure(key);
+                    return Results.BadRequest(new { error = "That code is wrong or has expired. Send a new one.", field = "emailCode" });
+                }
+                token.UsedUtc = DateTime.UtcNow;
+            }
+            else if (string.IsNullOrEmpty(body.CurrentPassword) || !BCrypt.Net.BCrypt.Verify(body.CurrentPassword, user.PasswordHash))
+            {
+                if (!string.IsNullOrEmpty(body.CurrentPassword)) throttle.RecordFailure(key);
+                return Results.Json(new { error = "Confirm with your account password to change your email.", field = "currentPassword", code = "password_required" },
+                    statusCode: StatusCodes.Status428PreconditionRequired);
+            }
+            throttle.Reset(key);
+        }
         user.Email = email;
+    }
+
+    if (body.Theme is not null)
+    {
+        if (body.Theme is not ("light" or "dark" or "system"))
+            return Results.BadRequest(new { error = "Theme is light, dark or system.", field = "theme" });
+        user.Theme = body.Theme;
     }
 
     // Empty = "use the server's zone"; anything else must be a zone this machine
@@ -1586,8 +1848,62 @@ auth.MapPut("/profile", async (
             + "If that wasn't you, sign in and change your password, then put your address back under Settings → Profile.",
             [new("New address", string.IsNullOrWhiteSpace(user.Email) ? "(none)" : user.Email), .. RequestDetails(user, http)], ct);
 
-    return Results.Ok(new { user.Id, user.Username, user.Name, user.Email, user.Role, user.TimeZone, serverTimeZone = ServerTimeZoneId() });
+    return Results.Ok(new { user.Id, user.Username, user.Name, user.Email, user.Role, user.TimeZone, user.Theme, serverTimeZone = ServerTimeZoneId() });
 }).RequireAuthorization();
+
+// Step one of changing your email: a six-digit code to the address you have now,
+// bound to the address you are moving to. PUT /profile spends it.
+auth.MapPost("/email/code", async (
+    EmailCodeRequest body, ClaimsPrincipal principal, HttpContext http, AppDbContext db, EmailSender mail, CancellationToken ct) =>
+{
+    var user = await db.Users.FindAsync([int.Parse(Uid(principal))], ct);
+    if (user is null) return Results.NotFound();
+    var wanted = body.Email?.Trim() ?? string.Empty;
+    if (!ProfileRules.IsEmail(wanted))
+        return Results.BadRequest(new { error = "That doesn’t look like an email address.", field = "email" });
+    if (string.Equals(wanted, user.Email, StringComparison.OrdinalIgnoreCase))
+        return Results.BadRequest(new { error = "That is already your email.", field = "email" });
+    var lower = wanted.ToLower();
+    if (await db.Users.AnyAsync(u => u.Id != user.Id && u.Email.ToLower() == lower, ct))
+        return Results.Conflict(new { error = "Another account already uses that email.", field = "email" });
+    if (string.IsNullOrWhiteSpace(user.Email)) return Results.Ok(new { required = false });
+    if (!mail.IsConfigured) return Results.Ok(new { required = false, passwordRequired = true });
+
+    var code = System.Security.Cryptography.RandomNumberGenerator.GetInt32(0, 1_000_000).ToString("D6");
+    db.AuthTokens.RemoveRange(db.AuthTokens.Where(t => t.UserId == user.Id && t.Kind == "email-change"));
+    db.AuthTokens.Add(new AuthToken
+    {
+        TokenHash = EmailChangeCodeHash(user.Id, wanted, code),
+        Kind = "email-change",
+        UserId = user.Id,
+        Email = wanted,
+        Username = user.Username,
+        ExpiresUtc = DateTime.UtcNow.AddMinutes(10),
+    });
+    await db.SaveChangesAsync(ct);
+
+    var sent = await mail.SendAsync(user.Email, $"{code} is your code to change your Papyra email",
+        $"Someone — hopefully you — asked to move the Papyra account @{user.Username} to a new email address.\n\n"
+        + $"Your code is {code}. It works once, for 10 minutes.\n\n"
+        + "If this wasn't you, don't share the code: change your password now. Your email stays as it is.",
+        [new EmailDetail("Code", code), new EmailDetail("New address", wanted), .. RequestDetails(user, http)], ct);
+    return sent.Sent
+        ? Results.Ok(new { required = true, sentTo = MaskEmail(user.Email) })
+        : Results.BadRequest(new { error = "The code couldn't be emailed. Try again shortly." });
+}).RequireAuthorization().RequireRateLimiting(AuthRateLimit);
+
+// Live "is this username free?" for the profile form. Usernames are unique per
+// Papyra, case-insensitively. Answers only what the mention typeahead already
+// does, and under the same per-account budget.
+auth.MapGet("/username-available", async (string? name, ClaimsPrincipal principal, AppDbContext db, CancellationToken ct) =>
+{
+    var wanted = name?.Trim() ?? string.Empty;
+    if (ProfileRules.UsernameProblem(wanted) is { } problem) return Results.Ok(new { available = false, problem });
+    var id = int.Parse(Uid(principal));
+    var lower = wanted.ToLower();
+    var taken = await db.Users.AnyAsync(u => u.Id != id && u.Username.ToLower() == lower, ct);
+    return Results.Ok(new { available = !taken, problem = taken ? "That username is taken on this Papyra." : null });
+}).RequireAuthorization().RequireRateLimiting(UserSearchRateLimit);
 
 // Remove the profile picture; the initial takes its place everywhere.
 auth.MapDelete("/avatar", (ClaimsPrincipal principal, IConfiguration config, IHostEnvironment env) =>
@@ -1600,7 +1916,7 @@ auth.MapDelete("/avatar", (ClaimsPrincipal principal, IConfiguration config, IHo
 
 auth.MapPost("/password", async (
     PasswordRequest body, ClaimsPrincipal principal, AppDbContext db, UnlockTokenStore unlockTokens,
-    EmailSender email, HttpContext http, CancellationToken ct) =>
+    EmailSender email, GitSyncService git, HttpContext http, CancellationToken ct) =>
 {
     if (PasswordPolicy.Validate(body.Next) is { } weak)
         return Results.BadRequest(new { error = weak });
@@ -1616,6 +1932,7 @@ auth.MapPost("/password", async (
     user.PasswordChangedUtc = DateTime.UtcNow;
     // Picking your own password is exactly what the flag was waiting for.
     user.MustChangePassword = false;
+    await RewrapGitBackupKeyAsync(db, git, user.Id.ToString(), body.Next!, ct);
     await db.SaveChangesAsync(ct);
     unlockTokens.RevokeUser(user.Id.ToString());
     await email.NotifyAsync(user, NotificationCatalog.PasswordChanged,
@@ -2207,34 +2524,9 @@ smtpAdmin.MapGet("/", async (InstanceConfigStore config, CancellationToken ct) =
 
 smtpAdmin.MapPut("/", async (SmtpConfigWrite body, InstanceConfigStore config, CancellationToken ct) =>
 {
-    var enabled = body.Enabled == true;
-    var host = body.Host?.Trim() ?? string.Empty;
-    var from = body.FromAddress?.Trim() ?? string.Empty;
-
-    if (enabled && (host.Length == 0 || from.Length == 0))
-        return Results.BadRequest(new { error = "Host and From address are required to enable email." });
-    if (from.Length > 0 && !MailAddress.TryCreate(from, out _))
-        return Results.BadRequest(new { error = "From address is not a valid email address." });
-    var port = body.Port ?? 587;
-    if (port is < 1 or > 65535)
-        return Results.BadRequest(new { error = "Port must be between 1 and 65535." });
-    if (body.PublicUrl is { Length: > 0 } url && !Uri.TryCreate(url, UriKind.Absolute, out _))
-        return Results.BadRequest(new { error = "Public URL must be an absolute URL." });
-
-    var values = new Dictionary<string, string?>
-    {
-        [SmtpKeys.Enabled] = enabled ? "true" : "false",
-        [SmtpKeys.Host] = host,
-        [SmtpKeys.Port] = port.ToString(),
-        [SmtpKeys.UseSsl] = body.UseSsl == true ? "true" : "false",
-        [SmtpKeys.Username] = body.Username?.Trim() ?? string.Empty,
-        [SmtpKeys.FromAddress] = from,
-        [SmtpKeys.FromName] = body.FromName?.Trim() ?? string.Empty,
-        [SmtpKeys.PublicUrl] = body.PublicUrl?.Trim() ?? string.Empty,
-    };
-    if (body.Password is not null) values[SmtpKeys.Password] = body.Password;
-
-    await config.SetAsync(values, ct);
+    var (values, problem) = SmtpValues(body);
+    if (problem is not null) return Results.BadRequest(new { error = problem });
+    await config.SetAsync(values!, ct);
     return Results.NoContent();
 })
     .WithSummary("Configure outbound email (admin)");
@@ -3171,15 +3463,58 @@ gitApi.MapGet("/", async (ClaimsPrincipal user, AppDbContext db, CancellationTok
         conflict = Get(GitKeys.Conflict(uid)) == "true",
         lastSyncUtc = string.IsNullOrEmpty(Get(GitKeys.LastSyncUtc(uid))) ? null : Get(GitKeys.LastSyncUtc(uid)),
         lastError = string.IsNullOrEmpty(Get(GitKeys.LastError(uid))) ? null : Get(GitKeys.LastError(uid)),
+        mode = Get(GitKeys.Mode(uid)) == "encrypted" ? "encrypted" : "plain",
     });
 });
 
-gitApi.MapPut("/", async (GitConfigWrite body, ClaimsPrincipal user, AppDbContext db, CancellationToken ct) =>
+gitApi.MapPut("/", async (
+    GitConfigWrite body, ClaimsPrincipal user, AppDbContext db, GitSyncService git,
+    IConfiguration config, IHostEnvironment env, LoginThrottle throttle, CancellationToken ct) =>
 {
     var uid = Uid(user);
     var remote = body.RemoteUrl?.Trim() ?? string.Empty;
     if (remote.Length > 0 && !Uri.TryCreate(remote, UriKind.Absolute, out _))
         return Results.BadRequest(new { error = "The remote must be a full URL, for example https://github.com/you/notes.git" });
+    var branchName = string.IsNullOrWhiteSpace(body.Branch) ? "main" : body.Branch.Trim();
+    var current = await db.Settings.Where(s => s.Key.StartsWith(GitKeys.Prefix(uid))).ToDictionaryAsync(s => s.Key, s => s.Value, ct);
+    var wasEncrypted = current.GetValueOrDefault(GitKeys.Mode(uid)) == "encrypted" && !string.IsNullOrEmpty(current.GetValueOrDefault(GitKeys.DataKey(uid)));
+    var wantEncrypted = body.Mode is null ? wasEncrypted : body.Mode == "encrypted";
+    if (body.Mode is not (null or "plain" or "encrypted"))
+        return Results.BadRequest(new { error = "Backup mode is plain or encrypted." });
+
+    // Turning encryption on seals a fresh data key under the account password,
+    // so that password is what a restore will ask for.
+    string? newKey = null, newHeader = null;
+    if (wantEncrypted && !wasEncrypted)
+    {
+        var me = await db.Users.FindAsync([int.Parse(uid)], ct);
+        if (me is null) return Results.NotFound();
+        var lockKey = $"git-encrypt:{uid}";
+        if (throttle.IsLockedOut(lockKey)) return Results.Json(new { error = "Too many attempts. Try again later." }, statusCode: 429);
+        if (string.IsNullOrEmpty(body.Password) || !BCrypt.Net.BCrypt.Verify(body.Password, me.PasswordHash))
+        {
+            if (!string.IsNullOrEmpty(body.Password)) throttle.RecordFailure(lockKey);
+            return Results.Json(new { error = "Enter your account password to turn on encryption — it is what unlocks the backup.", field = "password" },
+                statusCode: StatusCodes.Status401Unauthorized);
+        }
+        throttle.Reset(lockKey);
+        var dataKey = EncryptedGitCodec.NewDataKey();
+        try
+        {
+            newKey = git.ProtectKey(dataKey);
+            newHeader = System.Text.Json.JsonSerializer.Serialize(EncryptedGitCodec.Wrap(dataKey, body.Password), GitSyncService.JsonOpts);
+        }
+        finally { System.Security.Cryptography.CryptographicOperations.ZeroMemory(dataKey); }
+    }
+
+    // A different repository (or branch) starts a new local mirror, or the old
+    // one's history would be pushed somewhere it never belonged.
+    if (!string.Equals(current.GetValueOrDefault(GitKeys.RemoteUrl(uid)) ?? string.Empty, remote, StringComparison.Ordinal)
+        || !string.Equals(current.GetValueOrDefault(GitKeys.Branch(uid)) ?? "main", branchName, StringComparison.Ordinal))
+    {
+        var mirror = PapyraPaths.UserGitMirrorDir(config, env.ContentRootPath, uid);
+        if (Directory.Exists(mirror)) DeleteDirectoryForce(mirror);
+    }
 
     async Task Set(string key, string value)
     {
@@ -3189,9 +3524,12 @@ gitApi.MapPut("/", async (GitConfigWrite body, ClaimsPrincipal user, AppDbContex
     }
 
     await Set(GitKeys.RemoteUrl(uid), remote);
-    await Set(GitKeys.Branch(uid), string.IsNullOrWhiteSpace(body.Branch) ? "main" : body.Branch.Trim());
+    await Set(GitKeys.Branch(uid), branchName);
     // Only overwrite the token when one is supplied, so saving config doesn't wipe it.
     if (body.Token is not null) await Set(GitKeys.Token(uid), body.Token.Trim());
+    await Set(GitKeys.Mode(uid), wantEncrypted ? "encrypted" : "plain");
+    if (newKey is not null) { await Set(GitKeys.DataKey(uid), newKey); await Set(GitKeys.Crypto(uid), newHeader!); }
+    if (!wantEncrypted) { await Set(GitKeys.DataKey(uid), string.Empty); await Set(GitKeys.Crypto(uid), string.Empty); }
     await db.SaveChangesAsync(ct);
     return Results.NoContent();
 })
@@ -4158,7 +4496,7 @@ accessRequests.MapPost("/{id:int}/deny", async (
 // the share and token, so it opens nothing else.
 app.MapGet("/api/shared/{token}", async (
     string token, HttpContext http, IDataProtectionProvider dataProtection, AppDbContext db,
-    VaultState state, MarkdownStorageService storage,
+    VaultState state, MarkdownStorageService storage, EmailSender email,
     VaultObserverOptions vault, ILoggerFactory lf, CancellationToken ct) =>
 {
     var share = await db.Shares.FirstOrDefaultAsync(s => s.Token == token && s.Kind == "link", ct);
@@ -4208,7 +4546,14 @@ app.MapGet("/api/shared/{token}", async (
     return Results.Ok(new
     {
         note.Title, note.Body, note.Color, access = share.Access,
-        sharedBy = sharer is null ? null : new { sharer.Username, sharer.Name },
+        // An anonymous reader has no roster to tell "@bea" on this Papyra from
+        // "@bea" on another, so the handle carries the instance's domain —
+        // usernames are unique per installation, the pair is unique everywhere.
+        sharedBy = sharer is null ? null : new
+        {
+            sharer.Username, sharer.Name,
+            handle = $"{sharer.Username}@{InstanceDomain(email, http)}",
+        },
         views = share.ViewCount,
         maxViews = share.MaxViews,
     });
@@ -5047,6 +5392,14 @@ accountDelete.MapPost("/cancel", async (
     return Results.NoContent();
 }).RequireRateLimiting(AuthRateLimit);
 
+// The installation's public host (the configured public URL, else the host this
+// request arrived on) — the "domain" half of a user@domain handle.
+static string InstanceDomain(EmailSender email, HttpContext http)
+{
+    var origin = email.PublicUrl($"{http.Request.Scheme}://{http.Request.Host}");
+    return Uri.TryCreate(origin, UriKind.Absolute, out var uri) ? uri.Host : http.Request.Host.Host;
+}
+
 static string MaskEmail(string address)
 {
     var at = address.IndexOf('@');
@@ -5269,8 +5622,7 @@ backups.MapPost("/generate", async (
     ClaimsPrincipal principal,
     AppDbContext db,
     EncryptedBackupService backup,
-    IConfiguration config,
-    IHostEnvironment env,
+    BackupLayout layout,
     HttpContext http,
     CancellationToken ct) =>
 {
@@ -5283,18 +5635,21 @@ backups.MapPost("/generate", async (
     if (!BCrypt.Net.BCrypt.Verify(body.Password, user.PasswordHash))
         return Results.Json(new { error = "Password is incorrect." }, statusCode: StatusCodes.Status401Unauthorized);
 
-    var root = env.ContentRootPath;
-    var uidStr = uid.ToString();
-    var sources = new[]
+    // Notes, to-dos, locked notes, media by kind and the account's settings, laid
+    // out as BackupLayout describes — the same tree a git backup holds.
+    var stage = Path.Combine(Path.GetTempPath(), $"papyra-backup-{Guid.NewGuid():N}");
+    try
     {
-        ("notes", PapyraPaths.UserNotesDir(config, root, uidStr)),
-        ("media", PapyraPaths.UserMediaDir(config, root, uidStr)),
-    };
-
-    http.Response.ContentType = "application/octet-stream";
-    http.Response.Headers.ContentDisposition = "attachment; filename=\"papyra-backup.papyra-vault\"";
-    await backup.BackupAsync(sources, body.Password, http.Response.Body, ct);
-    return Results.Empty;
+        await layout.BuildAsync(user, db, stage, ct);
+        http.Response.ContentType = "application/octet-stream";
+        http.Response.Headers.ContentDisposition = "attachment; filename=\"papyra-backup.papyra-vault\"";
+        await backup.BackupAsync([(string.Empty, stage)], body.Password, http.Response.Body, ct);
+        return Results.Empty;
+    }
+    finally
+    {
+        if (Directory.Exists(stage)) Directory.Delete(stage, recursive: true);
+    }
 })
     .WithSummary("Generate encrypted backup")
     .WithDescription("Verifies the account password, then streams an AES-GCM encrypted .papyra-vault of the caller's notes + media.");
@@ -5304,6 +5659,7 @@ backups.MapPost("/restore", async (
     ClaimsPrincipal principal,
     AppDbContext db,
     EncryptedBackupService backup,
+    BackupLayout layout,
     VaultState state,
     SearchIndexService search,
     MarkdownStorageService storage,
@@ -5350,31 +5706,11 @@ backups.MapPost("/restore", async (
             }
         }
 
-        // In-place content swap: clearing/refilling the dirs (rather than moving them)
-        // keeps the live FileSystemWatcher handle valid.
-        var notesDir = PapyraPaths.UserNotesDir(config, root, uidStr);
-        var mediaDir = PapyraPaths.UserMediaDir(config, root, uidStr);
-        ReplaceDirContents(Path.Combine(staging, "notes"), notesDir);
-        ReplaceDirContents(Path.Combine(staging, "media"), mediaDir);
-
-        // Force a per-tenant cache rebuild from the restored .md files (the authority).
-        // Stale notes removed by the restore fall out when the watcher fires their
-        // deletes; this just makes the new set visible immediately.
-        await hub.Clients.All.SendAsync("SystemRebuilding", ct);
-        observer.WatchUser(uidStr); // ensures the dir exists + is watched (no-op if so)
-
-        var scanned = new List<Note>();
-        foreach (var path in Directory.EnumerateFiles(notesDir, "*.md", SearchOption.AllDirectories))
-        {
-            if (ConflictDetector.IsConflict(Path.GetFileName(path))) continue;
-            var note = await storage.ReadAsync(path, ct);
-            if (note is null || string.IsNullOrEmpty(note.Id)) continue;
-            state.Upsert(uidStr, path, note);
-            scanned.Add(note);
-        }
-        search.RebuildUser(uidStr, scanned);
-
-        return Results.Ok(new { restored = scanned.Count });
+        // Notes, media and settings back into the live shape (either backup
+        // version), then a per-tenant cache rebuild from the restored files.
+        await layout.ApplyAsync(staging, user, db, restoreProfile: true, ct);
+        var restored = await RescanUserAsync(uidStr, config, env, state, storage, search, observer, hub, ct);
+        return Results.Ok(new { restored });
     }
     finally
     {
@@ -5384,6 +5720,71 @@ backups.MapPost("/restore", async (
     .DisableAntiforgery()
     .WithSummary("Restore from encrypted backup")
     .WithDescription("Decrypts an uploaded .papyra-vault (multipart: password + file) and replaces the caller's notes + media, then rebuilds the cache.");
+
+// Restore the signed-in account from a git backup — plain or encrypted, current
+// layout or the older whole-directory mirror — and (by default) keep backing up
+// to the same repository afterwards, continuing its history.
+backups.MapPost("/restore-git", async (
+    GitRestoreRequest body,
+    ClaimsPrincipal principal,
+    AppDbContext db,
+    BackupLayout layout,
+    GitSyncService git,
+    VaultState state,
+    SearchIndexService search,
+    MarkdownStorageService storage,
+    VaultObserver observer,
+    IHubContext<NotesHub> hub,
+    IConfiguration config,
+    IHostEnvironment env,
+    CancellationToken ct) =>
+{
+    var remote = body.RemoteUrl?.Trim() ?? string.Empty;
+    if (!Uri.TryCreate(remote, UriKind.Absolute, out var uri) || uri.Scheme is not ("https" or "http"))
+        return Results.BadRequest(new { error = "Paste the repository's https address, e.g. https://github.com/you/papyra-notes.git" });
+    var branch = string.IsNullOrWhiteSpace(body.Branch) ? "main" : body.Branch.Trim();
+
+    var uidStr = Uid(principal);
+    var user = await db.Users.FindAsync([int.Parse(uidStr)], ct);
+    if (user is null) return Results.NotFound();
+
+    // A token left blank reuses the one saved for backups, like the connection test.
+    var token = body.Token?.Trim();
+    if (string.IsNullOrEmpty(token))
+    {
+        var tokenKey = GitKeys.Token(uidStr);
+        token = (await db.Settings.FirstOrDefaultAsync(s => s.Key == tokenKey, ct))?.Value;
+    }
+
+    var staging = Path.Combine(PapyraPaths.UserDotPapyra(config, env.ContentRootPath, uidStr), $"restore-git-{Guid.NewGuid():N}");
+    try
+    {
+        var staged = await StageGitBackupAsync(remote, branch, token, body.Password, Path.Combine(staging, "plain"), git, ct);
+        if (staged.Error is not null) return Results.BadRequest(new { error = staged.Error, code = staged.Code });
+        var summary = BackupLayout.Summarize(Path.Combine(staging, "plain"));
+
+        await layout.ApplyAsync(Path.Combine(staging, "plain"), user, db, restoreProfile: true, ct);
+        var restored = await RescanUserAsync(uidStr, config, env, state, storage, search, observer, hub, ct);
+
+        if (body.KeepSyncing)
+        {
+            // Re-seal an encrypted backup under this account's password when it
+            // was given and is right; otherwise the password it was made with
+            // keeps unlocking it.
+            var rewrap = !string.IsNullOrEmpty(body.AccountPassword) && BCrypt.Net.BCrypt.Verify(body.AccountPassword, user.PasswordHash)
+                ? body.AccountPassword : null;
+            await SaveGitBackupConfigAsync(db, git, uidStr, remote, branch, token, staged.Source!, rewrap, config, env, ct);
+        }
+        return Results.Ok(new { restored, summary });
+    }
+    finally
+    {
+        if (Directory.Exists(staging)) DeleteDirectoryForce(staging);
+    }
+})
+    .RequireRateLimiting(AuthRateLimit)
+    .WithSummary("Restore from a git backup")
+    .WithDescription("Downloads the caller's git backup (decrypting it with the given password when it is encrypted), replaces their notes, media and settings with it, and optionally keeps backing up there.");
 
 // Signed-in only, and events go to the owning user (Clients.User keys on the
 // NameIdentifier claim, i.e. the user id). Anonymous and cross-tenant listeners
@@ -5690,17 +6091,200 @@ static async Task<IResult> ApplySharedEdit(
 // Replace targetDir's contents with sourceDir's, keeping targetDir itself (so a
 // live FileSystemWatcher on it stays valid). Clears the target first, then mirrors
 // the source tree in. A missing source tree just leaves the target empty.
-static void ReplaceDirContents(string sourceDir, string targetDir)
+// Delete a directory tree even when it holds read-only files — git marks its
+// object files read-only, and Directory.Delete refuses those on Windows.
+static void DeleteDirectoryForce(string dir)
 {
-    Directory.CreateDirectory(targetDir);
-    foreach (var f in Directory.EnumerateFiles(targetDir, "*", SearchOption.AllDirectories)) File.Delete(f);
-    foreach (var d in Directory.EnumerateDirectories(targetDir)) Directory.Delete(d, recursive: true);
+    if (!Directory.Exists(dir)) return;
+    foreach (var file in Directory.EnumerateFiles(dir, "*", SearchOption.AllDirectories))
+        File.SetAttributes(file, FileAttributes.Normal);
+    Directory.Delete(dir, recursive: true);
+}
 
-    if (!Directory.Exists(sourceDir)) return;
-    foreach (var dir in Directory.EnumerateDirectories(sourceDir, "*", SearchOption.AllDirectories))
-        Directory.CreateDirectory(Path.Combine(targetDir, Path.GetRelativePath(sourceDir, dir)));
-    foreach (var file in Directory.EnumerateFiles(sourceDir, "*", SearchOption.AllDirectories))
-        File.Move(file, Path.Combine(targetDir, Path.GetRelativePath(sourceDir, file)), overwrite: true);
+// Rebuild one tenant's cache and index from the .md files after a restore (the
+// files are the authority). Notes the restore removed fall out when the watcher
+// fires their deletes; this makes the restored set visible immediately.
+static async Task<int> RescanUserAsync(
+    string uid, IConfiguration config, IHostEnvironment env, VaultState state, MarkdownStorageService storage,
+    SearchIndexService search, VaultObserver observer, IHubContext<NotesHub> hub, CancellationToken ct)
+{
+    await hub.Clients.All.SendAsync("SystemRebuilding", ct);
+    observer.WatchUser(uid); // ensures the dir exists + is watched (no-op if so)
+    var notesDir = PapyraPaths.UserNotesDir(config, env.ContentRootPath, uid);
+    var scanned = new List<Note>();
+    foreach (var path in Directory.EnumerateFiles(notesDir, "*.md", SearchOption.AllDirectories))
+    {
+        if (ConflictDetector.IsConflict(Path.GetFileName(path))) continue;
+        var note = await storage.ReadAsync(path, ct);
+        if (note is null || string.IsNullOrEmpty(note.Id)) continue;
+        state.Upsert(uid, path, note);
+        scanned.Add(note);
+    }
+    search.RebuildUser(uid, scanned);
+    return scanned.Count;
+}
+
+// Validate an SMTP form into setting rows. Shared by the admin page and setup.
+static (Dictionary<string, string?>? Values, string? Problem) SmtpValues(SmtpConfigWrite body)
+{
+    var enabled = body.Enabled == true;
+    var host = body.Host?.Trim() ?? string.Empty;
+    var from = body.FromAddress?.Trim() ?? string.Empty;
+
+    if (enabled && (host.Length == 0 || from.Length == 0))
+        return (null, "Host and From address are required to enable email.");
+    if (from.Length > 0 && !MailAddress.TryCreate(from, out _))
+        return (null, "From address is not a valid email address.");
+    var port = body.Port ?? 587;
+    if (port is < 1 or > 65535)
+        return (null, "Port must be between 1 and 65535.");
+    if (body.PublicUrl is { Length: > 0 } url && !Uri.TryCreate(url, UriKind.Absolute, out _))
+        return (null, "Public URL must be an absolute URL.");
+
+    var values = new Dictionary<string, string?>
+    {
+        [SmtpKeys.Enabled] = enabled ? "true" : "false",
+        [SmtpKeys.Host] = host,
+        [SmtpKeys.Port] = port.ToString(),
+        [SmtpKeys.UseSsl] = body.UseSsl == true ? "true" : "false",
+        [SmtpKeys.Username] = body.Username?.Trim() ?? string.Empty,
+        [SmtpKeys.FromAddress] = from,
+        [SmtpKeys.FromName] = body.FromName?.Trim() ?? string.Empty,
+        [SmtpKeys.PublicUrl] = body.PublicUrl?.Trim() ?? string.Empty,
+    };
+    if (body.Password is not null) values[SmtpKeys.Password] = body.Password;
+    return (values, null);
+}
+
+// Only hashes of one-time codes are stored. The email-change code is bound to the
+// address being moved to, so a code for one address can't confirm another.
+static string EmailChangeCodeHash(int userId, string newEmail, string code) =>
+    Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
+        System.Text.Encoding.UTF8.GetBytes($"email-change:{userId}:{newEmail.Trim().ToLowerInvariant()}:{code.Trim()}")));
+
+static string SetupCodeHash(string email, string code) =>
+    Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(
+        System.Text.Encoding.UTF8.GetBytes($"setup-email:{email.Trim().ToLowerInvariant()}:{code.Trim()}")));
+
+static async Task<AuthToken?> LiveSetupCodeAsync(AppDbContext db, string? email, string? code, CancellationToken ct)
+{
+    if (string.IsNullOrWhiteSpace(email) || string.IsNullOrWhiteSpace(code)) return null;
+    var hash = SetupCodeHash(email, code);
+    var row = await db.AuthTokens.FirstOrDefaultAsync(t => t.Kind == "setup-email" && t.TokenHash == hash, ct);
+    return row is null || row.UsedUtc is not null || row.ExpiresUtc < DateTime.UtcNow ? null : row;
+}
+
+// Where a backup waits between /setup/restore and /setup. Instance-level Papyra
+// state, never inside a vault.
+static string SetupStagingRoot(IConfiguration config, IHostEnvironment env) =>
+    Path.Combine(PapyraPaths.DotPapyra(config, env.ContentRootPath), "setup-restore");
+
+// A new account password re-seals an encrypted git backup's data key, so the
+// password that unlocks the backup is always the one the person uses today.
+// The repository picks up the new header on the next sync. Caller saves.
+static async Task RewrapGitBackupKeyAsync(AppDbContext db, GitSyncService git, string uid, string newPassword, CancellationToken ct)
+{
+    var keys = new[] { GitKeys.Mode(uid), GitKeys.DataKey(uid), GitKeys.Crypto(uid) };
+    var rows = await db.Settings.Where(s => keys.Contains(s.Key)).ToDictionaryAsync(s => s.Key, ct);
+    if (rows.GetValueOrDefault(GitKeys.Mode(uid))?.Value != "encrypted") return;
+    if (rows.GetValueOrDefault(GitKeys.DataKey(uid)) is not { Value: { Length: > 0 } sealedKey }) return;
+    var key = git.UnprotectKey(sealedKey);
+    try
+    {
+        var header = System.Text.Json.JsonSerializer.Serialize(EncryptedGitCodec.Wrap(key, newPassword), GitSyncService.JsonOpts);
+        if (rows.GetValueOrDefault(GitKeys.Crypto(uid)) is { } row) row.Value = header;
+        else db.Settings.Add(new AppSetting { Key = GitKeys.Crypto(uid), Value = header });
+    }
+    finally { System.Security.Cryptography.CryptographicOperations.ZeroMemory(key); }
+}
+
+// Download a git backup and leave it, readable, at destPlain: cloned, located
+// (current layout or the older whole-directory mirror), and decrypted when it is
+// an encrypted one. Returns a plain-language error (and a code the SPA can act
+// on: password_required / password_wrong), or how it was stored.
+static async Task<(string? Error, string? Code, GitRestoreSource? Source)> StageGitBackupAsync(
+    string remote, string branch, string? token, string? password, string destPlain, GitSyncService git, CancellationToken ct)
+{
+    var checkout = destPlain + "-checkout";
+    try
+    {
+        var problem = await Task.Run(() => GitSyncService.CloneForRestore(remote, branch, token, checkout), ct);
+        if (problem is not null) return (problem, "git_failed", null);
+        if (BackupLayout.LocateRoot(checkout) is not { } root)
+            return ("That repository doesn't hold a Papyra backup.", "not_a_backup", null);
+
+        var manifest = BackupLayout.ReadManifest(root);
+        if (manifest?.Encrypted == true)
+        {
+            if (manifest.Crypto is null) return ("That backup is encrypted but its key header is missing.", "not_a_backup", null);
+            if (string.IsNullOrEmpty(password))
+                return ("This backup is encrypted. Enter the Papyra password it was made with.", "password_required", null);
+            byte[] key;
+            try { key = EncryptedGitCodec.Unwrap(manifest.Crypto, password); }
+            catch (System.Security.Cryptography.CryptographicException)
+            { return ("That password doesn't unlock this backup.", "password_wrong", null); }
+            catch (FormatException)
+            { return ("That backup's key header is damaged.", "not_a_backup", null); }
+            try
+            {
+                Directory.CreateDirectory(destPlain);
+                EncryptedGitCodec.DecryptTree(root, destPlain, key);
+                await File.WriteAllTextAsync(Path.Combine(destPlain, BackupManifest.FileName), System.Text.Json.JsonSerializer.Serialize(
+                    manifest with { Encrypted = false, Crypto = null }, GitSyncService.JsonOpts), ct);
+                return (null, null, new GitRestoreSource("encrypted", git.ProtectKey(key),
+                    System.Text.Json.JsonSerializer.Serialize(manifest.Crypto, GitSyncService.JsonOpts)));
+            }
+            catch (System.Security.Cryptography.CryptographicException)
+            { return ("Part of that backup is damaged or was changed outside Papyra.", "damaged", null); }
+            finally { System.Security.Cryptography.CryptographicOperations.ZeroMemory(key); }
+        }
+
+        foreach (var file in Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories))
+        {
+            var rel = Path.GetRelativePath(root, file);
+            if (rel.StartsWith(".git", StringComparison.Ordinal)) continue;
+            var target = Path.Combine(destPlain, rel);
+            Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+            File.Copy(file, target, overwrite: true);
+        }
+        return (null, null, new GitRestoreSource("plain", null, null));
+    }
+    finally
+    {
+        DeleteDirectoryForce(checkout);
+    }
+}
+
+// Point an account's git backup at a repository it was just restored from, in the
+// same mode, with a fresh local mirror (which adopts the repository's history on
+// its first pass). An encrypted backup keeps its data key; when the account's
+// password is given the key is re-sealed under it.
+static async Task SaveGitBackupConfigAsync(
+    AppDbContext db, GitSyncService git, string uid, string remote, string branch, string? token,
+    GitRestoreSource source, string? rewrapPassword, IConfiguration config, IHostEnvironment env, CancellationToken ct)
+{
+    async Task Set(string key, string value)
+    {
+        var row = await db.Settings.FindAsync([key], ct);
+        if (row is null) db.Settings.Add(new AppSetting { Key = key, Value = value });
+        else row.Value = value;
+    }
+
+    await Set(GitKeys.RemoteUrl(uid), remote);
+    await Set(GitKeys.Branch(uid), branch);
+    if (!string.IsNullOrEmpty(token)) await Set(GitKeys.Token(uid), token);
+    await Set(GitKeys.Mode(uid), source.Mode);
+    await Set(GitKeys.DataKey(uid), source.SealedKey ?? string.Empty);
+    await Set(GitKeys.Crypto(uid), source.HeaderJson ?? string.Empty);
+    await Set(GitKeys.Conflict(uid), string.Empty);
+    await Set(GitKeys.LastError(uid), string.Empty);
+    if (source.Mode == "encrypted" && !string.IsNullOrEmpty(rewrapPassword)) await db.SaveChangesAsync(ct);
+    if (source.Mode == "encrypted" && !string.IsNullOrEmpty(rewrapPassword))
+        await RewrapGitBackupKeyAsync(db, git, uid, rewrapPassword, ct);
+    await db.SaveChangesAsync(ct);
+
+    var mirror = PapyraPaths.UserGitMirrorDir(config, env.ContentRootPath, uid);
+    if (Directory.Exists(mirror)) DeleteDirectoryForce(mirror);
 }
 
 // Withhold a secure note's body. Returns a COPY (never mutates the live vault
@@ -5830,12 +6414,37 @@ public sealed record OrderEntryDto(string Id, double Key, long SetAt);
 // Category registry upsert: a curated tag name + optional colour.
 public sealed record CategoryWrite(string? Name, string? Color);
 
-// First-admin bootstrap payload. Email/Name optional; username + password required.
+// First-admin bootstrap payload. Username + password required; the rest is the
+// guided setup: a verified email (the code from POST /setup/email/code), the
+// vault PIN, time zone, theme, and a staged backup to restore into the account.
 public sealed record SetupRequest(
     string? Username,
     string? Name,
     string? Email,
-    string? Password);
+    string? Password,
+    string? EmailCode = null,
+    string? Pin = null,
+    string? TimeZone = null,
+    string? Theme = null,
+    string? RestoreId = null);
+
+public sealed record SetupEmailCodeRequest(string? Email);
+public sealed record SetupEmailVerifyRequest(string? Email, string? Code);
+
+// A backup staged by POST /api/auth/setup/restore, waiting for POST /setup.
+public sealed record SetupRestoreMeta(
+    string? RemoteUrl, string? Branch, string? Token, string? Mode, string? SealedKey, string? HeaderJson);
+
+// How a git backup being restored is stored: "plain", or "encrypted" with its data
+// key (sealed for this server) and the repository key header (JSON).
+public sealed record GitRestoreSource(string Mode, string? SealedKey, string? HeaderJson);
+public sealed record EmailCodeRequest(string? Email);
+
+// Restore from a git backup: where it is, how to read it (the password it was
+// sealed with, when encrypted), and whether to keep backing up there afterwards.
+public sealed record GitRestoreRequest(
+    string? RemoteUrl, string? Branch, string? Token, string? Password,
+    bool KeepSyncing = true, string? AccountPassword = null);
 
 // Login payload. Both required; failures answer with a generic 401.
 public sealed record LoginRequest(
@@ -5863,7 +6472,9 @@ public sealed record RecoveryLinkRequest(bool? SendEmail = null);
 
 // Self-service profile update (display name + email).
 // Every field optional: null = leave it as it is (older clients send no username).
-public sealed record ProfileRequest(string? Name, string? Email, string? Username = null, string? TimeZone = null);
+public sealed record ProfileRequest(
+    string? Name, string? Email, string? Username = null, string? TimeZone = null,
+    string? Theme = null, string? EmailCode = null, string? CurrentPassword = null);
 
 // Self-service password change: verify Current, set Next.
 public sealed record PasswordRequest(string? Current, string? Next);
@@ -5919,7 +6530,9 @@ public sealed record ApiKeyWrite(string? Name);
 public sealed record WebhookWrite(string? Event, string? Url, string? Secret);
 
 // Git-sync config. Token is write-only (null leaves the stored one untouched).
-public sealed record GitConfigWrite(string? RemoteUrl, string? Branch, string? Token);
+// Mode: "plain" | "encrypted" (null keeps the current one). Turning encryption on
+// needs the account password, which becomes the backup's unlock.
+public sealed record GitConfigWrite(string? RemoteUrl, string? Branch, string? Token, string? Mode = null, string? Password = null);
 
 // Smart-collection creation: a display name + the serialized AND/OR rule set.
 public sealed record SmartCollectionWrite(string? Name, string? RulesJson);
