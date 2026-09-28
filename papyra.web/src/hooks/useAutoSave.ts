@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import type { Note } from '../types/note';
 import { putNote } from '../lib/notesApi';
@@ -114,7 +114,9 @@ export function useAutoSave(
   // so the redundant call after an explicit close is harmless. Held in a ref so
   // this runs only on the real unmount, not whenever flush's identity changes.
   const flushRef = useRef(flush);
-  flushRef.current = flush;
+  useLayoutEffect(() => {
+    flushRef.current = flush;
+  }, [flush]);
   useEffect(() => () => {
     if (timer.current) {
       clearTimeout(timer.current);

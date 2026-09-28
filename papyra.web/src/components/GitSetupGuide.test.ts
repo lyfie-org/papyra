@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { normaliseRepoUrl, repoLabel } from './GitSetupGuide';
+import { normaliseRepoUrl, repoLabel } from '../lib/gitUrl';
 
 describe('normaliseRepoUrl', () => {
   it('accepts whatever someone copies off GitHub', () => {

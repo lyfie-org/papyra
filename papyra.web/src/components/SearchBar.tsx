@@ -107,9 +107,11 @@ export default function SearchBar() {
   // disappear while the network attempt is in flight.
   useEffect(() => {
     const q = query.trim();
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (!q) { setNoteHits([]); setOfflineResults(false); return; }
 
     const local = searchLocally(cached, q);
+     
     setNoteHits(local);
     setOfflineResults(true);
     setPartial(false);
