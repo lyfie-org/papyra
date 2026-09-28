@@ -4,6 +4,7 @@ import { describe, it, expect } from 'vitest';
 import settingsPage from '../pages/SettingsPage.tsx?raw';
 import aboutPanel from '../components/AboutPanel.tsx?raw';
 import deleteAccount from '../components/DeleteAccountSection.tsx?raw';
+import authenticator from '../components/AuthenticatorSection.tsx?raw';
 import usersPanel from '../pages/ManageUsersPage.tsx?raw';
 import { SETTINGS_INDEX, searchSettings, settingsHref } from './settingsIndex';
 
@@ -40,6 +41,7 @@ describe('settingsIndex', () => {
       // The About tab is its own component.
       ...[...aboutPanel.matchAll(/<h2 id="([a-z-]+)"/g)].map(m => m[1]),
       ...[...deleteAccount.matchAll(/<h2 id="([a-z-]+)"/g)].map(m => m[1]),
+      ...[...authenticator.matchAll(/<h2 id="([a-z-]+)"/g)].map(m => m[1]),
       ...[...usersPanel.matchAll(/<h2 id="([a-z-]+)"/g)].map(m => m[1]),
     ]);
     for (const entry of SETTINGS_INDEX) {

@@ -93,10 +93,7 @@ export default function NotificationSettings() {
         </section>
       ))}
 
-      <p className="settings__hint">
-        The bell in the top bar always shows everything, whatever you choose here — these switches
-        only decide what is also emailed to you.
-      </p>
+      <p className="settings__hint">The bell shows everything. These only control email.</p>
       {save.isError && <p className="settings__error" role="alert">Couldn’t save that change.</p>}
     </>
   );

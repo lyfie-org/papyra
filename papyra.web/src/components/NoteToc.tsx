@@ -13,23 +13,26 @@ const TOP_CLEARANCE = 132;
 // Each heading's resting slot, and the most the rail may take up.
 const MAX_STEP = 14;
 const MIN_STEP = 5;
-// How far (px) the "magnification" reaches from the pointer.
-const REACH = 84;
+// The rail's vertical padding (matches .note-toc__rail in the CSS).
+const RAIL_PAD = 6;
+// Extra height the one magnified heading takes while the rail is open.
+const GROW = 14;
 
 /**
  * An outline rail down the sheet's right edge, one short dash per heading.
  *
  * At rest it is quiet: evenly spaced dashes (not placed by scroll depth — that
  * bunched them beside the title), the current section's dash longer and sage.
- * Pointing at it opens it like the macOS Dock: headings near the pointer grow
- * and show their names in full, their neighbours less, the far ones stay small
- * — and the swell follows the pointer up and down. That keeps a note with fifty
- * headings readable without ever printing fifty labels at once. Click to jump.
+ * Pointing at it opens it: every name shows at one small size, and only the
+ * heading under the pointer (or keyboard focus) is magnified. One heading is
+ * ever "selected", so the highlight is always the one you are on — a Dock-style
+ * swell put a sage "current section" label beside a different, bigger one.
+ * Click to jump.
  */
 export default function NoteToc({ scrollRef }: { scrollRef: React.RefObject<HTMLElement | null> }) {
   const [heads, setHeads] = useState<Head[]>([]);
   const [active, setActive] = useState(0);
-  const [pointerY, setPointerY] = useState<number | null>(null);
+  const [focused, setFocused] = useState<number | null>(null);
   const [frame, setFrame] = useState({ top: TOP_CLEARANCE, height: 300 });
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
@@ -87,7 +90,19 @@ export default function NoteToc({ scrollRef }: { scrollRef: React.RefObject<HTML
 
   const step = Math.max(MIN_STEP, Math.min(MAX_STEP, frame.height / heads.length));
   const railHeight = step * heads.length;
-  const open = pointerY !== null;
+  const open = focused !== null;
+
+  // Which heading the pointer is on, read against the rail as laid out now: the
+  // magnified row is GROW taller, so resting slots alone would hand the pointer
+  // to a neighbour while it is still over the grown row, and the rail would
+  // flicker between the two.
+  const headAt = (y: number) => {
+    const i = focused ?? -1;
+    const index = i >= 0 && y >= i * step
+      ? (y < (i + 1) * step + GROW ? i : Math.floor((y - GROW) / step))
+      : Math.floor(y / step);
+    return Math.max(0, Math.min(heads.length - 1, index));
+  };
 
   const jump = (top: number) =>
     scrollRef.current?.scrollTo({ top: Math.max(0, top - 24), behavior: 'smooth' });
@@ -97,23 +112,20 @@ export default function NoteToc({ scrollRef }: { scrollRef: React.RefObject<HTML
       <div
         className={`note-toc__rail${open ? ' is-open' : ''}`}
         style={{ top: frame.top + Math.max(0, (frame.height - railHeight) / 2) }}
-        onPointerMove={(e) => setPointerY(e.clientY - e.currentTarget.getBoundingClientRect().top)}
-        onPointerLeave={() => setPointerY(null)}
+        // Padding sits above the first row; take it off so y is in row space.
+        onPointerMove={(e) => setFocused(headAt(e.clientY - e.currentTarget.getBoundingClientRect().top - RAIL_PAD))}
+        onPointerLeave={() => setFocused(null)}
+        onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setFocused(null); }}
       >
         {heads.map((h, i) => {
-          // Distance from the pointer to this heading's resting slot → 0…1.
-          const center = i * step + step / 2;
-          const boost = open ? Math.max(0, 1 - Math.abs(pointerY! - center) / REACH) : 0;
-          const eased = boost * boost * (3 - 2 * boost); // smoothstep: a soft swell
+          const isFocused = i === focused;
           return (
             <button
               key={h.key}
               type="button"
-              className={`note-toc__item note-toc__item--h${h.level}${i === active ? ' is-active' : ''}`}
-              style={{
-                height: step + (open ? eased * 16 : 0),
-                ['--boost' as string]: eased.toFixed(3),
-              }}
+              className={`note-toc__item note-toc__item--h${h.level}${i === active ? ' is-active' : ''}${isFocused ? ' is-focused' : ''}`}
+              style={{ height: step + (isFocused ? GROW : 0) }}
+              onFocus={() => setFocused(i)}
               onClick={() => jump(h.top)}
               aria-current={i === active ? 'location' : undefined}
               title={open ? undefined : h.text}

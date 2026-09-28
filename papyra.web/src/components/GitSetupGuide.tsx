@@ -141,10 +141,7 @@ export default function GitSetupGuide() {
         </button>
         {restoreOpen && (
           <>
-            <p className="settings__hint">
-              Brings back notes, to-do lists, locked notes, attachments and settings from a backup Papyra
-              made — readable or encrypted, from this server or another one.
-            </p>
+            <p className="settings__hint">Restore from any Papyra backup, readable or encrypted.</p>
             <GitRestorePanel />
           </>
         )}
@@ -456,19 +453,13 @@ function ModeSwitch({ to, remoteUrl, branch, onDone, onCancel }: {
     <div className="git-mode-switch">
       {to === 'encrypted' ? (
         <>
-          <p className="settings__hint">
-            From the next backup on, every file in the repository is sealed and only your Papyra password opens it.
-            Earlier commits still hold readable copies — for a clean start, point Papyra at a new, empty repository.
-          </p>
+          <p className="settings__hint">Only your Papyra password opens new backups. Earlier commits stay readable.</p>
           <label className="settings__field">Your Papyra password
             <input type="password" value={password} autoComplete="current-password" onChange={e => setPassword(e.target.value)} />
           </label>
         </>
       ) : (
-        <p className="settings__hint">
-          The next backup writes readable Markdown again — including your locked notes — where anyone with access
-          to the repository can read it.
-        </p>
+        <p className="settings__hint">Backups become readable Markdown — locked notes included.</p>
       )}
       {error && <p className="settings__error" role="alert">{error}</p>}
       <div className="git-card__actions">

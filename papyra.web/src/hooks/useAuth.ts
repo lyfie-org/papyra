@@ -13,6 +13,8 @@ export interface AuthUser {
    * letting every request on the page fail.
    */
   mustChangePassword?: boolean;
+  /** An authenticator app is set up: its codes confirm sensitive changes. */
+  totpEnabled?: boolean;
   /** IANA zone chosen under Settings → Profile; null/absent = the server's. */
   timeZone?: string | null;
   /** The server's own zone (the container's TZ), as an IANA name. */

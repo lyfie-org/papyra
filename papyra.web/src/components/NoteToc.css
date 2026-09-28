@@ -29,7 +29,6 @@
 }
 
 .note-toc__item {
-  --boost: 0;
   display: flex;
   align-items: center;
   justify-content: flex-end;
@@ -51,35 +50,42 @@
   opacity: 0.35;
   transition: width 120ms var(--ease), opacity var(--dur-fast) var(--ease), background-color var(--dur-fast) var(--ease);
 }
-.note-toc__item--h1 .note-toc__dash { width: calc(14px + var(--boost) * 8px); }
-.note-toc__item--h2 .note-toc__dash { width: calc(10px + var(--boost) * 8px); }
-.note-toc__item--h3 .note-toc__dash { width: calc(6px + var(--boost) * 8px); }
-.note-toc__item.is-active .note-toc__dash { background: var(--accent); opacity: 1; width: calc(18px + var(--boost) * 6px); }
+.note-toc__item--h1 .note-toc__dash { width: 14px; }
+.note-toc__item--h2 .note-toc__dash { width: 10px; }
+.note-toc__item--h3 .note-toc__dash { width: 6px; }
+/* The section you're reading: a longer sage dash — never a label highlight, so
+   it can't compete with the one magnified heading. */
+.note-toc__item.is-active .note-toc__dash { background: var(--accent); opacity: 1; width: 18px; }
 
-/* Names only while open, sized and faded by nearness to the pointer. */
+/* Names only while open: all one small size, one magnified. */
 .note-toc__label {
   overflow: hidden;
   min-width: 0;
   max-width: 0;
-  color: var(--text-h);
+  color: var(--text);
   font-family: var(--sans);
-  font-size: calc(10.5px + var(--boost) * 3.5px);
+  font-size: 10.5px;
   line-height: 1.2;
   text-align: right;
   text-overflow: ellipsis;
   white-space: nowrap;
   opacity: 0;
-  transition: opacity var(--dur-fast) var(--ease);
+  transition: opacity var(--dur-fast) var(--ease), font-size 120ms var(--ease);
 }
 .note-toc__rail.is-open .note-toc__label {
   max-width: 200px;
-  opacity: calc(0.28 + var(--boost) * 0.72);
+  opacity: 0.6;
 }
 .note-toc__item--h2 .note-toc__label { padding-right: 2px; }
 .note-toc__item--h3 .note-toc__label { padding-right: 6px; }
-.note-toc__rail.is-open .note-toc__dash { opacity: calc(0.35 + var(--boost) * 0.65); }
-.note-toc__item.is-active .note-toc__label { color: var(--accent-text); font-weight: 600; }
-.note-toc__item:hover .note-toc__label { color: var(--accent-text); }
+
+.note-toc__rail.is-open .note-toc__item.is-focused .note-toc__label {
+  color: var(--text-h);
+  font-size: 14px;
+  font-weight: 600;
+  opacity: 1;
+}
+.note-toc__item.is-focused .note-toc__dash { opacity: 1; width: 22px; }
 
 .note-toc__item:focus-visible {
   outline: 2px solid var(--accent);
@@ -88,8 +94,12 @@
 }
 
 /* On a coloured note the rail is inked like the note. */
+.note-editor--colored .note-toc__rail.is-open {
+  background: color-mix(in srgb, var(--note-tint) 55%, var(--tint-lift));
+}
 .note-editor--colored .note-toc__dash { background: var(--tint-ink); }
-.note-editor--colored .note-toc__label { color: var(--tint-ink); }
+.note-editor--colored .note-toc__label,
+.note-editor--colored .note-toc__rail.is-open .note-toc__item.is-focused .note-toc__label { color: var(--tint-ink); }
 
 @media (prefers-reduced-motion: reduce) {
   .note-toc__rail, .note-toc__item, .note-toc__dash { transition: none; }

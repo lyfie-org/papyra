@@ -5,6 +5,7 @@ import {
 import '@lyfie/luthor/styles.css';
 import { Check, Eye, Loader2, PencilLine } from 'lucide-react';
 import { useResolvedTheme } from '../hooks/useTheme';
+import { useInPlaceWikilinks } from '../hooks/useInPlaceWikilinks';
 import { tintInkClass } from '../lib/noteColors';
 import { hasBridgePlaceholder } from '../lib/bridgePlaceholder';
 import './SharedNoteView.css';
@@ -34,6 +35,7 @@ function sharerLabel(by: NonNullable<SharedNote['sharedBy']>): string {
 
 /** Quiet period after the last keystroke before an edit is written back. */
 const AUTOSAVE_MS = 800;
+const noop = () => {};
 
 type Status = 'idle' | 'saving' | 'saved' | 'error';
 
@@ -52,6 +54,7 @@ export default function SharedNoteView({
 }) {
   const theme = useResolvedTheme();
   const editorRef = useRef<PapyraEditorRef | null>(null);
+  const articleRef = useRef<HTMLElement | null>(null);
   const [status, setStatus] = useState<Status>('idle');
   const [requesting, setRequesting] = useState(false);
 
@@ -63,6 +66,8 @@ export default function SharedNoteView({
     openNote: () => {},
     searchNotes: async () => [],
   }), [mediaUrl]);
+  // Inert here too — without this Lexical would open the `#` href in a new tab.
+  useInPlaceWikilinks(articleRef, noop);
 
   const colored = !!note.color;
   const canEdit = note.access === 'edit' && !!onSave;
@@ -115,7 +120,7 @@ export default function SharedNoteView({
   }
 
   return (
-    <article className={`shared-note${colored ? ` shared-note--colored${tintInkClass(note.color, theme)}` : ''}`} style={style}>
+    <article ref={articleRef} className={`shared-note${colored ? ` shared-note--colored${tintInkClass(note.color, theme)}` : ''}`} style={style}>
       <header className="shared-note__bar">
         <h1 className="shared-note__title">{note.title.trim() || 'Untitled'}</h1>
         {canEdit ? (

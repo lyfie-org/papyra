@@ -5,7 +5,7 @@ import {
   User as UserIcon, Palette, Database, Info, Camera,
   Sun, Moon, Monitor, Upload, Download, KeyRound, Copy, Trash2, Lock, ShieldAlert,
   Fingerprint, CheckCircle2, GitBranch, AlertTriangle, Bell, Mail, KeySquare, Send, UserPlus,
-  Sparkles, Play, Cog, LockOpen, Type, Eye, LogOut, X, Users,
+  Sparkles, Play, Cog, LockOpen, Eye, LogOut, X, Users,
 } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { useDismiss } from '../hooks/useDismiss';
@@ -52,6 +52,7 @@ import LoadingBar from '../components/LoadingBar';
 import AboutPanel from '../components/AboutPanel';
 import ExportDialog from '../components/ExportDialog';
 import DeleteAccountSection from '../components/DeleteAccountSection';
+import AuthenticatorSection from '../components/AuthenticatorSection';
 import { fetchWithProgress } from '../lib/progress';
 import { MASKED_SECRET, NO_AUTOFILL } from '../lib/autofill';
 import TimeZonePicker from '../components/TimeZonePicker';
@@ -288,9 +289,11 @@ function ProfileTab({ user }: { user: AuthUser | null }) {
     return () => { clearTimeout(t); ctrl.abort(); };
   }, [checkName, wantedName]);
 
-  // Moving the email needs proof from the address it is leaving: a code sent
-  // there (or, where this Papyra can't send mail, the account password).
-  const [emailProof, setEmailProof] = useState<null | { kind: 'code'; sentTo: string } | { kind: 'password' }>(null);
+  // Moving the email needs proof: the authenticator app's code first, else a
+  // code sent to the address it is leaving (or, with neither, the password).
+  const [emailProof, setEmailProof] = useState<
+    null | { kind: 'totp'; canEmail: boolean } | { kind: 'code'; sentTo: string } | { kind: 'password' }
+  >(null);
   const [emailCode, setEmailCode] = useState('');
   const [proofPassword, setProofPassword] = useState('');
   const emailChanged = email.trim().toLowerCase() !== (user?.email ?? '').toLowerCase();
@@ -300,19 +303,21 @@ function ProfileTab({ user }: { user: AuthUser | null }) {
     || email.trim() !== (user?.email ?? '')
     || timeZone !== (user?.timeZone ?? '');
 
-  async function requestEmailProof(): Promise<boolean> {
+  async function requestEmailProof(viaEmail = false): Promise<boolean> {
     const res = await fetch('/api/auth/email/code', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: email.trim() }),
+      body: JSON.stringify({ email: email.trim(), viaEmail }),
     });
     const data = (await res.json().catch(() => null)) as
-      { required?: boolean; passwordRequired?: boolean; sentTo?: string; error?: string; field?: string } | null;
+      { required?: boolean; passwordRequired?: boolean; method?: string; canEmail?: boolean; sentTo?: string; error?: string; field?: string } | null;
     if (!res.ok) {
       setFieldError({ field: data?.field ?? 'email', error: data?.error ?? 'Couldn’t send the code.' });
       return false;
     }
+    setEmailCode('');
     if (data?.passwordRequired) { setEmailProof({ kind: 'password' }); return false; }
+    if (data?.method === 'totp') { setEmailProof({ kind: 'totp', canEmail: !!data.canEmail }); return false; }
     if (data?.required) { setEmailProof({ kind: 'code', sentTo: data.sentTo ?? 'your current address' }); return false; }
     return true; // no current address: nothing to prove
   }
@@ -333,6 +338,7 @@ function ProfileTab({ user }: { user: AuthUser | null }) {
         body: JSON.stringify({
           username: username.trim(), name: name.trim(), email: email.trim(), timeZone,
           emailCode: emailProof?.kind === 'code' ? emailCode.trim() : undefined,
+          totpCode: emailProof?.kind === 'totp' ? emailCode.trim() : undefined,
           currentPassword: emailProof?.kind === 'password' ? proofPassword : undefined,
         }),
       });
@@ -347,7 +353,7 @@ function ProfileTab({ user }: { user: AuthUser | null }) {
         setSavedMsg('Saved.');
       } else {
         const data = (await res.json().catch(() => null)) as { error?: string; field?: string; code?: string } | null;
-        if (data?.code === 'email_code_required' && !emailProof) await requestEmailProof();
+        if ((data?.code === 'email_code_required' || data?.code === 'totp_required') && !emailProof) await requestEmailProof();
         else if (data?.code === 'password_required' && !emailProof) setEmailProof({ kind: 'password' });
         if (data?.field && data.error) setFieldError({ field: data.field, error: data.error });
         else setSavedMsg('Couldn’t save your profile.');
@@ -480,11 +486,7 @@ function ProfileTab({ user }: { user: AuthUser | null }) {
       </div>
 
       <h2 id="activity" className="settings__subhead">Your writing, day by day</h2>
-      <p className="settings__hint">
-        Every square is a day over the last six months; the darker it is, the more
-        notes you changed. Pick one to see what they were. It used to sit above
-        the notes desk, where picking a day quietly filtered everything.
-      </p>
+      <p className="settings__hint">Notes changed per day, last six months. Pick a day to see them.</p>
       <KnowledgeHeatmap selectedDay={openDay} onSelectDay={setOpenDay} />
       {openDay && (
         <DayNotesOverlay
@@ -521,7 +523,7 @@ function ProfileTab({ user }: { user: AuthUser | null }) {
                   ? nameTaken
                   : nameFree
                     ? `@${username.trim()} is available.`
-                    : 'How people @mention you and how you sign in. Unique on this Papyra; existing @mentions of an old name keep their text.'}
+                    : 'For sign-in and @mentions.'}
           </span>
         </label>
         <label className="settings__field">Display name
@@ -549,11 +551,29 @@ function ProfileTab({ user }: { user: AuthUser | null }) {
           <span className={fieldError?.field === 'email' ? 'settings__field-error' : 'settings__hint'}>
             {fieldError?.field === 'email'
               ? fieldError.error
-              : emailChanged && user?.email && emailProof?.kind !== 'password'
-                ? 'Changing it needs a code sent to your current address first — so nobody holding your session can take the account.'
-                : 'For password resets and the notifications you choose.'}
+              : emailChanged && user?.email && !emailProof
+                ? (user.totpEnabled ? 'Needs your authenticator code.' : 'Needs a code from your current address.')
+                : null}
           </span>
         </label>
+        {emailProof?.kind === 'totp' && (
+          <label className="settings__field">Authenticator code
+            <input
+              value={emailCode}
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              maxLength={6}
+              autoFocus
+              aria-invalid={fieldError?.field === 'totpCode'}
+              onChange={e => { setEmailCode(e.target.value.replace(/\D/g, '')); setFieldError(null); }}
+            />
+            <span className={fieldError?.field === 'totpCode' ? 'settings__field-error' : 'settings__hint'}>
+              {fieldError?.field === 'totpCode'
+                ? fieldError.error
+                : <>Enter it, then Save.{emailProof.canEmail && <> <button type="button" className="settings__link-btn" onClick={() => void requestEmailProof(true)}>Email me a code instead</button></>}</>}
+            </span>
+          </label>
+        )}
         {emailProof?.kind === 'code' && (
           <label className="settings__field">Code sent to {emailProof.sentTo}
             <input
@@ -568,7 +588,7 @@ function ProfileTab({ user }: { user: AuthUser | null }) {
             <span className={fieldError?.field === 'emailCode' ? 'settings__field-error' : 'settings__hint'}>
               {fieldError?.field === 'emailCode'
                 ? fieldError.error
-                : <>Check the inbox of your <em>current</em> address, then press Save again. <button type="button" className="settings__link-btn" onClick={() => void requestEmailProof()}>Send a new code</button></>}
+                : <>Enter it, then Save. <button type="button" className="settings__link-btn" onClick={() => void requestEmailProof(true)}>Send a new code</button></>}
             </span>
           </label>
         )}
@@ -585,7 +605,7 @@ function ProfileTab({ user }: { user: AuthUser | null }) {
             <span className={fieldError?.field === 'currentPassword' ? 'settings__field-error' : 'settings__hint'}>
               {fieldError?.field === 'currentPassword'
                 ? fieldError.error
-                : 'This Papyra can’t send email, so confirm the change with your password.'}
+                : 'Confirm with your password.'}
             </span>
           </label>
         )}
@@ -597,11 +617,7 @@ function ProfileTab({ user }: { user: AuthUser | null }) {
             invalid={fieldError?.field === 'timeZone'}
             onChange={z => { setTimeZone(z); setFieldError(null); setSavedMsg(null); }}
           />
-          <span className={fieldError?.field === 'timeZone' ? 'settings__field-error' : 'settings__hint'}>
-            {fieldError?.field === 'timeZone'
-              ? fieldError.error
-              : 'Grouped by country, with each zone’s current UTC offset. Used for “last edited” times on your notes.'}
-          </span>
+          {fieldError?.field === 'timeZone' && <span className="settings__field-error">{fieldError.error}</span>}
         </div>
         <div className="settings__form-actions">
           <button type="submit" className="settings__btn" disabled={!dirty || saving}>
@@ -650,7 +666,6 @@ function AppearanceTab() {
   return (
     <div className="settings__panel">
       <h2 id="theme" className="settings__subhead">Theme</h2>
-      <p className="settings__hint">Choose how Papyra looks. “System” follows your OS setting.</p>
       <div className="settings__segment" role="radiogroup" aria-label="Theme">
         {options.map(({ id, label, icon: Icon }) => (
           <button
@@ -667,11 +682,7 @@ function AppearanceTab() {
       </div>
 
       <h2 id="formatting-toolbar" className="settings__subhead">Formatting toolbar</h2>
-      <p className="settings__hint">
-        The row of formatting tools above a note — headings, lists, tables, linking a note, mentions,
-        embeds. Show it on one note with the formatting button (<Type size={13} aria-hidden="true" />) under
-        the note, or keep it open on every note.
-      </p>
+      <p className="settings__hint">Formatting tools above each note.</p>
       <label className="settings__field settings__field--inline">
         <input
           type="checkbox" role="switch" className="switch"
@@ -733,11 +744,7 @@ function SecurityTab() {
   return (
     <div className="settings__panel">
       <h2 id="vault-pin" className="settings__subhead">Vault PIN</h2>
-      <p className="settings__hint">
-        Locked notes open with your vault PIN. It is required before you can lock a note, works on every
-        device, and is separate from your account password. Too many wrong tries pause it, then switch it off
-        until you reset it here with your password.
-      </p>
+      <p className="settings__hint">Opens locked notes. Separate from your account password.</p>
       {status.isLoading && <LoadingBar label="Loading" />}
       {s && (
         <>
@@ -757,12 +764,7 @@ function SecurityTab() {
       )}
 
       <h2 id="biometric-unlock" className="settings__subhead">Biometric unlock (optional)</h2>
-      <p className="settings__hint">
-        Register this device’s built-in authenticator (Touch ID, Face ID, or Windows Hello) as a quicker way to
-        open your vault — and to sign in: choose “Sign in with a passkey” on the sign-in screen. The private key
-        never leaves your device — Papyra only stores the public key. A registered device works at the address
-        you registered it on; your PIN and password work everywhere.
-      </p>
+      <p className="settings__hint">Unlock your vault or sign in with Touch ID, Face ID or Windows Hello.</p>
 
       {!pinSet && s && (
         <p className="settings__hint settings__hint--warn">
@@ -843,8 +845,10 @@ function SecurityTab() {
         </table>
       )}
       {devices.data && devices.data.length === 0 && pinSet && (
-        <p className="settings__hint">No devices registered. Your PIN opens the vault.</p>
+        <p className="settings__hint">No devices yet.</p>
       )}
+
+      <AuthenticatorSection />
 
       <DeleteAccountSection />
     </div>
@@ -896,11 +900,7 @@ function DataTab() {
   return (
     <div className="settings__panel">
       <h2 id="import" className="settings__subhead">Import</h2>
-      <p className="settings__hint">
-        Bring notes in from another app, with their colours, pins, labels and last-edited dates.
-        Importing the same archive again never duplicates a note: identical notes are left alone,
-        and notes changed since are updated to the imported version (the old one stays in History).
-      </p>
+      <p className="settings__hint">Re-importing never duplicates notes.</p>
       <div className="settings__row">
         <select className="settings__select" disabled={importing}
           value={importStatus && !importStatus.done ? importStatus.provider : provider}
@@ -938,10 +938,7 @@ function DataTab() {
       {!importMsg && importStatus?.done && <p className="settings__msg" role="status">{importSummary(importStatus)}</p>}
 
       <h2 id="export" className="settings__subhead">Export</h2>
-      <p className="settings__hint">
-        Download every note — your vault too, in its own folder — as a zip of plain text files you can open
-        anywhere. You’ll confirm with your password and vault, and your account is emailed when it happens.
-      </p>
+      <p className="settings__hint">Every note as a zip of plain Markdown files.</p>
       <button type="button" className="settings__btn" onClick={() => setExporting(true)}>
         <Download size={16} /> Export all notes
       </button>
@@ -950,9 +947,7 @@ function DataTab() {
       <EncryptedBackupSection />
 
       <h2 id="trash-retention" className="settings__subhead">Trash auto-delete</h2>
-      <p className="settings__hint">
-        How long deleted notes stay in Trash. “Delete immediately” skips Trash — those deletes can’t be recovered.
-      </p>
+      <p className="settings__hint">“Delete immediately” can’t be undone.</p>
       <label className="settings__field settings__field--inline">Permanently delete trashed notes
         <select
           className="settings__select"
@@ -1042,10 +1037,7 @@ function EncryptedBackupSection() {
   return (
     <>
       <h2 id="encrypted-backup" className="settings__subhead">Encrypted backup</h2>
-      <p className="settings__hint">
-        Download an encrypted <code>.papyra-vault</code> of every note and attachment, sealed with your account
-        password (AES-GCM). Keep the password — without it the backup can’t be opened.
-      </p>
+      <p className="settings__hint">Encrypted with your account password. Lose it and the backup can’t be opened.</p>
       <form className="settings__row" onSubmit={generate}>
         <input
           className="settings__select" type="password" autoComplete="current-password"
@@ -1136,11 +1128,7 @@ function KeysTab() {
   return (
     <div className="settings__panel">
       <h2 id="access-tokens" className="settings__subhead">Personal access tokens</h2>
-      <p className="settings__hint">
-        Send a token as <code>X-API-Key: &lt;token&gt;</code> (or <code>Authorization: Bearer &lt;token&gt;</code>)
-        to reach the API from scripts and integrations. A token carries your own access only. It’s shown
-        once — store it somewhere safe.
-      </p>
+      <p className="settings__hint">Send as <code>X-API-Key</code> or <code>Authorization: Bearer</code>. Shown once.</p>
 
       {created && (
         <div className="settings__token">
@@ -1282,10 +1270,7 @@ function JobsTab() {
   return (
     <div className="settings__panel">
       <h2 id="scheduled-jobs" className="settings__subhead">Housekeeping</h2>
-      <p className="settings__hint">
-        Tidying Papyra does on its own. You never have to touch these — the button
-        is here for when you would rather not wait for the next time.
-      </p>
+      <p className="settings__hint">Run automatically. Start one now if you’d rather not wait.</p>
 
       <ul className="jobs">
         {scheduled.map(job => (
@@ -1306,9 +1291,7 @@ function JobsTab() {
       {onDemand.length > 0 && (
         <>
           <h2 id="on-demand-jobs" className="settings__subhead">On demand</h2>
-          <p className="settings__hint">
-            No schedule — these run when you ask. Handy when something looks off.
-          </p>
+          <p className="settings__hint">Run on demand.</p>
           <ul className="jobs">
             {onDemand.map(job => (
               <li key={job.id} className="jobs__item">
@@ -1328,10 +1311,6 @@ function JobsTab() {
       )}
 
       <h2 id="always-on-jobs" className="settings__subhead">Always running</h2>
-      <p className="settings__hint">
-        These react to things as they happen rather than waiting for a schedule,
-        so there is nothing to start.
-      </p>
       <ul className="jobs">
         {alwaysOn.map(job => (
           <li key={job.id} className="jobs__item">
@@ -1383,10 +1362,7 @@ function SyncTab() {
   return (
     <div className="settings__panel">
       <h2 id="git-backup" className="settings__subhead">Back up to GitHub</h2>
-      <p className="settings__hint">
-        A second copy of your notes, off this server, with the history of every change. It backs up
-        your notes only — nobody else’s — and nobody else can see or change where it goes.
-      </p>
+      <p className="settings__hint">An off-server copy of your notes, with full history.</p>
 
       <GitSetupGuide />
 
@@ -1395,18 +1371,14 @@ function SyncTab() {
         <div>
           <strong>Anyone who can read the repository can read your notes.</strong>
           <p>
-            They’re copied there as plain text — locked Vault notes included. Keep the repository
-            private, and treat access to it as access to everything you’ve written.
+            Notes are stored as plain text, locked notes included. Keep it private.
           </p>
         </div>
       </div>
 
       <details className="settings__advanced">
         <summary>Another git host, or a different branch</summary>
-        <p className="settings__hint">
-          GitLab, Gitea, Codeberg or your own server work too: any https address that accepts a token
-          as the password. Papyra’s own files (<code>.papyra/</code>, <code>.trash/</code>) are left out.
-        </p>
+        <p className="settings__hint">Any https Git host that takes a token as the password.</p>
         <form className="settings__form" onSubmit={submit}>
           <label className="settings__field">Repository address
             <input
@@ -1446,11 +1418,6 @@ function NotificationsTab() {
   return (
     <div className="settings__panel">
       <h2 id="email-notifications" className="settings__subhead">What Papyra tells you about</h2>
-      <p className="settings__hint">
-        Choose what’s worth an email. Anything that keeps your account safe is always sent —
-        it’s listed so you know what to expect. These same choices will apply to phone
-        notifications when the Papyra app arrives.
-      </p>
       <NotificationSettings />
     </div>
   );
@@ -1493,18 +1460,14 @@ function SsoTab() {
   return (
     <div className="settings__panel">
       <h2 id="oidc" className="settings__subhead">Single sign-on (OIDC)</h2>
-      <p className="settings__hint">
-        Let people sign in with an existing identity provider. Papyra exchanges the provider’s
-        identity for its own session, creating the account and its vault on first sign-in.
-      </p>
+      <p className="settings__hint">Sign in with an existing identity provider.</p>
 
       <div className="settings__callout" role="note">
         <AlertTriangle size={18} aria-hidden="true" />
         <div>
           <strong>Add this redirect URI to your provider.</strong>
           <p>
-            Your provider must allow <code>{data?.redirectUri}</code> on this instance’s public
-            address. A mismatch here is the most common cause of a failed SSO login.
+            Allow <code>{data?.redirectUri}</code> in your provider.
           </p>
         </div>
       </div>
@@ -1608,10 +1571,7 @@ function EmailTab() {
   return (
     <div className="settings__panel">
       <h2 id="smtp" className="settings__subhead">Outbound email (SMTP)</h2>
-      <p className="settings__hint">
-        Used for password resets, invitations, and the notifications each person chooses on
-        their own Notifications tab. Papyra sends plain-text messages only.
-      </p>
+      <p className="settings__hint">For password resets, invites and notifications.</p>
 
       <form className="settings__form" onSubmit={submit}>
         <label className="settings__field settings__field--inline">
@@ -1663,10 +1623,7 @@ function EmailTab() {
       </form>
 
       <h2 id="send-a-test" className="settings__subhead">Send a test</h2>
-      <p className="settings__hint">
-        Prove the settings work before anyone’s password reset depends on them. Save first —
-        the test uses the stored configuration.
-      </p>
+      <p className="settings__hint">Save first — the test uses stored settings.</p>
       <div className="settings__row">
         <input
           type="email" className="settings__test-input" value={testTo}
@@ -1685,10 +1642,7 @@ function EmailTab() {
       </div>
 
       <h2 id="invite" className="settings__subhead">Invite someone</h2>
-      <p className="settings__hint">
-        Sends a one-time link instead of you choosing a password for them. The account is
-        created only when they set their own; the link expires in 7 days.
-      </p>
+      <p className="settings__hint">Sends a sign-up link. Expires in 7 days.</p>
       <form className="settings__form" onSubmit={sendInvite}>
         <label className="settings__field">Username
           <input type="text" value={inviteUser} onChange={e => setInviteUser(e.target.value)} />
@@ -1832,10 +1786,7 @@ function AiTab() {
   return (
     <div className="settings__panel">
       <h2 id="assistant" className="settings__subhead">Assistant</h2>
-      <p className="settings__hint">
-        Ask questions about your own notes and get an answer that cites them. Notes you’ve
-        locked are never included.
-      </p>
+      <p className="settings__hint">Ask questions about your notes. Locked notes are never included.</p>
 
       <dl className="settings__details">
         <div>
@@ -1886,11 +1837,7 @@ function AiTab() {
 
       {/* ── On this machine ──────────────────────────────────────────────── */}
       <h3 id="local-models" className="settings__subhead">On this machine</h3>
-      <p className="settings__hint">
-        Download one of these and the assistant runs entirely on your own server — your
-        notes never leave it, and there’s nothing to pay for. Pick the largest one your
-        machine can handle; you can change it later.
-      </p>
+      <p className="settings__hint">Runs on your server — notes never leave it. Bigger is better, if it fits.</p>
 
       {status && !status.canPull && (
         <div className="settings__callout" role="note">
@@ -1898,9 +1845,7 @@ function AiTab() {
           <div>
             <strong>The model engine isn’t running.</strong>
             <p>
-              Papyra couldn’t reach it, so downloads are unavailable right now. If you
-              started Papyra with Docker, run <code>docker compose up -d</code> again to
-              bring it up.
+              Downloads unavailable. With Docker, run <code>docker compose up -d</code> again.
             </p>
           </div>
         </div>
@@ -1960,10 +1905,7 @@ function AiTab() {
 
       {pullError && <p className="settings__error">{pullError}</p>}
       {pulling && (
-        <p className="settings__hint">
-          This can take a while on a slow connection. You can leave this page — the
-          download keeps going.
-        </p>
+        <p className="settings__hint">You can leave this page — the download continues.</p>
       )}
 
 
@@ -1973,10 +1915,7 @@ function AiTab() {
       {otherInstalled.length > 0 && (
         <>
           <h3 id="installed-models" className="settings__subhead">Already on this machine</h3>
-          <p className="settings__hint">
-            Other models found on this server. Papyra didn’t install these and can’t
-            say how well they answer questions about notes, but you can use one.
-          </p>
+          <p className="settings__hint">Found on this server, not installed by Papyra.</p>
           <ul className="settings__installed">
             {otherInstalled.map(m => {
               const inUse = sameModel(m, activeModel);
@@ -1999,20 +1938,14 @@ function AiTab() {
             })}
           </ul>
           {usingCloud && (
-            <p className="settings__hint">
-              Answers currently come from a paid service. Switch back to the model on
-              this machine below to use one of these.
-            </p>
+            <p className="settings__hint">Switch back to the local model to use one of these.</p>
           )}
         </>
       )}
 
       {/* ── Or use a paid service ────────────────────────────────────────── */}
       <h3 id="hosted-models" className="settings__subhead">Or use a paid service</h3>
-      <p className="settings__hint">
-        Faster and more accurate, but the parts of your notes needed to answer each
-        question are sent to that company, and they charge you for it.
-      </p>
+      <p className="settings__hint">Faster, but note excerpts are sent to the provider, and it’s paid.</p>
 
       {!showCloud && !usingCloud ? (
         <button type="button" className="settings__btn settings__btn--ghost" onClick={() => setShowCloud(true)}>
@@ -2034,9 +1967,7 @@ function AiTab() {
               <div>
                 <strong>Your notes will leave this machine.</strong>
                 <p>
-                  To answer a question, Papyra sends the relevant parts of your notes to{' '}
-                  {v('chatProvider') === 'openai' ? 'OpenAI' : 'Anthropic'}. Switch back to
-                  the model on this machine to keep everything local.
+                  Relevant excerpts are sent to{' '}{v('chatProvider') === 'openai' ? 'OpenAI' : 'Anthropic'}.
                 </p>
               </div>
             </div>

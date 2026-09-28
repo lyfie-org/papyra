@@ -19,6 +19,7 @@ import VaultUnlock from './VaultUnlock';
 import { closeTarget } from '../lib/noteLink';
 import { useToast } from '../lib/toastContext';
 import { useMentionShare } from '../hooks/useMentionShare';
+import { useInPlaceWikilinks } from '../hooks/useInPlaceWikilinks';
 import { useTrashNote } from '../hooks/useTrashNote';
 import NoteToolbar from './NoteToolbar';
 import TagEditor from './TagEditor';
@@ -163,6 +164,9 @@ export default function NoteEditor({ note, isDraft = false }: { note: Note; isDr
       },
     };
   }, [note.id, navigate, queryClient, onUnresolvedLink, toast]);
+  // A [[link]] replaces the open note in place — never a second browser tab.
+  const openLinkedNote = useCallback((target: string) => adapter.openNote({ title: target }), [adapter]);
+  useInPlaceWikilinks(sheetRef, openLinkedNote);
   // The live Lexical editor, for tools that work on it from outside luthor.
   const [lexicalEditor, setLexicalEditor] = useState<LexicalEditor | null>(null);
   // luthor's own image paths (the /image slash command) otherwise fall back to
