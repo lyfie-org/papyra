@@ -6,6 +6,11 @@ a Docker Hub tag and a GitHub Release.
 
 <!-- new releases are inserted directly below this line -->
 
+## [0.1.20] - 2026-09-28
+
+- fix: use the system text cursor instead of the drawn I-beam (4568cff)
+- feat: shared-with-me page, readable note file names, one-view links that survive, to-do card actions (6d6b068)
+
 ## [0.1.19] - 2026-09-28
 
 - feat: passkey sign-in, settings/profile overhaul, autofill hygiene, search rebuild job (79ae643)
