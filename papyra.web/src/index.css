@@ -116,14 +116,14 @@ textarea {
   --selection-bg: var(--tint-selection-bg);
   --selection-link: var(--tint-selection-link);
 }
-/* Text I-beam, after macOS: a black beam with a white halo, so the pointer reads
-   on any background — pale pastels, dark custom note colours, the dark theme —
-   where the system beam can wash out. Hotspot at its centre; falls back to the
-   system `text` cursor. */
+/* Text fields get the system I-beam. It inverts against whatever is under it —
+   dark on paper and pastels, light on the dark theme and dark note colours —
+   which a drawn cursor (the old black beam with a white halo) never matched:
+   on a tinted note in dark mode it read as a blurred double outline. */
 :where([contenteditable]:not([contenteditable='false']), textarea,
   input:not([type]), input[type='text'], input[type='search'], input[type='email'],
   input[type='url'], input[type='password'], input[type='number'], input[type='tel']) {
-  cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='24' viewBox='0 0 16 24'%3E%3Cg fill='none' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='M5 3.5h2.2c.5 0 .8.3.8.8v15.4c0 .5-.3.8-.8.8H5M11 3.5H8.8c-.5 0-.8.3-.8.8v15.4c0 .5.3.8.8.8H11M6 12h4' stroke='white' stroke-width='3'/%3E%3Cpath d='M5 3.5h2.2c.5 0 .8.3.8.8v15.4c0 .5-.3.8-.8.8H5M11 3.5H8.8c-.5 0-.8.3-.8.8v15.4c0 .5.3.8.8.8H11M6 12h4' stroke='black' stroke-width='1.2'/%3E%3C/g%3E%3C/svg%3E") 8 12, text;
+  cursor: text;
 }
 
 /* luthor paints its own selection from --papyra-selection-bg; declared on the
