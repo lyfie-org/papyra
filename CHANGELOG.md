@@ -6,6 +6,13 @@ a Docker Hub tag and a GitHub Release.
 
 <!-- new releases are inserted directly below this line -->
 
+## [0.1.22] - 2026-09-28
+
+- chore: lint fix (1b52cf9)
+- Revert "chore: lint fix" (1cb476c)
+- chore: lint fix (b38ef5f)
+- feat: admin account controls, notification catalog, GitHub backup guide, UI polish (a104773)
+
 ## [0.1.21] - 2026-09-28
 
 - feat: guarded export + account deletion, HTML emails, media tools, link cards, dock outline (e2f4aa8)
