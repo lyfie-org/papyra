@@ -6,6 +6,11 @@ a Docker Hub tag and a GitHub Release.
 
 <!-- new releases are inserted directly below this line -->
 
+## [0.1.23] - 2026-09-28
+
+- Update tokens.css (635e8b2)
+- feat: guided first-run setup, encrypted GitHub backup, verified email change (0aa4dd2)
+
 ## [0.1.22] - 2026-09-28
 
 - chore: lint fix (1b52cf9)
