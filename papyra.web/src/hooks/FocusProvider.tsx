@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
+import { useCallback, useMemo, useRef, useState, type ReactNode } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { FocusContext } from './useFocus';
 
@@ -9,9 +9,9 @@ export function FocusProvider({ children }: { children: ReactNode }) {
   // Refs mirror state so the stable hub callback reads current values without
   // re-subscribing the connection on every change.
   const focusRef = useRef(false);
-  useEffect(() => { focusRef.current = focus; });
+  focusRef.current = focus;
   const pendingRef = useRef(0);
-  useEffect(() => { pendingRef.current = pending; });
+  pendingRef.current = pending;
 
   const flush = useCallback(() => {
     queryClient.invalidateQueries({ queryKey: ['notes'] });

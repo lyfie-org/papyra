@@ -114,7 +114,7 @@ export function useAutoSave(
   // so the redundant call after an explicit close is harmless. Held in a ref so
   // this runs only on the real unmount, not whenever flush's identity changes.
   const flushRef = useRef(flush);
-  useEffect(() => { flushRef.current = flush; });
+  flushRef.current = flush;
   useEffect(() => () => {
     if (timer.current) {
       clearTimeout(timer.current);
