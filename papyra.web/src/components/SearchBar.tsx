@@ -85,16 +85,17 @@ export default function SearchBar() {
   const { user } = useAuth();
   const { online } = useSyncState();
   const [query, setQuery] = useState('');
-  const [noteHits, setNoteHits] = useState<Array<Hit & { rank: number }>>([]);
+  const [remoteResult, setRemoteResult] = useState<{
+    query: string;
+    hits: Array<Hit & { rank: number }>;
+    partial: boolean;
+  } | null>(null);
   const [open, setOpen] = useState(false);
   // Opened by the shortcut rather than a click. The field is lifted over any
   // open modal (a note, a sheet) straight away, not only once results show —
   // otherwise Ctrl+K from inside a note focused an input hidden behind it.
   const [summoned, setSummoned] = useState(false);
   const [active, setActive] = useState(0);
-  const [offlineResults, setOfflineResults] = useState(false);
-  // Index returned nothing but the raw text matched — results are substring-only.
-  const [partial, setPartial] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const wrapRef = useRef<HTMLDivElement>(null);
 
@@ -105,19 +106,20 @@ export default function SearchBar() {
 
   // Debounced query. The local fallback runs synchronously so results never
   // disappear while the network attempt is in flight.
-  useEffect(() => {
-    const q = query.trim();
-    if (!q) { setNoteHits([]); setOfflineResults(false); return; }
+  const trimmed = query.trim();
+  const localHits = useMemo(() => (trimmed ? searchLocally(cached, trimmed) : []), [cached, trimmed]);
 
-    const local = searchLocally(cached, q);
-    setNoteHits(local);
-    setOfflineResults(true);
-    setPartial(false);
-    if (!online) return;
+  const hasRemoteForQuery = remoteResult !== null && remoteResult.query === trimmed;
+  const noteHits = hasRemoteForQuery ? remoteResult.hits : localHits;
+  const offlineResults = Boolean(trimmed && !hasRemoteForQuery);
+  const partial = Boolean(hasRemoteForQuery && remoteResult.partial);
+
+  useEffect(() => {
+    if (!trimmed || !online) return;
 
     let cancelled = false;
     const timer = setTimeout(() => {
-      void fetch(`/api/search?q=${encodeURIComponent(q)}`)
+      void fetch(`/api/search?q=${encodeURIComponent(trimmed)}`)
         .then((res) => (res.ok ? res.json() : Promise.reject(new Error(String(res.status)))))
         .then((remote: Hit[]) => {
           // A slower answer for an older query must never overwrite a newer one.
@@ -125,21 +127,22 @@ export default function SearchBar() {
           // Lucene doesn't stem, so "note" misses a note titled "Field notes".
           // When the index has nothing but the raw text plainly does, keep the
           // substring matches rather than showing a bare "No matches".
-          if (remote.length === 0 && local.length > 0) {
+          if (remote.length === 0 && localHits.length > 0) {
             // The server DID answer — label these as partial, not as offline.
-            setOfflineResults(false);
-            setPartial(true);
+            setRemoteResult({ query: trimmed, hits: localHits, partial: true });
             return;
           }
           // The endpoint ranks by relevance, so position IS the rank.
-          setNoteHits(remote.slice(0, 12).map((hit, i) => ({ ...hit, rank: i })));
-          setOfflineResults(false);
-          setPartial(false);
+          setRemoteResult({
+            query: trimmed,
+            hits: remote.slice(0, 12).map((hit, i) => ({ ...hit, rank: i })),
+            partial: false,
+          });
         })
         .catch(() => { /* keep the local results — they're already on screen */ });
     }, DEBOUNCE_MS);
     return () => { cancelled = true; clearTimeout(timer); };
-  }, [query, cached, online]);
+  }, [trimmed, cached, online, localHits]);
 
   // Everything the client can answer for itself is matched here — no debounce,
   // no network, so settings and tags appear the instant a key lands.

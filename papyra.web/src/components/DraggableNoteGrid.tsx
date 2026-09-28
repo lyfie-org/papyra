@@ -156,7 +156,10 @@ export default function DraggableNoteGrid({
   const othersRef = useRef<HTMLDivElement | null>(null);
 
   const heights = useRef<Map<string, number>>(new Map());
-  const [, forceTick] = useState(0);
+  // Render-safe snapshot of heights.current. Updated by onMeasure so the render
+  // body never reads .current directly (react-hooks/refs). The ref is still the
+  // authority for event handlers that run mid-drag.
+  const [heightsSnap, setHeightsSnap] = useState<Map<string, number>>(() => new Map());
   // While dragging, heights are fixed — re-measuring mid-drag would re-pack and
   // jitter. This ref gates that (a ref, so the measure callback sees it live).
   const dragging = useRef(false);
@@ -193,7 +196,7 @@ export default function DraggableNoteGrid({
     if (dragging.current) return; // heights are frozen mid-drag
     if (h > 0 && heights.current.get(id) !== h) {
       heights.current.set(id, h);
-      forceTick(t => t + 1); // re-pack with the real height
+      setHeightsSnap(new Map(heights.current)); // re-pack with the real height
     }
   }, []);
 
@@ -205,17 +208,18 @@ export default function DraggableNoteGrid({
   const carried = useMemo(() => new Set(group), [group]);
   const pinnedIds = pinned.map(n => n.id).filter(id => !carried.has(id));
   const othersIds = others.map(n => n.id).filter(id => !carried.has(id));
-  const activeH = activeId ? (heights.current.get(activeId) ?? EST_H) : 0;
+
+  const activeH = activeId ? (heightsSnap.get(activeId) ?? EST_H) : 0;
 
   // BASE = resting layout of the non-dragged cards (no gap). Hit-testing uses this
   // so inserting the gap never shifts the centres we test against (no oscillation).
   // Mid-resize, cards hold their columns (see useGridWidth).
-  const prefer = sticky.current ?? undefined;
-  const pinnedBase = pack(pinnedIds, heights.current, cols, colW, undefined, prefer);
-  const othersBase = pack(othersIds, heights.current, cols, colW, undefined, prefer);
+  const prefer = sticky ?? undefined;
+  const pinnedBase = pack(pinnedIds, heightsSnap, cols, colW, undefined, prefer);
+  const othersBase = pack(othersIds, heightsSnap, cols, colW, undefined, prefer);
   // DISPLAY = base, plus the make-room gap at the drop index (what we render).
   const pinnedLayout = drop?.section === 'pinned'
-    ? pack(pinnedIds, heights.current, cols, colW, { index: drop.index, h: activeH }, prefer)
+    ? pack(pinnedIds, heightsSnap, cols, colW, { index: drop.index, h: activeH }, prefer)
     : pinnedBase;
   // Keyed `shared:<shareId>` — a note id is only unique within its own vault,
   // so a shared note can carry the same id as one of yours.
@@ -225,7 +229,7 @@ export default function DraggableNoteGrid({
   // shared ones.
   const sharedIds = shared.map(s => `shared:${s.shareId}`);
   const othersLayout = pack(
-    [...othersIds, ...sharedIds], heights.current, cols, colW,
+    [...othersIds, ...sharedIds], heightsSnap, cols, colW,
     drop?.section === 'others' ? { index: drop.index, h: activeH } : undefined, prefer,
   );
 
@@ -249,7 +253,7 @@ export default function DraggableNoteGrid({
     const o: Section = byId.get(id)?.pinned ? 'pinned' : 'others';
     // Resting box of the card in its full (idle) section layout — the baseline the
     // pointer delta is added to so the card tracks the cursor exactly.
-    const idle = pack((o === 'pinned' ? pinned : others).map(n => n.id), heights.current, cols, colW, undefined, prefer);
+    const idle = pack((o === 'pinned' ? pinned : others).map(n => n.id), heights.current, cols, colW, undefined, stickySnap);
     setStartBox(idle.boxes.get(id) ?? { x: 0, y: 0 });
     const ev = e.activatorEvent as PointerEvent;
     pointerStart.current = { x: ev.clientX ?? 0, y: ev.clientY ?? 0 };

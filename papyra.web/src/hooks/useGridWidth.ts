@@ -26,9 +26,8 @@ const SETTLE_MS = 240;
  */
 export function useGridWidth(wrapRef: RefObject<HTMLElement | null>, mounted = true) {
   const [width, setWidth] = useState(0);
-  const [, setSettled] = useState(0);
+  const [sticky, setSticky] = useState<Map<string, number> | null>(null);
   const resizedAt = useRef(0);
-  const sticky = useRef<Map<string, number> | null>(null);
   const lastColumns = useRef<Map<string, number>>(new Map());
 
   useLayoutEffect(() => {
@@ -42,14 +41,16 @@ export function useGridWidth(wrapRef: RefObject<HTMLElement | null>, mounted = t
       if (w === current) return;
       const sameCols = current > 0 && columnsFor(w).cols === columnsFor(current).cols;
       current = w;
-      sticky.current = sameCols ? lastColumns.current : null;
+      const nextSticky = sameCols ? lastColumns.current : null;
       resizedAt.current = performance.now();
       clearTimeout(settle);
       settle = setTimeout(() => {
-        sticky.current = null;
-        setSettled((t) => t + 1);
+        setSticky(null);
       }, SETTLE_MS);
-      flushSync(() => setWidth(w));
+      flushSync(() => {
+        setSticky(nextSticky);
+        setWidth(w);
+      });
     });
     ro.observe(el);
     setWidth(current);
