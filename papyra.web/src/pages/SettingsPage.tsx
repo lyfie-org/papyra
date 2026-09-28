@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
@@ -54,7 +54,7 @@ import ExportDialog from '../components/ExportDialog';
 import DeleteAccountSection from '../components/DeleteAccountSection';
 import { fetchWithProgress } from '../lib/progress';
 import { MASKED_SECRET, NO_AUTOFILL } from '../lib/autofill';
-import { allTimeZones } from '../lib/timeZone';
+import TimeZonePicker from '../components/TimeZonePicker';
 
 type Tab = 'profile' | 'appearance' | 'notifications' | 'security' | 'data' | 'keys' | 'sync'
   | 'users' | 'sso' | 'email' | 'ai' | 'jobs' | 'about';
@@ -233,7 +233,6 @@ function ProfileTab({ user }: { user: AuthUser | null }) {
   const [email, setEmail] = useState(user?.email ?? '');
   // '' = follow the server's zone.
   const [timeZone, setTimeZone] = useState(user?.timeZone ?? '');
-  const zones = useMemo(() => allTimeZones(), []);
   const [savedMsg, setSavedMsg] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   // A server refusal names the field it is about, so it is shown under that field.
@@ -267,22 +266,75 @@ function ProfileTab({ user }: { user: AuthUser | null }) {
   const tagCount = new Set((notes ?? []).flatMap(n => n.tags ?? [])).size;
 
   const usernameProblem = usernameRule(username.trim());
+  // Whether the name is free on this Papyra, asked while typing (debounced).
+  // Usernames are unique per installation, case-insensitively.
+  const [availability, setAvailability] = useState<{ name: string; available: boolean; problem?: string | null } | null>(null);
+  const wantedName = username.trim();
+  const checkName = !!wantedName && !usernameProblem && wantedName.toLowerCase() !== (user?.username ?? '').toLowerCase();
+  const current = checkName && availability?.name === wantedName ? availability : null;
+  const nameTaken = current && !current.available ? (current.problem ?? 'That username is taken.') : null;
+  const nameFree = !!current?.available;
+  useEffect(() => {
+    if (!checkName) return;
+    const ctrl = new AbortController();
+    const t = setTimeout(async () => {
+      try {
+        const res = await fetch(`/api/auth/username-available?name=${encodeURIComponent(wantedName)}`, { signal: ctrl.signal });
+        if (!res.ok) return;
+        const data = await res.json() as { available: boolean; problem?: string | null };
+        setAvailability({ name: wantedName, ...data });
+      } catch { /* aborted or offline: the server checks again on save */ }
+    }, 350);
+    return () => { clearTimeout(t); ctrl.abort(); };
+  }, [checkName, wantedName]);
+
+  // Moving the email needs proof from the address it is leaving: a code sent
+  // there (or, where this Papyra can't send mail, the account password).
+  const [emailProof, setEmailProof] = useState<null | { kind: 'code'; sentTo: string } | { kind: 'password' }>(null);
+  const [emailCode, setEmailCode] = useState('');
+  const [proofPassword, setProofPassword] = useState('');
+  const emailChanged = email.trim().toLowerCase() !== (user?.email ?? '').toLowerCase();
+
   const dirty = username.trim() !== (user?.username ?? '')
     || name.trim() !== (user?.name ?? '')
     || email.trim() !== (user?.email ?? '')
     || timeZone !== (user?.timeZone ?? '');
 
+  async function requestEmailProof(): Promise<boolean> {
+    const res = await fetch('/api/auth/email/code', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email: email.trim() }),
+    });
+    const data = (await res.json().catch(() => null)) as
+      { required?: boolean; passwordRequired?: boolean; sentTo?: string; error?: string; field?: string } | null;
+    if (!res.ok) {
+      setFieldError({ field: data?.field ?? 'email', error: data?.error ?? 'Couldn’t send the code.' });
+      return false;
+    }
+    if (data?.passwordRequired) { setEmailProof({ kind: 'password' }); return false; }
+    if (data?.required) { setEmailProof({ kind: 'code', sentTo: data.sentTo ?? 'your current address' }); return false; }
+    return true; // no current address: nothing to prove
+  }
+
   async function saveProfile(e: React.FormEvent) {
     e.preventDefault();
     if (usernameProblem) { setFieldError({ field: 'username', error: usernameProblem }); return; }
+    if (nameTaken) { setFieldError({ field: 'username', error: nameTaken }); return; }
     setSavedMsg(null);
     setFieldError(null);
     setSaving(true);
     try {
+      // First press with a new email: send the code, then wait for it.
+      if (emailChanged && user?.email && !emailProof && !(await requestEmailProof())) return;
       const res = await fetch('/api/auth/profile', {
         method: 'PUT',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: username.trim(), name: name.trim(), email: email.trim(), timeZone }),
+        body: JSON.stringify({
+          username: username.trim(), name: name.trim(), email: email.trim(), timeZone,
+          emailCode: emailProof?.kind === 'code' ? emailCode.trim() : undefined,
+          currentPassword: emailProof?.kind === 'password' ? proofPassword : undefined,
+        }),
       });
       if (res.ok) {
         const saved = (await res.json()) as AuthUser;
@@ -290,10 +342,13 @@ function ProfileTab({ user }: { user: AuthUser | null }) {
         setName(saved.name);
         setEmail(saved.email);
         setTimeZone(saved.timeZone ?? '');
+        setEmailProof(null);
         await queryClient.invalidateQueries({ queryKey: ['auth'] });
         setSavedMsg('Saved.');
       } else {
-        const data = (await res.json().catch(() => null)) as { error?: string; field?: string } | null;
+        const data = (await res.json().catch(() => null)) as { error?: string; field?: string; code?: string } | null;
+        if (data?.code === 'email_code_required' && !emailProof) await requestEmailProof();
+        else if (data?.code === 'password_required' && !emailProof) setEmailProof({ kind: 'password' });
         if (data?.field && data.error) setFieldError({ field: data.field, error: data.error });
         else setSavedMsg('Couldn’t save your profile.');
       }
@@ -456,13 +511,17 @@ function ProfileTab({ user }: { user: AuthUser | null }) {
             />
           </span>
           <span id="username-help" className={
-            fieldError?.field === 'username' || (usernameProblem && username !== user?.username)
-              ? 'settings__field-error' : 'settings__hint'}>
+            fieldError?.field === 'username' || nameTaken || (usernameProblem && username !== user?.username)
+              ? 'settings__field-error' : 'settings__hint'} aria-live="polite">
             {fieldError?.field === 'username'
               ? fieldError.error
               : usernameProblem && username !== user?.username
                 ? usernameProblem
-                : 'How people @mention you and how you sign in. Existing @mentions of an old name keep their text.'}
+                : nameTaken
+                  ? nameTaken
+                  : nameFree
+                    ? `@${username.trim()} is available.`
+                    : 'How people @mention you and how you sign in. Unique on this Papyra; existing @mentions of an old name keep their text.'}
           </span>
         </label>
         <label className="settings__field">Display name
@@ -481,28 +540,69 @@ function ProfileTab({ user }: { user: AuthUser | null }) {
             value={email}
             autoComplete="email"
             aria-invalid={fieldError?.field === 'email'}
-            onChange={e => { setEmail(e.target.value); setFieldError(null); setSavedMsg(null); }}
+            onChange={e => {
+              setEmail(e.target.value); setFieldError(null); setSavedMsg(null);
+              // A different address needs its own code.
+              setEmailProof(null); setEmailCode(''); setProofPassword('');
+            }}
           />
           <span className={fieldError?.field === 'email' ? 'settings__field-error' : 'settings__hint'}>
-            {fieldError?.field === 'email' ? fieldError.error : 'For password resets and the notifications you choose.'}
+            {fieldError?.field === 'email'
+              ? fieldError.error
+              : emailChanged && user?.email && emailProof?.kind !== 'password'
+                ? 'Changing it needs a code sent to your current address first — so nobody holding your session can take the account.'
+                : 'For password resets and the notifications you choose.'}
           </span>
         </label>
-        <label className="settings__field">Time zone
-          <select
-            className="settings__select"
+        {emailProof?.kind === 'code' && (
+          <label className="settings__field">Code sent to {emailProof.sentTo}
+            <input
+              value={emailCode}
+              inputMode="numeric"
+              autoComplete="one-time-code"
+              maxLength={6}
+              autoFocus
+              aria-invalid={fieldError?.field === 'emailCode'}
+              onChange={e => { setEmailCode(e.target.value.replace(/\D/g, '')); setFieldError(null); }}
+            />
+            <span className={fieldError?.field === 'emailCode' ? 'settings__field-error' : 'settings__hint'}>
+              {fieldError?.field === 'emailCode'
+                ? fieldError.error
+                : <>Check the inbox of your <em>current</em> address, then press Save again. <button type="button" className="settings__link-btn" onClick={() => void requestEmailProof()}>Send a new code</button></>}
+            </span>
+          </label>
+        )}
+        {emailProof?.kind === 'password' && (
+          <label className="settings__field">Account password
+            <input
+              type="password"
+              value={proofPassword}
+              autoComplete="current-password"
+              autoFocus
+              aria-invalid={fieldError?.field === 'currentPassword'}
+              onChange={e => { setProofPassword(e.target.value); setFieldError(null); }}
+            />
+            <span className={fieldError?.field === 'currentPassword' ? 'settings__field-error' : 'settings__hint'}>
+              {fieldError?.field === 'currentPassword'
+                ? fieldError.error
+                : 'This Papyra can’t send email, so confirm the change with your password.'}
+            </span>
+          </label>
+        )}
+        <div className="settings__field">
+          <span id="tz-label">Time zone</span>
+          <TimeZonePicker
             value={timeZone}
-            aria-invalid={fieldError?.field === 'timeZone'}
-            onChange={e => { setTimeZone(e.target.value); setFieldError(null); setSavedMsg(null); }}
-          >
-            <option value="">Server default{user?.serverTimeZone ? ` (${user.serverTimeZone.replace(/_/g, ' ')})` : ''}</option>
-            {zones.map(z => <option key={z} value={z}>{z.replace(/_/g, ' ')}</option>)}
-          </select>
+            serverZone={user?.serverTimeZone}
+            invalid={fieldError?.field === 'timeZone'}
+            onChange={z => { setTimeZone(z); setFieldError(null); setSavedMsg(null); }}
+          />
           <span className={fieldError?.field === 'timeZone' ? 'settings__field-error' : 'settings__hint'}>
             {fieldError?.field === 'timeZone'
               ? fieldError.error
-              : 'Used for “last edited” times on your notes.'}
+              : 'Grouped by country, with each zone’s current UTC offset. Used for “last edited” times on your notes.'}
           </span>
-        </label>
+        </div>
         <div className="settings__form-actions">
           <button type="submit" className="settings__btn" disabled={!dirty || saving}>
             {saving ? 'Saving…' : 'Save changes'}

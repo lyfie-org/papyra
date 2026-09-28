@@ -49,7 +49,7 @@ public sealed class EncryptedBackupService
                     foreach (var file in Directory.EnumerateFiles(dir, "*", SearchOption.AllDirectories))
                     {
                         var rel = Path.GetRelativePath(dir, file).Replace('\\', '/');
-                        var entry = zip.CreateEntry($"{label}/{rel}", CompressionLevel.Fastest);
+                        var entry = zip.CreateEntry(label.Length == 0 ? rel : $"{label}/{rel}", CompressionLevel.Fastest);
                         await using var es = entry.Open();
                         await using var src = File.OpenRead(file);
                         await src.CopyToAsync(es, ct);

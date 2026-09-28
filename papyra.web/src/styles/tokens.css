@@ -265,3 +265,15 @@
   --tint-selection-link: #fff;
   --tint-scrim:     rgba(0, 0, 0, 0.28);
 }
+
+/* Fixed previews of each theme's paper, for the theme picker in first-run
+   setup: they show a theme whatever the page is displaying now, so they are
+   deliberately NOT redefined under [data-theme]. Mirror --bg/--surface/--border. */
+:root {
+  --preview-light-bg:      #f2ebe0;
+  --preview-light-surface: #fdf8f2;
+  --preview-light-border:  #ddd5c8;
+  --preview-dark-bg:       #1c1917;
+  --preview-dark-surface:  #28231e;
+  --preview-dark-border:   #3a322b;
+}

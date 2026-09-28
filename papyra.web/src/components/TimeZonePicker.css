@@ -1,0 +1,29 @@
+.tz-picker {
+  display: flex;
+  flex-direction: column;
+  gap: 0.4rem;
+  min-width: 0;
+}
+
+.tz-picker__filter,
+.tz-picker select {
+  width: 100%;
+  min-width: 0;
+  padding: 0.5rem 0.6rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--text-h);
+  font-family: var(--sans);
+  font-size: 0.9rem;
+}
+
+.tz-picker__filter:hover,
+.tz-picker select:hover { border-color: var(--border-hover); }
+.tz-picker__filter:focus-visible,
+.tz-picker select:focus-visible { border-color: var(--border-focus); }
+
+.tz-picker__count {
+  color: var(--text);
+  font-size: 0.8rem;
+}

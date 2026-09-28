@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react';
+import { ZONES_BY_COUNTRY } from './timeZoneCountries';
 import { useAuth } from '../hooks/useAuth';
 
 /** Every IANA zone this browser knows, for the Profile picker. */
@@ -91,4 +92,87 @@ export function dayLabel(iso: string, zone: string, now: number): string {
   return new Intl.DateTimeFormat(undefined, {
     timeZone: zone, day: 'numeric', month: 'short', ...(sameYear ? {} : { year: 'numeric' }),
   }).format(d);
+}
+
+/**
+ * A zone's current offset as "UTC+5:30" / "UTC−8" / "UTC". Current, because
+ * daylight saving moves it: London is UTC+1 in July and UTC in January.
+ */
+export function zoneOffsetMinutes(zone: string, at: Date = new Date()): number {
+  try {
+    const part = new Intl.DateTimeFormat('en-US', { timeZone: zone, timeZoneName: 'longOffset' })
+      .formatToParts(at).find(p => p.type === 'timeZoneName')?.value ?? 'GMT';
+    const m = /GMT([+-−])(\d{1,2})(?::(\d{2}))?/.exec(part);
+    if (!m) return 0;
+    const sign = m[1] === '+' ? 1 : -1;
+    return sign * (Number(m[2]) * 60 + Number(m[3] ?? 0));
+  } catch {
+    return 0;
+  }
+}
+
+export function formatOffset(minutes: number): string {
+  if (minutes === 0) return 'UTC';
+  const sign = minutes > 0 ? '+' : '−';
+  const abs = Math.abs(minutes);
+  const h = Math.floor(abs / 60);
+  const m = abs % 60;
+  return `UTC${sign}${h}${m ? `:${String(m).padStart(2, '0')}` : ''}`;
+}
+
+export function zoneOffsetLabel(zone: string, at?: Date): string {
+  return formatOffset(zoneOffsetMinutes(zone, at));
+}
+
+// Old names some browsers still report (Chrome lists Asia/Calcutta, not
+// Asia/Kolkata): show the city as it is called today.
+const RENAMED: Record<string, string> = {
+  'Asia/Calcutta': 'Asia/Kolkata', 'Asia/Saigon': 'Asia/Ho_Chi_Minh', 'Asia/Katmandu': 'Asia/Kathmandu',
+  'Asia/Rangoon': 'Asia/Yangon', 'Europe/Kiev': 'Europe/Kyiv', 'Pacific/Enderbury': 'Pacific/Kanton',
+  'America/Godthab': 'America/Nuuk',
+};
+
+/** "America/Argentina/Buenos_Aires" → "Buenos Aires (Argentina)"; "Asia/Calcutta" → "Kolkata". */
+export function zoneCity(zone: string): string {
+  const parts = (RENAMED[zone] ?? zone).split('/').map(p => p.replace(/_/g, ' '));
+  if (parts.length <= 1) return parts[0] ?? zone;
+  const city = parts[parts.length - 1];
+  return parts.length > 2 ? `${city} (${parts[parts.length - 2]})` : city;
+}
+
+export interface ZoneOption { id: string; city: string; offset: string; offsetMinutes: number }
+export interface ZoneGroup { code: string; country: string; zones: ZoneOption[] }
+
+/**
+ * Every zone the browser knows, grouped by country (alphabetical, by the
+ * country's name in this browser's language), each zone labelled with its city
+ * and current UTC offset. Zones without a country (UTC, Etc/…) come last under
+ * "Other". `ensure` is always included, so a saved zone the browser lists under
+ * another alias (Asia/Calcutta vs Asia/Kolkata) never silently disappears.
+ */
+export function timeZoneGroups(ensure?: string | null, at: Date = new Date()): ZoneGroup[] {
+  const supported = new Set(allTimeZones());
+  if (ensure) supported.add(ensure);
+  let names: Intl.DisplayNames | null = null;
+  try { names = new Intl.DisplayNames(undefined, { type: 'region' }); } catch { /* old browser */ }
+
+  const option = (id: string): ZoneOption => {
+    const offsetMinutes = zoneOffsetMinutes(id, at);
+    return { id, city: zoneCity(id), offset: formatOffset(offsetMinutes), offsetMinutes };
+  };
+  const byOffset = (a: ZoneOption, b: ZoneOption) => a.offsetMinutes - b.offsetMinutes || a.city.localeCompare(b.city);
+
+  const placed = new Set<string>();
+  const groups: ZoneGroup[] = [];
+  for (const [code, list] of Object.entries(ZONES_BY_COUNTRY)) {
+    const zones = list.filter(z => supported.has(z) && !placed.has(z));
+    if (zones.length === 0) continue;
+    zones.forEach(z => placed.add(z));
+    groups.push({ code, country: names?.of(code) ?? code, zones: zones.map(option).sort(byOffset) });
+  }
+  groups.sort((a, b) => a.country.localeCompare(b.country));
+
+  const rest = [...supported].filter(z => !placed.has(z)).map(option).sort(byOffset);
+  if (rest.length) groups.push({ code: '', country: 'Other', zones: rest });
+  return groups;
 }

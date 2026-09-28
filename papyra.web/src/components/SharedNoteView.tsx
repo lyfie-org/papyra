@@ -19,10 +19,17 @@ export interface SharedNote {
   /** The viewer has asked for edit access and is waiting on the owner. */
   requestPending?: boolean;
   /** Public links: who shared it. */
-  sharedBy?: { username: string; name: string } | null;
+  sharedBy?: { username: string; name: string; handle?: string } | null;
   /** Public links: times the link has been opened (this visit included), and its cap. */
   views?: number;
   maxViews?: number | null;
+}
+
+/** `Name (user@domain)` — the domain makes a public link's sharer unambiguous
+ * across Papyra installations (usernames are only unique per instance). */
+function sharerLabel(by: NonNullable<SharedNote['sharedBy']>): string {
+  const handle = by.handle ?? `@${by.username}`;
+  return by.name && by.name !== by.username ? `${by.name} (${handle})` : handle;
 }
 
 /** Quiet period after the last keystroke before an edit is written back. */
@@ -126,8 +133,7 @@ export default function SharedNoteView({
       {(note.sharedBy || note.views != null) && (
         <p className="shared-note__meta">
           {note.sharedBy && (
-            <span>Shared by <strong>{note.sharedBy.name && note.sharedBy.name !== note.sharedBy.username
-              ? `${note.sharedBy.name} (@${note.sharedBy.username})` : `@${note.sharedBy.username}`}</strong></span>
+            <span>Shared by <strong>{sharerLabel(note.sharedBy)}</strong></span>
           )}
           {note.views != null && (
             <span>

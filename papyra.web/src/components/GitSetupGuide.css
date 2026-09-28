@@ -310,3 +310,54 @@
   .git-guide__step-label { display: none; }
   .git-guide__head, .git-guide__body, .git-guide__foot, .git-guide__steps { padding-inline: var(--space-4); }
 }
+
+/* Plain vs encrypted, chosen at the end of the guide. */
+.git-guide__mode {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  margin: 1rem 0 0;
+  padding: 0;
+  border: none;
+}
+.git-guide__mode legend {
+  margin-bottom: 0.4rem;
+  color: var(--text-h);
+  font-weight: 600;
+}
+.git-guide__mode-opt {
+  display: flex;
+  align-items: flex-start;
+  gap: 0.6rem;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  font-size: 0.88rem;
+  line-height: 1.45;
+  cursor: pointer;
+}
+.git-guide__mode-opt:hover { border-color: var(--border-hover); }
+.git-guide__mode-opt.is-on { border-color: var(--accent); }
+.git-guide__mode-opt input { margin-top: 0.2rem; }
+.git-guide__mode-opt strong { color: var(--text-h); }
+.git-guide__mode-opt svg { vertical-align: -2px; }
+
+.git-card__facts dd svg { vertical-align: -1px; margin-right: 0.2rem; }
+
+.git-mode-switch {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin-top: 0.9rem;
+  padding-top: 0.9rem;
+  border-top: 1px solid var(--border);
+}
+
+.git-restore-box {
+  display: flex;
+  flex-direction: column;
+  gap: 0.6rem;
+  margin-top: 1rem;
+}
+.git-restore-box > .settings__link { align-self: flex-start; }
