@@ -66,6 +66,8 @@ public sealed class ImportService : BackgroundService
     private readonly IConfiguration _config;
     private readonly IHostEnvironment _env;
     private readonly ILogger<ImportService> _logger;
+    private readonly IServiceScopeFactory? _scopes;
+    private readonly EmailSender? _email;
 
     public ImportService(
         MarkdownStorageService storage,
@@ -78,8 +80,12 @@ public sealed class ImportService : BackgroundService
         IHubContext<NotesHub> hub,
         IConfiguration config,
         IHostEnvironment env,
-        ILogger<ImportService> logger)
+        ILogger<ImportService> logger,
+        IServiceScopeFactory? scopes = null,
+        EmailSender? email = null)
     {
+        _scopes = scopes;
+        _email = email;
         _storage = storage;
         _state = state;
         _search = search;
@@ -130,6 +136,39 @@ public sealed class ImportService : BackgroundService
                 job.Status.Done = true;
                 if (File.Exists(job.ZipPath)) File.Delete(job.ZipPath);
             }
+            await NotifyFinishedAsync(job);
+        }
+    }
+
+    // An import can take long enough that the person has wandered off; tell them
+    // how it went. Best-effort, like every email.
+    private async Task NotifyFinishedAsync(ImportJob job)
+    {
+        if (_email is null || _scopes is null || !int.TryParse(job.UserId, out var uid)) return;
+        try
+        {
+            using var scope = _scopes.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<Data.AppDbContext>();
+            if (await db.Users.FindAsync([uid]) is not { } user) return;
+            var s = job.Status;
+            await _email.NotifyAsync(user, NotificationCatalog.ImportFinished,
+                s.Error is null ? "Your import into Papyra has finished" : "Your import into Papyra stopped",
+                s.Error is null
+                    ? "The notes you imported are in Papyra now."
+                    : "The import stopped before it finished. Notes that came in before it stopped are kept; "
+                      + "importing the same file again picks up where it left off without duplicating anything.",
+                [
+                    new("From", s.Provider),
+                    new("New notes", s.Imported.ToString()),
+                    new("Updated", s.Updated.ToString()),
+                    new("Already there", s.Unchanged.ToString()),
+                    new("Skipped", s.Skipped.ToString()),
+                    .. s.Error is null ? Array.Empty<EmailDetail>() : [new EmailDetail("Error", s.Error)],
+                ]);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "Import-finished email failed for {JobId}", job.JobId);
         }
     }
 

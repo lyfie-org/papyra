@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { Copy, Download, Link2, Lock, LockOpen, MoreHorizontal, Pin, PinOff, Share2 } from 'lucide-react';
+import { Archive, Copy, Download, Link2, Lock, LockOpen, MoreHorizontal, Pin, PinOff, Share2, Trash2 } from 'lucide-react';
 import type { Note } from '../types/note';
 import { putNote } from '../lib/notesApi';
 import { patchNoteInCache } from '../lib/notesCache';
@@ -48,7 +48,14 @@ function fileName(note: Note): string {
  * card's pin. It now opens below the button when there's room and above when
  * there isn't, and is kept inside the window sideways.
  */
-export default function CardMenu({ note, onShare }: { note: Note; onShare: () => void }) {
+export default function CardMenu({ note, onShare, onArchive, onDelete, triggerClassName }: {
+  note: Note;
+  onShare: () => void;
+  /** Fold Archive and Delete into the menu (a to-do card has no action rail). */
+  onArchive?: () => unknown;
+  onDelete?: () => unknown;
+  triggerClassName?: string;
+}) {
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
   const triggerRef = useRef<HTMLButtonElement | null>(null);
@@ -208,8 +215,9 @@ export default function CardMenu({ note, onShare }: { note: Note; onShare: () =>
       <button
         ref={triggerRef}
         type="button"
-        className="note-card__action"
+        className={triggerClassName ?? 'note-card__action'}
         aria-label="More actions"
+        title="More actions"
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={(e) => { stop(e); if (open) close(); else setOpen(true); }}
@@ -252,6 +260,18 @@ export default function CardMenu({ note, onShare }: { note: Note; onShare: () =>
             title={note.secure ? 'Unlock the note to download it' : undefined} onClick={run(download)}>
             <Download size={15} /> Download .md
           </button>
+          {(onArchive || onDelete) && <div className="card-menu__sep" role="separator" />}
+          {onArchive && (
+            <button type="button" role="menuitem" className="card-menu__item" onClick={run(onArchive)}>
+              <Archive size={15} /> Archive
+            </button>
+          )}
+          {onDelete && (
+            <button type="button" role="menuitem" className="card-menu__item card-menu__item--danger"
+              disabled={!online} title={offline} onClick={run(onDelete)}>
+              <Trash2 size={15} /> Move to Trash
+            </button>
+          )}
         </div>,
         document.body,
       )}

@@ -68,6 +68,12 @@ public sealed class JobRegistry
     public JobRegistry(ILogger<JobRegistry> logger) => _logger = logger;
 
     /// <summary>
+    /// Called when a job fails after its previous run succeeded (or on its first
+    /// run) — the moment worth telling an administrator about, once. Set at startup.
+    /// </summary>
+    public Func<JobStatus, string, Task>? OnFailure { get; set; }
+
+    /// <summary>
     /// Declare a job that runs on a timer. <paramref name="run"/> does one sweep
     /// and returns a plain-language summary, or null when there is nothing to
     /// report. It is what both the timer and the "Run now" button call, so there
@@ -148,7 +154,13 @@ public sealed class JobRegistry
             // this class.
             _logger.LogWarning(ex, "Job {Job} failed", id);
             var run = new JobRun(started, DateTime.UtcNow, false, null, ex.Message);
+            var wasOk = entry.Status.LastRun?.Ok ?? true;
             Mark(id, e => e with { Status = e.Status with { Running = false, LastRun = run } });
+            if (wasOk && OnFailure is { } notify)
+            {
+                try { await notify(entry.Status, ex.Message); }
+                catch (Exception notifyEx) { _logger.LogWarning(notifyEx, "Job failure notice failed for {Job}", id); }
+            }
             return run;
         }
         finally

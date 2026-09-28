@@ -277,18 +277,17 @@ public sealed partial class MentionDeliveryService : BackgroundService
     // none of which is an error worth failing the job over.
     private async Task NotifyByEmailAsync(User recipient, Job job, CancellationToken ct)
     {
-        if (!recipient.NotifyOnMention || string.IsNullOrWhiteSpace(recipient.Email)) return;
-        if (!_email.IsConfigured) return;
+        if (!NotificationPrefs.Wants(recipient, NotificationCatalog.Mention) || !_email.IsConfigured) return;
 
         // The body is NOT quoted here. A mention grants access to one block of a
         // note in someone else's vault, and email is outside that boundary —
         // copying the text into an inbox would leak it past the grant.
-        await _email.SendAsync(
-            recipient.Email,
+        await _email.NotifyAsync(
+            recipient, NotificationCatalog.Mention,
             $"@{job.OwnerUsername} mentioned you in Papyra",
             $"@{job.OwnerUsername} mentioned you in a note.\n\n"
             + "Open the notifications tray in Papyra to see it, or to ask for access to the note.",
-            ct);
+            ct: ct);
     }
 
     // Append one reference line to the recipient's Inbox.md, creating it if

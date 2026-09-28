@@ -1,111 +1,137 @@
-.users-page {
-  max-width: 1100px;
-  margin: 0 auto;
-  padding: var(--space-6) var(--space-5) var(--space-10);
-}
+/* ── Settings → Users ─────────────────────────────────────────────────── */
 
-.users-page__head {
+.users-panel__head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--space-4);
-  flex-wrap: wrap;
 }
+.users-panel__head .settings__subhead { margin: 0; }
+.settings__panel > .users-panel__head + .settings__hint { margin-top: calc(var(--space-2) - var(--space-4)); }
 
-.users-page__title { margin: 0; }
-
-.users-page__new {
+.users-panel__new {
   display: inline-flex;
   align-items: center;
   gap: var(--space-2);
+  flex: none;
   padding: var(--space-2) var(--space-4);
   border: 1px solid var(--accent-border);
   border-radius: var(--radius-pill);
   background: var(--accent);
   color: var(--accent-fg);
   font: 500 var(--fs-sm) / 1 var(--sans);
+  white-space: nowrap;
   cursor: pointer;
   transition: filter var(--dur-fast) var(--ease);
 }
+.users-panel__new:hover { filter: brightness(1.04); }
 
-.users-page__new:hover { filter: brightness(1.04); }
-
-.users-page__hint,
-.users-page__status {
-  margin: var(--space-3) 0 var(--space-6);
-  max-width: 62ch;
-  font: 400 var(--fs-sm) / 1.55 var(--sans);
-  color: var(--text);
+/* One row per person: who they are, their standing, their role, their actions. */
+.people {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--bg);
+  /* Rows fold by the list's own width, not the window's: the Settings column is
+     narrow long before the screen is. */
+  container-type: inline-size;
 }
 
-/* ── Roster ─────────────────────────────────────────────────────────────── */
-
-.users-table {
-  width: 100%;
-  border-collapse: collapse;
-  font: 400 var(--fs-sm) / 1.45 var(--sans);
-}
-
-.users-table th,
-.users-table td {
-  text-align: left;
-  padding: var(--space-3);
-  border-bottom: 1px solid var(--border);
-  color: var(--text-h);
-  vertical-align: middle;
-}
-
-.users-table th {
-  color: var(--text);
-  font-weight: 500;
-  font-size: var(--fs-xs);
-  text-transform: uppercase;
-  letter-spacing: 0.06em;
-}
-
-.users-table__who {
-  display: inline-flex;
+.person {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
   align-items: center;
-  gap: var(--space-2);
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-4);
 }
+.person + .person { border-top: 1px solid var(--border); }
+.person--disabled > :is(:first-child, .person__who) { opacity: 0.6; }
 
-.users-table__you { color: var(--text); }
-
-/* The warning colour carries the icon, not the words: --warn on --bg measures
-   4.21:1 in light mode, under AA for text but comfortably over the 3:1 a
-   graphic needs. */
-.users-table__flag {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--space-1);
-  color: var(--text-h);
-}
-
-.users-table__flag svg { color: var(--warn); }
-
-.users-table__ok { color: var(--text); }
-
-.users-table__actions {
+.person__controls {
   display: flex;
-  flex-wrap: wrap;
+  align-items: center;
   gap: var(--space-3);
 }
 
-.users-table__link {
+.person__who {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.person__name {
   display: inline-flex;
   align-items: center;
-  gap: var(--space-1);
-  padding: 0;
-  border: 0;
-  background: none;
+  gap: var(--space-2);
+  font: 500 var(--fs-sm) / 1.35 var(--sans);
   color: var(--text-h);
-  font: 500 var(--fs-xs) / 1.4 var(--sans);
-  cursor: pointer;
-  text-decoration: underline;
-  text-underline-offset: 3px;
+}
+.person__you {
+  padding: 1px 6px;
+  border-radius: var(--radius-pill);
+  background: var(--code-bg);
+  font: 500 var(--fs-2xs) / 1.4 var(--sans);
+  color: var(--text);
+}
+.person__meta {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 400 var(--fs-xs) / 1.45 var(--sans);
+  color: var(--text);
 }
 
-.users-table__link--danger { color: var(--danger); }
+.person-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  font: 500 var(--fs-2xs) / 1.5 var(--sans);
+  color: var(--text-h);
+  white-space: nowrap;
+}
+.person-chip svg { color: var(--accent); }
+.person-chip--warn { border-color: var(--warn-border); background: var(--warn-bg); }
+.person-chip--warn svg { color: var(--warn); }
+.person-chip--off { border-color: var(--danger-border); background: var(--danger-bg); color: var(--danger); }
+.person-chip--off svg { color: var(--danger); }
+
+.person__role {
+  min-width: 6.5rem;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text-h);
+  font: 400 var(--fs-xs) / 1.4 var(--sans);
+}
+.person__role:disabled { opacity: 0.6; cursor: not-allowed; }
+
+.person__more {
+  display: inline-grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+.person__more:hover,
+.person__more[aria-expanded='true'] { background: var(--accent-bg); color: var(--accent-text); }
+
+@container (max-width: 520px) {
+  .person { grid-template-columns: auto minmax(0, 1fr) auto; row-gap: var(--space-2); }
+  .person > :first-child { grid-column: 1; grid-row: 1 / span 2; align-self: start; }
+  .person__who { grid-column: 2; grid-row: 1; }
+  .person__more { grid-column: 3; grid-row: 1; align-self: start; }
+  .person__controls { grid-column: 2 / span 2; grid-row: 2; flex-wrap: wrap; gap: var(--space-2); }
+}
 
 /* ── Dialogs ────────────────────────────────────────────────────────────── */
 
@@ -220,6 +246,12 @@
   color: var(--accent-fg);
 }
 
+.users-dialog__btn--danger {
+  border-color: var(--danger);
+  background: var(--danger);
+  color: var(--danger-fg);
+}
+
 .users-dialog__btn:disabled { opacity: 0.6; cursor: default; }
 
 @keyframes users-dialog-in {
@@ -229,15 +261,4 @@
 
 @media (prefers-reduced-motion: reduce) {
   .users-dialog__scrim { animation: none; }
-}
-
-@media (max-width: 720px) {
-  .users-table thead { display: none; }
-  .users-table tr {
-    display: grid;
-    gap: var(--space-1);
-    padding: var(--space-3) 0;
-    border-bottom: 1px solid var(--border);
-  }
-  .users-table td { border: 0; padding: 0; }
 }

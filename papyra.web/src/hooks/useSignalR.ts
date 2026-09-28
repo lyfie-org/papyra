@@ -62,6 +62,12 @@ export function useSignalR(): ServerStatus {
       void queryClient.invalidateQueries({ queryKey: ['shares', 'incoming'] });
       void queryClient.invalidateQueries({ queryKey: ['notifications'] });
     });
+    // An admin disabled this account: re-ask who we are, which lands on the
+    // sign-in page with the reason instead of waiting for the next save to fail.
+    // Promoted or demoted: the same re-read shows or hides Administration.
+    const recheckAccount = () => { void queryClient.invalidateQueries({ queryKey: ['auth'] }); };
+    connection.on('AccountDisabled', recheckAccount);
+    connection.on('AccountChanged', recheckAccount);
     // The bell: mentions, shares, requests and their answers.
     connection.on('NotificationsChanged', () => {
       void queryClient.invalidateQueries({ queryKey: ['notifications'] });

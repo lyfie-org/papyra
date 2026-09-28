@@ -309,27 +309,52 @@
   gap: var(--space-2);
 }
 
-/* Connection + version as one small pill that links to Settings → About. */
+/* Connection + version as one small pill that links to Settings → About. The
+   label is one short word (the detail is in the tooltip), and it still truncates
+   rather than overflow if a translation or count ever runs long. The pill takes
+   its tone from the connection: sage-quiet online, amber-tinted otherwise. */
 .workspace__build {
   display: inline-flex;
   align-items: center;
   gap: 6px;
   max-width: 100%;
-  padding: 3px var(--space-2);
+  min-width: 0;
+  padding: 3px var(--space-2) 3px 7px;
   border: 1px solid var(--border);
   border-radius: var(--radius-pill);
   color: var(--text);
   font: 400 var(--fs-2xs) / 1.4 var(--mono);
   text-decoration: none;
   white-space: nowrap;
-  transition: border-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+  transition:
+    border-color var(--dur-fast) var(--ease),
+    background var(--dur-fast) var(--ease),
+    color var(--dur-fast) var(--ease);
 }
 .workspace__build:hover { border-color: var(--border-hover); color: var(--text-h); }
+.workspace__build--offline,
+.workspace__build--pending,
+.workspace__build--syncing {
+  background: var(--warn-bg);
+  border-color: var(--warn-border);
+  color: var(--warn);
+}
+.workspace__build--offline:hover,
+.workspace__build--pending:hover,
+.workspace__build--syncing:hover { border-color: var(--warn); color: var(--warn); }
 .workspace__build .workspace__status-dot { width: 7px; height: 7px; }
+.workspace__status-label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.workspace__version { flex: 0 0 auto; opacity: 0.8; }
 .workspace__build-sep {
+  flex: 0 0 auto;
   width: 1px;
   height: 10px;
-  background: var(--border);
+  background: currentColor;
+  opacity: 0.3;
 }
 /* The icon rail keeps only the dot, in a tidy circle. */
 .workspace--collapsed .workspace__build { padding: 6px; }

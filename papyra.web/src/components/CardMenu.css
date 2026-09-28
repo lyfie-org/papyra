@@ -36,6 +36,10 @@
   background: color-mix(in srgb, var(--text) 12%, transparent);
 }
 .card-menu__item:disabled { opacity: 0.45; cursor: not-allowed; }
+.card-menu__item--danger,
+.card-menu__item--danger svg { color: var(--danger); }
+.card-menu__item--danger:hover:not(:disabled),
+.card-menu__item--danger:focus-visible { background: var(--danger-bg); }
 
 .card-menu__sep {
   height: 1px;

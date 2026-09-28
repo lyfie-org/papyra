@@ -2,7 +2,7 @@ import { memo, useState, type CSSProperties } from 'react';
 import { Link } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import {
-  AlertTriangle, Pin, Archive, ArchiveRestore, Share2, Trash2, RotateCcw,
+  AlertTriangle, Pin, Archive, ArchiveRestore, Share2, Trash2, RotateCcw, Hourglass,
 } from 'lucide-react';
 import type { Note } from '../types/note';
 import { putNote } from '../lib/notesApi';
@@ -20,6 +20,8 @@ import MarkdownPreview from './MarkdownPreview';
 import { patchNoteInCache } from '../lib/notesCache';
 import { tintInkClass } from '../lib/noteColors';
 import { useResolvedTheme } from '../hooks/useTheme';
+import { useSettings } from '../hooks/useSettings';
+import { purgeInfo } from '../lib/trashPurge';
 import './NoteCard.css';
 
 
@@ -152,6 +154,8 @@ function NoteCard({ note, variant = 'active', conflictId, conflictCount, onResol
           should be visible without going looking for it. */}
       {shared && <ShareBadge summary={shared} />}
 
+      {variant === 'trashed' && <PurgeDate trashedAt={note.trashedAt} />}
+
       <div className="note-card__actions">
         {variant === 'trashed' ? (
           <>
@@ -226,6 +230,23 @@ function NoteCard({ note, variant = 'active', conflictId, conflictCount, onResol
 
       {shareOpen && <ShareDialog note={note} onClose={() => setShareOpen(false)} />}
     </>
+  );
+}
+
+// When Trash will erase this note for good, from the retention setting. Its own
+// component so only trashed cards subscribe to the settings query.
+function PurgeDate({ trashedAt }: { trashedAt?: string | null }) {
+  const { data: settings } = useSettings();
+  const info = purgeInfo(trashedAt, settings?.trashRetentionDays);
+  if (!info) return null;
+  return (
+    <p
+      className={`note-card__purge${info.soon ? ' note-card__purge--soon' : ''}`}
+      title={info.title}
+    >
+      <Hourglass size={12} aria-hidden="true" />
+      <span>{info.label}</span>
+    </p>
   );
 }
 

@@ -55,6 +55,9 @@ public static class VaultPin
     /// consecutive miss. Null means no wait (still inside the free attempts, or
     /// hard-locked — which <see cref="IsHardLocked"/> reports separately).
     /// </summary>
+    /// <summary>The miss that starts the first timed pause (worth an email; later ones aren't).</summary>
+    public const int FirstLockoutAt = FreeAttempts + 1;
+
     public static TimeSpan? LockoutAfter(int failures) => failures switch
     {
         <= FreeAttempts => null,

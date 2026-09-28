@@ -60,18 +60,22 @@ export default function WorkspaceLayout() {
   const syncTone = sync.syncing
     ? 'syncing'
     : sync.pending > 0 ? 'pending' : offline ? 'offline' : 'online';
+  // The pill has a 220px rail to live in, so it says one short word and leaves
+  // the explanation to the tooltip — a long label used to spill past its edge.
   const syncLabel = sync.authRequired && sync.pending > 0
-    ? `Sign in to sync ${sync.pending}`
+    ? 'Sign in'
     : sync.syncing
-      ? 'Syncing…'
-      : offline
-        ? (sync.pending > 0 ? `Offline · ${sync.pending} to sync` : 'Offline · edits saved here')
-        : sync.pending > 0 ? `${sync.pending} to sync` : 'Server Online';
+      ? 'Syncing'
+      : sync.pending > 0
+        ? `${sync.pending} queued`
+        : offline ? 'Offline' : 'Online';
   const syncTitle = sync.authRequired
-    ? 'Your session expired while these edits were queued. They are still saved on this device — sign in again and they will upload.'
+    ? `Your session expired while ${sync.pending} edit(s) were queued. They are still saved on this device — sign in again and they will upload.`
     : offline
-    ? 'Papyra is running from this device. Your edits are saved locally and upload automatically when the server is reachable.'
-    : sync.pending > 0 ? `${sync.pending} edit(s) waiting to upload` : 'Connected to your vault';
+      ? (sync.pending > 0
+        ? `Offline — ${sync.pending} edit(s) saved on this device, uploading when the server is reachable.`
+        : 'Offline — Papyra is running from this device. Edits are saved here and upload when the server is reachable.')
+      : sync.pending > 0 ? `${sync.pending} edit(s) waiting to upload` : 'Connected to your vault';
 
   const isAdmin = user?.role === 'Admin';
 
@@ -172,8 +176,8 @@ export default function WorkspaceLayout() {
                   <Settings size={15} /> Settings
                 </button>
                 {isAdmin && (
-                  <button type="button" role="menuitem" onClick={() => go('/admin')}>
-                    <Shield size={15} /> Manage Users
+                  <button type="button" role="menuitem" onClick={() => go('/settings?tab=users')}>
+                    <Shield size={15} /> Manage users
                   </button>
                 )}
                 <div className="workspace__avatar-sep" />
@@ -248,8 +252,10 @@ export default function WorkspaceLayout() {
             <footer className="workspace__sidebar-footer">
               <Link
                 to="/settings?tab=about"
-                className="workspace__build"
-                title={`${syncTitle} · Papyra ${APP_VERSION_LABEL} — about this Papyra`}
+                className={`workspace__build workspace__build--${syncTone}`}
+                title={`${syncTitle}
+Papyra ${APP_VERSION_LABEL} — about this Papyra`}
+                aria-label={`${syncTitle}. Papyra ${APP_VERSION_LABEL}. About this Papyra.`}
               >
                 <span
                   className={`workspace__status-dot workspace__status-dot--${syncTone}`}

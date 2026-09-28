@@ -15,6 +15,10 @@ import {
 import type { Note } from '../types/note';
 import './SearchBar.css';
 
+// Macs spell the shortcut with the command glyph; everyone else gets the word.
+const SHORTCUT_LABEL = typeof navigator !== 'undefined'
+  && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent) ? '⌘K' : 'Ctrl K';
+
 interface Hit {
   id: string;
   title: string;
@@ -83,6 +87,10 @@ export default function SearchBar() {
   const [query, setQuery] = useState('');
   const [noteHits, setNoteHits] = useState<Array<Hit & { rank: number }>>([]);
   const [open, setOpen] = useState(false);
+  // Opened by the shortcut rather than a click. The field is lifted over any
+  // open modal (a note, a sheet) straight away, not only once results show —
+  // otherwise Ctrl+K from inside a note focused an input hidden behind it.
+  const [summoned, setSummoned] = useState(false);
   const [active, setActive] = useState(0);
   const [offlineResults, setOfflineResults] = useState(false);
   // Index returned nothing but the raw text matched — results are substring-only.
@@ -93,15 +101,17 @@ export default function SearchBar() {
   const cached = useMemo(() => notes ?? [], [notes]);
   const isAdmin = user?.role === 'Admin';
 
-  const close = useCallback(() => { setOpen(false); setActive(0); }, []);
+  const close = useCallback(() => { setOpen(false); setSummoned(false); setActive(0); }, []);
 
   // Debounced query. The local fallback runs synchronously so results never
   // disappear while the network attempt is in flight.
   useEffect(() => {
     const q = query.trim();
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     if (!q) { setNoteHits([]); setOfflineResults(false); return; }
 
     const local = searchLocally(cached, q);
+     
     setNoteHits(local);
     setOfflineResults(true);
     setPartial(false);
@@ -152,19 +162,24 @@ export default function SearchBar() {
   // keystroke, and a stale index for one paint would highlight the wrong row.
   const activeIndex = results.length === 0 ? 0 : Math.min(active, results.length - 1);
 
-  // Cmd/Ctrl+K from anywhere. Deliberately not a bare "/" — that would hijack
-  // the key while the user is typing a path or a fraction into a note.
+  // Cmd/Ctrl+K (or Alt+K) from anywhere. Deliberately not a bare "/" — that
+  // would hijack the key while the user is typing a path or a fraction into a
+  // note. Capture phase, and matched on the physical key: the editor claims
+  // Ctrl+K for links and a Mac's Option+K types "˚", so a bubbling listener
+  // comparing e.key never heard either.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
-      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
-        e.preventDefault();
-        inputRef.current?.focus();
-        inputRef.current?.select();
-        setOpen(true);
-      }
+      if (e.code !== 'KeyK' || e.shiftKey) return;
+      if (!(e.metaKey || e.ctrlKey || e.altKey)) return;
+      e.preventDefault();
+      e.stopPropagation();
+      setSummoned(true);
+      setOpen(true);
+      inputRef.current?.focus();
+      inputRef.current?.select();
     };
-    window.addEventListener('keydown', onKey);
-    return () => window.removeEventListener('keydown', onKey);
+    window.addEventListener('keydown', onKey, true);
+    return () => window.removeEventListener('keydown', onKey, true);
   }, []);
 
   useEffect(() => {
@@ -183,7 +198,7 @@ export default function SearchBar() {
   }
 
   function onKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
-    if (e.key === 'Escape') { close(); inputRef.current?.blur(); return; }
+    if (e.key === 'Escape') { e.preventDefault(); close(); inputRef.current?.blur(); return; }
     if (!results.length) return;
     if (e.key === 'ArrowDown') { e.preventDefault(); setActive((activeIndex + 1) % results.length); }
     else if (e.key === 'ArrowUp') { e.preventDefault(); setActive((activeIndex - 1 + results.length) % results.length); }
@@ -191,12 +206,13 @@ export default function SearchBar() {
   }
 
   const showPanel = open && query.trim().length > 0;
+  const raised = showPanel || (open && summoned);
   // Only note results come from the index, so the offline and partial notices
   // would be lying if a settings match were the only thing on screen.
   const hasNoteResults = results.some(r => r.source === 'note' || r.source === 'todo' || r.source === 'inbox');
 
   return (
-    <div className={`search${showPanel ? ' search--open' : ''}`} ref={wrapRef}>
+    <div className={`search${raised ? ' search--open' : ''}`} ref={wrapRef}>
       <div className="search__field">
         <Search className="search__icon" size={16} aria-hidden="true" />
         <input
@@ -213,6 +229,10 @@ export default function SearchBar() {
           aria-autocomplete="list"
           onChange={(e) => { setQuery(e.target.value); setOpen(true); setActive(0); }}
           onFocus={() => setOpen(true)}
+          onBlur={(e) => {
+            // Tabbing away from a summoned field hands the page back.
+            if (!wrapRef.current?.contains(e.relatedTarget as Node | null)) setSummoned(false);
+          }}
           onKeyDown={onKeyDown}
         />
         {query ? (
@@ -225,7 +245,7 @@ export default function SearchBar() {
             <X size={14} />
           </button>
         ) : (
-          <kbd className="search__kbd" aria-hidden="true">⌘K</kbd>
+          <kbd className="search__kbd" aria-hidden="true">{SHORTCUT_LABEL}</kbd>
         )}
       </div>
 
@@ -233,7 +253,7 @@ export default function SearchBar() {
           searching reads as a modal surface rather than a dropdown hanging off
           the header. The scrim is a sibling (not a parent) of the list so the
           backdrop filter never applies to the results themselves. */}
-      {showPanel && (
+      {raised && (
         <div
           className="search__scrim"
           aria-hidden="true"
