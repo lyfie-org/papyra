@@ -6,6 +6,10 @@ a Docker Hub tag and a GitHub Release.
 
 <!-- new releases are inserted directly below this line -->
 
+## [0.1.21] - 2026-09-28
+
+- feat: guarded export + account deletion, HTML emails, media tools, link cards, dock outline (e2f4aa8)
+
 ## [0.1.20] - 2026-09-28
 
 - fix: use the system text cursor instead of the drawn I-beam (4568cff)
