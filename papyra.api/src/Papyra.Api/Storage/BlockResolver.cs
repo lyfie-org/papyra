@@ -130,6 +130,51 @@ public static partial class BlockResolver
         return null;
     }
 
+    // A reference to a block anywhere in a body: `#^id` (in ![[Note#^id]] or [[Note#^id]]).
+    [GeneratedRegex(@"#\^(?<id>[A-Za-z0-9][A-Za-z0-9_-]*)")]
+    private static partial Regex BlockReference();
+
+    // An anchor token with the whitespace before it, for removal.
+    [GeneratedRegex(@"[ \t]+\^(?<id>[A-Za-z0-9][A-Za-z0-9_-]*)(?=[ \t]|$)")]
+    private static partial Regex AnchorWithGap();
+
+    /// <summary>Every block id this body points at (`#^id`).</summary>
+    public static IEnumerable<string> References(string? body)
+    {
+        if (string.IsNullOrEmpty(body)) yield break;
+        foreach (Match m in BlockReference().Matches(body)) yield return m.Groups["id"].Value;
+    }
+
+    /// <summary>
+    /// The body without the anchors nothing refers to. Anchors are only worth
+    /// their clutter — a <c>^k2x9</c> at the end of every line, in a file people
+    /// open in other editors — when something links to that block; the rest are
+    /// dropped. Lines inside fenced code are never touched.
+    /// </summary>
+    public static string StripAnchors(string body, ISet<string> keep)
+    {
+        if (string.IsNullOrEmpty(body)) return body;
+        var newline = body.Contains("\r\n") ? "\r\n" : "\n";
+        var lines = body.Replace("\r\n", "\n").Split('\n');
+        string? openFence = null;
+        var changed = false;
+        for (var i = 0; i < lines.Length; i++)
+        {
+            var fence = Fence().Match(lines[i]);
+            if (fence.Success)
+            {
+                var marker = fence.Groups["fence"].Value;
+                if (openFence is null) openFence = marker;
+                else if (marker[0] == openFence[0] && marker.Length >= openFence.Length) openFence = null;
+                continue;
+            }
+            if (openFence is not null) continue;
+            var next = AnchorWithGap().Replace(lines[i], m => keep.Contains(m.Groups["id"].Value) ? m.Value : string.Empty);
+            if (!ReferenceEquals(next, lines[i]) && next != lines[i]) { lines[i] = next; changed = true; }
+        }
+        return changed ? string.Join(newline, lines) : body;
+    }
+
     /// <summary>One line as a reader should see it: no anchor tokens, no double gaps.</summary>
     public static string Clean(string line)
         => CollapseGaps().Replace(AnchorToken().Replace(line, string.Empty), " ").Trim();

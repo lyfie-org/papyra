@@ -23,6 +23,7 @@ import { backgroundPage } from './lib/noteLink';
 import { RealLocationContext } from './lib/realLocation';
 import LoadingBar from './components/LoadingBar';
 import SharedWithMePage from './pages/SharedWithMePage';
+import DeletionScheduledPage from './pages/DeletionScheduledPage';
 
 // Gate the workspace behind a live session. The /me probe decides where an
 // unauthenticated visitor lands: /setup before any admin exists, else /login.
@@ -59,6 +60,8 @@ function RequireAuth() {
   // A password somebody else chose is a password somebody else knows. The server
   // refuses the rest of the API until this is done, so the workspace would only
   // render a wall of failed requests.
+  // An account waiting out its deletion week can only cancel (or sign out).
+  if (user?.deletionScheduledUtc) return <DeletionScheduledPage username={user.username} scheduledUtc={user.deletionScheduledUtc} />;
   if (user?.mustChangePassword) return <ChoosePasswordPage username={user.username} />;
   return (
     <FocusProvider>

@@ -134,6 +134,10 @@ builder.Services.AddHostedService<TrashPurgeService>();
 builder.Services.AddHostedService<SearchRebuildJob>();
 // Readable file names for notes still stored under an id (see NoteFileNamingJob).
 builder.Services.AddHostedService<NoteFileNamingJob>();
+// Drops the unused ^block markers older versions stamped on every line.
+builder.Services.AddHostedService<BlockAnchorCleanupJob>();
+// Purges accounts a week after their owner asked, with daily reminders.
+builder.Services.AddHostedService<AccountDeletionJob>();
 
 // Hard-deletes expired / view-exhausted share links (burn-after-reading cleanup).
 builder.Services.AddHostedService<ShareCleanupService>();
@@ -214,6 +218,10 @@ builder.Services.AddScoped<VaultPinService>();
 // off the request thread, pushing progress over SignalR. Singleton so the endpoint
 // can Enqueue onto the same instance the hosted worker drains.
 builder.Services.AddSingleton<SearchRebuilder>();
+builder.Services.AddSingleton<ExportTicketStore>();
+builder.Services.AddSingleton<BlockAnchorCleanup>();
+builder.Services.AddSingleton<AccountDeletion>();
+builder.Services.AddSingleton<LinkPreviewService>();
 builder.Services.AddSingleton<ImportService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<ImportService>());
 
@@ -373,6 +381,7 @@ builder.Services.AddSingleton<EmailSender>();
 
 const string UserSearchRateLimit = "user-search";
 const string AuthRateLimit = "auth";
+const string PreviewRateLimit = "previews";
 
 // The mention typeahead is the one endpoint on which any tenant can ask about
 // accounts other than their own, so it gets a per-account budget: comfortably
@@ -411,6 +420,19 @@ builder.Services.AddRateLimiter(options =>
             _ => new FixedWindowRateLimiterOptions
             {
                 PermitLimit = 60,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0,
+            }));
+
+    // Link previews: per account, generous enough for a desk full of links
+    // (cached server-side, so repeats are free), and apart from the sign-in
+    // bucket so browsing notes can never lock anyone out of logging in.
+    options.AddPolicy(PreviewRateLimit, ctx =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            ctx.User.FindFirstValue(ClaimTypes.NameIdentifier) ?? ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 120,
                 Window = TimeSpan.FromMinutes(1),
                 QueueLimit = 0,
             }));
@@ -755,10 +777,19 @@ app.Use(async (context, next) =>
         if (int.TryParse(claim, out var callerId))
         {
             var db = context.RequestServices.GetRequiredService<AppDbContext>();
-            var mustChange = await db.Users
+            var flags = await db.Users
                 .Where(u => u.Id == callerId)
-                .Select(u => u.MustChangePassword)
+                .Select(u => new { u.MustChangePassword, u.DeletionScheduledUtc })
                 .FirstOrDefaultAsync(context.RequestAborted);
+            // An account on its way out can do one thing: cancel.
+            if (flags?.DeletionScheduledUtc is not null && !path.StartsWithSegments("/api/account/delete"))
+            {
+                await Results.Json(
+                    new { error = "This account is scheduled for deletion.", code = "deletion_scheduled" },
+                    statusCode: StatusCodes.Status403Forbidden).ExecuteAsync(context);
+                return;
+            }
+            var mustChange = flags?.MustChangePassword ?? false;
             if (mustChange)
             {
                 await Results.Json(
@@ -877,6 +908,7 @@ auth.MapPost("/setup", async (SetupRequest body, HttpContext http, AppDbContext 
         Name = string.IsNullOrWhiteSpace(body.Name) ? body.Username.Trim() : body.Name.Trim(),
         Email = body.Email?.Trim() ?? string.Empty,
         PasswordHash = BCrypt.Net.BCrypt.HashPassword(body.Password),
+        PasswordChangedUtc = DateTime.UtcNow,
         Role = "Admin",
     };
 
@@ -1083,6 +1115,7 @@ auth.MapPost("/reset-password", async (
     if (user is null) return Results.BadRequest(new { error = "This link is invalid or has expired." });
 
     user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(body.Password!);
+    user.PasswordChangedUtc = DateTime.UtcNow;
     user.MustChangePassword = false; // they chose this one themselves
     row.UsedUtc = DateTime.UtcNow;   // burn it in the same transaction as the change
     await db.SaveChangesAsync(ct);
@@ -1122,6 +1155,7 @@ auth.MapPost("/accept-invite", async (
         Name = row.Username,
         Email = row.Email,
         PasswordHash = BCrypt.Net.BCrypt.HashPassword(body.Password!),
+        PasswordChangedUtc = DateTime.UtcNow,
         Role = row.Role == "Admin" ? "Admin" : "User",
     };
     db.Users.Add(user);
@@ -1159,6 +1193,9 @@ auth.MapGet("/me", async (HttpContext http, AppDbContext db, CancellationToken c
         // 403, so a freshly provisioned user lands there instead of watching
         // every request on the page fail.
         user.MustChangePassword,
+        // Set while the account waits out its deletion week — the app shows the
+        // "keep my account" screen instead of the desk.
+        deletionScheduledUtc = user.DeletionScheduledUtc is { } due ? DateTime.SpecifyKind(due, DateTimeKind.Utc) : (DateTime?)null,
         // Times are shown in the person's chosen zone, else the server's (the
         // container's TZ) — the client falls back from one to the other.
         user.TimeZone,
@@ -1495,6 +1532,7 @@ auth.MapPost("/password", async (
         return Results.Json(new { error = "Current password is incorrect." }, statusCode: StatusCodes.Status400BadRequest);
 
     user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(body.Next);
+    user.PasswordChangedUtc = DateTime.UtcNow;
     // Picking your own password is exactly what the flag was waiting for.
     user.MustChangePassword = false;
     await db.SaveChangesAsync(ct);
@@ -1645,6 +1683,7 @@ admin.MapPost("/", async (
         Name = string.IsNullOrWhiteSpace(body.Name) ? username : body.Name.Trim(),
         Email = address,
         PasswordHash = BCrypt.Net.BCrypt.HashPassword(password),
+        PasswordChangedUtc = DateTime.UtcNow,
         Role = body.Role == "Admin" ? "Admin" : "User",
         MustChangePassword = true,
     };
@@ -1692,6 +1731,7 @@ admin.MapPost("/{id:int}/reset", async (
     if (user is null) return Results.NotFound();
 
     user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(password);
+    user.PasswordChangedUtc = DateTime.UtcNow;
     user.MustChangePassword = true;
     await db.SaveChangesAsync(ct);
 
@@ -3908,7 +3948,18 @@ app.MapGet("/api/shared/{token}", async (
             MaxAge = lifetime,
         });
     }
-    return Results.Ok(new { note.Title, note.Body, note.Color, access = share.Access });
+    // Who is sharing it, and how many times the link has been opened (this
+    // visit included) — the page says both, so a reader knows whose words these
+    // are and how many views a limited link has left.
+    var sharer = await db.Users.Where(u => u.Id == share.OwnerId)
+        .Select(u => new { u.Username, u.Name }).FirstOrDefaultAsync(ct);
+    return Results.Ok(new
+    {
+        note.Title, note.Body, note.Color, access = share.Access,
+        sharedBy = sharer is null ? null : new { sharer.Username, sharer.Name },
+        views = share.ViewCount,
+        maxViews = share.MaxViews,
+    });
 });
 
 // Public: media embedded in a link-shared note. No session needed; the token is
@@ -4415,16 +4466,29 @@ app.MapPost("/api/media/upload", async (
 {
     if (file is null || file.Length == 0) return Results.BadRequest(new { error = "No file." });
 
+    // Generous, per kind: a phone photo or a big GIF always fits; video and
+    // documents get a ceiling so one upload can't fill the disk.
+    var (kindLabel, limit) = MediaLimits.For(file.FileName);
+    if (file.Length > limit)
+        return Results.Json(new
+        {
+            error = $"That {kindLabel} is {MediaLimits.Human(file.Length)} — the limit for {kindLabel}s is {MediaLimits.Human(limit)}.",
+            code = "too_large",
+            limit,
+        }, statusCode: StatusCodes.Status413PayloadTooLarge);
+
     var mediaDir = PapyraPaths.UserMediaDir(config, env.ContentRootPath, Uid(user));
     Directory.CreateDirectory(mediaDir);
 
-    // Slugify the stem, keep the extension, append a short uuid so two pasted
-    // "image.png"s never clobber each other.
-    var ext = Path.GetExtension(file.FileName);
-    var stem = Path.GetFileNameWithoutExtension(file.FileName);
-    var safeStem = new string(stem.Select(c => char.IsLetterOrDigit(c) || c is '-' or '_' ? c : '-').ToArray()).Trim('-');
-    if (string.IsNullOrEmpty(safeStem)) safeStem = "file";
-    var filename = $"{safeStem}-{Guid.NewGuid():N}{ext}";
+    // A readable name — the original's, slugged — plus a short suffix so two
+    // pasted "image.png"s never clobber each other: `airway-bill-3f9a2c.jpg`,
+    // not a 32-character id.
+    var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
+    if (ext.Length > 10 || ext.Any(c => !char.IsLetterOrDigit(c) && c != '.')) ext = "";
+    var slug = NoteFileNamer.Slug(Path.GetFileNameWithoutExtension(file.FileName));
+    if (slug.Length == 0) slug = "file";
+    if (slug.Length > 48) slug = slug[..48].TrimEnd('-');
+    var filename = $"{slug}-{Guid.NewGuid().ToString("N")[..6]}{ext}";
 
     // Defensive: the slugified name can't escape, but verify before writing.
     var dest = PathGuard.ResolveAndVerify(mediaDir, filename, loggerFactory.CreateLogger("PathGuard"));
@@ -4439,6 +4503,10 @@ app.MapPost("/api/media/upload", async (
     return Results.Ok(new { filename });
 })
 .RequireAuthorization()
+// The per-kind limits above do the real policing; these just let the largest
+// allowed upload (a video) through Kestrel's and the form reader's defaults.
+.WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(MediaLimits.Largest + 1_048_576))
+.WithFormOptions(multipartBodyLengthLimit: MediaLimits.Largest + 1_048_576)
 .DisableAntiforgery(); // no antiforgery middleware in this skeleton; same-origin SPA
 
 // Serve an attachment back to the editor. The PapyraEditor adapter's
@@ -4576,20 +4644,242 @@ app.MapPost("/api/import/quick", async (
 .RequireAuthorization()
 .DisableAntiforgery();
 
+// ── Delete my account ─────────────────────────────────────────────────────────
+// The one irreversible thing a person can do here, so it asks for everything:
+//   • the account password,
+//   • an open vault (PIN or biometric, X-Unlock-Token),
+//   • a 6-digit code emailed to the account (so a stolen session plus a guessed
+//     password is still not enough),
+//   • their username typed out, and
+//   • a password that has not changed in the last 24 hours (so whoever just
+//     took the account over can't immediately erase the evidence).
+// Even then it only SCHEDULES deletion a week out (AccountDeletion). Until
+// then the account can sign in to cancel, and is emailed daily.
+var accountDelete = app.MapGroup("/api/account/delete").RequireAuthorization().WithTags("Account")
+    .AddEndpointFilter(async (ctx, next) =>
+        IsApiKey(ctx.HttpContext.User)
+            ? Results.Json(new { error = "Account deletion needs you signed in, not an API key." },
+                statusCode: StatusCodes.Status403Forbidden)
+            : await next(ctx));
+
+accountDelete.MapGet("/", async (ClaimsPrincipal principal, AppDbContext db, EmailSender email, CancellationToken ct) =>
+{
+    var me = await db.Users.FindAsync([int.Parse(Uid(principal))], ct);
+    if (me is null) return Results.NotFound();
+    await Task.CompletedTask;
+    var blockers = new List<string>();
+    if (me.PasswordChangedUtc is { } changed && DateTime.UtcNow - DateTime.SpecifyKind(changed, DateTimeKind.Utc) < AccountDeletion.MinPasswordAge)
+        blockers.Add($"Your password was changed less than 24 hours ago. You can delete the account after {DateTime.SpecifyKind(changed, DateTimeKind.Utc).Add(AccountDeletion.MinPasswordAge):u}.");
+    if (string.IsNullOrEmpty(me.VaultPinHash)) blockers.Add("Set a vault PIN first (Settings → Security) — it is one of the checks.");
+    if (string.IsNullOrWhiteSpace(me.Email)) blockers.Add("Add an email address to your profile — a code is sent there.");
+    else if (!email.IsConfigured) blockers.Add("This Papyra can't send email yet, so the confirmation code can't reach you. Ask your administrator.");
+    if (me.Role == "Admin" && await db.Users.CountAsync(u => u.Role == "Admin" && u.Id != me.Id && u.DeletionScheduledUtc == null, ct) == 0)
+        blockers.Add("You're the only administrator. Make someone else an admin first.");
+    return Results.Ok(new
+    {
+        scheduledUtc = me.DeletionScheduledUtc is { } s ? DateTime.SpecifyKind(s, DateTimeKind.Utc) : (DateTime?)null,
+        blockers,
+        graceDays = (int)AccountDeletion.GracePeriod.TotalDays,
+    });
+});
+
+accountDelete.MapPost("/code", async (
+    AccountDeletePassword body, ClaimsPrincipal principal, HttpContext http, AppDbContext db, EmailSender email,
+    LoginThrottle throttle, CancellationToken ct) =>
+{
+    var me = await db.Users.FindAsync([int.Parse(Uid(principal))], ct);
+    if (me is null) return Results.NotFound();
+    var key = $"delete:{me.Username}";
+    if (throttle.IsLockedOut(key)) return Results.Json(new { error = "Too many attempts. Try again later." }, statusCode: 429);
+    if (string.IsNullOrEmpty(body.Password) || !BCrypt.Net.BCrypt.Verify(body.Password, me.PasswordHash))
+    {
+        throttle.RecordFailure(key);
+        return Results.Json(new { error = "That password isn't right.", field = "password" }, statusCode: 401);
+    }
+    if (string.IsNullOrWhiteSpace(me.Email) || !email.IsConfigured)
+        return Results.BadRequest(new { error = "A confirmation code can't be emailed to this account." });
+
+    var code = System.Security.Cryptography.RandomNumberGenerator.GetInt32(0, 1_000_000).ToString("D6");
+    db.AuthTokens.RemoveRange(db.AuthTokens.Where(t => t.UserId == me.Id && t.Kind == "account-delete"));
+    db.AuthTokens.Add(new AuthToken
+    {
+        TokenHash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes($"{me.Id}:{code}"))),
+        Kind = "account-delete",
+        UserId = me.Id,
+        Email = me.Email,
+        Username = me.Username,
+        ExpiresUtc = DateTime.UtcNow.AddMinutes(10),
+    });
+    await db.SaveChangesAsync(ct);
+
+    var sent = await email.SendAsync(me.Email, $"{code} is your code to delete your Papyra account",
+        $"Someone — hopefully you — started deleting the Papyra account @{me.Username}.\n\n"
+        + $"Your confirmation code is {code}. It works once, for 10 minutes.\n\n"
+        + "If this wasn't you, don't share the code: change your password and vault PIN now.",
+        [
+            new EmailDetail("Code", code),
+            new EmailDetail("Requested from", http.Connection.RemoteIpAddress?.ToString() ?? "unknown"),
+            new EmailDetail("Browser / device", http.Request.Headers.UserAgent.ToString() is { Length: > 0 } ua ? ua : "unknown"),
+        ], ct);
+    return sent.Sent
+        ? Results.Ok(new { sentTo = MaskEmail(me.Email) })
+        : Results.BadRequest(new { error = "The code couldn't be emailed. Try again shortly." });
+}).RequireRateLimiting(AuthRateLimit);
+
+accountDelete.MapPost("/", async (
+    AccountDeleteRequest body, ClaimsPrincipal principal, HttpContext http, AppDbContext db, EmailSender email,
+    LoginThrottle throttle, UnlockTokenStore unlockTokens, CancellationToken ct) =>
+{
+    var uid = Uid(principal);
+    var me = await db.Users.FindAsync([int.Parse(uid)], ct);
+    if (me is null) return Results.NotFound();
+    if (me.DeletionScheduledUtc is not null) return Results.Conflict(new { error = "Deletion is already scheduled." });
+    var key = $"delete:{me.Username}";
+    if (throttle.IsLockedOut(key)) return Results.Json(new { error = "Too many attempts. Try again later." }, statusCode: 429);
+
+    if (!string.Equals(body.ConfirmUsername?.Trim(), me.Username, StringComparison.Ordinal))
+        return Results.BadRequest(new { error = "Type your username exactly to confirm.", field = "confirm" });
+    if (string.IsNullOrEmpty(body.Password) || !BCrypt.Net.BCrypt.Verify(body.Password, me.PasswordHash))
+    {
+        throttle.RecordFailure(key);
+        return Results.Json(new { error = "That password isn't right.", field = "password" }, statusCode: 401);
+    }
+    if (string.IsNullOrEmpty(me.VaultPinHash) || !UnlockedNow(http, uid))
+        return Results.Json(new { error = "Unlock your vault with your PIN first.", code = "locked" }, statusCode: 401);
+    if (me.PasswordChangedUtc is { } changed && DateTime.UtcNow - DateTime.SpecifyKind(changed, DateTimeKind.Utc) < AccountDeletion.MinPasswordAge)
+        return Results.BadRequest(new { error = "Your password changed in the last 24 hours. Try again once a day has passed." });
+    if (me.Role == "Admin" && await db.Users.CountAsync(u => u.Role == "Admin" && u.Id != me.Id && u.DeletionScheduledUtc == null, ct) == 0)
+        return Results.BadRequest(new { error = "You're the only administrator. Make someone else an admin first." });
+
+    var hash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes($"{me.Id}:{body.Code?.Trim()}")));
+    var token = await db.AuthTokens.FirstOrDefaultAsync(t => t.UserId == me.Id && t.Kind == "account-delete" && t.TokenHash == hash, ct);
+    if (token is null || token.UsedUtc is not null || token.ExpiresUtc < DateTime.UtcNow)
+    {
+        throttle.RecordFailure(key);
+        return Results.BadRequest(new { error = "That code is wrong or has expired. Send a new one.", field = "code" });
+    }
+    token.UsedUtc = DateTime.UtcNow;
+
+    var due = DateTime.UtcNow.Add(AccountDeletion.GracePeriod);
+    me.DeletionScheduledUtc = due;
+    me.DeletionReminderUtc = DateTime.UtcNow;
+    await db.SaveChangesAsync(ct);
+    throttle.Reset(key);
+    unlockTokens.RevokeUser(uid);
+
+    await email.SendAsync(me.Email, "Your Papyra account is scheduled for deletion",
+        $"The account @{me.Username} will be permanently deleted in {(int)AccountDeletion.GracePeriod.TotalDays} days, "
+        + "along with every note, attachment and version in it.\n\n"
+        + "Until then you can sign in and choose “Keep my account” to cancel. You'll get a reminder each day.",
+        [
+            new EmailDetail("Deletion date", $"{due:dddd d MMMM yyyy, HH:mm} UTC"),
+            new EmailDetail("Requested from", http.Connection.RemoteIpAddress?.ToString() ?? "unknown"),
+            new EmailDetail("Browser / device", http.Request.Headers.UserAgent.ToString() is { Length: > 0 } ua ? ua : "unknown"),
+        ], ct);
+    return Results.Ok(new { scheduledUtc = due });
+}).RequireRateLimiting(AuthRateLimit);
+
+accountDelete.MapPost("/cancel", async (
+    AccountDeletePassword body, ClaimsPrincipal principal, AppDbContext db, EmailSender email, CancellationToken ct) =>
+{
+    var me = await db.Users.FindAsync([int.Parse(Uid(principal))], ct);
+    if (me is null) return Results.NotFound();
+    if (me.DeletionScheduledUtc is null) return Results.NoContent();
+    if (string.IsNullOrEmpty(body.Password) || !BCrypt.Net.BCrypt.Verify(body.Password, me.PasswordHash))
+        return Results.Json(new { error = "That password isn't right.", field = "password" }, statusCode: 401);
+    me.DeletionScheduledUtc = null;
+    me.DeletionReminderUtc = null;
+    await db.SaveChangesAsync(ct);
+    await email.SendAsync(me.Email, "Your Papyra account is staying",
+        $"Deletion of the account @{me.Username} was cancelled. Everything is exactly as you left it.", ct);
+    return Results.NoContent();
+}).RequireRateLimiting(AuthRateLimit);
+
+static string MaskEmail(string address)
+{
+    var at = address.IndexOf('@');
+    if (at <= 1) return address;
+    return address[0] + new string('•', Math.Min(6, at - 1)) + address[at..];
+}
+
+// ── Link previews ─────────────────────────────────────────────────────────────
+// Title / summary / picture for a URL in a note, for the Keep-style link cards
+// under a note and the hover card on a link. Server-fetched and SSRF-guarded
+// (see LinkPreviewService); signed-in only, and rate-limited so the endpoint
+// can't be turned into a free crawler.
+app.MapGet("/api/link-preview", async (string? url, LinkPreviewService previews, CancellationToken ct) =>
+{
+    if (string.IsNullOrWhiteSpace(url) || url.Length > 2048) return Results.BadRequest();
+    var preview = await previews.GetAsync(url.Trim(), ct);
+    return preview is null ? Results.NoContent() : Results.Ok(preview);
+})
+.RequireAuthorization()
+.RequireRateLimiting(PreviewRateLimit);
+
+// ── Export all notes ──────────────────────────────────────────────────────────
+// Everything a person owns, as plain files — so it is guarded like the keys to
+// the account. Two steps:
+//   1. POST /api/export/authorize — the account password AND an open vault (the
+//      vault PIN or a biometric device, via X-Unlock-Token) earn a one-time
+//      ticket, good for two minutes. An API key can't: this is a person's act.
+//   2. GET /api/export?ticket=… — the download itself (a plain link, so the
+//      browser saves the file natively), then an email to the account saying
+//      exactly what happened: who, when, from where, how much.
+// Locked (vault) notes travel too, in a separate `vault/` folder.
+app.MapPost("/api/export/authorize", async (
+    ExportAuthorizeRequest body, ClaimsPrincipal user, HttpContext http, AppDbContext db,
+    ExportTicketStore tickets, LoginThrottle throttle, CancellationToken ct) =>
+{
+    if (IsApiKey(user)) return Results.Json(new { error = "Exports need you signed in, not an API key." }, statusCode: StatusCodes.Status403Forbidden);
+    var uid = Uid(user);
+    var me = await db.Users.FindAsync([int.Parse(uid)], ct);
+    if (me is null) return Results.NotFound();
+
+    var throttleKey = $"export:{me.Username}";
+    if (throttle.IsLockedOut(throttleKey))
+        return Results.Json(new { error = "Too many attempts. Try again later." }, statusCode: StatusCodes.Status429TooManyRequests);
+    if (string.IsNullOrEmpty(body.Password) || string.IsNullOrEmpty(me.PasswordHash)
+        || !BCrypt.Net.BCrypt.Verify(body.Password, me.PasswordHash))
+    {
+        throttle.RecordFailure(throttleKey);
+        return Results.Json(new { error = "That password isn't right.", code = "password" }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+    // The vault must be open right now. Every account has a PIN before it can
+    // lock anything; without one there is simply no vault to prove.
+    if (!string.IsNullOrEmpty(me.VaultPinHash) && !UnlockedNow(http, uid))
+        return Results.Json(new { error = "Unlock your vault to export.", code = "locked" }, statusCode: StatusCodes.Status401Unauthorized);
+
+    throttle.Reset(throttleKey);
+    return Results.Ok(new { ticket = tickets.Issue(uid) });
+})
+.RequireAuthorization()
+.RequireRateLimiting(AuthRateLimit);
+
 app.MapGet("/api/export", async (
+    string? ticket,
     ClaimsPrincipal user,
+    HttpContext http,
     VaultState state,
     AppDbContext db,
+    ExportTicketStore tickets,
+    BlockAnchorCleanup anchors,
+    EmailSender email,
     IConfiguration config,
     IHostEnvironment env,
+    ILoggerFactory lf,
     CancellationToken ct) =>
 {
+    var uid = Uid(user);
+    if (!tickets.Redeem(ticket, uid))
+        return Results.Json(new { error = "Confirm with your password and vault first.", code = "ticket" },
+            statusCode: StatusCodes.Status403Forbidden);
+
     // Zip entries carry a bare local clock time (no zone), which an unzipper
     // reads as its own local time. Write each file's real last-modified moment
     // in the person's zone (Settings → Profile, else the server's), so a note
     // edited at 9:14 unpacks as 9:14 on their machine — and every file keeps
     // its own date rather than the moment of export.
-    var me = await db.Users.FindAsync([int.Parse(Uid(user))], ct);
+    var me = await db.Users.FindAsync([int.Parse(uid)], ct);
     var zone = TimeZoneInfo.Local;
     if (me?.TimeZone is { Length: > 0 } tzId && TimeZoneInfo.TryFindSystemTimeZoneById(tzId, out var chosen)) zone = chosen;
     DateTimeOffset InZone(DateTime utc)
@@ -4599,36 +4889,59 @@ app.MapGet("/api/export", async (
         if (local.Year < 1980) local = new DateTime(1980, 1, 1, 0, 0, 0, DateTimeKind.Unspecified);
         return new DateTimeOffset(DateTime.SpecifyKind(local, DateTimeKind.Unspecified), zone.GetUtcOffset(local));
     }
+
+    // Unused block markers (`^k2x9…`) are left out of exported notes: they are
+    // editor bookkeeping, not writing. Anchors something links to are kept.
+    var keepAnchors = await anchors.InUseAsync(ct);
+
     // Built by hand rather than CreateEntryFromFile: in Create mode an entry is
     // sealed once written, so its time has to be set before the bytes go in.
     void AddFile(ZipArchive zip, string file, string entryName)
     {
         var entry = zip.CreateEntry(entryName, CompressionLevel.Optimal);
         entry.LastWriteTime = InZone(File.GetLastWriteTimeUtc(file));
-        using var source = File.OpenRead(file);
         using var target = entry.Open();
-        source.CopyTo(target);
+        if (file.EndsWith(".md", StringComparison.OrdinalIgnoreCase))
+        {
+            var text = BlockResolver.StripAnchors(File.ReadAllText(file), keepAnchors);
+            var bytes = System.Text.Encoding.UTF8.GetBytes(text);
+            target.Write(bytes, 0, bytes.Length);
+        }
+        else
+        {
+            using var source = File.OpenRead(file);
+            source.CopyTo(target);
+        }
     }
 
-    // The export is a plain zip anyone holding the session can download, so secure
-    // notes are left out. They travel in the encrypted backup instead, which asks
-    // for the account password.
-    var secureFiles = state.Snapshot(Uid(user)).Where(n => n.Secure)
-        .Select(n => state.PathFor(Uid(user), n.Id))
+    var secureFiles = state.Snapshot(uid).Where(n => n.Secure)
+        .Select(n => state.PathFor(uid, n.Id))
         .Where(p => p is not null)
         .Select(p => Path.GetFullPath(p!))
         .ToHashSet(StringComparer.OrdinalIgnoreCase);
-    var notesDir = PapyraPaths.UserNotesDir(config, env.ContentRootPath, Uid(user));
-    var mediaDir = PapyraPaths.UserMediaDir(config, env.ContentRootPath, Uid(user));
+    var notesDir = PapyraPaths.UserNotesDir(config, env.ContentRootPath, uid);
+    var mediaDir = PapyraPaths.UserMediaDir(config, env.ContentRootPath, uid);
     Directory.CreateDirectory(notesDir);
 
+    int notesCount = 0, vaultCount = 0, mediaCount = 0;
     var tmp = Path.Combine(Path.GetTempPath(), $"papyra-export-{Guid.NewGuid():N}.zip");
     using (var archive = ZipFile.Open(tmp, ZipArchiveMode.Create))
     {
         foreach (var file in Directory.EnumerateFiles(notesDir, "*", SearchOption.AllDirectories))
         {
-            if (secureFiles.Contains(Path.GetFullPath(file))) continue;
-            AddFile(archive, file, Path.GetRelativePath(notesDir, file).Replace('\\', '/'));
+            var rel = Path.GetRelativePath(notesDir, file).Replace('\\', '/');
+            // Locked notes go in their own folder, so it is obvious which files
+            // hold what the vault was protecting.
+            if (secureFiles.Contains(Path.GetFullPath(file)))
+            {
+                AddFile(archive, file, "vault/" + rel);
+                vaultCount++;
+            }
+            else
+            {
+                AddFile(archive, file, rel);
+                if (rel.EndsWith(".md", StringComparison.OrdinalIgnoreCase)) notesCount++;
+            }
         }
 
         // Attachments too. Exporting notes without the images they embed leaves
@@ -4637,16 +4950,58 @@ app.MapGet("/api/export", async (
         if (Directory.Exists(mediaDir))
         {
             foreach (var file in Directory.EnumerateFiles(mediaDir, "*", SearchOption.AllDirectories))
+            {
                 AddFile(archive, file, "media/" + Path.GetRelativePath(mediaDir, file).Replace('\\', '/'));
+                mediaCount++;
+            }
         }
+    }
+
+    var nowLocal = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, zone);
+    var size = new FileInfo(tmp).Length;
+
+    // Tell the account owner. Security mail: always sent (when there's an
+    // address and mail is set up), never blocks the download.
+    if (me is not null && !string.IsNullOrWhiteSpace(me.Email))
+    {
+        var ip = http.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+        var agent = http.Request.Headers.UserAgent.ToString();
+        var details = new List<EmailDetail>
+        {
+            new("Account", $"@{me.Username}{(string.IsNullOrWhiteSpace(me.Name) || me.Name == me.Username ? "" : $" ({me.Name})")}"),
+            new("When", $"{nowLocal:dddd d MMMM yyyy, HH:mm:ss} ({zone.Id})"),
+            new("From IP address", ip),
+            new("Browser / device", string.IsNullOrWhiteSpace(agent) ? "unknown" : agent),
+            new("Confirmed with", "Password + vault unlock"),
+            new("Notes", notesCount.ToString()),
+            new("Vault (locked) notes", vaultCount.ToString()),
+            new("Attachments", mediaCount.ToString()),
+            new("Archive size", size >= 1_048_576 ? $"{size / 1_048_576.0:0.0} MB" : $"{Math.Max(1, size / 1024)} KB"),
+            new("Server", email.PublicUrl($"{http.Request.Scheme}://{http.Request.Host}")),
+        };
+        var sendTo = me.Email;
+        _ = Task.Run(async () =>
+        {
+            try
+            {
+                await email.SendAsync(sendTo, "Your notes were exported",
+                    "A full export of your Papyra notes — including your vault — was just downloaded.\n\n"
+                    + "If that was you, there's nothing to do. If it wasn't, change your password and vault PIN "
+                    + "straight away, and tell your Papyra administrator.",
+                    details, CancellationToken.None);
+            }
+            catch (Exception ex)
+            {
+                lf.CreateLogger("Export").LogWarning(ex, "Export notice email failed");
+            }
+        });
     }
 
     // DeleteOnClose reclaims the temp zip once the response stream finishes.
     var stream = new FileStream(
         tmp, FileMode.Open, FileAccess.Read, FileShare.None, 4096, FileOptions.DeleteOnClose);
     // Dated, so a folder of exports sorts itself and one never overwrites another.
-    var stamp = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, zone).ToString("yyyy-MM-dd-HHmm");
-    return Results.File(stream, "application/zip", $"papyra-export-{stamp}.zip");
+    return Results.File(stream, "application/zip", $"papyra-export-{nowLocal:yyyy-MM-dd-HHmm}.zip");
 })
 .RequireAuthorization();
 
@@ -5301,6 +5656,9 @@ public sealed record ChatSessionRename(string? Title);
 // WebAuthn unlock: the browser's assertion response.
 public sealed record WebAuthnAssertRequest(Fido2NetLib.AuthenticatorAssertionRawResponse? Response);
 public sealed record PasskeyOptionsRequest(string? Username);
+public sealed record ExportAuthorizeRequest(string? Password);
+public sealed record AccountDeletePassword(string? Password);
+public sealed record AccountDeleteRequest(string? Password, string? Code, string? ConfirmUsername);
 public sealed record PasskeyVerifyRequest(string? Username, Fido2NetLib.AuthenticatorAssertionRawResponse? Response);
 
 // Encrypted-backup generation payload: the account password (verified, then reused

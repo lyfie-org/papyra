@@ -376,7 +376,7 @@ public sealed class VaultTests
     {
         await WithAppAsync(async (factory, client) =>
         {
-            await TestAuth.SetVaultPinAsync(client, Pw);
+            var unlock = await TestAuth.SetVaultPinAsync(client, Pw);
             await WriteAsync(client, "target", "plain target", secure: false, title: "Target");
             await WriteAsync(client, "s1", "zebracode lives in [[Target]]", secure: true, title: "Locked");
 
@@ -395,10 +395,25 @@ public sealed class VaultTests
             var hit = Assert.Single(await client.GetFromJsonAsync<List<Note>>($"/api/collections/{byTitle}/notes") ?? []);
             Assert.Equal(string.Empty, hit.Body);
 
-            // Export: the plain zip leaves the locked note out.
-            using var zip = new ZipArchive(await (await client.GetAsync("/api/export")).Content.ReadAsStreamAsync());
-            Assert.Contains(zip.Entries, e => e.FullName.EndsWith("target.md", StringComparison.Ordinal));
-            Assert.DoesNotContain(zip.Entries, e => e.FullName.EndsWith("s1.md", StringComparison.Ordinal));
+            // Export: needs the password AND an open vault; without either there is no ticket.
+            Assert.Equal(HttpStatusCode.Unauthorized,
+                (await client.PostAsJsonAsync("/api/export/authorize", new { password = Pw })).StatusCode);
+            Assert.Equal(HttpStatusCode.Forbidden, (await client.GetAsync("/api/export")).StatusCode);
+            var authorize = new HttpRequestMessage(HttpMethod.Post, "/api/export/authorize") { Content = JsonContent.Create(new { password = Pw }) };
+            authorize.Headers.Add("X-Unlock-Token", unlock);
+            var authorized = await client.SendAsync(authorize);
+            Assert.Equal(HttpStatusCode.OK, authorized.StatusCode);
+            var ticket = (await JsonAsync(authorized)).GetProperty("ticket").GetString();
+
+            // The locked note comes along, but only inside vault/.
+            using var zip = new ZipArchive(await (await client.GetAsync($"/api/export?ticket={ticket}")).Content.ReadAsStreamAsync());
+            Assert.Contains(zip.Entries, e => e.FullName == "target.md");
+            Assert.Contains(zip.Entries, e => e.FullName.StartsWith("vault/", StringComparison.Ordinal));
+            Assert.DoesNotContain(zip.Entries, e => !e.FullName.StartsWith("vault/", StringComparison.Ordinal)
+                && e.FullName != "target.md" && e.FullName.EndsWith(".md", StringComparison.Ordinal)
+                && new StreamReader(e.Open()).ReadToEnd().Contains("zebracode"));
+            // A ticket is spent by its download.
+            Assert.Equal(HttpStatusCode.Forbidden, (await client.GetAsync($"/api/export?ticket={ticket}")).StatusCode);
         });
     }
 

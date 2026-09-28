@@ -27,6 +27,9 @@ public sealed class VaultState
 
     public IReadOnlyCollection<Note> Snapshot(string userId) => Bucket(userId).Values.ToArray();
 
+    /// <summary>Forget everything held for one tenant (the account was deleted).</summary>
+    public void RemoveUser(string userId) => _byUser.TryRemove(userId, out _);
+
     public int Count(string userId) => Bucket(userId).Count;
 
     // Tenants currently tracked — used by housekeeping that sweeps every vault.

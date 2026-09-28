@@ -41,7 +41,11 @@ export function createPapyraEditorAdapter(
         method: 'POST',
         body: form,
       });
-      if (!res.ok) throw new Error(`media upload failed: ${res.status}`);
+      if (!res.ok) {
+        // The server says why (too big for its kind, …) — pass that on.
+        const data = await res.json().catch(() => null) as { error?: string } | null;
+        throw new Error(data?.error ?? (res.status === 413 ? 'That file is too large to attach.' : 'Couldn’t attach that file.'));
+      }
       return res.json() as Promise<{ filename: string }>;
     },
 

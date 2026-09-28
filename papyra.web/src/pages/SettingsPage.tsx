@@ -47,6 +47,8 @@ import { useImportStatus, importSummary, IMPORT_STATUS_KEY, type ImportStatus } 
 import './SettingsPage.css';
 import LoadingBar from '../components/LoadingBar';
 import AboutPanel from '../components/AboutPanel';
+import ExportDialog from '../components/ExportDialog';
+import DeleteAccountSection from '../components/DeleteAccountSection';
 import { fetchWithProgress } from '../lib/progress';
 import { MASKED_SECRET, NO_AUTOFILL } from '../lib/autofill';
 import { allTimeZones } from '../lib/timeZone';
@@ -718,6 +720,8 @@ function SecurityTab() {
       {devices.data && devices.data.length === 0 && pinSet && (
         <p className="settings__hint">No devices registered. Your PIN opens the vault.</p>
       )}
+
+      <DeleteAccountSection />
     </div>
   );
 }
@@ -730,6 +734,7 @@ function DataTab() {
   const [importMsg, setImportMsg] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const importRef = useRef<HTMLInputElement | null>(null);
+  const [exporting, setExporting] = useState(false);
   const queryClient = useQueryClient();
   // Server-tracked, so the bar is back when this tab remounts mid-import.
   const { data: importStatus } = useImportStatus();
@@ -808,10 +813,14 @@ function DataTab() {
       {!importMsg && importStatus?.done && <p className="settings__msg" role="status">{importSummary(importStatus)}</p>}
 
       <h2 id="export" className="settings__subhead">Export</h2>
-      <p className="settings__hint">Download every note as a zip of plain text files you can open anywhere.</p>
-      <a className="settings__btn" href="/api/export">
+      <p className="settings__hint">
+        Download every note — your vault too, in its own folder — as a zip of plain text files you can open
+        anywhere. You’ll confirm with your password and vault, and your account is emailed when it happens.
+      </p>
+      <button type="button" className="settings__btn" onClick={() => setExporting(true)}>
         <Download size={16} /> Export all notes
-      </a>
+      </button>
+      {exporting && <ExportDialog onClose={() => setExporting(false)} />}
 
       <EncryptedBackupSection />
 

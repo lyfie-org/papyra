@@ -1,0 +1,99 @@
+.link-cards { display: grid; gap: var(--space-2); }
+
+.link-card {
+  position: relative;
+  display: flex;
+  align-items: stretch;
+  gap: var(--space-3);
+  min-width: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: color-mix(in srgb, var(--surface) 70%, transparent);
+  color: inherit;
+  text-decoration: none;
+  transition: border-color var(--dur-fast) var(--ease), box-shadow var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease);
+}
+.link-card:hover { border-color: var(--border-hover); box-shadow: var(--shadow-card); transform: translateY(-1px); }
+.link-card.is-loading { opacity: 0.75; }
+
+.link-card__image {
+  flex: none;
+  width: 112px;
+  min-height: 84px;
+  background: color-mix(in srgb, var(--text) 8%, transparent);
+}
+.link-card__image img { display: block; width: 100%; height: 100%; object-fit: cover; }
+
+.link-card__body {
+  display: grid;
+  align-content: center;
+  gap: 2px;
+  min-width: 0;
+  padding: var(--space-3) var(--space-8) var(--space-3) 0;
+}
+.link-card:not(:has(.link-card__image)) .link-card__body { padding-left: var(--space-3); }
+.link-card__site {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  overflow: hidden;
+  color: var(--text);
+  font: 500 var(--fs-2xs) / 1.4 var(--sans);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.link-card__icon { width: 14px; height: 14px; border-radius: 3px; flex: none; }
+.link-card__title {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  color: var(--text-h);
+  font: 600 var(--fs-sm) / 1.35 var(--sans);
+}
+.link-card__desc {
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  color: var(--text);
+  font: 400 var(--fs-xs) / 1.5 var(--sans);
+}
+.link-card__out { position: absolute; top: var(--space-3); right: var(--space-3); color: var(--text); opacity: 0.6; }
+
+/* On a desk card: one quiet line. */
+.link-card--compact { border-radius: var(--radius-sm); }
+.link-card--compact .link-card__body { padding: var(--space-2) var(--space-6) var(--space-2) var(--space-2); }
+.link-card--compact .link-card__title { -webkit-line-clamp: 1; font-size: var(--fs-xs); }
+.link-card--compact .link-card__out { top: 50%; right: var(--space-2); translate: 0 -50%; }
+
+/* On a coloured note, cards sit on a lifted wash of the tint, inked like it. */
+:is(.note-card--colored, .note-editor--colored, .shared-note--colored) .link-card {
+  border-color: color-mix(in srgb, var(--tint-ink) 18%, transparent);
+  background: color-mix(in srgb, var(--tint-lift) 45%, transparent);
+}
+:is(.note-card--colored, .note-editor--colored, .shared-note--colored) :is(.link-card__title) { color: var(--tint-ink); }
+:is(.note-card--colored, .note-editor--colored, .shared-note--colored) :is(.link-card__site, .link-card__desc, .link-card__out) { color: var(--tint-ink-muted); }
+
+@media (prefers-reduced-motion: reduce) {
+  .link-card, .link-card:hover { transition: none; transform: none; }
+}
+
+/* The hover card: the same card, floating by the link, on paper so it reads
+   over any note colour. */
+.link-hover {
+  position: fixed;
+  z-index: 90;
+  animation: link-hover-in var(--dur-fast) var(--ease);
+}
+.link-hover--above { translate: 0 -100%; }
+.link-hover .link-card {
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+@keyframes link-hover-in { from { opacity: 0; transform: translateY(3px); } }
+@media (prefers-reduced-motion: reduce) { .link-hover { animation: none; } }
+
+.note-editor__links { margin-top: var(--space-5); }

@@ -78,6 +78,16 @@ public sealed class VaultObserver : BackgroundService
         return Task.CompletedTask;
     }
 
+    /// <summary>Stop watching a tenant's vault (the account is being deleted).</summary>
+    public void UnwatchUser(string userId)
+    {
+        if (_watchers.TryRemove(userId, out var watcher))
+        {
+            watcher.EnableRaisingEvents = false;
+            watcher.Dispose();
+        }
+    }
+
     // Start watching a tenant's notes vault. Idempotent — provisioning a user that
     // is already watched is a no-op. Called on boot for existing tenants and from
     // the setup/provision flow for new ones.

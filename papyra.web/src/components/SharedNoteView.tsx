@@ -18,6 +18,11 @@ export interface SharedNote {
   owner?: string | null;
   /** The viewer has asked for edit access and is waiting on the owner. */
   requestPending?: boolean;
+  /** Public links: who shared it. */
+  sharedBy?: { username: string; name: string } | null;
+  /** Public links: times the link has been opened (this visit included), and its cap. */
+  views?: number;
+  maxViews?: number | null;
 }
 
 /** Quiet period after the last keystroke before an edit is written back. */
@@ -117,6 +122,22 @@ export default function SharedNoteView({
           <span className="shared-note__badge"><Eye size={13} aria-hidden="true" /> View only</span>
         )}
       </header>
+
+      {(note.sharedBy || note.views != null) && (
+        <p className="shared-note__meta">
+          {note.sharedBy && (
+            <span>Shared by <strong>{note.sharedBy.name && note.sharedBy.name !== note.sharedBy.username
+              ? `${note.sharedBy.name} (@${note.sharedBy.username})` : `@${note.sharedBy.username}`}</strong></span>
+          )}
+          {note.views != null && (
+            <span>
+              {note.maxViews
+                ? `View ${note.views} of ${note.maxViews}`
+                : `Viewed ${note.views} time${note.views === 1 ? '' : 's'}`}
+            </span>
+          )}
+        </p>
+      )}
 
       {!canEdit && onRequestEdit && (
         <div className="shared-note__request">

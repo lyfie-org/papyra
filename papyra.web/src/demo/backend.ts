@@ -778,6 +778,7 @@ const routes: Route[] = [
   // --------------------------------------------- genuinely needs a real server
   ['POST', /^\/api\/import\//, () => serverOnly('Importing notes')],
   ['GET', /^\/api\/export$/, () => serverOnly('Exporting your vault')],
+  ['POST', /^\/api\/export\/authorize$/, () => serverOnly('Exporting your vault')],
   ['POST', /^\/api\/backups\//, () => serverOnly('Backups')],
   ['POST', /^\/api\/system\//, () => serverOnly('Rebuilding the index')],
   ['POST', /^\/api\/media\/upload$/, () => serverOnly('Uploading files')],

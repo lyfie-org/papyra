@@ -47,6 +47,18 @@ public class User
     /// server's own zone (the container's TZ), which /api/auth/me reports.
     /// </summary>
     public string? TimeZone { get; set; }
+
+    // ── Password age + account deletion ───────────────────────────────────────
+    /// <summary>When the password was last set. Deleting the account needs it to be over a day old.</summary>
+    public DateTime? PasswordChangedUtc { get; set; }
+    /// <summary>
+    /// Set when the owner asked for the account to be deleted: everything is
+    /// purged at this moment unless they cancel first. Until then the account can
+    /// only sign in to cancel.
+    /// </summary>
+    public DateTime? DeletionScheduledUtc { get; set; }
+    /// <summary>The last daily "your account will be deleted" email.</summary>
+    public DateTime? DeletionReminderUtc { get; set; }
 }
 
 // A one-time token for a password reset or an invitation. Rows are short-lived

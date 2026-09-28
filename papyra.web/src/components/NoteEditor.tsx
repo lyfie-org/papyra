@@ -3,7 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { PapyraEditor, type PapyraEditorRef } from '@lyfie/luthor/presets/papyra';
 import '@lyfie/luthor/styles.css';
-import { $addUpdateTag, $getRoot, $setSelection, CLEAR_HISTORY_COMMAND, SKIP_DOM_SELECTION_TAG, type LexicalEditor } from 'lexical';
+import { $getRoot, CLEAR_HISTORY_COMMAND, type LexicalEditor } from 'lexical';
 import { hasBridgePlaceholder } from '../lib/bridgePlaceholder';
 import type { Note } from '../types/note';
 import { useAutoSave, type Draft } from '../hooks/useAutoSave';
@@ -34,6 +34,9 @@ import { useAmbient } from '../hooks/useAmbient';
 import { useAlwaysShowEditorToolbar } from '../hooks/useEditorToolbar';
 import './NoteEditor.css';
 import { editedLabel, fullStamp, useMinuteTick, useTimeZone } from '../lib/timeZone';
+import LinkCards from './LinkCards';
+import LinkHoverCard from './LinkHoverCard';
+import MediaTools from './MediaTools';
 
 /*
  * luthor ≤2.9.7 serializes a just-adopted document without the Papyra preset's
@@ -67,28 +70,6 @@ const STATUS_LABEL = {
   saved: 'Saved to local disk',
   queued: 'Saved on this device — will sync',
 } as const;
-
-/**
- * Save-time anchor stamping is an editor update, and Lexical ends every update
- * by writing its selection back into the DOM — which moves focus into the body.
- * So a note saving in the background (1.5 s after the last keystroke) pulled the
- * caret out of the title mid-word. When the caret is in a field outside the
- * body, drop the body's remembered selection first, without touching the DOM:
- * there is then nothing to write back. Clicking back into the body makes a fresh
- * one. An editor dialog's own field (link URL…) is left alone — it still needs
- * the body selection it was opened on.
- */
-function releaseBodySelectionIfAway(lexical: LexicalEditor | null | undefined): void {
-  const root = lexical?.getRootElement();
-  const active = document.activeElement;
-  if (!lexical || !root || !active || root.contains(active)) return;
-  if (!(active instanceof HTMLInputElement || active instanceof HTMLTextAreaElement)) return;
-  if (active.closest('[class*="luthor-"]')) return;
-  lexical.update(() => {
-    $addUpdateTag(SKIP_DOM_SELECTION_TAG);
-    $setSelection(null);
-  }, { discrete: true });
-}
 
 /** "Edited 3:42 PM", in the person's time zone; the full date on hover. */
 function EditedStamp({ updated }: { updated: string }) {
@@ -170,10 +151,20 @@ export default function NoteEditor({ note, isDraft = false }: { note: Note; isDr
   // Papyra's own toolbar items (icons, grouping and inserts are ours; luthor
   // supplies the controls). Upload failures surface as a toast.
   const toolbarItems = useMemo(() => createToolbarItems((message) => toast(message)), [toast]);
-  const adapter = useMemo(
-    () => createPapyraEditorAdapter({ noteId: note.id, navigate, queryClient, onUnresolvedLink }),
-    [note.id, navigate, queryClient, onUnresolvedLink],
-  );
+  const adapter = useMemo(() => {
+    const base = createPapyraEditorAdapter({ noteId: note.id, navigate, queryClient, onUnresolvedLink });
+    return {
+      ...base,
+      // An attachment that can't be stored (too big for its kind, offline)
+      // says so, instead of the drop silently doing nothing.
+      uploadMedia: async (file: File) => {
+        try { return await base.uploadMedia(file); }
+        catch (err) { toast(err instanceof Error ? err.message : 'Couldn’t attach that file.'); throw err; }
+      },
+    };
+  }, [note.id, navigate, queryClient, onUnresolvedLink, toast]);
+  // The live Lexical editor, for tools that work on it from outside luthor.
+  const [lexicalEditor, setLexicalEditor] = useState<LexicalEditor | null>(null);
   // luthor's own image paths (the /image slash command) otherwise fall back to
   // a blob: URL, which dies on reload. Store the file like any other upload and
   // point the image at the media route.
@@ -228,25 +219,14 @@ export default function NoteEditor({ note, isDraft = false }: { note: Note; isDr
   const [unlocked, setUnlocked] = useState(false);
   const isLocked = !!note.secure && !unlocked;
 
-  // The write path's draft. `ensureBlockAnchors()` stamps a hidden `^id` onto
-  // every un-anchored block and returns the stamped markdown, so anchors reach
-  // disk only when a revision is actually saved — not on every commit, which
-  // would rewrite the .md constantly and give Syncthing/git-sync churn to fight
-  // over. Mirroring the result into latestBody in the same tick is what stops the
-  // stamp's own onChange from looking like a user edit and re-triggering a save.
-  //
-  // Never call this from the remote-update check: stamping a note the user has
-  // not touched would make it look dirty and block a legitimate remote adopt.
-  const getSaveDraft = useCallback((): Draft => {
-    // A to-do body is a checklist (lists are not stampable) and a locked note's
-    // body is withheld — neither should be stamped.
-    // Nor is a preview: stamping would write anchors into a past version.
-    if (note.kind === 'todo' || isLocked || suppressSave.current) return getDraft();
-    releaseBodySelectionIfAway(editorRef.current?.getLexicalEditor());
-    const md = editorRef.current?.ensureBlockAnchors() ?? latestBody.current;
-    latestBody.current = md;
-    return { title: titleRef.current, body: md };
-  }, [getDraft, note.kind, isLocked]);
+  // The write path's draft — the text as written. Saves used to stamp a hidden
+  // `^id` anchor onto every paragraph and heading (ensureBlockAnchors), so any
+  // block could be embedded elsewhere; nothing in the app ever made such a link,
+  // and the anchors cluttered the end of nearly every line of every .md file
+  // and export. Anchors already in a note are kept as written (luthor "off"
+  // mode round-trips them) and the server's daily "Tidy block markers" job
+  // removes the ones nothing points at.
+  const getSaveDraft = getDraft;
 
   // Naming someone in a note offers to share the note with them — see
   // useMentionShare for why it asks rather than acts.
@@ -775,8 +755,8 @@ export default function NoteEditor({ note, isDraft = false }: { note: Note; isDr
           toolbarItems={toolbarItems}
           imageUploadHandler={imageUploadHandler}
           defaultEditorView="visual"
-          // Anchors are assigned by getSaveDraft at save time, never on commit.
-          blockAnchors="on-demand"
+          // Existing anchors round-trip; none are created (see getSaveDraft).
+          blockAnchors="off"
           defaultContent={body}
           placeholder="Start writing…"
           adapter={adapter}
@@ -789,6 +769,7 @@ export default function NoteEditor({ note, isDraft = false }: { note: Note; isDr
           onReady={(methods) => {
             editorRef.current = methods;
             const lexical = methods.getLexicalEditor();
+            setLexicalEditor(lexical ?? null);
             // luthor's editable is a textbox with no accessible name; screen
             // readers announced a bare "edit text". Name it after its job.
             lexical?.getRootElement()?.setAttribute('aria-label', 'Note body');
@@ -860,8 +841,18 @@ export default function NoteEditor({ note, isDraft = false }: { note: Note; isDr
         </div>
       )}
 
+      {!isLocked && !history && (
+        <div className="note-editor__links"><LinkCards body={note.body} /></div>
+      )}
+      {!isLocked && <LinkHoverCard within={editorScrollRef} />}
+
       {!focus && !isLocked && !history && <GhostCards noteId={note.id} />}
       </div>
+
+      {/* Outside the scroll area, so "Drop to attach" covers the whole sheet. */}
+      {!isLocked && !history && (
+        <MediaTools editor={lexicalEditor} sheetRef={sheetRef} upload={adapter.uploadMedia} onError={(m) => toast(m)} />
+      )}
 
       {/* Actions and save state sit under the note body, outside the scroll
           area, so a long note keeps them in reach at the bottom of the sheet. */}
