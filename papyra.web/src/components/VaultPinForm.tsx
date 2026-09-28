@@ -4,6 +4,7 @@ import { useVault } from '../hooks/useVault';
 import { pinProblem, setVaultPin, VaultError } from '../lib/vault';
 import './VaultUnlock.css';
 import './VaultPinForm.css';
+import { MASKED_SECRET } from '../lib/autofill';
 
 /**
  * Create, change or reset the vault PIN.
@@ -67,23 +68,23 @@ export default function VaultPinForm({ onDone }: { onDone?: () => void }) {
         <label className="vault-pin-form__field">
           <span>Current PIN</span>
           <input
-            className="vault-unlock__input" type="password" inputMode="numeric" pattern="[0-9]*"
-            autoComplete="off" maxLength={max} value={currentPin} onChange={digits(setCurrentPin)} disabled={busy}
+            className="vault-unlock__input" {...MASKED_SECRET} inputMode="numeric" pattern="[0-9]*"
+            maxLength={max} value={currentPin} onChange={digits(setCurrentPin)} disabled={busy}
           />
         </label>
       )}
       <label className="vault-pin-form__field">
         <span>{pinSet ? 'New PIN' : 'Choose a PIN'} ({min}–{max} digits)</span>
         <input
-          className="vault-unlock__input" type="password" inputMode="numeric" pattern="[0-9]*"
-          autoComplete="new-password" maxLength={max} value={pin} onChange={digits(setPin)} disabled={busy}
+          className="vault-unlock__input" {...MASKED_SECRET} inputMode="numeric" pattern="[0-9]*"
+          maxLength={max} value={pin} onChange={digits(setPin)} disabled={busy}
         />
       </label>
       <label className="vault-pin-form__field">
         <span>Confirm PIN</span>
         <input
-          className="vault-unlock__input" type="password" inputMode="numeric" pattern="[0-9]*"
-          autoComplete="new-password" maxLength={max} value={confirm} onChange={digits(setConfirm)} disabled={busy}
+          className="vault-unlock__input" {...MASKED_SECRET} inputMode="numeric" pattern="[0-9]*"
+          maxLength={max} value={confirm} onChange={digits(setConfirm)} disabled={busy}
         />
       </label>
       {byPassword && (

@@ -84,25 +84,15 @@
 }
 
 .notes-filters__option:hover {
+  background: color-mix(in srgb, var(--text) 12%, transparent);
+}
+
+/* A chosen tag is marked by its text alone — sage and a touch heavier, on a
+   faint wash — the same way every Papyra dropdown marks its choice. */
+.notes-filters__option.is-on {
   background: var(--accent-bg);
-}
-
-/* Fixed-width tick well so labels stay aligned whether or not they're checked. */
-.notes-filters__tick {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  flex: 0 0 auto;
-  width: 14px;
-  height: 14px;
-  border: 1px solid var(--border);
-  border-radius: 3px;
-  color: var(--accent-fg);
-}
-
-.notes-filters__option.is-on .notes-filters__tick {
-  border-color: var(--accent);
-  background: var(--accent);
+  color: var(--accent-text);
+  font-weight: 600;
 }
 
 .notes-filters__clear {

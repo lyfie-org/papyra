@@ -9,6 +9,13 @@
 .user-picker > input {
   flex: 1;
   min-width: 0;
+  appearance: none;
+}
+/* A search box underneath, but it shouldn't look like one. */
+.user-picker > input::-webkit-search-cancel-button,
+.user-picker > input::-webkit-search-decoration {
+  appearance: none;
+  display: none;
 }
 
 .user-picker__list {

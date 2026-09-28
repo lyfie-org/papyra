@@ -12,6 +12,8 @@ public enum JobKind
     Periodic,
     /// <summary>Always on, reacting to events (a file changing, a queue filling).</summary>
     Continuous,
+    /// <summary>No timer: runs when a person asks (or something else calls it).</summary>
+    Manual,
 }
 
 /// <summary>One job's last outcome, or null if it has not run since boot.</summary>
@@ -77,6 +79,18 @@ public sealed class JobRegistry
     {
         _jobs[id] = new Entry(
             new JobStatus(id, name, description, JobKind.Periodic, interval, Running: false, LastRun: null),
+            run,
+            new SemaphoreSlim(1, 1));
+    }
+
+    /// <summary>
+    /// Declare a job with no timer — it runs when someone presses "Run now", or
+    /// when other code calls <see cref="RunAsync"/>.
+    /// </summary>
+    public void RegisterManual(string id, string name, string description, Func<CancellationToken, Task<string?>> run)
+    {
+        _jobs[id] = new Entry(
+            new JobStatus(id, name, description, JobKind.Manual, Interval: null, Running: false, LastRun: null),
             run,
             new SemaphoreSlim(1, 1));
     }

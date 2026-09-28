@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Check, ChevronDown, Layers, Pin, Tags, Users, X } from 'lucide-react';
+import { ChevronDown, Layers, Pin, Tags, Users, X } from 'lucide-react';
 import type { SmartCollection } from '../hooks/useCollections';
 import './NotesFilterBar.css';
 
@@ -116,9 +116,6 @@ export default function NotesFilterBar({
                     className={`notes-filters__option${on ? ' is-on' : ''}`}
                     onClick={() => toggleTag(tag)}
                   >
-                    <span className="notes-filters__tick" aria-hidden="true">
-                      {on && <Check size={12} />}
-                    </span>
                     {tag}
                   </button>
                 );

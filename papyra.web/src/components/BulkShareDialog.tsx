@@ -78,7 +78,7 @@ export default function BulkShareDialog({ notes, onClose }: {
             <div className="share__invite">
               <UserPicker
                 autoFocus
-                placeholder="Username"
+                placeholder="Add a person"
                 value={username}
                 onChange={setUsername}
                 onSubmit={() => void submit()}

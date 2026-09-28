@@ -146,10 +146,59 @@ public sealed class BiometricAuthService
     // Verifies the assertion and, on success, mints a short-lived unlock token.
     // Returns null when verification fails for any reason.
     public async Task<string?> AssertVerifyAsync(
-        int userId, AuthenticatorAssertionRawResponse response, RelyingParty party, CancellationToken ct)
+        int userId, AuthenticatorAssertionRawResponse response, RelyingParty party, CancellationToken ct) =>
+        await VerifyAsync(userId.ToString(), userId, response, party, ct)
+            ? _unlockTokens.Issue(userId.ToString())
+            : null;
+
+    // ── Sign-in with a passkey ──────────────────────────────────────────────────
+    // The same registered authenticators, used at the sign-in screen: the person
+    // names their account, the browser asks for the fingerprint/face/PIN, and a
+    // verified assertion signs them in. Challenges are kept apart from vault
+    // unlock ones (their own key), so the two ceremonies can never answer each
+    // other.
+
+    private static string LoginKey(int userId) => $"login:{userId}";
+
+    /// <summary>
+    /// Options for a sign-in ceremony. Always returns options — for an unknown
+    /// account, or one with no passkey at this address, they name a random
+    /// credential that no authenticator holds — so the response never says
+    /// whether an account exists or has a passkey.
+    /// </summary>
+    public async Task<AssertionOptions> LoginChallengeAsync(User? user, RelyingParty party, CancellationToken ct)
     {
-        var pending = _challenges.TakeAssert(userId.ToString());
-        if (pending is null || pending.Party != party) return null;
+        var credentials = user is null
+            ? []
+            : (await _db.WebAuthnCredentials.Where(c => c.UserId == user.Id).ToListAsync(ct))
+                .Where(c => UsableAt(c, party))
+                .ToList();
+
+        var allowed = credentials.Count > 0
+            ? credentials.Select(c => new PublicKeyCredentialDescriptor(Base64Url.DecodeFromChars(c.CredentialId))).ToList()
+            : [new PublicKeyCredentialDescriptor(System.Security.Cryptography.RandomNumberGenerator.GetBytes(32))];
+
+        var options = For(party).GetAssertionOptions(new GetAssertionOptionsParams
+        {
+            AllowedCredentials = allowed,
+            UserVerification = UserVerificationRequirement.Required,
+        });
+
+        if (user is not null && credentials.Count > 0) _challenges.PutAssert(LoginKey(user.Id), options.ToJson(), party);
+        return options;
+    }
+
+    /// <summary>True when the assertion proves the person holds one of this account's passkeys.</summary>
+    public Task<bool> LoginVerifyAsync(
+        int userId, AuthenticatorAssertionRawResponse response, RelyingParty party, CancellationToken ct) =>
+        VerifyAsync(LoginKey(userId), userId, response, party, ct);
+
+    // One verification for both ceremonies; only the challenge slot differs.
+    private async Task<bool> VerifyAsync(
+        string challengeKey, int userId, AuthenticatorAssertionRawResponse response, RelyingParty party, CancellationToken ct)
+    {
+        var pending = _challenges.TakeAssert(challengeKey);
+        if (pending is null || pending.Party != party) return false;
         var options = AssertionOptions.FromJson(pending.OptionsJson);
 
         // The raw assertion carries its credential id already base64url-encoded —
@@ -159,7 +208,7 @@ public sealed class BiometricAuthService
         var credentialId = response.Id;
         var stored = await _db.WebAuthnCredentials
             .FirstOrDefaultAsync(c => c.CredentialId == credentialId && c.UserId == userId, ct);
-        if (stored is null || !UsableAt(stored, party)) return null;
+        if (stored is null || !UsableAt(stored, party)) return false;
 
         VerifyAssertionResult result;
         try
@@ -177,7 +226,7 @@ public sealed class BiometricAuthService
         catch (Fido2VerificationException ex)
         {
             _logger.LogWarning(ex, "WebAuthn assertion failed for user {UserId}", userId);
-            return null;
+            return false;
         }
 
         // Advance the replay counter the library validated for us, and pin a legacy
@@ -186,7 +235,6 @@ public sealed class BiometricAuthService
         stored.LastUsedUtc = DateTime.UtcNow;
         if (stored.RpId.Length == 0) stored.RpId = party.RpId;
         await _db.SaveChangesAsync(ct);
-
-        return _unlockTokens.Issue(userId.ToString());
+        return true;
     }
 }

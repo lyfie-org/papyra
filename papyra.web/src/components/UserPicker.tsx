@@ -1,5 +1,6 @@
 import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import Avatar from './Avatar';
+import { NO_AUTOFILL } from '../lib/autofill';
 import './UserPicker.css';
 
 interface Suggestion { username: string; name: string }
@@ -14,7 +15,7 @@ interface Suggestion { username: string; name: string }
  * can't be themed, and password managers treated the bare text box as a login
  * field and stacked their own popup on top.
  */
-export default function UserPicker({ value, onChange, onSubmit, exclude, autoFocus, placeholder = 'Add by username' }: {
+export default function UserPicker({ value, onChange, onSubmit, exclude, autoFocus, placeholder = 'Add a person' }: {
   value: string;
   onChange: (value: string) => void;
   /** Enter with no suggestion highlighted. */
@@ -102,24 +103,21 @@ export default function UserPicker({ value, onChange, onSubmit, exclude, autoFoc
     <div className="user-picker" ref={wrapRef}>
       <input
         ref={inputRef}
-        type="text"
+        // type="search": password managers skip search boxes outright, and
+        // nothing here (label, name, placeholder) says "username" — those
+        // words are exactly what their login heuristics look for.
+        type="search"
         role="combobox"
-        aria-label="Username"
+        aria-label="Person to share with"
         aria-autocomplete="list"
         aria-expanded={expanded}
         aria-controls={listId}
         aria-activedescendant={expanded && active >= 0 ? `${listId}-${active}` : undefined}
-        // Not a login field: keep browsers and password managers from filling
-        // it or hanging their own account popup off it.
         name="papyra-share-with"
-        autoComplete="off"
+        {...NO_AUTOFILL}
         autoCorrect="off"
         autoCapitalize="none"
         spellCheck={false}
-        data-1p-ignore
-        data-lpignore="true"
-        data-bwignore="true"
-        data-form-type="other"
         autoFocus={autoFocus}
         placeholder={placeholder}
         value={value}

@@ -273,28 +273,75 @@
 }
 
 /* ── Left-rail shell ─────────────────────────────────────────────── */
+/* The page title and the section list are one sticky column: they used to be
+   split, so scrolling carried "Settings" away while the list stayed put. */
 .settings__shell {
   display: grid;
-  grid-template-columns: 13rem 1fr;
+  grid-template-columns: 13rem minmax(0, 1fr);
   gap: 1.5rem;
   align-items: start;
 }
-@media (max-width: 720px) {
-  .settings__shell {
-    grid-template-columns: 1fr;
-  }
-  .settings__rail {
-    flex-direction: row !important;
-    flex-wrap: wrap;
-  }
+.settings__side {
+  position: sticky;
+  top: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-4);
+  max-height: 100%;
 }
+.settings__title { padding-left: 0.8rem; }
 
 .settings__rail {
   display: flex;
   flex-direction: column;
   gap: 0.25rem;
-  position: sticky;
-  top: 1rem;
+}
+
+/* Narrow screens: one sticky bar — the title, then the sections as a single
+   swipeable row of pills (the active one kept in view) — instead of a wrapped
+   wall of a dozen buttons pinned over the page. Same breakpoint as the desk's
+   padding change, which the bleed below mirrors. */
+@media (max-width: 700px) {
+  .settings__shell {
+    /* minmax(0, …): the pill row is wider than a phone and must scroll inside
+       the column, not stretch the column (and the page) to fit it. */
+    grid-template-columns: minmax(0, 1fr);
+    gap: var(--space-4);
+  }
+  .settings__side {
+    /* Sticky offsets count from inside the desk's padding; pull it up to the
+       desk's real top edge so nothing scrolls visibly above the bar. */
+    top: calc(-1 * var(--space-5));
+    z-index: 5;
+    gap: var(--space-2);
+    /* Bleed to the desk's edges so content scrolls cleanly under it. */
+    margin: calc(-1 * var(--space-5)) calc(-1 * var(--space-4)) 0;
+    padding: var(--space-3) var(--space-4) var(--space-2);
+    border-bottom: 1px solid var(--border);
+    background: var(--bg);
+  }
+  .settings__title { padding-left: 0; font-size: var(--fs-lg); }
+  .settings__rail {
+    position: relative;
+    flex-direction: row;
+    gap: var(--space-1);
+    margin-inline: calc(-1 * var(--space-4));
+    padding: 0 var(--space-4) var(--space-1);
+    overflow-x: auto;
+    scroll-snap-type: x proximity;
+    scrollbar-width: none;
+  }
+  .settings__rail::-webkit-scrollbar { display: none; }
+  .settings__rail-item {
+    flex: none;
+    scroll-snap-align: center;
+    padding: var(--space-2) var(--space-3);
+    border-radius: var(--radius-pill);
+    white-space: nowrap;
+    font-size: var(--fs-xs);
+  }
+  /* Section jumps land below the sticky bar, not under it. */
+  .settings__content [id] { scroll-margin-top: 7rem; }
 }
 .settings__rail-item {
   display: inline-flex;
@@ -342,8 +389,19 @@
   padding: var(--space-2) 0 var(--space-4);
 }
 
+.profile-hero__photo-wrap {
+  position: relative;
+  flex: none;
+}
+/* Exactly the avatar's square: as an inline box the button also took the line's
+   descender gap under the picture, so its 50% radius drew an oval and its shadow
+   hung below the face like a second circle. */
 .profile-hero__photo {
   position: relative;
+  display: grid;
+  width: 120px;
+  height: 120px;
+  line-height: 0;
   flex: none;
   padding: 0;
   border: none;
@@ -383,8 +441,104 @@
 .profile-hero__photo:focus-visible .profile-hero__overlay { opacity: 1; }
 
 @media (hover: none) {
-  /* No hover on touch: the buttons beside the photo carry the actions. */
+  /* No hover on touch: a tap opens the photo's menu directly. */
   .profile-hero__overlay { display: none; }
+}
+
+/* The photo's menu: view it, change it, remove it. */
+.profile-hero__menu {
+  position: absolute;
+  top: calc(100% + var(--space-2));
+  left: 50%;
+  z-index: 20;
+  translate: -50% 0;
+  display: flex;
+  flex-direction: column;
+  min-width: 11rem;
+  padding: var(--space-1);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+  animation: profile-menu-in var(--dur-fast) var(--ease);
+}
+@keyframes profile-menu-in {
+  from { opacity: 0; transform: translateY(-4px); }
+}
+.profile-hero__menu-item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-3);
+  border: none;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text-h);
+  font: 400 var(--fs-sm) / 1.3 var(--sans);
+  text-align: left;
+  cursor: pointer;
+}
+.profile-hero__menu-item:hover { background: color-mix(in srgb, var(--text) 12%, transparent); }
+.profile-hero__menu-item--danger { color: var(--danger); }
+.profile-hero__menu-item--danger:hover { background: var(--danger-bg); }
+
+/* Sign out lives in the hero's top-right, away from every form below. */
+.profile-hero__signout {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-left: auto;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--text-h);
+  font: 500 var(--fs-xs) / 1 var(--sans);
+  white-space: nowrap;
+  cursor: pointer;
+  transition: border-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease), background-color var(--dur-fast) var(--ease);
+}
+.profile-hero__signout:hover { border-color: var(--danger-border); background: var(--danger-bg); color: var(--danger); }
+
+/* Full-size photo. */
+.photo-viewer {
+  position: fixed;
+  inset: 0;
+  z-index: 90;
+  display: grid;
+  place-items: center;
+  padding: var(--space-8);
+  background: color-mix(in srgb, var(--scrim) 82%, transparent);
+  animation: photo-viewer-in var(--dur) var(--ease);
+  cursor: zoom-out;
+}
+@keyframes photo-viewer-in {
+  from { opacity: 0; }
+}
+.photo-viewer__img {
+  max-width: min(32rem, 100%);
+  max-height: 100%;
+  border-radius: var(--radius-lg);
+  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.45);
+}
+.photo-viewer__close {
+  position: absolute;
+  top: var(--space-4);
+  right: var(--space-4);
+  display: grid;
+  place-items: center;
+  width: 40px;
+  height: 40px;
+  border: none;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--on-photo) 16%, transparent);
+  color: var(--on-photo);
+  cursor: pointer;
+}
+.photo-viewer__close:hover { background: color-mix(in srgb, var(--on-photo) 26%, transparent); }
+@media (prefers-reduced-motion: reduce) {
+  .profile-hero__menu, .photo-viewer { animation: none; }
 }
 
 .profile-hero__who {
@@ -420,30 +574,7 @@
   text-transform: uppercase;
 }
 
-.profile-hero__actions {
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--space-2);
-  margin-top: var(--space-1);
-}
-
-.profile-hero__btn {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.4rem;
-  padding: 0.4rem 0.85rem;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-pill);
-  background: var(--bg);
-  color: var(--text-h);
-  font: 500 var(--fs-xs) / 1 var(--sans);
-  cursor: pointer;
-  transition: border-color var(--dur-fast) var(--ease), background-color var(--dur-fast) var(--ease);
-}
-.profile-hero__btn:hover { border-color: var(--border-hover); }
-.profile-hero__btn--quiet { background: transparent; }
-.profile-hero__btn--quiet:hover { border-color: var(--danger-border); color: var(--danger); }
-.profile-hero__btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.profile-hero__signout:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 @media (max-width: 560px) {
   .profile-hero {
@@ -451,8 +582,8 @@
     text-align: center;
     gap: var(--space-4);
   }
-  .profile-hero__handle,
-  .profile-hero__actions { justify-content: center; }
+  .profile-hero__handle { justify-content: center; }
+  .profile-hero__signout { align-self: center; margin-left: 0; }
 }
 
 /* An input with a fixed prefix (the @ of a username). */
@@ -474,7 +605,9 @@
   font-family: var(--mono);
   font-size: 0.9rem;
 }
-.settings__form .settings__field .settings__affix input {
+/* :not(.switch) matches the specificity of the generic field-input rule below,
+   which otherwise wins and draws a second box inside this one. */
+.settings__form .settings__field .settings__affix input:not(.switch) {
   flex: 1;
   min-width: 0;
   padding-left: 0.2rem;
@@ -898,4 +1031,29 @@
 .settings__link:disabled {
   opacity: 0.5;
   cursor: not-allowed;
+}
+
+/* A baseline for any text field in Settings that has no rule of its own (the
+   test-email box was rendering as a bare browser input). :where() keeps it at
+   zero specificity, so every component rule above still wins. */
+:where(.settings__panel) :where(
+  input:is(:not([type]), [type='text'], [type='email'], [type='url'], [type='password'], [type='number'], [type='search']),
+  textarea
+) {
+  box-sizing: border-box;
+  padding: 0.5rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--text-h);
+  font: 400 0.9rem / 1.4 var(--sans);
+  transition: border-color var(--dur-fast) var(--ease);
+}
+:where(.settings__panel) :where(input, textarea)::placeholder {
+  color: var(--text);
+  opacity: 0.75;
+}
+.settings__test-input {
+  flex: 1 1 16rem;
+  max-width: 22rem;
 }

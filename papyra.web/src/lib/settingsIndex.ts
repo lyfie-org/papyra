@@ -59,7 +59,6 @@ export const SETTINGS_INDEX: SettingsEntry[] = [
   { tab: 'data', tabLabel: 'Data & Storage', section: 'export', sectionLabel: 'Export', keywords: ['download all notes', 'zip'] },
   { tab: 'data', tabLabel: 'Data & Storage', section: 'encrypted-backup', sectionLabel: 'Encrypted backup', keywords: ['password protected', 'archive'] },
   { tab: 'data', tabLabel: 'Data & Storage', section: 'restore-backup', sectionLabel: 'Restore from encrypted backup', keywords: ['recover', 'restore'] },
-  { tab: 'data', tabLabel: 'Data & Storage', section: 'maintenance', sectionLabel: 'Maintenance', keywords: ['rebuild search', 'reindex', 'missing notes'] },
   { tab: 'data', tabLabel: 'Data & Storage', section: 'trash-retention', sectionLabel: 'Trash auto-delete', keywords: ['trash', 'retention', 'delete after'] },
 
   { tab: 'keys', tabLabel: 'API Keys', keywords: ['api'] },
@@ -97,10 +96,11 @@ export const SETTINGS_INDEX: SettingsEntry[] = [
 
   { tab: 'jobs', tabLabel: 'Jobs', adminOnly: true, keywords: ['background', 'housekeeping', 'maintenance', 'tasks'] },
   { tab: 'jobs', tabLabel: 'Jobs', section: 'scheduled-jobs', sectionLabel: 'Housekeeping', adminOnly: true, keywords: ['empty trash', 'cleanup', 'sweep', 'run now', 'schedule'] },
+  { tab: 'jobs', tabLabel: 'Jobs', section: 'on-demand-jobs', sectionLabel: 'On demand', adminOnly: true, keywords: ['rebuild search', 'reindex', 'missing notes', 'search index'] },
   { tab: 'jobs', tabLabel: 'Jobs', section: 'always-on-jobs', sectionLabel: 'Always running', adminOnly: true, keywords: ['watcher', 'mentions', 'webhooks', 'search index'] },
 
   { tab: 'about', tabLabel: 'About', keywords: ['version', 'licence', 'license'] },
-  { tab: 'about', tabLabel: 'About', section: 'about-papyra', sectionLabel: 'Papyra', keywords: ['version', 'build'] },
+  { tab: 'about', tabLabel: 'About', section: 'about-papyra', sectionLabel: 'Papyra', keywords: ['version', 'build', 'github', 'star', 'license', 'source code', 'report a bug'] },
 ];
 
 /** Where a settings result navigates to. */

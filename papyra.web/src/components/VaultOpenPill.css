@@ -1,0 +1,76 @@
+/* Navbar pill while the vault is open: state + countdown, and a Lock button.
+   Sage because "open" is a real, current state worth marking — amber for the
+   last half-minute, so the automatic lock never comes as a surprise. */
+.vault-pill {
+  --pill-ink: var(--accent-text);
+  --pill-bg: var(--accent-bg);
+  --pill-edge: var(--accent-border);
+  display: inline-flex;
+  align-items: stretch;
+  height: 36px;
+  border: 1px solid var(--pill-edge);
+  border-radius: var(--radius-pill);
+  background: var(--pill-bg);
+  color: var(--pill-ink);
+  overflow: hidden;
+  animation: vault-pill-in var(--dur) var(--ease);
+}
+.vault-pill.is-ending {
+  --pill-ink: var(--warn);
+  --pill-bg: var(--warn-bg);
+  --pill-edge: var(--warn-border);
+}
+@keyframes vault-pill-in {
+  from { opacity: 0; transform: translateY(-4px) scale(0.96); }
+}
+
+.vault-pill__state,
+.vault-pill__lock {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: 500 var(--fs-xs) / 1 var(--sans);
+  text-decoration: none;
+  cursor: pointer;
+  transition: background-color var(--dur-fast) var(--ease);
+}
+.vault-pill__state { padding: 0 var(--space-2) 0 var(--space-3); }
+.vault-pill__lock {
+  padding: 0 var(--space-3) 0 var(--space-2);
+  border-left: 1px solid var(--pill-edge);
+  font-weight: 600;
+}
+.vault-pill__state:hover,
+.vault-pill__lock:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--pill-ink) 12%, transparent);
+}
+.vault-pill__lock:disabled { opacity: 0.6; cursor: default; }
+.vault-pill__state:focus-visible,
+.vault-pill__lock:focus-visible {
+  outline: 2px solid var(--pill-ink);
+  outline-offset: -3px;
+  border-radius: var(--radius-pill);
+}
+
+.vault-pill__time {
+  min-width: 2.6em;
+  font: 500 var(--fs-xs) / 1 var(--mono);
+  font-variant-numeric: tabular-nums;
+  opacity: 0.85;
+}
+
+/* Narrow navbar: icon + time, and a bare lock icon. */
+@media (max-width: 760px) {
+  .vault-pill__label,
+  .vault-pill__lock-label { display: none; }
+}
+@media (max-width: 420px) {
+  .vault-pill__time { display: none; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .vault-pill { animation: none; }
+}

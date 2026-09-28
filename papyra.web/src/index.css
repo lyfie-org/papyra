@@ -244,8 +244,8 @@ b,
 /* ── Dropdowns ─────────────────────────────────────────────────────────────────
    Native <select>s keep their semantics and keyboard handling, but where the
    browser lets us style the popup (customizable select) it becomes Papyra
-   paper: a surface card, a quiet ink hover, and the chosen option marked by a
-   tick in sage text — never the OS's blue highlight bar. Browsers without it
+   paper: a surface card, a quiet ink hover, and the chosen option marked by
+   sage text alone — never the OS's blue highlight bar. Browsers without it
    keep their native popup, which follows color-scheme. Each select's own
    border, padding and background stay with its component. */
 @supports (appearance: base-select) {
@@ -299,11 +299,14 @@ b,
     background: color-mix(in srgb, var(--text) 12%, transparent);
   }
   select option:checked {
+    background: var(--accent-bg);
     color: var(--accent-text);
-    font-weight: 500;
+    font-weight: 600;
   }
+  /* The chosen option's text already says it's chosen; a tick beside it too
+     was saying it twice. */
   select option::checkmark {
-    color: var(--accent-text);
+    display: none;
   }
   select option:disabled {
     opacity: 0.5;
@@ -365,4 +368,10 @@ input.switch:disabled {
 @media (prefers-reduced-motion: reduce) {
   input.switch,
   input.switch::before { transition: none; }
+}
+
+/* A secret that isn't a login password (PIN, API token): a text box drawn with
+   dots, so password managers don't treat it as a login. See lib/autofill.ts. */
+input[data-masked] {
+  -webkit-text-security: disc;
 }

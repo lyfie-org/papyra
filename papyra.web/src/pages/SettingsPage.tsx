@@ -5,8 +5,10 @@ import {
   User as UserIcon, Palette, Database, Info, Camera,
   Sun, Moon, Monitor, Upload, Download, RefreshCw, KeyRound, Copy, Trash2, Lock, ShieldAlert,
   Fingerprint, CheckCircle2, GitBranch, AlertTriangle, Bell, Mail, KeySquare, Send, UserPlus,
-  Sparkles, Play, Cog, LockOpen, Type,
+  Sparkles, Play, Cog, LockOpen, Type, Eye, LogOut, X,
 } from 'lucide-react';
+import { createPortal } from 'react-dom';
+import { useDismiss } from '../hooks/useDismiss';
 import { useGitConfig, useSaveGitConfig, useRunGitSync } from '../hooks/useGitSync';
 import {
   useOidcConfig, useSaveOidcConfig, useSmtpConfig, useSaveSmtpConfig,
@@ -44,9 +46,9 @@ import { useSettings, useUpdateSettings, RETENTION_OPTIONS } from '../hooks/useS
 import { useImportStatus, importSummary, IMPORT_STATUS_KEY, type ImportStatus } from '../hooks/useImportStatus';
 import './SettingsPage.css';
 import LoadingBar from '../components/LoadingBar';
+import AboutPanel from '../components/AboutPanel';
 import { fetchWithProgress } from '../lib/progress';
-
-const APP_VERSION = '0.0.1';
+import { MASKED_SECRET, NO_AUTOFILL } from '../lib/autofill';
 
 type Tab = 'profile' | 'appearance' | 'notifications' | 'security' | 'data' | 'keys' | 'sync' | 'sso' | 'email' | 'ai' | 'jobs' | 'about';
 
@@ -115,26 +117,43 @@ export default function SettingsPage() {
   const tab: Tab = valid?.id ?? 'profile';
   // Clearing `s` on a manual tab click stops a stale section from being chased
   // after the user has navigated somewhere else themselves.
-  const setTab = (t: Tab) => setParams(t === 'profile' ? {} : { tab: t }, { replace: true });
+  const rootRef = useRef<HTMLElement | null>(null);
+  const setTab = (t: Tab) => {
+    setParams(t === 'profile' ? {} : { tab: t }, { replace: true });
+    // A new section starts at its top, not wherever the last one was scrolled to.
+    rootRef.current?.closest('.workspace__desk')?.scrollTo({ top: 0 });
+  };
   useScrollToSection(params.get('s'), tab);
 
+  // On a phone the sections are one swipeable row; keep the active pill in
+  // view (scrollLeft only — scrollIntoView would also scroll the page).
+  const railRef = useRef<HTMLElement | null>(null);
+  useEffect(() => {
+    const rail = railRef.current;
+    const active = rail?.querySelector<HTMLElement>('.is-active');
+    if (!rail || !active || rail.scrollWidth <= rail.clientWidth) return;
+    rail.scrollTo({ left: active.offsetLeft - (rail.clientWidth - active.offsetWidth) / 2, behavior: 'smooth' });
+  }, [tab]);
+
   return (
-    <section className="settings">
-      <h1 className="page-title settings__title">Settings</h1>
+    <section className="settings" ref={rootRef}>
       <div className="settings__shell">
-        <nav className="settings__rail" aria-label="Settings sections">
-          {VISIBLE_NAV.filter(n => !n.adminOnly || isAdmin).map(({ id, label, icon: Icon }) => (
-            <button
-              key={id}
-              type="button"
-              className={`settings__rail-item${tab === id ? ' is-active' : ''}`}
-              aria-current={tab === id}
-              onClick={() => setTab(id)}
-            >
-              <Icon size={17} /> {label}
-            </button>
-          ))}
-        </nav>
+        <div className="settings__side">
+          <h1 className="page-title settings__title">Settings</h1>
+          <nav className="settings__rail" aria-label="Settings sections" ref={railRef}>
+            {VISIBLE_NAV.filter(n => !n.adminOnly || isAdmin).map(({ id, label, icon: Icon }) => (
+              <button
+                key={id}
+                type="button"
+                className={`settings__rail-item${tab === id ? ' is-active' : ''}`}
+                aria-current={tab === id}
+                onClick={() => setTab(id)}
+              >
+                <Icon size={17} /> {label}
+              </button>
+            ))}
+          </nav>
+        </div>
 
         <div className="settings__content">
           {tab === 'profile' && <ProfileTab user={user} />}
@@ -148,10 +167,29 @@ export default function SettingsPage() {
           {tab === 'email' && isAdmin && <EmailTab />}
           {tab === 'ai' && isAdmin && AI_ENABLED && <AiTab />}
           {tab === 'jobs' && isAdmin && <JobsTab />}
-          {tab === 'about' && <AboutTab />}
+          {tab === 'about' && <AboutPanel />}
         </div>
       </div>
     </section>
+  );
+}
+
+/** The profile photo at full size, over a scrim. Click anywhere or Escape to close. */
+function PhotoViewer({ name, onClose }: { name: string; onClose: () => void }) {
+  const avatarVersion = useAvatarVersion();
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
+    document.addEventListener('keydown', onKey);
+    return () => document.removeEventListener('keydown', onKey);
+  }, [onClose]);
+  return createPortal(
+    <div className="photo-viewer" role="dialog" aria-modal="true" aria-label={`${name}’s photo`} onClick={onClose}>
+      <img className="photo-viewer__img" src={`/api/auth/avatar?v=${avatarVersion}`} alt={`${name}’s profile photo`} />
+      <button type="button" className="photo-viewer__close" aria-label="Close" autoFocus onClick={onClose}>
+        <X size={20} />
+      </button>
+    </div>,
+    document.body,
   );
 }
 
@@ -181,6 +219,11 @@ function ProfileTab({ user }: { user: AuthUser | null }) {
   // The file the user picked, held while they frame it. Nothing is uploaded
   // until they say the crop is right.
   const [picking, setPicking] = useState<File | null>(null);
+  // The photo's own menu (view / change / remove) and the full-size view.
+  const [photoMenu, setPhotoMenu] = useState(false);
+  const [viewing, setViewing] = useState(false);
+  const photoMenuRef = useRef<HTMLDivElement | null>(null);
+  useDismiss(photoMenuRef, photoMenu, () => setPhotoMenu(false));
   // The day whose notes are on screen. State, not a route and not a filter:
   // looking at what you wrote on a Tuesday should not move you anywhere.
   const [openDay, setOpenDay] = useState<string | null>(null);
@@ -276,18 +319,38 @@ function ProfileTab({ user }: { user: AuthUser | null }) {
   return (
     <div className="settings__panel">
       <section className="profile-hero" aria-label="Your profile">
-        <button
-          type="button"
-          className="profile-hero__photo"
-          onClick={() => fileRef.current?.click()}
-          aria-label={hasPhoto ? 'Change profile photo' : 'Add a profile photo'}
-        >
-          <Avatar name={user?.name || user?.username} size={120} />
-          <span className="profile-hero__overlay" aria-hidden="true">
-            <Camera size={20} />
-            <span>{hasPhoto ? 'Change' : 'Add photo'}</span>
-          </span>
-        </button>
+        <div className="profile-hero__photo-wrap" ref={photoMenuRef}>
+          <button
+            type="button"
+            className="profile-hero__photo"
+            onClick={() => (hasPhoto ? setPhotoMenu(o => !o) : fileRef.current?.click())}
+            aria-label={hasPhoto ? 'Profile photo options' : 'Add a profile photo'}
+            aria-haspopup={hasPhoto ? 'menu' : undefined}
+            aria-expanded={hasPhoto ? photoMenu : undefined}
+          >
+            <Avatar name={user?.name || user?.username} size={120} />
+            <span className="profile-hero__overlay" aria-hidden="true">
+              <Camera size={20} />
+              <span>{hasPhoto ? 'Edit' : 'Add photo'}</span>
+            </span>
+          </button>
+          {photoMenu && hasPhoto && (
+            <div className="profile-hero__menu" role="menu" aria-label="Profile photo">
+              <button type="button" role="menuitem" className="profile-hero__menu-item"
+                onClick={() => { setPhotoMenu(false); setViewing(true); }}>
+                <Eye size={15} /> View photo
+              </button>
+              <button type="button" role="menuitem" className="profile-hero__menu-item"
+                onClick={() => { setPhotoMenu(false); fileRef.current?.click(); }}>
+                <Camera size={15} /> Change photo
+              </button>
+              <button type="button" role="menuitem" className="profile-hero__menu-item profile-hero__menu-item--danger"
+                onClick={() => { setPhotoMenu(false); void removePhoto(); }}>
+                <Trash2 size={15} /> Remove photo
+              </button>
+            </div>
+          )}
+        </div>
         <input
           ref={fileRef}
           type="file"
@@ -307,24 +370,20 @@ function ProfileTab({ user }: { user: AuthUser | null }) {
             onCropped={square => uploadAvatar(square)}
           />
         )}
+        {viewing && <PhotoViewer name={user?.name || user?.username || ''} onClose={() => setViewing(false)} />}
         <div className="profile-hero__who">
           <h1 className="profile-hero__name">{user?.name || user?.username}</h1>
           <p className="profile-hero__handle">
             @{user?.username}
             <span className="profile-hero__role">{user?.role}</span>
           </p>
-          <div className="profile-hero__actions">
-            <button type="button" className="profile-hero__btn" onClick={() => fileRef.current?.click()}>
-              <Camera size={14} /> {hasPhoto ? 'Change photo' : 'Add photo'}
-            </button>
-            {hasPhoto && (
-              <button type="button" className="profile-hero__btn profile-hero__btn--quiet" onClick={() => void removePhoto()}>
-                <Trash2 size={14} /> Remove
-              </button>
-            )}
-          </div>
           {photoMsg && <p className="settings__error" role="alert">{photoMsg}</p>}
         </div>
+        {/* Up here, apart from every form below: a stray click near "Update
+            password" used to land on it and end the session. */}
+        <button type="button" className="profile-hero__signout" onClick={() => void logout()}>
+          <LogOut size={15} /> Sign out
+        </button>
       </section>
 
       <div className="settings__stats">
@@ -354,7 +413,7 @@ function ProfileTab({ user }: { user: AuthUser | null }) {
             <span className="settings__affix-pre" aria-hidden="true">@</span>
             <input
               value={username}
-              autoComplete="username"
+              {...NO_AUTOFILL}
               spellCheck={false}
               autoCapitalize="none"
               maxLength={64}
@@ -426,7 +485,6 @@ function ProfileTab({ user }: { user: AuthUser | null }) {
         </div>
       </form>
 
-      <button type="button" className="settings__danger" onClick={() => void logout()}>Sign out</button>
     </div>
   );
 }
@@ -552,8 +610,9 @@ function SecurityTab() {
       <h2 id="biometric-unlock" className="settings__subhead">Biometric unlock (optional)</h2>
       <p className="settings__hint">
         Register this device’s built-in authenticator (Touch ID, Face ID, or Windows Hello) as a quicker way to
-        open your vault. The private key never leaves your device — Papyra only stores the public key. A
-        registered device works at the address you registered it on; your PIN works everywhere.
+        open your vault — and to sign in: choose “Sign in with a passkey” on the sign-in screen. The private key
+        never leaves your device — Papyra only stores the public key. A registered device works at the address
+        you registered it on; your PIN and password work everywhere.
       </p>
 
       {!pinSet && s && (
@@ -648,7 +707,6 @@ function DataTab() {
   const [provider, setProvider] = useState<'obsidian' | 'keep'>('obsidian');
   const [importMsg, setImportMsg] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
-  const [rebuildMsg, setRebuildMsg] = useState<string | null>(null);
   const importRef = useRef<HTMLInputElement | null>(null);
   const queryClient = useQueryClient();
   // Server-tracked, so the bar is back when this tab remounts mid-import.
@@ -682,13 +740,6 @@ function DataTab() {
 
   const pct = importStatus && importStatus.total > 0
     ? Math.round((importStatus.processed / importStatus.total) * 100) : 0;
-
-  async function rebuild() {
-    setRebuildMsg('Rebuilding…');
-    const res = await fetch('/api/system/rebuild-index', { method: 'POST' });
-    const data = await res.json().catch(() => null);
-    setRebuildMsg(res.ok ? `Rebuilt ${data?.rebuilt ?? 0} notes.` : 'Rebuild failed.');
-  }
 
   return (
     <div className="settings__panel">
@@ -741,13 +792,6 @@ function DataTab() {
       </a>
 
       <EncryptedBackupSection />
-
-      <h2 id="maintenance" className="settings__subhead">Maintenance</h2>
-      <p className="settings__hint">If search is missing notes it should be finding, rebuild it from your files. Safe to run any time — it only rewrites what search uses, never your notes.</p>
-      <button type="button" className="settings__btn" onClick={() => void rebuild()}>
-        <RefreshCw size={16} /> Rebuild search
-      </button>
-      {rebuildMsg && <p className="settings__msg">{rebuildMsg}</p>}
 
       <h2 id="trash-retention" className="settings__subhead">Trash auto-delete</h2>
       <p className="settings__hint">
@@ -864,7 +908,7 @@ function EncryptedBackupSection() {
       </p>
       <div className="settings__row">
         <input
-          className="settings__select" type="password" autoComplete="off"
+          className="settings__select" {...MASKED_SECRET}
           placeholder="Backup password" value={restorePw} onChange={e => setRestorePw(e.target.value)}
         />
         <button
@@ -1044,7 +1088,40 @@ function JobsTab() {
   if (isError) return <div className="settings__panel"><p className="settings__error">Couldn’t load the list of jobs.</p></div>;
 
   const scheduled = (jobs ?? []).filter(j => j.kind === 'periodic');
+  const onDemand = (jobs ?? []).filter(j => j.kind === 'manual');
   const alwaysOn = (jobs ?? []).filter(j => j.kind === 'continuous');
+
+  const lastRunMeta = (job: Job) => (
+    <>
+      {job.lastRun && (
+        <>
+          <span aria-hidden="true">·</span>
+          <span className={job.lastRun.ok ? undefined : 'jobs__failed'}>
+            {job.lastRun.ok
+              ? `Last run ${agoPhrase(job.lastRun.finishedUtc)}${job.lastRun.summary ? `: ${job.lastRun.summary}` : ' — nothing needed doing'}`
+              : `Failed ${agoPhrase(job.lastRun.finishedUtc)}: ${job.lastRun.error}`}
+          </span>
+        </>
+      )}
+      {!job.lastRun && !job.running && (
+        <>
+          <span aria-hidden="true">·</span>
+          <span>Hasn’t run since the server started</span>
+        </>
+      )}
+    </>
+  );
+
+  const runButton = (job: Job) => (
+    <button
+      type="button"
+      className="settings__btn"
+      disabled={busyId === job.id || job.running}
+      onClick={() => void trigger(job)}
+    >
+      <Play size={15} /> {busyId === job.id || job.running ? 'Running…' : 'Run now'}
+    </button>
+  );
 
   return (
     <div className="settings__panel">
@@ -1062,35 +1139,37 @@ function JobsTab() {
               <p className="jobs__desc">{job.description}</p>
               <p className="jobs__meta">
                 <span>Runs {job.intervalSeconds ? everyPhrase(job.intervalSeconds) : 'on its own schedule'}</span>
-                {job.lastRun && (
-                  <>
-                    <span aria-hidden="true">·</span>
-                    <span className={job.lastRun.ok ? undefined : 'jobs__failed'}>
-                      {job.lastRun.ok
-                        ? `Last run ${agoPhrase(job.lastRun.finishedUtc)}${job.lastRun.summary ? `: ${job.lastRun.summary}` : ' — nothing needed doing'}`
-                        : `Failed ${agoPhrase(job.lastRun.finishedUtc)}: ${job.lastRun.error}`}
-                    </span>
-                  </>
-                )}
-                {!job.lastRun && !job.running && (
-                  <>
-                    <span aria-hidden="true">·</span>
-                    <span>Hasn’t run since the server started</span>
-                  </>
-                )}
+                {lastRunMeta(job)}
               </p>
             </div>
-            <button
-              type="button"
-              className="settings__btn"
-              disabled={busyId === job.id || job.running}
-              onClick={() => void trigger(job)}
-            >
-              <Play size={15} /> {busyId === job.id || job.running ? 'Running…' : 'Run now'}
-            </button>
+            {runButton(job)}
           </li>
         ))}
       </ul>
+
+      {onDemand.length > 0 && (
+        <>
+          <h2 id="on-demand-jobs" className="settings__subhead">On demand</h2>
+          <p className="settings__hint">
+            No schedule — these run when you ask. Handy when something looks off.
+          </p>
+          <ul className="jobs">
+            {onDemand.map(job => (
+              <li key={job.id} className="jobs__item">
+                <div className="jobs__text">
+                  <p className="jobs__name">{job.name}</p>
+                  <p className="jobs__desc">{job.description}</p>
+                  <p className="jobs__meta">
+                    <span>When you ask</span>
+                    {lastRunMeta(job)}
+                  </p>
+                </div>
+                {runButton(job)}
+              </li>
+            ))}
+          </ul>
+        </>
+      )}
 
       <h2 id="always-on-jobs" className="settings__subhead">Always running</h2>
       <p className="settings__hint">
@@ -1108,20 +1187,6 @@ function JobsTab() {
           </li>
         ))}
       </ul>
-    </div>
-  );
-}
-
-function AboutTab() {
-  return (
-    <div className="settings__panel settings__about">
-      <h2 id="about-papyra" className="settings__subhead">Papyra</h2>
-      <p className="settings__hint">A note-taking app you run yourself. Your notes stay as plain text files on your own server.</p>
-      <dl className="settings__details">
-        <div><dt>Version</dt><dd>{APP_VERSION}</dd></div>
-        <div><dt>Notes stored as</dt><dd>Plain text files</dd></div>
-        <div><dt>License</dt><dd>Open source</dd></div>
-      </dl>
     </div>
   );
 }
@@ -1202,9 +1267,8 @@ function SyncTab() {
         <label className="settings__field">
           Access token {data?.hasToken && <span className="settings__hint">(one is stored — leave blank to keep it)</span>}
           <input
-            type="password"
+            {...MASKED_SECRET}
             value={token}
-            autoComplete="new-password"
             placeholder={data?.hasToken ? '••••••••' : 'Personal access token'}
             onChange={e => setToken(e.target.value)}
           />
@@ -1392,7 +1456,7 @@ function SsoTab() {
         <label className="settings__field">
           Client secret {data?.hasClientSecret && <span className="settings__hint">(stored — leave blank to keep it)</span>}
           <input
-            type="password" value={secret} autoComplete="new-password"
+            {...MASKED_SECRET} value={secret}
             placeholder={data?.hasClientSecret ? '••••••••' : 'Client secret'}
             onChange={e => setSecret(e.target.value)}
           />
@@ -1497,11 +1561,11 @@ function EmailTab() {
           Use TLS/SSL
         </label>
         <label className="settings__field">Username <span className="settings__hint">(blank for an unauthenticated relay)</span>
-          <input type="text" value={v('username')} onChange={e => set('username', e.target.value)} />
+          <input type="text" {...NO_AUTOFILL} value={v('username')} onChange={e => set('username', e.target.value)} />
         </label>
         <label className="settings__field">
           Password {data?.hasPassword && <span className="settings__hint">(stored — leave blank to keep it)</span>}
-          <input type="password" value={password} autoComplete="new-password"
+          <input {...MASKED_SECRET} value={password}
             placeholder={data?.hasPassword ? '••••••••' : 'SMTP password'}
             onChange={e => setPassword(e.target.value)} />
         </label>
@@ -1909,7 +1973,7 @@ function AiTab() {
 
           <label className="settings__field">
             OpenAI key {data?.hasOpenAiKey && <span className="settings__hint">(saved — leave blank to keep it)</span>}
-            <input type="password" value={openAiKey} autoComplete="new-password"
+            <input {...MASKED_SECRET} value={openAiKey}
               placeholder={data?.hasOpenAiKey ? '••••••••' : 'Paste your key'}
               onChange={e => setOpenAiKey(e.target.value)} />
           </label>
@@ -1920,7 +1984,7 @@ function AiTab() {
 
           <label className="settings__field">
             Anthropic key {data?.hasAnthropicKey && <span className="settings__hint">(saved — leave blank to keep it)</span>}
-            <input type="password" value={anthropicKey} autoComplete="new-password"
+            <input {...MASKED_SECRET} value={anthropicKey}
               placeholder={data?.hasAnthropicKey ? '••••••••' : 'Paste your key'}
               onChange={e => setAnthropicKey(e.target.value)} />
           </label>
