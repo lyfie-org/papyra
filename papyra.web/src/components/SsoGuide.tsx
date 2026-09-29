@@ -23,6 +23,7 @@ const PROVIDERS: Provider[] = [
       'Applications → Applications → Create with provider.',
       'Choose OAuth2/OpenID. Name it Papyra, client type Confidential.',
       'Add the redirect URI below, then Finish.',
+      'Keep scopes openid, email, profile and Subject mode “hashed user ID” (the defaults).',
       'Open the provider: copy its Client ID, Client Secret and OpenID Configuration Issuer.',
     ],
     issuerHint: 'https://auth.example.com/application/o/papyra/',
@@ -66,6 +67,17 @@ const PROVIDERS: Provider[] = [
     ],
     issuerHint: 'https://login.example.com',
   },
+];
+
+/**
+ * How a provider identity becomes a Papyra account — the server side is
+ * OnTokenValidated in Program.cs. Worth stating: SSO never creates accounts.
+ */
+const ACCOUNT_RULES = [
+  'Existing accounts only — SSO never creates one. Add people under Administration first.',
+  'First sign-in matches the provider’s email to the Papyra account’s email, then remembers the provider’s user id (sub).',
+  'No roles or groups needed: admin rights stay in Papyra.',
+  'Keep sub stable, and don’t let people change their own email in the provider.',
 ];
 
 function CopyValue({ label, value }: { label: string; value: string }) {
@@ -162,6 +174,13 @@ export function SsoGuide({ onDone }: { onDone?: () => void }) {
         </li>
 
         <li>
+          <h3 className="sso-guide__step-title">Who can sign in</h3>
+          <ul className="sso-guide__howto">
+            {ACCOUNT_RULES.map(rule => <li key={rule}>{rule}</li>)}
+          </ul>
+        </li>
+
+        <li>
           <h3 className="sso-guide__step-title">Paste what it gives you</h3>
           <div className="settings__form">
             <label className="settings__field">Issuer URL
@@ -248,6 +267,7 @@ export default function SsoSettings() {
       <SettingRow label="Issuer" value={data.authority} />
       <SettingRow label="Client ID" value={data.clientId} hint={data.hasClientSecret ? 'Client secret saved' : 'No client secret'} />
       <SettingRow label="Redirect URI" value={data.redirectUri} />
+      <SettingRow label="Accounts" value="Existing only" hint="Linked by email on first sign-in, then by the provider’s user id (sub)" />
     </SettingGroup>
   );
 }

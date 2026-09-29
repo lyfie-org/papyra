@@ -357,36 +357,62 @@ builder.Services.ConfigureOptions<OidcOptionsConfigurator>();
                 if (ctx.TokenEndpointRequest is { } req)
                     req.RedirectUri = await PublicRedirectUri(ctx.HttpContext);
             },
-            // JIT provisioning: map the external subject to an internal user (creating
-            // one + its vault on first sight), then swap in an internal-claims
-            // principal so the cookie carries our UserId (chroot key), not the IdP's.
+            // Anything that goes wrong on the way back (state/correlation lost, the
+            // IdP refusing the code, a token that fails validation, a throw below)
+            // lands here. Unhandled it is a bare 500; the admin needs the log line
+            // and the person needs the sign-in page with a reason.
+            OnRemoteFailure = ctx =>
+            {
+                ctx.HttpContext.RequestServices.GetRequiredService<ILoggerFactory>()
+                    .CreateLogger("Papyra.Sso")
+                    .LogWarning(ctx.Failure, "SSO sign-in failed: {Reason}", ctx.Failure?.Message);
+                ctx.HandleResponse();
+                ctx.Response.Redirect("/login?sso=failed");
+                return Task.CompletedTask;
+            },
+            // Existing accounts only — SSO never creates one. The IdP's `sub` is the
+            // durable key (User.ExternalId). The first SSO sign-in links it to the
+            // Papyra account whose email matches the IdP's `email` claim; after
+            // that only `sub` is consulted, so a later email change on either side
+            // doesn't matter. Then swap in an internal-claims principal so the
+            // cookie carries our UserId (chroot key), not the IdP's.
             OnTokenValidated = async ctx =>
             {
                 var sp = ctx.HttpContext.RequestServices;
                 var db = sp.GetRequiredService<AppDbContext>();
-                var observer = sp.GetRequiredService<VaultObserver>();
+                var ct = ctx.HttpContext.RequestAborted;
 
                 var ext = ctx.Principal;
                 var sub = ext?.FindFirstValue(ClaimTypes.NameIdentifier) ?? ext?.FindFirstValue("sub");
                 if (string.IsNullOrEmpty(sub)) { ctx.Fail("OIDC token carries no subject."); return; }
 
-                var user = await db.Users.FirstOrDefaultAsync(u => u.ExternalId == sub, ctx.HttpContext.RequestAborted);
+                var user = await db.Users.FirstOrDefaultAsync(u => u.ExternalId == sub, ct);
                 if (user is null)
                 {
-                    var email = ext?.FindFirstValue(ClaimTypes.Email) ?? ext?.FindFirstValue("email") ?? string.Empty;
-                    var display = ext?.FindFirstValue("name") ?? ext?.FindFirstValue(ClaimTypes.Name) ?? email;
-                    user = new User
+                    var email = (ext?.FindFirstValue(ClaimTypes.Email) ?? ext?.FindFirstValue("email") ?? string.Empty).Trim();
+                    // The IdP's email is trusted for this one-time link (email_verified
+                    // isn't required: some IdPs send false for every user). Settings → SSO
+                    // tells the admin to keep people from editing their own address.
+                    var matches = email.Length == 0
+                        ? []
+                        : await db.Users
+                            .Where(u => u.ExternalId == null && u.Email.ToLower() == email.ToLower())
+                            .Take(2)
+                            .ToListAsync(ct);
+                    // Exactly one: two accounts sharing an address is ambiguous, and
+                    // guessing would hand one person the other's vault.
+                    if (matches.Count != 1)
                     {
-                        Username = await UniqueSsoUsername(db, email, sub, ctx.HttpContext.RequestAborted),
-                        Name = string.IsNullOrWhiteSpace(display) ? "SSO user" : display.Trim(),
-                        Email = email.Trim(),
-                        PasswordHash = string.Empty, // SSO account: no local password
-                        Role = "User",
-                        ExternalId = sub,
-                    };
-                    db.Users.Add(user);
-                    await db.SaveChangesAsync(ctx.HttpContext.RequestAborted);
-                    observer.WatchUser(user.Id.ToString()); // create + watch the tenant vault so PathGuard won't fail
+                        sp.GetRequiredService<ILoggerFactory>().CreateLogger("Papyra.Sso").LogWarning(
+                            "SSO sign-in refused: no single unlinked Papyra account with email {Email} (sub {Sub}, matches {Count})",
+                            email, sub, matches.Count);
+                        ctx.HandleResponse();
+                        ctx.Response.Redirect("/login?sso=no_account");
+                        return;
+                    }
+                    user = matches[0];
+                    user.ExternalId = sub;
+                    await db.SaveChangesAsync(ct);
                 }
 
                 if (user.DisabledUtc is not null)
@@ -6932,22 +6958,6 @@ static object WebhookPayload(string eventName, Note note) => new
     pinned = note.Pinned,
     occurredAt = note.Updated,
 };
-
-// A collision-free Username for a JIT-provisioned SSO account: prefer the email
-// local-part, else a subject-derived handle, suffixing a counter if it's taken so
-// the unique Username index never trips.
-static async Task<string> UniqueSsoUsername(AppDbContext db, string email, string sub, CancellationToken ct)
-{
-    var baseName = email.Contains('@') ? email[..email.IndexOf('@')] : $"sso-{sub}";
-    baseName = new string(baseName.Where(c => char.IsLetterOrDigit(c) || c is '-' or '_' or '.').ToArray());
-    if (string.IsNullOrWhiteSpace(baseName)) baseName = "sso-user";
-
-    var candidate = baseName;
-    var n = 1;
-    while (await db.Users.AnyAsync(u => u.Username == candidate, ct))
-        candidate = $"{baseName}-{++n}";
-    return candidate;
-}
 
 // Mint the session cookie for a user. UserId rides as NameIdentifier so the
 // services scope per-user storage (the Sprint 6.3 path jail keys off it).

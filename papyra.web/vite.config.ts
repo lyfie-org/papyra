@@ -74,11 +74,25 @@ function appVersion(): string {
   }
 }
 
+/**
+ * Writes /version.json beside index.html so an open tab can ask the server which
+ * release it is running (src/lib/serverVersion.ts) — the bundle only knows its own.
+ */
+function versionFile(): Plugin {
+  return {
+    name: 'papyra-version-file',
+    apply: 'build',
+    generateBundle() {
+      this.emitFile({ type: 'asset', fileName: 'version.json', source: JSON.stringify({ version: appVersion() }) });
+    },
+  };
+}
+
 export default defineConfig(({ mode }) => {
   const isDemo = mode === 'demo';
 
   return {
-    plugins: isDemo ? [react(), demoBuild()] : [react()],
+    plugins: isDemo ? [react(), demoBuild()] : [react(), versionFile()],
     // The demo is served from papyra.app/demo/, so every asset URL needs the prefix.
     base: isDemo ? '/demo/' : '/',
     // prismjs (pulled in by @lexical/code via @lyfie/luthor) publishes its core as
