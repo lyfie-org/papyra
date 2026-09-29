@@ -6,6 +6,11 @@ a Docker Hub tag and a GitHub Release.
 
 <!-- new releases are inserted directly below this line -->
 
+## [0.2.1] - 2026-09-29
+
+- test(e2e): enrol the provisioned grantee's authenticator (32cf460)
+- feat: two-step sign-in, signed-in devices, guided SSO, email logo (155e9d0)
+
 ## [0.2.0] - 2026-09-29
 
 - feat(collab): open live notes offline from the device copy (03f37e1)
