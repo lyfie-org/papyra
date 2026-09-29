@@ -1,6 +1,7 @@
 import { FileText, ShieldCheck, Search, History, Lock, Users, Star, ExternalLink, Bug, BookOpen, Heart } from 'lucide-react';
 import logo from '../assets/papyra_logo.png';
 import { APP_VERSION_LABEL, GITHUB_URL, LICENSE, SITE_URL } from '../lib/appInfo';
+import { useServerVersion, versionLabel } from '../lib/serverVersion';
 import './AboutPanel.css';
 
 /** GitHub's mark. lucide dropped brand icons, and this link is to GitHub. */
@@ -22,13 +23,15 @@ const FEATURES = [
 ];
 
 export default function AboutPanel() {
+  const server = useServerVersion();
+  const version = server.version ? versionLabel(server.version) : APP_VERSION_LABEL;
   return (
     <div className="settings__panel about">
       <header className="about__hero">
         <img className="about__logo" src={logo} alt="" aria-hidden="true" />
         <div className="about__title">
           <h2 id="about-papyra" className="about__name">
-            Papyra <span className="about__version">{APP_VERSION_LABEL}</span>
+            Papyra <span className="about__version">{version}</span>
           </h2>
           <p className="about__tagline">A calm, self-hosted home for your notes.</p>
         </div>
@@ -76,7 +79,7 @@ export default function AboutPanel() {
       </nav>
 
       <dl className="settings__details about__details">
-        <div><dt>Version</dt><dd>{APP_VERSION_LABEL}</dd></div>
+        <div><dt>Version</dt><dd>{version}{server.stale && <> · <button type="button" className="about__reload" onClick={() => window.location.reload()}>reload to update this tab</button></>}</dd></div>
         <div><dt>Notes stored as</dt><dd>Markdown files with YAML front matter</dd></div>
         <div><dt>Built with</dt><dd>.NET · React · SQLite · Lucene</dd></div>
         <div>

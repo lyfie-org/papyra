@@ -23,6 +23,8 @@ import logo from '../assets/papyra_logo.png';
 import Avatar from '../components/Avatar';
 import './WorkspaceLayout.css';
 import { APP_VERSION_LABEL } from '../lib/appInfo';
+import { useServerVersion, versionLabel } from '../lib/serverVersion';
+import { useToast } from '../lib/toastContext';
 import VaultOpenPill from '../components/VaultOpenPill';
 import { useVaultOpen } from '../hooks/useVault';
 
@@ -56,6 +58,18 @@ export default function WorkspaceLayout() {
   // local-first app actually has to answer — "is my writing safe?" — not just
   // whether a socket happens to be up.
   const sync = useSyncEngine();
+
+  // The server came back running a newer release than this tab's bundle: show
+  // the server's version and offer the reload that actually picks it up.
+  const server = useServerVersion();
+  const versionText = server.version ? versionLabel(server.version) : APP_VERSION_LABEL;
+  const { toast } = useToast();
+  const announced = useRef<string | null>(null);
+  useEffect(() => {
+    if (!server.stale || !server.version || announced.current === server.version) return;
+    announced.current = server.version;
+    toast(`Papyra was updated to ${versionLabel(server.version)}.`, { label: 'Reload', onClick: () => window.location.reload() });
+  }, [server.stale, server.version, toast]);
   const offline = serverStatus === 'offline' || !sync.online;
   const syncTone = sync.syncing
     ? 'syncing'
@@ -248,8 +262,8 @@ export default function WorkspaceLayout() {
                 to="/settings?tab=about"
                 className={`workspace__build workspace__build--${syncTone}`}
                 title={`${syncTitle}
-Papyra ${APP_VERSION_LABEL} — about this Papyra`}
-                aria-label={`${syncTitle}. Papyra ${APP_VERSION_LABEL}. About this Papyra.`}
+Papyra ${versionText}${server.stale ? ' — reload to finish updating' : ''} — about this Papyra`}
+                aria-label={`${syncTitle}. Papyra ${versionText}. About this Papyra.`}
               >
                 <span
                   className={`workspace__status-dot workspace__status-dot--${syncTone}`}
@@ -259,7 +273,7 @@ Papyra ${APP_VERSION_LABEL} — about this Papyra`}
                   {syncLabel}
                 </span>
                 <span className="workspace__build-sep workspace__nav-label" aria-hidden="true" />
-                <span className="workspace__version workspace__nav-label">{APP_VERSION_LABEL}</span>
+                <span className="workspace__version workspace__nav-label">{versionText}</span>
               </Link>
             </footer>
           </div>

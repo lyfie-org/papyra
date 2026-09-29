@@ -26,6 +26,7 @@ import type { IncomingShare } from '../hooks/useShares';
 import SharedNoteCard from './SharedNoteCard';
 import { useSelection } from '../hooks/useSelection';
 import { useToast } from '../lib/toastContext';
+import { useRevealMore } from '../hooks/useRevealMore';
 import '../components/NoteGrid.css';
 import './DraggableNoteGrid.css';
 
@@ -199,23 +200,39 @@ export default function DraggableNoteGrid({
 
   const { cols, colW } = columnsFor(width);
 
+  // Only what's on screen plus a screenful more is mounted; scrolling near the
+  // end reveals the next batch. Packing is sequential, so a prefix of the list
+  // lands exactly where it would in the full layout. Mounting every card made
+  // each resize frame (the sidebar sliding open, a window drag) re-render and
+  // re-measure hundreds of them.
+  const total = pinned.length + others.length + shared.length;
+  const { shown: budget, sentinelRef } = useRevealMore(total, cols);
+  const pinnedShown = pinned.length > budget ? pinned.slice(0, budget) : pinned;
+  const othersShown = others.slice(0, Math.max(0, budget - pinned.length));
+  const sharedShown = shared.slice(0, Math.max(0, budget - pinned.length - others.length));
+  const shownIds = new Set([...pinnedShown, ...othersShown].map(n => n.id));
+
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
 
   // Section id lists, minus everything being carried; the gap goes in the target section.
   const carried = useMemo(() => new Set(group), [group]);
+  // Full lists (order keys are computed against every neighbour) and the
+  // mounted prefix of each (what gets packed, drawn and hit-tested).
   const pinnedIds = pinned.map(n => n.id).filter(id => !carried.has(id));
   const othersIds = others.map(n => n.id).filter(id => !carried.has(id));
+  const pinnedVis = pinnedIds.filter(id => shownIds.has(id));
+  const othersVis = othersIds.filter(id => shownIds.has(id));
   const activeH = activeId ? (heights.get(activeId) ?? EST_H) : 0;
 
   // BASE = resting layout of the non-dragged cards (no gap). Hit-testing uses this
   // so inserting the gap never shifts the centres we test against (no oscillation).
   // Mid-resize, cards hold their columns (see useGridWidth).
   const prefer = sticky.current ?? undefined;
-  const pinnedBase = pack(pinnedIds, heights, cols, colW, undefined, prefer);
-  const othersBase = pack(othersIds, heights, cols, colW, undefined, prefer);
+  const pinnedBase = pack(pinnedVis, heights, cols, colW, undefined, prefer);
+  const othersBase = pack(othersVis, heights, cols, colW, undefined, prefer);
   // DISPLAY = base, plus the make-room gap at the drop index (what we render).
   const pinnedLayout = drop?.section === 'pinned'
-    ? pack(pinnedIds, heights, cols, colW, { index: drop.index, h: activeH }, prefer)
+    ? pack(pinnedVis, heights, cols, colW, { index: drop.index, h: activeH }, prefer)
     : pinnedBase;
   // Keyed `shared:<shareId>` — a note id is only unique within its own vault,
   // so a shared note can carry the same id as one of yours.
@@ -223,9 +240,9 @@ export default function DraggableNoteGrid({
   // keeps using othersBase (your notes only): packing is sequential, so your
   // cards sit in the same place either way, and nothing can drop among the
   // shared ones.
-  const sharedIds = shared.map(s => `shared:${s.shareId}`);
+  const sharedIds = sharedShown.map(s => `shared:${s.shareId}`);
   const othersLayout = pack(
-    [...othersIds, ...sharedIds], heights, cols, colW,
+    [...othersVis, ...sharedIds], heights, cols, colW,
     drop?.section === 'others' ? { index: drop.index, h: activeH } : undefined, prefer,
   );
 
@@ -249,7 +266,7 @@ export default function DraggableNoteGrid({
     const o: Section = byId.get(id)?.pinned ? 'pinned' : 'others';
     // Resting box of the card in its full (idle) section layout — the baseline the
     // pointer delta is added to so the card tracks the cursor exactly.
-    const idle = pack((o === 'pinned' ? pinned : others).map(n => n.id), heights, cols, colW, undefined, prefer);
+    const idle = pack((o === 'pinned' ? pinnedShown : othersShown).map(n => n.id), heights, cols, colW, undefined, prefer);
     setStartBox(idle.boxes.get(id) ?? { x: 0, y: 0 });
     const ev = e.activatorEvent as PointerEvent;
     pointerStart.current = { x: ev.clientX ?? 0, y: ev.clientY ?? 0 };
@@ -436,13 +453,13 @@ export default function DraggableNoteGrid({
       >
         {showPinnedHeading && <h2 className="note-grid__heading">PINNED</h2>}
         <div className="dnd-canvas" ref={pinnedRef} style={{ height: pinnedLayout.height }}>
-          {pinned.map(n => renderCard(n, pinnedLayout))}
+          {pinnedShown.map(n => renderCard(n, pinnedLayout))}
         </div>
 
         {showOthersHeading && <h2 className="note-grid__heading">OTHERS</h2>}
         <div className="dnd-canvas" ref={othersRef} style={{ height: othersLayout.height }}>
-          {others.map(n => renderCard(n, othersLayout))}
-          {shared.map((s, i) => {
+          {othersShown.map(n => renderCard(n, othersLayout))}
+          {sharedShown.map((s, i) => {
             const box = othersLayout.boxes.get(sharedIds[i]);
             return (
               <SharedCell key={sharedIds[i]} id={sharedIds[i]} x={box?.x ?? 0} y={box?.y ?? 0} colW={colW} onMeasure={onMeasure}>
@@ -451,8 +468,7 @@ export default function DraggableNoteGrid({
             );
           })}
         </div>
-
-
+        {budget < total && <div ref={sentinelRef} className="note-grid__more" aria-hidden="true" />}
       </div>
 
       {crossing && (

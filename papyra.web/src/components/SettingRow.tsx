@@ -10,7 +10,7 @@ import './SettingRow.css';
  * the row back to its new value.
  */
 export default function SettingRow({
-  label, value, empty, action = 'Edit', actionDisabled, hint, children, open: controlledOpen, onOpenChange, id,
+  label, value, empty, action = 'Edit', actionDisabled, hint, children, open: controlledOpen, onOpenChange, id, extra,
 }: {
   label: ReactNode;
   /** The current value; null/undefined shows `empty` instead. */
@@ -24,9 +24,13 @@ export default function SettingRow({
   open?: boolean;
   onOpenChange?: (open: boolean) => void;
   id?: string;
+  /** A second, lesser action beside the main one (e.g. Rename next to Remove). */
+  extra?: { action: ReactNode; children: (close: () => void) => ReactNode };
 }) {
   const [ownOpen, setOwnOpen] = useState(false);
-  const open = controlledOpen ?? ownOpen;
+  const [extraOpen, setExtraOpen] = useState(false);
+  const mainOpen = controlledOpen ?? ownOpen;
+  const open = mainOpen || extraOpen;
   const setOpen = (next: boolean) => { setOwnOpen(next); onOpenChange?.(next); };
   const hasValue = value !== undefined && value !== null && value !== '';
 
@@ -38,13 +42,19 @@ export default function SettingRow({
           <span className={`setting-row__value${hasValue ? '' : ' is-empty'}`}>{hasValue ? value : (empty ?? 'Not set')}</span>
           {hint && !open && <span className="setting-row__hint">{hint}</span>}
         </div>
+        {extra && !open && (
+          <button type="button" className="setting-row__action" onClick={() => setExtraOpen(true)}>
+            {extra.action}
+          </button>
+        )}
         {children && !open && (
           <button type="button" className="setting-row__action" disabled={actionDisabled} onClick={() => setOpen(true)}>
             {action}
           </button>
         )}
       </div>
-      {children && open && <div className="setting-row__editor">{children(() => setOpen(false))}</div>}
+      {extra && extraOpen && <div className="setting-row__editor">{extra.children(() => setExtraOpen(false))}</div>}
+      {children && mainOpen && <div className="setting-row__editor">{children(() => setOpen(false))}</div>}
     </div>
   );
 }

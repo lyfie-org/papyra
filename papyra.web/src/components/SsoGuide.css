@@ -93,3 +93,29 @@
   white-space: nowrap;
 }
 .sso-guide__button-preview input { flex: 1; min-width: 0; }
+
+/* Provider rows in Settings → SSO. */
+.sso-row__icon { display: inline-grid; flex: none; place-items: center; width: 2rem; color: var(--text-h); }
+.sso-row__uri { overflow-wrap: anywhere; font-family: var(--mono); font-size: 0.75rem; }
+
+/* The icon picker: a wrap of square choices. */
+.sso-guide__icons { display: flex; flex-wrap: wrap; gap: 0.4rem; margin-top: 0.4rem; }
+.sso-guide__icon {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.35rem;
+  min-width: 2.5rem;
+  height: 2.5rem;
+  justify-content: center;
+  padding: 0 0.5rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--text-h);
+  cursor: pointer;
+}
+.sso-guide__icon:hover { border-color: var(--border-hover); }
+.sso-guide__icon:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.sso-guide__icon.is-active { border-color: var(--accent); background: var(--surface); }
+.sso-guide__icon-note { color: var(--text); font-size: 0.8rem; }
+.sso-icon--img { object-fit: contain; border-radius: 3px; }

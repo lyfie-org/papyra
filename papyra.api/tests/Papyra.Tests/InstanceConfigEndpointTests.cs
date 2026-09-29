@@ -75,6 +75,9 @@ public sealed class InstanceConfigEndpointTests
         finally { Cleanup(factory, dir); }
     }
 
+    private static SsoProviderWrite Provider(string name, string authority = "https://idp.example.com", bool enabled = true) =>
+        new(Kind: "authentik", DisplayName: name, Authority: authority, ClientId: "papyra", ClientSecret: "s3cret", Enabled: enabled);
+
     [Fact]
     public async Task EnablingSso_RequiresAuthorityAndClientId()
     {
@@ -82,8 +85,8 @@ public sealed class InstanceConfigEndpointTests
         try
         {
             var admin = await AdminAsync(factory);
-            var res = await admin.PutAsJsonAsync("/api/auth/oidc", new OidcConfigWrite(
-                Enabled: true, Authority: "", ClientId: "", ClientSecret: null, DisplayName: null));
+            var res = await admin.PostAsJsonAsync("/api/auth/oidc/providers", new SsoProviderWrite(
+                Kind: "other", DisplayName: "Acme", Authority: "", ClientId: "", ClientSecret: null, Enabled: true));
             Assert.Equal(HttpStatusCode.BadRequest, res.StatusCode);
         }
         finally { Cleanup(factory, dir); }
@@ -97,9 +100,7 @@ public sealed class InstanceConfigEndpointTests
         {
             var admin = await AdminAsync(factory);
             // Tokens and the client secret cross this connection.
-            var res = await admin.PutAsJsonAsync("/api/auth/oidc", new OidcConfigWrite(
-                Enabled: true, Authority: "http://idp.example.com", ClientId: "papyra",
-                ClientSecret: "s3cret", DisplayName: "Acme"));
+            var res = await admin.PostAsJsonAsync("/api/auth/oidc/providers", Provider("Acme", "http://idp.example.com"));
             Assert.Equal(HttpStatusCode.BadRequest, res.StatusCode);
         }
         finally { Cleanup(factory, dir); }
@@ -113,23 +114,103 @@ public sealed class InstanceConfigEndpointTests
         {
             var admin = await AdminAsync(factory);
 
-            var save = await admin.PutAsJsonAsync("/api/auth/oidc", new OidcConfigWrite(
-                Enabled: true, Authority: "https://idp.example.com", ClientId: "papyra",
-                ClientSecret: "s3cret", DisplayName: "Acme SSO"));
-            Assert.Equal(HttpStatusCode.NoContent, save.StatusCode);
+            var save = await admin.PostAsJsonAsync("/api/auth/oidc/providers", Provider("Acme SSO"));
+            Assert.Equal(HttpStatusCode.OK, save.StatusCode);
 
             // Same process, no restart: the login screen now offers SSO.
-            var providers = await factory.CreateClient().GetAsync("/api/auth/providers");
-            var body = await providers.Content.ReadFromJsonAsync<JsonElement>();
+            var body = await factory.CreateClient().GetFromJsonAsync<JsonElement>("/api/auth/providers");
             Assert.True(body.GetProperty("sso").GetBoolean());
-            Assert.Equal("Acme SSO", body.GetProperty("ssoName").GetString());
+            var shown = body.GetProperty("providers").EnumerateArray().Single();
+            Assert.Equal("Acme SSO", shown.GetProperty("name").GetString());
+            Assert.Equal("Continue with Acme SSO", shown.GetProperty("hoverText").GetString());
 
             // The secret is reported as present, never returned.
-            var read = await admin.GetAsync("/api/auth/oidc");
-            var raw = await read.Content.ReadAsStringAsync();
+            var raw = await (await admin.GetAsync("/api/auth/oidc")).Content.ReadAsStringAsync();
             Assert.DoesNotContain("s3cret", raw);
-            var cfg = JsonDocument.Parse(raw).RootElement;
+            var cfg = JsonDocument.Parse(raw).RootElement.GetProperty("providers").EnumerateArray().Single();
             Assert.True(cfg.GetProperty("hasClientSecret").GetBoolean());
+            Assert.EndsWith("/signin-oidc/acme-sso", cfg.GetProperty("redirectUri").GetString());
+
+            // Saving without a secret keeps the stored one.
+            var id = cfg.GetProperty("id").GetString();
+            Assert.Equal(HttpStatusCode.OK, (await admin.PutAsJsonAsync($"/api/auth/oidc/providers/{id}",
+                Provider("Acme SSO") with { ClientSecret = null, HoverText = "Staff sign-in" })).StatusCode);
+            var again = JsonDocument.Parse(await (await admin.GetAsync("/api/auth/oidc")).Content.ReadAsStringAsync())
+                .RootElement.GetProperty("providers").EnumerateArray().Single();
+            Assert.True(again.GetProperty("hasClientSecret").GetBoolean());
+            Assert.Equal("Staff sign-in", again.GetProperty("hoverText").GetString());
+        }
+        finally { Cleanup(factory, dir); }
+    }
+
+    [Fact]
+    public async Task SeveralProviders_EachGetTheirOwnSchemeAndRedirectUri()
+    {
+        var (factory, dir) = NewApp();
+        try
+        {
+            var admin = await AdminAsync(factory);
+            Assert.Equal(HttpStatusCode.OK, (await admin.PostAsJsonAsync("/api/auth/oidc/providers", Provider("Authentik"))).StatusCode);
+            Assert.Equal(HttpStatusCode.OK, (await admin.PostAsJsonAsync("/api/auth/oidc/providers",
+                Provider("Google", "https://accounts.google.example") with { Kind = "google" })).StatusCode);
+            Assert.Equal(HttpStatusCode.OK, (await admin.PostAsJsonAsync("/api/auth/oidc/providers", Provider("Off", enabled: false))).StatusCode);
+            Assert.Equal(HttpStatusCode.OK, (await admin.PutAsJsonAsync("/api/auth/oidc/display", new { display = "icons" })).StatusCode);
+
+            var pub = await factory.CreateClient().GetFromJsonAsync<JsonElement>("/api/auth/providers");
+            Assert.Equal("icons", pub.GetProperty("display").GetString());
+            // Only the ones switched on reach the sign-in page.
+            Assert.Equal(["authentik", "google"], pub.GetProperty("providers").EnumerateArray().Select(p => p.GetProperty("id").GetString()!).ToArray());
+
+            var cfg = await admin.GetFromJsonAsync<JsonElement>("/api/auth/oidc");
+            var uris = cfg.GetProperty("providers").EnumerateArray().Select(p => p.GetProperty("redirectUri").GetString()!).ToList();
+            Assert.Equal(3, uris.Distinct().Count());
+
+            // Each one challenges through its own scheme: a registered, configured
+            // scheme reaches for its (unreachable, in a test) issuer → 502, while
+            // an unknown or switched-off id is simply not there.
+            var anon = factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+            Assert.Equal(HttpStatusCode.BadGateway, (await anon.GetAsync("/api/auth/login/sso/google")).StatusCode);
+            Assert.Equal(HttpStatusCode.NotFound, (await anon.GetAsync("/api/auth/login/sso/off")).StatusCode);
+            Assert.Equal(HttpStatusCode.NotFound, (await anon.GetAsync("/api/auth/login/sso/nope")).StatusCode);
+
+            // Removing one takes it off the sign-in page at once.
+            Assert.Equal(HttpStatusCode.NoContent, (await admin.DeleteAsync("/api/auth/oidc/providers/google")).StatusCode);
+            pub = await factory.CreateClient().GetFromJsonAsync<JsonElement>("/api/auth/providers");
+            Assert.Single(pub.GetProperty("providers").EnumerateArray());
+            Assert.Equal(HttpStatusCode.NotFound, (await anon.GetAsync("/api/auth/login/sso/google")).StatusCode);
+        }
+        finally { Cleanup(factory, dir); }
+    }
+
+    [Fact]
+    public async Task TheOriginalSingleProvider_KeepsItsRedirectUri()
+    {
+        // Settings from before multi-provider SSO (here via the appsettings seed)
+        // read as provider "oidc" on /signin-oidc, so the IdP needs no change.
+        var dir = Path.Combine(Path.GetTempPath(), "papyra-cfg-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(b =>
+        {
+            b.UseEnvironment("Development");
+            b.UseSetting("Papyra:DataDir", dir);
+            b.UseSetting("Oidc:Authority", "https://idp.example.com");
+            b.UseSetting("Oidc:ClientId", "papyra");
+            b.UseSetting("Oidc:DisplayName", "Old SSO");
+        });
+        try
+        {
+            var admin = await AdminAsync(factory);
+            var p = (await admin.GetFromJsonAsync<JsonElement>("/api/auth/oidc")).GetProperty("providers").EnumerateArray().Single();
+            Assert.Equal("oidc", p.GetProperty("id").GetString());
+            Assert.EndsWith("/signin-oidc", p.GetProperty("redirectUri").GetString());
+            var anon = factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+            Assert.Equal(HttpStatusCode.BadGateway, (await anon.GetAsync("/api/auth/login/sso")).StatusCode);
+
+            // Adding a second keeps the first where it was.
+            Assert.Equal(HttpStatusCode.OK, (await admin.PostAsJsonAsync("/api/auth/oidc/providers", Provider("New"))).StatusCode);
+            var ids = (await admin.GetFromJsonAsync<JsonElement>("/api/auth/oidc")).GetProperty("providers").EnumerateArray()
+                .Select(x => x.GetProperty("id").GetString()!).ToArray();
+            Assert.Equal(["oidc", "new"], ids);
         }
         finally { Cleanup(factory, dir); }
     }

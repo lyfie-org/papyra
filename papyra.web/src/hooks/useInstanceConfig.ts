@@ -8,25 +8,49 @@ import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 // reports whether one is stored, never its value — so a blank secret field on
 // save means "keep what you have".
 
-export interface OidcConfig {
-  enabled: boolean;
+export type SsoKind = 'authentik' | 'keycloak' | 'google' | 'entra' | 'other';
+
+/** One identity provider as Settings → SSO sees it. The secret never comes back. */
+export interface SsoProvider {
+  id: string;
+  kind: SsoKind;
+  displayName: string;
   authority: string;
   clientId: string;
   hasClientSecret: boolean;
-  displayName: string;
-  redirectUri: string;
-  /** This Papyra's public address (the Launch URL some providers ask for). */
-  origin?: string;
+  enabled: boolean;
   ready: boolean;
+  /** A built-in icon key; null = the kind's own. */
+  icon: string | null;
+  /** An uploaded icon (data: URL); wins over `icon`. */
+  iconData: string | null;
+  /** Null = "Continue with {displayName}". */
+  hoverText: string | null;
+  redirectUri: string;
 }
 
-export interface OidcConfigWrite {
-  enabled: boolean;
+export type SsoDisplay = 'buttons' | 'icons';
+
+export interface OidcConfig {
+  display: SsoDisplay;
+  /** This Papyra's public address (the Launch URL some providers ask for). */
+  origin: string;
+  /** A new provider's redirect URI is this plus its id. */
+  redirectUriPrefix: string;
+  providers: SsoProvider[];
+}
+
+export interface SsoProviderWrite {
+  kind: SsoKind;
+  displayName: string;
   authority: string;
   clientId: string;
   /** Omit to keep the stored secret. */
   clientSecret?: string;
-  displayName: string;
+  enabled: boolean;
+  icon?: string | null;
+  iconData?: string | null;
+  hoverText?: string | null;
 }
 
 export interface SmtpConfig {
@@ -96,10 +120,39 @@ export function useOidcConfig(enabled = true) {
   return useQuery({ queryKey: OIDC_KEY, queryFn: () => getJson<OidcConfig>('/api/auth/oidc'), enabled });
 }
 
-export function useSaveOidcConfig() {
+async function send<T>(method: string, url: string, body?: unknown): Promise<T> {
+  const res = await fetch(url, {
+    method,
+    headers: body === undefined ? undefined : { 'Content-Type': 'application/json' },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  const data = await res.json().catch(() => null);
+  if (!res.ok) throw new Error(data?.error ?? `${method} ${url} failed: ${res.status}`);
+  return data as T;
+}
+
+/** Add a provider (no id) or change one. Answers with its id and redirect URI. */
+export function useSaveSsoProvider() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: (next: OidcConfigWrite) => putJson('/api/auth/oidc', next),
+    mutationFn: ({ id, provider }: { id?: string; provider: SsoProviderWrite }) =>
+      send<{ id: string; redirectUri: string }>(id ? 'PUT' : 'POST', id ? `/api/auth/oidc/providers/${id}` : '/api/auth/oidc/providers', provider),
+    onSuccess: () => qc.invalidateQueries({ queryKey: OIDC_KEY }),
+  });
+}
+
+export function useDeleteSsoProvider() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (id: string) => send<null>('DELETE', `/api/auth/oidc/providers/${id}`),
+    onSuccess: () => qc.invalidateQueries({ queryKey: OIDC_KEY }),
+  });
+}
+
+export function useSaveSsoDisplay() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (display: SsoDisplay) => putJson('/api/auth/oidc/display', { display }),
     onSuccess: () => qc.invalidateQueries({ queryKey: OIDC_KEY }),
   });
 }

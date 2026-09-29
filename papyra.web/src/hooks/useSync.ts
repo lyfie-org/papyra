@@ -2,6 +2,7 @@ import { useCallback, useEffect, useSyncExternalStore } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { flushOutbox } from '../lib/notesApi';
 import { getSyncState, refreshPending, setSync, subscribeSync, type SyncState } from '../lib/syncStatus';
+import { checkServerVersion } from '../lib/serverVersion';
 
 // Read-only view of connectivity + outbox depth. Any component can subscribe.
 export function useSyncState(): SyncState {
@@ -25,6 +26,18 @@ export function useSyncEngine(): SyncState {
     const { synced } = await flushOutbox();
     if (synced > 0) await queryClient.invalidateQueries({ queryKey: ['notes'] });
   }, [queryClient]);
+
+  // Back online after an outage is when the server most likely changed under us
+  // (an upgrade is a restart), so re-read its version with the rest of the catch-up.
+  useEffect(() => {
+    void checkServerVersion();
+    let wasOnline = getSyncState().online;
+    return subscribeSync(() => {
+      const { online } = getSyncState();
+      if (online && !wasOnline) void checkServerVersion();
+      wasOnline = online;
+    });
+  }, []);
 
   useEffect(() => {
     void refreshPending();

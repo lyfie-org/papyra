@@ -44,3 +44,5 @@
 .note-grid__col > .select-cell > .note-card__link {
   display: block;
 }
+/* Scroll sentinel after the last mounted card (useRevealMore). */
+.note-grid__more { height: 1px; }

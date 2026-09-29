@@ -321,92 +321,110 @@ authBuilder.AddCookie(options =>
         };
     });
 
-// Registered unconditionally. Authority/ClientId/ClientSecret come from the
-// database via OidcOptionsConfigurator, so SSO can be configured (and
-// reconfigured) from the admin UI without restarting the container. Whether the
-// scheme is *usable* is a per-request check on the stored config — see
-// `SsoConfigured()` — not a startup decision.
-builder.Services.ConfigureOptions<OidcOptionsConfigurator>();
+// SSO. Each provider in Settings → SSO is its own OIDC scheme ("oidc" for the
+// original single provider, "oidc-{id}" for the rest), added and removed at
+// runtime as the admin edits the list (SsoProviders.SyncSchemesAsync) — no
+// restart. Every scheme gets its options from OidcOptionsConfigurator, which
+// reads the stored provider, and shares the event handlers below.
+builder.Services.AddSingleton(new SsoHooks(new OpenIdConnectEvents
 {
-    authBuilder.AddOpenIdConnect("oidc", options =>
+    // The redirect_uri must be exactly what Settings → SSO told the admin to
+    // register. Left alone, the handler builds it from the request's own
+    // scheme/host — behind a TLS-terminating proxy that is `http://…` or an
+    // internal host, and the IdP rejects it.
+    OnRedirectToIdentityProvider = async ctx =>
     {
-        options.ResponseType = "code";
-        // The external identity is exchanged for our own cookie session, so the rest
-        // of the app keeps reading the internal UserId claim as before.
-        options.SignInScheme = CookieAuthenticationDefaults.AuthenticationScheme;
-        options.GetClaimsFromUserInfoEndpoint = true;
-        options.SaveTokens = false;
-        options.Scope.Add("email");
-        options.Scope.Add("profile");
-        options.CallbackPath = "/signin-oidc";
-        options.Events = new Microsoft.AspNetCore.Authentication.OpenIdConnect.OpenIdConnectEvents
+        var uri = await PublicRedirectUri(ctx.HttpContext, ctx.Scheme.Name);
+        ctx.ProtocolMessage.RedirectUri = uri;
+        // Carried in state to the code redemption, which must send the same value.
+        ctx.Properties.Items[OpenIdConnectDefaults.RedirectUriForCodePropertiesKey] = uri;
+    },
+    OnAuthorizationCodeReceived = async ctx =>
+    {
+        if (ctx.TokenEndpointRequest is { } req)
+            req.RedirectUri = await PublicRedirectUri(ctx.HttpContext, ctx.Scheme.Name);
+    },
+    // Anything that goes wrong on the way back (state/correlation lost, the
+    // IdP refusing the code, a token that fails validation, a throw below)
+    // lands here. Unhandled it is a bare 500; the admin needs the log line
+    // and the person needs the sign-in page with a reason.
+    OnRemoteFailure = ctx =>
+    {
+        ctx.HttpContext.RequestServices.GetRequiredService<ILoggerFactory>()
+            .CreateLogger("Papyra.Sso")
+            .LogWarning(ctx.Failure, "SSO sign-in via {Scheme} failed: {Reason}", ctx.Scheme.Name, ctx.Failure?.Message);
+        ctx.HandleResponse();
+        ctx.Response.Redirect("/login?sso=failed");
+        return Task.CompletedTask;
+    },
+    // Existing accounts only — SSO never creates one. Within a provider the
+    // IdP's `sub` is the durable key (an ExternalLogin row). The first sign-in
+    // through a provider links it to the Papyra account whose email matches
+    // the IdP's `email` claim; after that only `sub` is consulted, so a later
+    // email change on either side doesn't matter. Then swap in an
+    // internal-claims principal so the cookie carries our UserId (chroot key).
+    OnTokenValidated = async ctx =>
+    {
+        var sp = ctx.HttpContext.RequestServices;
+        var db = sp.GetRequiredService<AppDbContext>();
+        var log = sp.GetRequiredService<ILoggerFactory>().CreateLogger("Papyra.Sso");
+        var ct = ctx.HttpContext.RequestAborted;
+        var provider = SsoProviders.IdFromScheme(ctx.Scheme.Name) ?? SsoProviders.LegacyId;
+
+        var ext = ctx.Principal;
+        var sub = ext?.FindFirstValue(ClaimTypes.NameIdentifier) ?? ext?.FindFirstValue("sub");
+        if (string.IsNullOrEmpty(sub)) { ctx.Fail("OIDC token carries no subject."); return; }
+
+        var login = await db.ExternalLogins.FirstOrDefaultAsync(l => l.Provider == provider && l.Subject == sub, ct);
+        var user = login is null ? null : await db.Users.FindAsync([login.UserId], ct);
+        if (user is null)
         {
-            // The redirect_uri must be exactly what Settings → SSO told the admin to
-            // register. Left alone, the handler builds it from the request's own
-            // scheme/host — behind a TLS-terminating proxy (without TrustedProxies)
-            // that is `http://…` or an internal host, and the IdP rejects it.
-            OnRedirectToIdentityProvider = async ctx =>
+            var email = (ext?.FindFirstValue(ClaimTypes.Email) ?? ext?.FindFirstValue("email") ?? string.Empty).Trim();
+            // The IdP's email is trusted for this one-time link (email_verified
+            // isn't required: some IdPs send false for every user). Settings → SSO
+            // tells the admin to keep people from editing their own address.
+            var matches = email.Length == 0
+                ? []
+                : await db.Users.Where(u => u.Email.ToLower() == email.ToLower()).Take(2).ToListAsync(ct);
+            // Exactly one: two accounts sharing an address is ambiguous, and
+            // guessing would hand one person the other's vault. And an account
+            // already linked to a different identity at this provider stays with it.
+            var target = matches.Count == 1 ? matches[0] : null;
+            if (target is not null && await db.ExternalLogins.AnyAsync(l => l.UserId == target.Id && l.Provider == provider, ct))
+                target = null;
+            if (target is null)
             {
-                var uri = await PublicRedirectUri(ctx.HttpContext);
-                ctx.ProtocolMessage.RedirectUri = uri;
-                // Carried in state to the code redemption, which must send the same value.
-                ctx.Properties.Items[OpenIdConnectDefaults.RedirectUriForCodePropertiesKey] = uri;
-            },
-            OnAuthorizationCodeReceived = async ctx =>
-            {
-                if (ctx.TokenEndpointRequest is { } req)
-                    req.RedirectUri = await PublicRedirectUri(ctx.HttpContext);
-            },
-            // JIT provisioning: map the external subject to an internal user (creating
-            // one + its vault on first sight), then swap in an internal-claims
-            // principal so the cookie carries our UserId (chroot key), not the IdP's.
-            OnTokenValidated = async ctx =>
-            {
-                var sp = ctx.HttpContext.RequestServices;
-                var db = sp.GetRequiredService<AppDbContext>();
-                var observer = sp.GetRequiredService<VaultObserver>();
+                log.LogWarning(
+                    "SSO sign-in via {Provider} refused: no single unlinked Papyra account with email {Email} (sub {Sub}, matches {Count})",
+                    provider, email, sub, matches.Count);
+                ctx.HandleResponse();
+                ctx.Response.Redirect("/login?sso=no_account");
+                return;
+            }
+            user = target;
+            db.ExternalLogins.Add(new ExternalLogin { UserId = user.Id, Provider = provider, Subject = sub, CreatedUtc = DateTime.UtcNow });
+            await db.SaveChangesAsync(ct);
+            log.LogInformation("Linked {Provider} identity {Sub} to @{Username} by email", provider, sub, user.Username);
+        }
 
-                var ext = ctx.Principal;
-                var sub = ext?.FindFirstValue(ClaimTypes.NameIdentifier) ?? ext?.FindFirstValue("sub");
-                if (string.IsNullOrEmpty(sub)) { ctx.Fail("OIDC token carries no subject."); return; }
+        if (user.DisabledUtc is not null)
+        {
+            // Back to the sign-in page with the reason, not an error page.
+            ctx.HandleResponse();
+            ctx.Response.Redirect("/login?disabled=1");
+            return;
+        }
+        await SignInNotices.RecordAsync(ctx.HttpContext, db, sp.GetRequiredService<EmailSender>(), user, "Single sign-on", ct);
 
-                var user = await db.Users.FirstOrDefaultAsync(u => u.ExternalId == sub, ctx.HttpContext.RequestAborted);
-                if (user is null)
-                {
-                    var email = ext?.FindFirstValue(ClaimTypes.Email) ?? ext?.FindFirstValue("email") ?? string.Empty;
-                    var display = ext?.FindFirstValue("name") ?? ext?.FindFirstValue(ClaimTypes.Name) ?? email;
-                    user = new User
-                    {
-                        Username = await UniqueSsoUsername(db, email, sub, ctx.HttpContext.RequestAborted),
-                        Name = string.IsNullOrWhiteSpace(display) ? "SSO user" : display.Trim(),
-                        Email = email.Trim(),
-                        PasswordHash = string.Empty, // SSO account: no local password
-                        Role = "User",
-                        ExternalId = sub,
-                    };
-                    db.Users.Add(user);
-                    await db.SaveChangesAsync(ctx.HttpContext.RequestAborted);
-                    observer.WatchUser(user.Id.ToString()); // create + watch the tenant vault so PathGuard won't fail
-                }
-
-                if (user.DisabledUtc is not null)
-                {
-                    // Back to the sign-in page with the reason, not an error page.
-                    ctx.HandleResponse();
-                    ctx.Response.Redirect("/login?disabled=1");
-                    return;
-                }
-                await SignInNotices.RecordAsync(
-                    ctx.HttpContext, db, sp.GetRequiredService<EmailSender>(), user, "Single sign-on", ctx.HttpContext.RequestAborted);
-
-                // The identity provider already asked for whatever second factor
-                // it enforces, so SSO skips Papyra's own two-step sign-in.
-                var sid = await Sessions.CreateAsync(ctx.HttpContext, db, user, remember: false, "Single sign-on", ctx.HttpContext.RequestAborted);
-                ctx.Principal = Sessions.Principal(user, sid);
-            },
-        };
-    });
-}
+        // The identity provider already asked for whatever second factor
+        // it enforces, so SSO skips Papyra's own two-step sign-in.
+        var sid = await Sessions.CreateAsync(ctx.HttpContext, db, user, remember: false, "Single sign-on", ct);
+        ctx.Principal = Sessions.Principal(user, sid);
+    },
+}));
+builder.Services.ConfigureOptions<OidcOptionsConfigurator>();
+// The static "oidc" scheme; the rest are registered from the stored list at startup.
+authBuilder.AddOpenIdConnect("oidc", _ => { });
 
 builder.Services.AddAuthorization();
 
@@ -486,21 +504,28 @@ builder.Services.AddRateLimiter(options =>
             }));
 });
 
-// Behind a reverse proxy every request otherwise arrives from the proxy's address,
-// which collapses the IP-keyed limiter into one shared bucket and puts the proxy
-// in the access logs instead of the client. Opt-in only: trusting X-Forwarded-For
-// from an untrusted network would let a caller forge its own address, so this
-// stays off until a self-hoster names the proxies.
+// Behind a reverse proxy every request otherwise arrives from the proxy's address
+// (Docker's bridge gateway, 172.x/192.168.x), which collapses the IP-keyed limiter
+// into one shared bucket and shows the proxy under Signed-in devices instead of the
+// client. So X-Forwarded-For/-Proto are honoured from private and loopback
+// addresses by default — where a self-hosted proxy lives — walking back through
+// every trusted hop to the first public one. A public caller can't forge its
+// address this way; only something already on the private network can.
+//
+// PAPYRA_TRUSTED_PROXIES narrows that to named IPs/CIDRs, or `none` turns it off
+// (Papyra exposed directly on a LAN it doesn't trust). Development keeps it off
+// unless named: the dev sign-in bypass keys on a loopback peer.
 var trustedProxies = builder.Configuration.GetSection("Papyra:TrustedProxies").Get<string[]>() ?? [];
-if (trustedProxies.Length > 0)
+var forwardedNetworks = ForwardedNetworks(trustedProxies, builder.Environment.IsDevelopment());
+if (forwardedNetworks.Count > 0)
 {
     builder.Services.Configure<ForwardedHeadersOptions>(options =>
     {
         options.ForwardedHeaders = ForwardedHeaders.XForwardedFor | ForwardedHeaders.XForwardedProto;
+        options.ForwardLimit = null; // CDN → proxy → Papyra: resolve every trusted hop
         options.KnownProxies.Clear();
-        options.KnownNetworks.Clear();
-        foreach (var proxy in trustedProxies)
-            if (System.Net.IPAddress.TryParse(proxy, out var ip)) options.KnownProxies.Add(ip);
+        options.KnownIPNetworks.Clear();
+        foreach (var network in forwardedNetworks) options.KnownIPNetworks.Add(network);
     });
 }
 
@@ -566,6 +591,12 @@ using (var scope = app.Services.CreateScope())
         });
         app.Logger.LogInformation("Imported SSO configuration from appsettings into the database");
     }
+
+    // One OIDC scheme per stored provider (see SsoProviders).
+    await SsoProviders.SyncSchemesAsync(
+        app.Services.GetRequiredService<IAuthenticationSchemeProvider>(),
+        app.Services.GetRequiredService<IOptionsMonitorCache<OpenIdConnectOptions>>(),
+        SsoProviders.Read(instanceConfig));
 }
 
 // One-time move of git sync from an instance-wide setting to a per-account one.
@@ -611,8 +642,8 @@ using (var scope = app.Services.CreateScope())
 
 // First in the pipeline so everything downstream — the rate limiter's partition
 // key, the access log, the HTTPS check below — sees the real client rather than
-// the proxy. No-op unless Papyra:TrustedProxies named one.
-if (trustedProxies.Length > 0) app.UseForwardedHeaders();
+// the proxy. See ForwardedNetworks for whom that trusts.
+if (forwardedNetworks.Count > 0) app.UseForwardedHeaders();
 
 // ── Response hardening ────────────────────────────────────────────────────────
 // Papyra serves its own SPA, so these apply to the whole origin. The CSP's
@@ -1499,19 +1530,28 @@ auth.MapPost("/logout", async (HttpContext http, AppDbContext db, UnlockTokenSto
 auth.MapGet("/providers", async (InstanceConfigStore config, CancellationToken ct) =>
 {
     await config.EnsureLoadedAsync(ct);
-    var name = config.GetOrEmpty(OidcKeys.DisplayName);
+    var ready = SsoProviders.Read(config).Where(p => p.Ready).ToList();
     return Results.Ok(new
     {
-        sso = SsoConfigured(config),
-        ssoName = string.IsNullOrWhiteSpace(name) ? "SSO" : name,
+        sso = ready.Count > 0,
+        // Buttons (one per provider) or a row of icons — the admin's choice.
+        display = SsoProviders.Display(config),
+        providers = ready.Select(p => new
+        {
+            p.Id, name = p.DisplayName, p.Kind, p.Icon, p.IconData,
+            hoverText = string.IsNullOrWhiteSpace(p.HoverText) ? $"Continue with {p.DisplayName}" : p.HoverText,
+        }),
     });
 });
 
-auth.MapGet("/login/sso", async (InstanceConfigStore config, CancellationToken ct) =>
+// Kick off sign-in with one provider. Bare /login/sso (older links, bookmarks)
+// uses the first ready one.
+auth.MapGet("/login/sso/{id?}", async (string? id, InstanceConfigStore config, CancellationToken ct) =>
 {
     await config.EnsureLoadedAsync(ct);
-    if (!SsoConfigured(config)) return Results.NotFound(new { error = "SSO is not configured." });
-    return Results.Challenge(new AuthenticationProperties { RedirectUri = "/" }, ["oidc"]);
+    var provider = SsoProviders.Read(config).Where(p => p.Ready).FirstOrDefault(p => id is null || p.Id == id);
+    if (provider is null) return Results.NotFound(new { error = "SSO is not configured." });
+    return Results.Challenge(new AuthenticationProperties { RedirectUri = "/" }, [SsoProviders.Scheme(provider.Id)]);
 });
 
 
@@ -1931,6 +1971,19 @@ webauthn.MapDelete("/credentials/{id:int}", async (
     return Results.NoContent();
 });
 
+// Rename a passkey. Harmless — it can't add or remove a way in — so no vault unlock.
+webauthn.MapPut("/credentials/{id:int}", async (int id, RenameRequest body, ClaimsPrincipal principal, AppDbContext db, CancellationToken ct) =>
+{
+    var uid = int.Parse(Uid(principal));
+    var credential = await db.WebAuthnCredentials.FirstOrDefaultAsync(c => c.Id == id && c.UserId == uid, ct);
+    if (credential is null) return Results.NotFound();
+    if (RenameProblem(body.Name) is { } bad) return Results.BadRequest(new { error = bad, field = "name" });
+    if (string.IsNullOrWhiteSpace(body.Name)) return Results.BadRequest(new { error = "Give it a name.", field = "name" });
+    credential.Name = body.Name.Trim();
+    await db.SaveChangesAsync(ct);
+    return Results.Ok(new { credential.Id, credential.Name });
+});
+
 // ── Profile (self-service) ──────────────────────────────────────────────────────
 // The signed-in user edits their own display name + email, changes their password,
 // and uploads an avatar. Avatar lives under the user's hidden .papyra dir (UI
@@ -2217,6 +2270,19 @@ auth.MapPost("/totp/{id:int}/remove", async (
     return Results.NoContent();
 }).RequireAuthorization().RequireRateLimiting(AuthRateLimit);
 
+// Rename an authenticator ("Bitwarden", "Office phone"). Only the label changes.
+auth.MapPut("/totp/{id:int}", async (int id, RenameRequest body, ClaimsPrincipal principal, AppDbContext db, CancellationToken ct) =>
+{
+    if (IsApiKey(principal)) return Results.Json(new { error = "Use the app, not an API key." }, statusCode: 403);
+    var uid = int.Parse(Uid(principal));
+    var row = await db.UserAuthenticators.FirstOrDefaultAsync(a => a.Id == id && a.UserId == uid, ct);
+    if (row is null) return Results.NotFound();
+    if (RenameProblem(body.Name) is { } bad) return Results.BadRequest(new { error = bad, field = "name" });
+    row.Name = string.IsNullOrWhiteSpace(body.Name) ? "Authenticator app" : body.Name.Trim();
+    await db.SaveChangesAsync(ct);
+    return Results.Ok(new { row.Id, row.Name });
+}).RequireAuthorization();
+
 // Two-step sign-in on or off. Always on for administrators. Turning it off
 // asks for a code — it's the one switch an intruder would want flipped.
 auth.MapPut("/totp/login", async (
@@ -2285,6 +2351,20 @@ auth.MapPost("/sessions/revoke-others", async (ClaimsPrincipal principal, AppDbC
     // A remembered browser shouldn't skip the code after being signed out.
     await db.KnownDevices.Where(d => d.UserId == uid).ExecuteUpdateAsync(u => u.SetProperty(d => d.TrustedUntilUtc, (DateTime?)null), ct);
     return Results.NoContent();
+}).RequireAuthorization();
+
+// Rename a device ("Office laptop"). Blank goes back to what the browser reported.
+auth.MapPut("/sessions/{id:int}", async (int id, RenameRequest body, ClaimsPrincipal principal, AppDbContext db, CancellationToken ct) =>
+{
+    if (IsApiKey(principal)) return Results.Json(new { error = "Use the app, not an API key." }, statusCode: 403);
+    var uid = int.Parse(Uid(principal));
+    var row = await db.UserSessions.FirstOrDefaultAsync(s => s.Id == id && s.UserId == uid, ct);
+    if (row is null) return Results.NotFound();
+    if (RenameProblem(body.Name) is { } bad) return Results.BadRequest(new { error = bad, field = "name" });
+    if (string.IsNullOrWhiteSpace(body.Name)) return Results.BadRequest(new { error = "Give it a name.", field = "name" });
+    row.Label = body.Name.Trim();
+    await db.SaveChangesAsync(ct);
+    return Results.Ok(new { row.Id, row.Label });
 }).RequireAuthorization();
 
 // Live "is this username free?" for the profile form. Usernames are unique per
@@ -2449,6 +2529,7 @@ var admin = auth.MapGroup("/users").RequireAuthorization(p => p.RequireRole("Adm
 admin.MapGet("/", async (AppDbContext db, CancellationToken ct) =>
 {
     var withTotp = (await db.UserAuthenticators.Select(a => a.UserId).Distinct().ToListAsync(ct)).ToHashSet();
+    var linked = (await db.ExternalLogins.Select(l => l.UserId).Distinct().ToListAsync(ct)).ToHashSet();
     return Results.Ok((await db.Users.OrderBy(u => u.Id).ToListAsync(ct)).Select(u => new
     {
         u.Id, u.Username, u.Name, u.Email, u.Role, u.MustChangePassword,
@@ -2456,7 +2537,8 @@ admin.MapGet("/", async (AppDbContext db, CancellationToken ct) =>
         disabledUtc = AsUtc(u.DisabledUtc),
         u.DisabledReason,
         lastSignInUtc = AsUtc(u.LastSignInUtc),
-        sso = u.ExternalId is not null,
+        sso = linked.Contains(u.Id),
+        hasPassword = !string.IsNullOrEmpty(u.PasswordHash),
         totpEnabled = withTotp.Contains(u.Id),
         deletionScheduledUtc = AsUtc(u.DeletionScheduledUtc),
     }));
@@ -2645,6 +2727,7 @@ admin.MapDelete("/{id:int}", async (int id, ClaimsPrincipal me, AppDbContext db,
     db.AccessRequests.RemoveRange(db.AccessRequests.Where(r => r.OwnerId == id || r.RequesterUserId == id));
     db.Notifications.RemoveRange(db.Notifications.Where(n => n.UserId == id || n.ActorUserId == id));
     db.KnownDevices.RemoveRange(db.KnownDevices.Where(d => d.UserId == id));
+    db.ExternalLogins.RemoveRange(db.ExternalLogins.Where(l => l.UserId == id));
     db.Users.Remove(user);
     await db.SaveChangesAsync(ct);
     await TellOtherAdmins(db, email, int.Parse(Uid(me)), $"{user.Username}'s account was deleted",
@@ -2657,6 +2740,72 @@ admin.MapDelete("/{id:int}", async (int id, ClaimsPrincipal me, AppDbContext db,
 // sign-out is needed either way. You can't change your own role — another admin
 // has to — and the last active admin can't be demoted, or nobody could manage
 // the instance any more.
+// Correct someone's name, username or email. An admin can already reset the
+// password, so moving the email grants nothing new — but the owner is told, at
+// the address it's leaving, and their open tabs re-read who they are.
+admin.MapPut("/{id:int}/profile", async (
+    int id, AdminProfileRequest body, ClaimsPrincipal me, AppDbContext db, EmailSender email,
+    IHubContext<NotesHub> hub, CancellationToken ct) =>
+{
+    // Your own email change asks for a code (PUT /profile); this door must not skip it.
+    if (id == int.Parse(Uid(me)))
+        return Results.BadRequest(new { error = "Change your own details under Settings → Profile." });
+    var user = await db.Users.FindAsync([id], ct);
+    if (user is null) return Results.NotFound();
+    var previousEmail = user.Email;
+    var changes = new List<string>();
+
+    if (body.Username is not null)
+    {
+        var wanted = body.Username.Trim();
+        if (ProfileRules.UsernameProblem(wanted) is { } bad)
+            return Results.BadRequest(new { error = bad, field = "username" });
+        if (!string.Equals(wanted, user.Username, StringComparison.Ordinal))
+        {
+            var lower = wanted.ToLower();
+            if (await db.Users.AnyAsync(u => u.Id != id && u.Username.ToLower() == lower, ct))
+                return Results.Conflict(new { error = "That username is taken.", field = "username" });
+            changes.Add($"username @{user.Username} → @{wanted}");
+            user.Username = wanted;
+        }
+    }
+    if (body.Name is not null)
+    {
+        var name = body.Name.Trim();
+        if (name.Length > ProfileRules.MaxNameLength)
+            return Results.BadRequest(new { error = $"Keep the name under {ProfileRules.MaxNameLength} characters.", field = "name" });
+        name = name.Length == 0 ? user.Username : name;
+        if (name != user.Name) changes.Add($"name → {name}");
+        user.Name = name;
+    }
+    if (body.Email is not null)
+    {
+        var address = body.Email.Trim();
+        if (address.Length > 0)
+        {
+            if (!ProfileRules.IsEmail(address))
+                return Results.BadRequest(new { error = "That doesn’t look like an email address.", field = "email" });
+            var lower = address.ToLower();
+            if (await db.Users.AnyAsync(u => u.Id != id && u.Email.ToLower() == lower, ct))
+                return Results.Conflict(new { error = "Another account already uses that email.", field = "email" });
+        }
+        if (!string.Equals(address, user.Email, StringComparison.OrdinalIgnoreCase))
+            changes.Add(address.Length == 0 ? "email removed" : $"email → {address}");
+        user.Email = address;
+    }
+
+    await db.SaveChangesAsync(ct);
+    if (changes.Count > 0)
+    {
+        await hub.Clients.User(id.ToString()).SendAsync("AccountChanged", ct);
+        if (!string.IsNullOrWhiteSpace(previousEmail))
+            await email.SendAsync(previousEmail, "Your Papyra account details were changed",
+                $"@{me.Identity?.Name} (an administrator) changed your account:\n\n{string.Join("\n", changes.Select(c => $"• {c}"))}\n\n"
+                + "If you didn't expect this, contact your Papyra administrator.", ct);
+    }
+    return Results.Ok(new { user.Id, user.Username, user.Name, user.Email });
+});
+
 admin.MapPut("/{id:int}/role", async (
     int id, RoleChangeRequest body, ClaimsPrincipal me, AppDbContext db, EmailSender email,
     IHubContext<NotesHub> hub, CancellationToken ct) =>
@@ -2856,74 +3005,123 @@ auth.MapPut("/notifications", async (
 // extension, and saving the form without retyping it keeps the stored value.
 var oidcAdmin = auth.MapGroup("/oidc").RequireAuthorization(p => p.RequireRole("Admin")).WithTags("Admin");
 
+// The public origin the provider must redirect back to (Settings → Email's
+// public URL when set, else the address this page was loaded from).
+static string SsoOrigin(EmailSender email, HttpContext http) =>
+    email.PublicUrl($"{http.Request.Scheme}://{http.Request.Host}").TrimEnd('/');
+
 oidcAdmin.MapGet("/", async (InstanceConfigStore config, EmailSender email, HttpContext http, CancellationToken ct) =>
 {
     await config.EnsureLoadedAsync(ct);
-    // Absolute, from the public URL when one is set (Settings → Email), else the
-    // address this page was loaded from — what the provider must be told.
-    var origin = email.PublicUrl($"{http.Request.Scheme}://{http.Request.Host}").TrimEnd('/');
+    var origin = SsoOrigin(email, http);
     return Results.Ok(new
     {
-        enabled = config.GetBool(OidcKeys.Enabled),
-        authority = config.GetOrEmpty(OidcKeys.Authority),
-        clientId = config.GetOrEmpty(OidcKeys.ClientId),
-        hasClientSecret = config.Has(OidcKeys.ClientSecret),
-        displayName = config.GetOrEmpty(OidcKeys.DisplayName),
-        // The exact URI the IdP must whitelist. Getting this wrong is the most
-        // common OIDC setup failure, so hand it to the admin rather than making
-        // them infer it.
-        redirectUri = $"{origin}/signin-oidc",
+        display = SsoProviders.Display(config),
         origin,
-        ready = SsoConfigured(config),
+        // What a new provider's redirect URI will look like (its id comes from its name).
+        redirectUriPrefix = $"{origin}/signin-oidc/",
+        providers = SsoProviders.Read(config).Select(p => new
+        {
+            p.Id, p.Kind, p.DisplayName, p.Authority, p.ClientId, p.Enabled, p.Ready,
+            hasClientSecret = !string.IsNullOrWhiteSpace(p.ClientSecret),
+            p.Icon, p.IconData, p.HoverText,
+            // The exact URI the IdP must whitelist. Getting this wrong is the most
+            // common OIDC setup failure, so hand it to the admin rather than making
+            // them infer it.
+            redirectUri = $"{origin}{SsoProviders.CallbackPath(p.Id)}",
+        }),
     });
 });
 
-oidcAdmin.MapPut("/", async (
-    OidcConfigWrite body, InstanceConfigStore config,
-    IOptionsMonitorCache<OpenIdConnectOptions> optionsCache, CancellationToken ct) =>
+oidcAdmin.MapPut("/display", async (SsoDisplayWrite body, InstanceConfigStore config, CancellationToken ct) =>
 {
-    var enabled = body.Enabled == true;
+    var display = body.Display == "icons" ? "icons" : "buttons";
+    await config.SetAsync(new Dictionary<string, string?> { [SsoProviders.DisplayKey] = display }, ct);
+    return Results.Ok(new { display });
+});
+
+// Add a provider (no id) or change one. The client secret is only replaced when
+// one is sent, so saving the form without retyping it keeps the stored value.
+async Task<IResult> SaveSsoProvider(
+    string? id, SsoProviderWrite body, InstanceConfigStore config, IAuthenticationSchemeProvider schemes,
+    IOptionsMonitorCache<OpenIdConnectOptions> optionsCache, EmailSender email, HttpContext http, CancellationToken ct)
+{
+    await config.EnsureLoadedAsync(ct);
+    var list = SsoProviders.Read(config);
+    var existing = id is null ? null : list.FirstOrDefault(p => p.Id == id);
+    if (id is not null && existing is null) return Results.NotFound();
+
+    var name = body.DisplayName?.Trim() ?? string.Empty;
     var authority = body.Authority?.Trim() ?? string.Empty;
     var clientId = body.ClientId?.Trim() ?? string.Empty;
-
+    var enabled = body.Enabled == true;
+    if (name.Length == 0) return Results.BadRequest(new { error = "Give the provider a name.", field = "displayName" });
+    if (name.Length > 40) return Results.BadRequest(new { error = "Keep the name under 40 characters.", field = "displayName" });
     // Refuse to switch on a configuration that cannot work — otherwise the login
     // screen advertises an SSO button that dead-ends at the IdP.
     if (enabled && (authority.Length == 0 || clientId.Length == 0))
-        return Results.BadRequest(new { error = "Authority and Client ID are required to enable SSO." });
+        return Results.BadRequest(new { error = "Issuer URL and Client ID are required to turn it on." });
     if (authority.Length > 0)
     {
         if (!Uri.TryCreate(authority, UriKind.Absolute, out var authorityUri))
-            return Results.BadRequest(new { error = "Authority must be an absolute URL." });
+            return Results.BadRequest(new { error = "Issuer URL must be an absolute URL.", field = "authority" });
         // Tokens and the client secret cross this connection, so plaintext HTTP
         // is refused outright. Loopback stays allowed for local IdP testing.
         if (authorityUri.Scheme != Uri.UriSchemeHttps && !authorityUri.IsLoopback)
-            return Results.BadRequest(new { error = "Authority must use HTTPS (or be a loopback address for testing)." });
+            return Results.BadRequest(new { error = "Issuer URL must use HTTPS (or be a loopback address for testing).", field = "authority" });
+    }
+    var hover = body.HoverText?.Trim();
+    if (hover is { Length: > 80 }) return Results.BadRequest(new { error = "Keep the hover text under 80 characters.", field = "hoverText" });
+    var iconData = body.IconData?.Trim();
+    if (!string.IsNullOrEmpty(iconData))
+    {
+        // Shown in an <img>, so an SVG's scripts never run; still, only images, and small.
+        if (!System.Text.RegularExpressions.Regex.IsMatch(iconData, @"^data:image/(png|jpeg|webp|gif|svg\+xml);base64,[A-Za-z0-9+/=]+$"))
+            return Results.BadRequest(new { error = "The icon must be a PNG, JPEG, WebP, GIF or SVG image.", field = "iconData" });
+        if (iconData.Length > 96_000)
+            return Results.BadRequest(new { error = "Keep the icon under 64 KB.", field = "iconData" });
     }
 
-    var values = new Dictionary<string, string?>
-    {
-        [OidcKeys.Enabled] = enabled ? "true" : "false",
-        [OidcKeys.Authority] = authority,
-        [OidcKeys.ClientId] = clientId,
-        [OidcKeys.DisplayName] = body.DisplayName?.Trim() ?? string.Empty,
-    };
-    // Only overwrite the secret when one was supplied, so saving the form with
-    // the field left blank keeps the existing value.
-    if (body.ClientSecret is not null) values[OidcKeys.ClientSecret] = body.ClientSecret.Trim();
+    var provider = existing ?? new SsoProvider { Id = SsoProviders.NewId(name, list.Select(p => p.Id)) };
+    provider.Kind = body.Kind is "authentik" or "keycloak" or "google" or "entra" ? body.Kind : "other";
+    provider.DisplayName = name;
+    provider.Authority = authority;
+    provider.ClientId = clientId;
+    provider.Enabled = enabled;
+    provider.Icon = string.IsNullOrWhiteSpace(body.Icon) ? null : body.Icon.Trim();
+    provider.IconData = string.IsNullOrEmpty(iconData) ? null : iconData;
+    provider.HoverText = string.IsNullOrEmpty(hover) ? null : hover;
+    if (body.ClientSecret is not null) provider.ClientSecret = body.ClientSecret.Trim();
+    if (existing is null) list.Add(provider);
 
-    await config.SetAsync(values, ct);
+    await SsoProviders.WriteAsync(config, list, ct);
+    // The auth stack caches resolved options per scheme; without this the
+    // handler would keep using the previous IdP until the process restarted.
+    await SsoProviders.SyncSchemesAsync(schemes, optionsCache, list);
+    return Results.Ok(new { provider.Id, redirectUri = $"{SsoOrigin(email, http)}{SsoProviders.CallbackPath(provider.Id)}" });
+}
 
-    // The auth stack caches resolved options per scheme; without this eviction
-    // the handler would keep using the previous IdP until the process restarted,
-    // which is the entire problem this feature exists to solve.
-    optionsCache.TryRemove("oidc");
+oidcAdmin.MapPost("/providers", (SsoProviderWrite body, InstanceConfigStore config, IAuthenticationSchemeProvider schemes,
+    IOptionsMonitorCache<OpenIdConnectOptions> cache, EmailSender email, HttpContext http, CancellationToken ct) =>
+    SaveSsoProvider(null, body, config, schemes, cache, email, http, ct));
 
+oidcAdmin.MapPut("/providers/{id}", (string id, SsoProviderWrite body, InstanceConfigStore config, IAuthenticationSchemeProvider schemes,
+    IOptionsMonitorCache<OpenIdConnectOptions> cache, EmailSender email, HttpContext http, CancellationToken ct) =>
+    SaveSsoProvider(id, body, config, schemes, cache, email, http, ct));
+
+// Remove a provider. People linked through it keep their accounts (and any
+// other way in); their link to it goes, so re-adding it links afresh by email.
+oidcAdmin.MapDelete("/providers/{id}", async (string id, InstanceConfigStore config, AppDbContext db,
+    IAuthenticationSchemeProvider schemes, IOptionsMonitorCache<OpenIdConnectOptions> cache, CancellationToken ct) =>
+{
+    await config.EnsureLoadedAsync(ct);
+    var list = SsoProviders.Read(config);
+    if (list.RemoveAll(p => p.Id == id) == 0) return Results.NotFound();
+    await SsoProviders.WriteAsync(config, list, ct);
+    await SsoProviders.SyncSchemesAsync(schemes, cache, list);
+    await db.ExternalLogins.Where(l => l.Provider == id).ExecuteDeleteAsync(ct);
     return Results.NoContent();
-})
-    .WithSummary("Configure SSO (admin)")
-    .WithDescription(
-        "Stores the OIDC authority, client id and secret. Takes effect immediately — " +
-        "the cached authentication options for the `oidc` scheme are evicted on save.");
+});
 
 // "Test" in the SSO guide: can Papyra reach the provider, and is it an OIDC
 // provider? Fetches its discovery document and reports what it found, so a
@@ -3822,6 +4020,17 @@ keys.MapDelete("/{id:int}", async (int id, ClaimsPrincipal user, AppDbContext db
     db.ApiKeys.Remove(key);
     await db.SaveChangesAsync(ct);
     return Results.NoContent();
+});
+
+keys.MapPut("/{id:int}", async (int id, RenameRequest body, ClaimsPrincipal user, AppDbContext db, CancellationToken ct) =>
+{
+    var uid = int.Parse(Uid(user));
+    var key = await db.ApiKeys.FirstOrDefaultAsync(k => k.Id == id && k.UserId == uid, ct);
+    if (key is null) return Results.NotFound();
+    if (RenameProblem(body.Name) is { } bad) return Results.BadRequest(new { error = bad, field = "name" });
+    key.Name = string.IsNullOrWhiteSpace(body.Name) ? "Untitled key" : body.Name.Trim();
+    await db.SaveChangesAsync(ct);
+    return Results.Ok(new { key.Id, key.Name });
 });
 
 // ── Smart collections (saved searches) ────────────────────────────────────────────
@@ -6431,18 +6640,38 @@ static bool IsNetworkFailure(Exception? ex)
 // SSO is usable only when an admin has switched it on AND supplied the two
 // fields the protocol cannot work without. Checked per request against the live
 // store, never cached from startup, so enabling SSO takes effect immediately.
-static bool SsoConfigured(InstanceConfigStore config) =>
-    config.GetBool(OidcKeys.Enabled)
-    && config.Has(OidcKeys.Authority)
-    && config.Has(OidcKeys.ClientId);
+// Who may set X-Forwarded-For. Named entries (IPs or CIDRs) win; `none` or an
+// unset list in Development trusts nobody; otherwise the private + loopback ranges.
+static List<System.Net.IPNetwork> ForwardedNetworks(string[] configured, bool development)
+{
+    if (configured.Any(c => c.Equals("none", StringComparison.OrdinalIgnoreCase))) return [];
+    if (configured.Length == 0)
+        return development
+            ? []
+            : new[] { "10.0.0.0/8", "172.16.0.0/12", "192.168.0.0/16", "127.0.0.0/8", "::1/128", "fc00::/7", "::ffff:10.0.0.0/104", "::ffff:172.16.0.0/108", "::ffff:192.168.0.0/112", "::ffff:127.0.0.0/104" }
+                .Select(System.Net.IPNetwork.Parse).ToList();
+    var networks = new List<System.Net.IPNetwork>();
+    foreach (var entry in configured)
+    {
+        if (System.Net.IPNetwork.TryParse(entry, out var network)) networks.Add(network);
+        else if (IPAddress.TryParse(entry, out var ip)) networks.Add(new System.Net.IPNetwork(ip, ip.AddressFamily == System.Net.Sockets.AddressFamily.InterNetwork ? 32 : 128));
+    }
+    return networks;
+}
+
+// Labels people give their devices, authenticators, passkeys and keys.
+static string? RenameProblem(string? name) =>
+    name is not null && name.Trim().Length > 60 ? "Keep it under 60 characters." : null;
+
 
 // The OIDC callback the IdP must whitelist — same derivation as the value shown
 // in Settings → SSO, so what the admin registered is what gets sent.
-static async Task<string> PublicRedirectUri(HttpContext http)
+static async Task<string> PublicRedirectUri(HttpContext http, string scheme)
 {
     await http.RequestServices.GetRequiredService<InstanceConfigStore>().EnsureLoadedAsync(http.RequestAborted);
     var email = http.RequestServices.GetRequiredService<EmailSender>();
-    return $"{email.PublicUrl($"{http.Request.Scheme}://{http.Request.Host}")}/signin-oidc";
+    var id = SsoProviders.IdFromScheme(scheme) ?? SsoProviders.LegacyId;
+    return $"{email.PublicUrl($"{http.Request.Scheme}://{http.Request.Host}")}{SsoProviders.CallbackPath(id)}";
 }
 
 // The authenticated tenant id, lifted from the NameIdentifier claim minted at
@@ -6933,22 +7162,6 @@ static object WebhookPayload(string eventName, Note note) => new
     occurredAt = note.Updated,
 };
 
-// A collision-free Username for a JIT-provisioned SSO account: prefer the email
-// local-part, else a subject-derived handle, suffixing a counter if it's taken so
-// the unique Username index never trips.
-static async Task<string> UniqueSsoUsername(AppDbContext db, string email, string sub, CancellationToken ct)
-{
-    var baseName = email.Contains('@') ? email[..email.IndexOf('@')] : $"sso-{sub}";
-    baseName = new string(baseName.Where(c => char.IsLetterOrDigit(c) || c is '-' or '_' or '.').ToArray());
-    if (string.IsNullOrWhiteSpace(baseName)) baseName = "sso-user";
-
-    var candidate = baseName;
-    var n = 1;
-    while (await db.Users.AnyAsync(u => u.Username == candidate, ct))
-        candidate = $"{baseName}-{++n}";
-    return candidate;
-}
-
 // Mint the session cookie for a user. UserId rides as NameIdentifier so the
 // services scope per-user storage (the Sprint 6.3 path jail keys off it).
 // The server's own zone as an IANA id — what a Docker container's TZ sets. On
@@ -7079,8 +7292,10 @@ public sealed record PasswordRequest(string? Current, string? Next);
 // Admin SSO configuration payload. ClientSecret is null when the admin left the
 // field blank, which means "keep whatever is stored".
 public sealed record OidcTestRequest(string? Authority);
-public sealed record OidcConfigWrite(
-    bool? Enabled, string? Authority, string? ClientId, string? ClientSecret, string? DisplayName);
+public sealed record SsoProviderWrite(
+    string? Kind, string? DisplayName, string? Authority, string? ClientId, string? ClientSecret, bool? Enabled,
+    string? Icon = null, string? IconData = null, string? HoverText = null);
+public sealed record SsoDisplayWrite(string? Display);
 
 // Admin SMTP configuration. Password is null when left blank (keep the stored one).
 public sealed record SmtpConfigWrite(
@@ -7122,6 +7337,8 @@ public sealed record UserSuggestion(string Username, string Name);
 
 // API key creation payload (just a human label).
 public sealed record ApiKeyWrite(string? Name, string? Code = null);
+public sealed record RenameRequest(string? Name);
+public sealed record AdminProfileRequest(string? Username, string? Name, string? Email);
 
 // Webhook registration: which event, the target URL, and an optional shared secret
 // (one is generated + returned once if omitted).

@@ -69,8 +69,9 @@ services:
       # Comma-separated; normally leave this out entirely.
       # PAPYRA_ALLOWED_ORIGINS: "https://notes.example.com"
       #
-      # Only if Papyra sits behind a reverse proxy and you want real client
-      # addresses in the logs and rate limits. Comma-separated proxy IPs.
+      # Proxies on private addresses (Docker, LAN) are trusted for the real
+      # client address by default. Set IPs/CIDRs to narrow that, or "none" if
+      # Papyra is exposed directly to a network you don't trust.
       # PAPYRA_TRUSTED_PROXIES: "172.18.0.1"
       #
       # Only if you use passkeys behind a domain. Must be the bare hostname.

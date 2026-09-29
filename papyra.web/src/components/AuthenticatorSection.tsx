@@ -5,6 +5,7 @@ import TotpQr from './TotpQr';
 import LoadingBar from './LoadingBar';
 import CodeField from './CodeField';
 import SettingRow, { SettingGroup } from './SettingRow';
+import RenameForm from './RenameForm';
 import { requestEmailCode } from '../lib/emailCode';
 import { useAuth } from '../hooks/useAuth';
 import { parseUtc } from '../lib/vault';
@@ -78,6 +79,11 @@ export default function AuthenticatorSection() {
           hint={`Added ${parseUtc(a.createdUtc).toLocaleDateString()}${a.lastUsedUtc ? ` · last used ${parseUtc(a.lastUsedUtc).toLocaleDateString()}` : ''}`}
           action="Remove"
           actionDisabled={list.length === 1}
+          extra={{
+            action: 'Rename',
+            children: close => <RenameForm url={`/api/auth/totp/${a.id}`} current={a.name} placeholder="e.g. Bitwarden, Office phone"
+              onDone={async () => { await refresh(); close(); }} onCancel={close} />,
+          }}
         >
           {close => <RemoveAuthenticator id={a.id} onEmail={emailCode} onDone={async () => { await refresh(); close(); }} onCancel={close} />}
         </SettingRow>

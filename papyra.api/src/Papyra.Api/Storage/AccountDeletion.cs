@@ -109,6 +109,7 @@ public sealed class AccountDeletion
         db.Notifications.RemoveRange(db.Notifications.Where(n => n.UserId == id || n.ActorUserId == id || n.OwnerId == id));
         db.BlockGrants.RemoveRange(db.BlockGrants.Where(g => g.SourceOwnerId == id || g.GranteeUserId == id));
         db.WebAuthnCredentials.RemoveRange(db.WebAuthnCredentials.Where(c => c.UserId == id));
+        db.ExternalLogins.RemoveRange(db.ExternalLogins.Where(l => l.UserId == id));
         db.Webhooks.RemoveRange(db.Webhooks.Where(w => w.UserId == id));
         db.SmartCollections.RemoveRange(db.SmartCollections.Where(c => c.UserId == id));
         db.AuthTokens.RemoveRange(db.AuthTokens.Where(t => t.UserId == id));
