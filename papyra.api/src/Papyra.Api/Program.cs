@@ -341,6 +341,22 @@ builder.Services.ConfigureOptions<OidcOptionsConfigurator>();
         options.CallbackPath = "/signin-oidc";
         options.Events = new Microsoft.AspNetCore.Authentication.OpenIdConnect.OpenIdConnectEvents
         {
+            // The redirect_uri must be exactly what Settings → SSO told the admin to
+            // register. Left alone, the handler builds it from the request's own
+            // scheme/host — behind a TLS-terminating proxy (without TrustedProxies)
+            // that is `http://…` or an internal host, and the IdP rejects it.
+            OnRedirectToIdentityProvider = async ctx =>
+            {
+                var uri = await PublicRedirectUri(ctx.HttpContext);
+                ctx.ProtocolMessage.RedirectUri = uri;
+                // Carried in state to the code redemption, which must send the same value.
+                ctx.Properties.Items[OpenIdConnectDefaults.RedirectUriForCodePropertiesKey] = uri;
+            },
+            OnAuthorizationCodeReceived = async ctx =>
+            {
+                if (ctx.TokenEndpointRequest is { } req)
+                    req.RedirectUri = await PublicRedirectUri(ctx.HttpContext);
+            },
             // JIT provisioning: map the external subject to an internal user (creating
             // one + its vault on first sight), then swap in an internal-claims
             // principal so the cookie carries our UserId (chroot key), not the IdP's.
@@ -6419,6 +6435,15 @@ static bool SsoConfigured(InstanceConfigStore config) =>
     config.GetBool(OidcKeys.Enabled)
     && config.Has(OidcKeys.Authority)
     && config.Has(OidcKeys.ClientId);
+
+// The OIDC callback the IdP must whitelist — same derivation as the value shown
+// in Settings → SSO, so what the admin registered is what gets sent.
+static async Task<string> PublicRedirectUri(HttpContext http)
+{
+    await http.RequestServices.GetRequiredService<InstanceConfigStore>().EnsureLoadedAsync(http.RequestAborted);
+    var email = http.RequestServices.GetRequiredService<EmailSender>();
+    return $"{email.PublicUrl($"{http.Request.Scheme}://{http.Request.Host}")}/signin-oidc";
+}
 
 // The authenticated tenant id, lifted from the NameIdentifier claim minted at
 // sign-in. Every per-user storage path keys off this.
