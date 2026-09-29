@@ -6,6 +6,10 @@ a Docker Hub tag and a GitHub Release.
 
 <!-- new releases are inserted directly below this line -->
 
+## [0.2.2] - 2026-09-29
+
+- feat: show-then-edit settings, multiple authenticators, one session per browser (7d01628)
+
 ## [0.2.1] - 2026-09-29
 
 - test(e2e): enrol the provisioned grantee's authenticator (32cf460)
