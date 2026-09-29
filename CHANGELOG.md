@@ -6,6 +6,11 @@ a Docker Hub tag and a GitHub Release.
 
 <!-- new releases are inserted directly below this line -->
 
+## [0.2.4] - 2026-09-29
+
+- feat: multiple SSO providers, renames, real client IPs, windowed notes grid (9c97de0)
+- fix(sso): existing accounts only, readable failures; refresh server version on reconnect (fd64228)
+
 ## [0.2.3] - 2026-09-29
 
 - fix(sso): send the public-URL redirect_uri to the identity provider (991c94c)
