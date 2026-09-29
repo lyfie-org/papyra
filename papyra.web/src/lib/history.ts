@@ -7,6 +7,8 @@ import type { DiffRow } from './lineDiff';
 export interface VersionMeta {
   id: string;
   timestamp: string;
+  /** Who wrote this version, when it came from a live (shared) session. */
+  editors?: string[];
 }
 
 /** Oldest → newest, the order the timeline reads left to right. */

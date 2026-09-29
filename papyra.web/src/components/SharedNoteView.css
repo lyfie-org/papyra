@@ -129,3 +129,17 @@
 @media (max-width: 600px) {
   .shared-note { padding: var(--space-5) var(--space-4); }
 }
+
+/* Live room: remote cursors are positioned against this box. */
+.shared-note__canvas { position: relative; }
+.shared-note__gone {
+  margin: var(--space-4) 0;
+  font: 400 var(--fs-sm) / 1.5 var(--sans);
+  color: var(--text);
+}
+.shared-note--colored .shared-note__gone { color: var(--tint-ink-muted); }
+.shared-note--colored .collab-presence__status {
+  border-color: var(--tint-scrim);
+  background: var(--tint-scrim);
+  color: var(--tint-ink);
+}

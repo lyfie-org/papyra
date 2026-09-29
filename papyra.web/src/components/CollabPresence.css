@@ -1,0 +1,97 @@
+/* ── Presence strip ─────────────────────────────────────────────────────────
+   Avatars of the people in a live note, ringed in their caret colour, plus the
+   room's connection state. Sits in the editor's header beside the title. */
+.collab-presence {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  flex: none;
+  min-width: 0;
+}
+
+.collab-presence__status {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: 3px var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  font: 500 var(--fs-2xs) / 1.4 var(--sans);
+  color: var(--text);
+  white-space: nowrap;
+}
+.collab-presence__status--offline {
+  border-color: var(--warn-border);
+  background: var(--warn-bg);
+  color: var(--warn);
+}
+.collab-presence__status--revoked,
+.collab-presence__status--gone {
+  border-color: var(--danger-border);
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+
+.collab-presence__spin { animation: collab-presence-spin 0.9s linear infinite; }
+@keyframes collab-presence-spin { to { transform: rotate(360deg); } }
+
+.collab-presence__people {
+  display: flex;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+/* Overlapping stack; the ring's gap is paper-coloured so faces separate. */
+.collab-presence__people li + li { margin-left: calc(-1 * var(--space-2)); }
+
+.collab-presence__person {
+  display: block;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: none;
+  cursor: pointer;
+  box-shadow: 0 0 0 2px var(--paper), 0 0 0 4px var(--collab-ring);
+  transition: transform var(--dur-fast) var(--ease), opacity var(--dur) var(--ease);
+}
+.collab-presence__person:hover { transform: translateY(-1px); }
+.collab-presence__person:focus-visible {
+  outline: 2px solid var(--text-h);
+  outline-offset: 4px;
+}
+.collab-presence__person--idle { opacity: 0.55; }
+
+/* ── Remote cursors ─────────────────────────────────────────────────────────
+   Lexical paints these into our container with inline styles:
+     container > Lexical's div > selection-rect span > [tint, caret > label]
+   The colour itself arrives inline as var(--collab-N) (lib/collabColors);
+   only the label's ink, type and the caret weight are ours to set. */
+.collab-cursors {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  z-index: 3;
+}
+.collab-cursors > div > span > span:nth-child(2) {
+  width: 2px !important;
+  border-radius: 1px;
+}
+.collab-cursors > div > span > span > span {
+  top: -18px !important;
+  left: -1px !important;
+  padding: 1px 6px !important;
+  border-radius: 4px 4px 4px 0;
+  color: var(--collab-fg) !important;
+  font: 600 var(--fs-2xs) / 14px var(--sans) !important;
+  opacity: 1;
+}
+/* Idle label: faded out, caret stays (see useCollabCursorLabels). */
+.collab-cursors > div > span:not([data-collab-active]) > span > span { opacity: 0; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .collab-cursors > div > span > span > span { transition: opacity var(--dur-slow) var(--ease-inout); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .collab-presence__spin { animation: none; }
+  .collab-presence__person { transition: none; }
+}

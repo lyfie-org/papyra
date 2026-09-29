@@ -1,6 +1,7 @@
 packages:
   - papyra.web
   - papyra.app
+  - papyra.collab
 # esbuild's install script only unpacks its own platform binary, which its API
 # refuses to run without. Approved so Astro's toolchain works on a clean CI
 # checkout; every other package still has its scripts blocked by default.
@@ -18,3 +19,8 @@ allowBuilds:
 minimumReleaseAgeExclude:
   - '@lyfie/luthor'
   - '@lyfie/luthor-headless'
+# Exactly one Yjs in every bundle: two copies break `instanceof` checks and
+# corrupt collaboration docs ("Yjs was already imported"). The editor (via
+# @lexical/yjs), the Hocuspocus provider and the collab server must agree.
+overrides:
+  yjs: 13.6.33

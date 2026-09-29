@@ -1,0 +1,37 @@
+{
+  "name": "papyra-collab",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "Papyra live-collaboration server (Hocuspocus + headless luthor). Runs as a child process of the API.",
+  "scripts": {
+    "dev": "tsx watch --env-file=.env.development src/main.ts",
+    "build": "node build.mjs",
+    "selftest": "node dist/server.mjs --selftest",
+    "typecheck": "tsc --noEmit",
+    "lint": "eslint .",
+    "test": "vitest run",
+    "e2e": "tsx scripts/e2e.ts"
+  },
+  "dependencies": {
+    "@hocuspocus/provider": "^4.7.0",
+    "@hocuspocus/server": "^4.7.0",
+    "@lexical/yjs": "0.40.0",
+    "@lyfie/luthor": "^2.11.0",
+    "@lyfie/luthor-headless": "^2.11.0",
+    "lexical": "0.40.0",
+    "react": "^19.2.6",
+    "react-dom": "^19.2.6",
+    "yjs": "^13.6.33"
+  },
+  "devDependencies": {
+    "@eslint/js": "^10.0.1",
+    "@types/node": "^24.12.3",
+    "esbuild": "^0.28.2",
+    "eslint": "^10.3.0",
+    "tsx": "^4.23.15",
+    "typescript": "~6.0.2",
+    "typescript-eslint": "^8.59.2",
+    "vitest": "^4.1.9"
+  }
+}

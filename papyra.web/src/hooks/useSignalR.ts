@@ -62,6 +62,12 @@ export function useSignalR(): ServerStatus {
       void queryClient.invalidateQueries({ queryKey: ['shares', 'incoming'] });
       void queryClient.invalidateQueries({ queryKey: ['notifications'] });
     });
+    // A note shared with us was saved (by its live room or anyone else): the
+    // Shared-with-me cards show its text. An open live note ignores this — its
+    // content arrives through the room.
+    connection.on('SharedNoteUpdated', () => {
+      void queryClient.invalidateQueries({ queryKey: ['shares', 'incoming'], exact: true });
+    });
     // An admin disabled this account: re-ask who we are, which lands on the
     // sign-in page with the reason instead of waiting for the next save to fail.
     // Promoted or demoted: the same re-read shows or hides Administration.

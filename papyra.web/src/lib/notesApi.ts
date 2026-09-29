@@ -31,6 +31,40 @@ function isOffline(res?: Response): boolean {
 }
 
 /**
+ * A live (collaborative) editor's write carries `X-Papyra-Collab`: the API then
+ * keeps the body that is on disk — the room's, flushed by the collab engine —
+ * and takes only the metadata. Without it a stale body would be refused
+ * (409 `collab_active`) and park in the outbox forever.
+ */
+export const COLLAB_HEADER = 'X-Papyra-Collab';
+
+function writeHeaders(collab: boolean): Record<string, string> {
+  return collab
+    ? { 'Content-Type': 'application/json', [COLLAB_HEADER]: 'frontmatter' }
+    : { 'Content-Type': 'application/json' };
+}
+
+/**
+ * A body write that lost to a live room (409 `collab_active`) can never win by
+ * repeating: the room owns the body and already holds everyone's edits (a live
+ * editor's are also in its own IndexedDB). Send it again as metadata-only so
+ * the title, tags and colour still land, and let the body go.
+ */
+async function retryMetadataOnly(
+  id: string, payload: NoteWritePayload, res: Response, signal?: AbortSignal,
+): Promise<Response | null> {
+  if (res.status !== 409) return null;
+  const code = ((await res.clone().json().catch(() => null)) as { code?: string } | null)?.code;
+  if (code !== 'collab_active') return null;
+  return fetch(`/api/notes/${encodeURIComponent(id)}`, {
+    method: 'PUT',
+    headers: writeHeaders(true),
+    body: JSON.stringify(payload),
+    signal,
+  });
+}
+
+/**
  * Persist a note. Returns 'saved' when the API took it, 'queued' when it was
  * parked in the outbox. Throws only for real API rejections (401/403/413/…),
  * which are the caller's problem, not the network's.
@@ -39,9 +73,12 @@ export async function putNote(
   id: string,
   payload: NoteWritePayload,
   base?: string,
+  /** `collab`: sent from a live editor — metadata only, the room owns the body. */
+  opts?: { collab?: boolean },
 ): Promise<SaveOutcome> {
+  const collab = !!opts?.collab;
   const park = async (): Promise<SaveOutcome> => {
-    await queueWrite({ id, payload, base, queuedAt: new Date().toISOString() });
+    await queueWrite({ id, payload, base, queuedAt: new Date().toISOString(), ...(collab ? { collab } : {}) });
     await refreshPending();
     setSync({ online: false });
     return 'queued';
@@ -56,13 +93,21 @@ export async function putNote(
   try {
     res = await fetch(`/api/notes/${encodeURIComponent(id)}`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: writeHeaders(collab),
       body: JSON.stringify(payload),
       // A hung server must not hold a save open forever; the outbox is right there.
       signal: AbortSignal.timeout(SAVE_TIMEOUT_MS),
     });
   } catch {
     return park(); // network layer refused — treat as offline, never lose the edit
+  }
+
+  if (res.status === 409) {
+    try {
+      res = (await retryMetadataOnly(id, payload, res, AbortSignal.timeout(SAVE_TIMEOUT_MS))) ?? res;
+    } catch {
+      return park();
+    }
   }
 
   if (!res.ok) {
@@ -115,6 +160,14 @@ export function mergeQueued(notes: Note[], queued: OutboxEntry[]): Note[] {
   const byId = new Map(notes.map((n) => [n.id, n]));
   for (const entry of queued) {
     const existing = byId.get(entry.id);
+    // A live editor's queued write is metadata only; its body is a placeholder
+    // the server will ignore, so it must not paint over the room's text either.
+    if (entry.collab && existing) {
+      const { body: _ignored, ...meta } = entry.payload;
+      void _ignored;
+      byId.set(entry.id, { ...existing, ...meta, id: entry.id, updated: entry.queuedAt });
+      continue;
+    }
     byId.set(entry.id, {
       ...(existing ?? {
         id: entry.id, trashed: false, secure: false, updated: entry.queuedAt,
@@ -162,13 +215,28 @@ export async function flushOutbox(): Promise<{ synced: number; conflicts: string
     try {
       res = await fetch(`/api/notes/${encodeURIComponent(entry.id)}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: writeHeaders(!!entry.collab),
         body: JSON.stringify(entry.payload),
       });
     } catch {
       setSync({ syncing: false, online: false });
       await refreshPending();
       return { synced, conflicts }; // still offline — keep the rest queued
+    }
+    if (res.status === 409 && !entry.collab) {
+      // The note went live while this edit sat in the queue: its metadata
+      // still applies, its body is the room's now (and worth telling the user).
+      try {
+        const retried = await retryMetadataOnly(entry.id, entry.payload, res);
+        if (retried) {
+          res = retried;
+          if (res.ok && !movedOn) conflicts.push(entry.payload.title || entry.id);
+        }
+      } catch {
+        setSync({ syncing: false, online: false });
+        await refreshPending();
+        return { synced, conflicts };
+      }
     }
     if (!res.ok) {
       if (isOffline(res)) {

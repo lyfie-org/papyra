@@ -71,9 +71,23 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 11.5.1
+
+      - name: Setup Node 22
+        uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+
+      - name: Install (collab e2e script)
+        run: pnpm install --frozen-lockfile --filter papyra-collab...
+
       - name: Smoke test
         run: |
-          docker run -d -p 8080:8080 --name smoke papyra:smoketest
+          docker run -d -p 8080:8080 -e PAPYRA_ALLOW_INSECURE_COOKIES=true --name smoke papyra:smoketest
           echo "Waiting for boot..."
           for i in $(seq 1 15); do
             sleep 2
@@ -84,10 +98,20 @@ jobs:
             CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/health || echo 000)
             # 200 = healthy; 428 = healthy but awaiting first-admin setup. Both = boot OK.
             if [ "$CODE" = "200" ] || [ "$CODE" = "428" ]; then
-              echo "✅ Smoke test passed (HTTP $CODE)"; docker rm -f smoke; exit 0
+              echo "✅ Boot OK (HTTP $CODE)"; exit 0
             fi
           done
           echo "❌ /health never returned 200/428. Logs:"; docker logs smoke; exit 1
+
+      # Live editing ships inside the image: the engine must come up and two
+      # editors must collaborate through it before anything is published.
+      - name: Smoke test — live collaboration
+        working-directory: papyra.collab
+        env:
+          PAPYRA_E2E_URL: http://localhost:8080
+        run: |
+          pnpm run e2e || { docker logs smoke; exit 1; }
+          docker rm -f smoke
 
       # ── 2. Bump VERSION + changelog from commits since the last tag ─────────────
       - name: Update VERSION and CHANGELOG

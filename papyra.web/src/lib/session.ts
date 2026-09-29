@@ -1,5 +1,6 @@
 import type { QueryClient } from '@tanstack/react-query';
 import { clearWrites } from './outbox';
+import { clearCollabRoomCaches } from './collabCache';
 import { forgetUnlock } from './vault';
 
 /**
@@ -25,6 +26,9 @@ export async function clearSessionData(queryClient: QueryClient): Promise<void> 
   forgetUnlock();
 
   navigator.serviceWorker?.controller?.postMessage({ type: 'papyra-clear-data' });
+
+  // Offline copies of live shared notes (y-indexeddb, see lib/collabCache).
+  clearCollabRoomCaches();
 
   await clearWrites();
 }

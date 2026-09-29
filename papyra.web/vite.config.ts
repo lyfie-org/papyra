@@ -106,6 +106,8 @@ export default defineConfig(({ mode }) => {
         // vault the packaged build is serving.
         '/api': { target: API_TARGET, changeOrigin: true },
         '/hubs': { target: API_TARGET, changeOrigin: true, ws: true },
+        // Live collaboration WebSocket (the API proxies it to the collab engine).
+        '/collab': { target: API_TARGET, changeOrigin: true, ws: true },
       },
     },
   };

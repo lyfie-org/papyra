@@ -28,6 +28,8 @@
     <PackageReference Include="Tesseract" Version="5.2.0" />
     <PackageReference Include="LibGit2Sharp" Version="0.32.0" />
     <PackageReference Include="Fido2.AspNet" Version="4.0.1" />
+    <!-- Forwards the /collab WebSocket to the embedded collab engine (Collab/). -->
+    <PackageReference Include="Yarp.ReverseProxy" Version="2.3.0" />
 
     <!-- Transitive security pins (NU1903). These aren't used directly — they're
          here only to lift vulnerable versions that our dependencies pin:

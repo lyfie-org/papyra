@@ -5,7 +5,8 @@
   "scripts": {
     "dev:api": "dotnet run --project papyra.api/src/Papyra.Api/Papyra.Api.csproj",
     "dev:web": "pnpm --filter papyra-web run dev",
-    "dev": "concurrently -c \"cyan,magenta\" --names \"api,web\" \"pnpm run dev:api\" \"pnpm run dev:web\""
+    "dev": "concurrently -c \"cyan,magenta,yellow\" --names \"api,web,collab\" \"pnpm run dev:api\" \"pnpm run dev:web\" \"pnpm run dev:collab\"",
+    "dev:collab": "pnpm --filter papyra-collab run dev"
   },
   "devDependencies": {
     "concurrently": "^10.0.1"

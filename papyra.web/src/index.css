@@ -3,6 +3,37 @@
    system; papyra.app/scripts/check-tokens.mjs fails CI if the two copies drift. */
 @import './styles/tokens.css';
 
+/* Live-editing collaborators (lib/collabColors). Each colour paints a remote
+   caret, its name label and (at 30%) the selection tint. Light: label text is
+   --collab-fg on the colour at ≥5.3:1, caret ≥5.3:1 on paper. Dark: ≥8.7:1
+   label, ≥7:1 caret on the lifted paper. A coloured note keeps light paper in
+   both themes, so it keeps the light set too. */
+:root,
+[data-theme='dark'] .note-editor--colored,
+[data-theme='dark'] .shared-note--colored {
+  --collab-1: #a4462b; /* terracotta */
+  --collab-2: #3f6b3a; /* moss */
+  --collab-3: #2f5f8a; /* ocean */
+  --collab-4: #7a3f78; /* plum */
+  --collab-5: #85611a; /* ochre */
+  --collab-6: #1f6b6b; /* teal */
+  --collab-7: #9c3657; /* rose */
+  --collab-8: #4f4a94; /* indigo */
+  --collab-fg: #fdf8f2;
+}
+
+[data-theme='dark'] {
+  --collab-1: #f0a68a;
+  --collab-2: #a9d39a;
+  --collab-3: #9cc4ec;
+  --collab-4: #dcaad8;
+  --collab-5: #e6c27a;
+  --collab-6: #8fd3cf;
+  --collab-7: #f2a0b8;
+  --collab-8: #b8b2f0;
+  --collab-fg: #1c1917;
+}
+
 
 /* Theme switch: ThemeProvider runs it as a view transition, so the whole page
    cross-fades as two composited snapshots. Slightly longer and softer than UI

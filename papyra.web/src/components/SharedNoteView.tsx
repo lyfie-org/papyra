@@ -3,11 +3,17 @@ import {
   PapyraEditor, type PapyraEditorRef, type PapyraEditorAdapter,
 } from '@lyfie/luthor/presets/papyra';
 import '@lyfie/luthor/styles.css';
+import { LexicalCollaboration } from '@lexical/react/LexicalCollaborationContext';
 import { Check, Eye, Loader2, PencilLine } from 'lucide-react';
 import { useResolvedTheme } from '../hooks/useTheme';
 import { useInPlaceWikilinks } from '../hooks/useInPlaceWikilinks';
 import { tintInkClass } from '../lib/noteColors';
 import { hasBridgePlaceholder } from '../lib/bridgePlaceholder';
+import { useCollabRoom } from '../hooks/useCollabRoom';
+import { useCollabCursorLabels } from '../hooks/useCollabCursorLabels';
+import type { LexicalEditor } from 'lexical';
+import CollabPresence from './CollabPresence';
+import LoadingBar from './LoadingBar';
 import './SharedNoteView.css';
 
 export interface SharedNote {
@@ -44,19 +50,36 @@ type Status = 'idle' | 'saving' | 'saved' | 'error';
 // viewer sees a "Request edit access" button when `onRequestEdit` is given.
 // `mediaUrl` maps an embedded ![[file]] to a share-scoped media endpoint so
 // images load without the viewer needing access to the owner's vault.
+//
+// `collab`: a signed-in grantee's share — the note opens in its live room
+// (everyone's carets, the room saves), viewers read-only but still seeing
+// carets. Falls back to the save-as-you-type path above when the embedded
+// collab engine is off. Public links never pass it.
 export default function SharedNoteView({
-  note, onSave, onRequestEdit, mediaUrl,
+  note, onSave, onRequestEdit, mediaUrl, collab,
 }: {
   note: SharedNote;
   onSave?: (body: string) => Promise<void>;
   onRequestEdit?: () => Promise<void>;
   mediaUrl: (filename: string) => string;
+  collab?: { shareId: number };
 }) {
   const theme = useResolvedTheme();
   const editorRef = useRef<PapyraEditorRef | null>(null);
   const articleRef = useRef<HTMLElement | null>(null);
   const [status, setStatus] = useState<Status>('idle');
   const [requesting, setRequesting] = useState(false);
+
+  const cursorsRef = useRef<HTMLDivElement>(null);
+  const room = useCollabRoom(collab ? { shareId: collab.shareId } : null, cursorsRef, note.access);
+  const live = !!collab && room.status !== 'unavailable';
+  const liveEdit = live && room.access === 'edit';
+  const [lexical, setLexical] = useState<LexicalEditor | null>(null);
+  const liveKey = live && room.collaboration ? String(room.generation) : null;
+  useCollabCursorLabels(cursorsRef, liveKey);
+  useEffect(() => {
+    if (liveKey && lexical) lexical.setEditable(liveEdit && room.synced);
+  }, [liveKey, lexical, liveEdit, room.synced]);
 
   // Minimal host seam: media resolves through the share endpoint; uploads and
   // note navigation are inert on a shared surface.
@@ -70,7 +93,7 @@ export default function SharedNoteView({
   useInPlaceWikilinks(articleRef, noop);
 
   const colored = !!note.color;
-  const canEdit = note.access === 'edit' && !!onSave;
+  const canEdit = !live && note.access === 'edit' && !!onSave;
   // Painted exactly like the owner's open note: `--note-tint` mixed by
   // --tint-strength (muted in dark mode), and a coloured note keeps a light
   // editor for dark ink — the NoteEditor convention.
@@ -105,7 +128,7 @@ export default function SharedNoteView({
   // Closing the modal mid-pause still lands the last words.
   useEffect(() => () => { void flush(); }, [flush]);
 
-  const onChange = useCallback(({ markdown, source }: { markdown: string; source: 'user' | 'programmatic' }) => {
+  const onChange = useCallback(({ markdown, source }: { markdown: string; source: 'user' | 'programmatic' | 'remote' }) => {
     if (!canEdit || source !== 'user') return;
     if (hasBridgePlaceholder(markdown) || markdown === baseline.current) return;
     pending.current = markdown;
@@ -123,7 +146,20 @@ export default function SharedNoteView({
     <article ref={articleRef} className={`shared-note${colored ? ` shared-note--colored${tintInkClass(note.color, theme)}` : ''}`} style={style}>
       <header className="shared-note__bar">
         <h1 className="shared-note__title">{note.title.trim() || 'Untitled'}</h1>
-        {canEdit ? (
+        {live ? (
+          <>
+            <CollabPresence
+              provider={room.provider}
+              status={room.status}
+              cursorsRef={cursorsRef}
+              selfUid={room.self?.uid ?? null}
+              viewOnly={!liveEdit}
+            />
+            {room.status === 'live' && (liveEdit
+              ? <span className="shared-note__status"><PencilLine size={13} aria-hidden="true" /> Editing live</span>
+              : <span className="shared-note__badge"><Eye size={13} aria-hidden="true" /> View only</span>)}
+          </>
+        ) : canEdit ? (
           <span className="shared-note__status" role="status" aria-live="polite">
             {status === 'saving' && <><Loader2 size={13} className="shared-note__spin" aria-hidden="true" /> Saving…</>}
             {status === 'saved' && <><Check size={13} aria-hidden="true" /> Saved</>}
@@ -150,7 +186,7 @@ export default function SharedNoteView({
         </p>
       )}
 
-      {!canEdit && onRequestEdit && (
+      {!canEdit && !liveEdit && onRequestEdit && room.status !== 'revoked' && room.status !== 'gone' && (
         <div className="shared-note__request">
           <p className="shared-note__request-text">
             {note.requestPending
@@ -168,6 +204,56 @@ export default function SharedNoteView({
         </div>
       )}
 
+      {live && (
+        <div className="shared-note__canvas">
+          {room.status === 'revoked' || room.status === 'gone' ? (
+            <p className="shared-note__gone" role="status">
+              {room.status === 'revoked'
+                ? 'This note is no longer shared with you.'
+                : 'This note was deleted, trashed or locked by its owner.'}
+            </p>
+          ) : room.collaboration ? (
+            <>
+              {/* Lexical ≥0.32 needs this provider above CollaborationPlugin;
+                  luthor's PapyraEditor doesn't add it. */}
+              <LexicalCollaboration>
+                <PapyraEditor
+                  // A new session (reconnect, access change) is a new Yjs doc.
+                  key={`live-${room.generation}-${editorTheme}-${colored ? 'tint' : 'plain'}`}
+                  initialTheme={editorTheme}
+                  colored={colored}
+                  readOnly={!liveEdit}
+                  defaultEditorView="visual"
+                  blockAnchors="off"
+                  adapter={adapter}
+                  collaboration={room.collaboration}
+                  onReady={(m) => {
+                    editorRef.current = m;
+                    const editor = m.getLexicalEditor() ?? null;
+                    setLexical(editor);
+                    editor?.setEditable(liveEdit && room.synced);
+                  }}
+                />
+              </LexicalCollaboration>
+              <div ref={cursorsRef} className="collab-cursors" aria-hidden="true" />
+            </>
+          ) : room.status === 'offline' ? (
+            // Never reached the room: the last text we have, read-only.
+            <PapyraEditor
+              key={`offline-${editorTheme}-${colored ? 'tint' : 'plain'}`}
+              initialTheme={editorTheme}
+              colored={colored}
+              readOnly
+              defaultEditorView="visual"
+              defaultContent={note.body}
+              adapter={adapter}
+              onReady={(m) => { m.setMarkdown(note.body); }}
+            />
+          ) : <LoadingBar label="Joining the live note" />}
+        </div>
+      )}
+
+      {!live && (
       <PapyraEditor
         // Re-mounted when access changes, so an approval turns the page
         // editable in place.
@@ -186,6 +272,7 @@ export default function SharedNoteView({
           baseline.current = hasBridgePlaceholder(read) ? note.body : read;
         }}
       />
+      )}
     </article>
   );
 }

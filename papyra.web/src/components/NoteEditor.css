@@ -130,6 +130,21 @@
   letter-spacing: -0.01em;
 }
 
+/* Live note: the presence strip shares the title's row. */
+.note-editor__bar { align-items: center; gap: var(--space-3); }
+.note-editor__title { min-width: 0; }
+.note-editor__live-note {
+  margin: var(--space-4) var(--sheet-pad);
+  font: 400 var(--fs-sm) / 1.5 var(--sans);
+  color: var(--text);
+}
+.note-editor--colored .note-editor__live-note { color: var(--tint-ink-muted); }
+.note-editor--colored .collab-presence__status {
+  border-color: var(--tint-scrim);
+  background: var(--tint-scrim);
+  color: var(--tint-ink);
+}
+
 /* The caret already says the title has focus; a ring round it read as chrome. */
 .note-editor__title:focus-visible { outline: none; }
 

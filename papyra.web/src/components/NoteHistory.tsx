@@ -217,6 +217,9 @@ export default function NoteHistory({ noteId, live, onPreview, onRestore, onClos
                   {selected ? label : 'Current version'}
                 </span>
                 {when && <span className="note-history__ago">{relativeTime(when)}</span>}
+                {selected?.editors && selected.editors.length > 0 && (
+                  <span className="note-history__ago note-history__by">Edited by {selected.editors.join(', ')}</span>
+                )}
                 {stats && (stats.added > 0 || stats.removed > 0 || titleChanged) && (
                   <span className="note-history__stats" title="Compared with the note now">
                     {stats.removed > 0 && <span className="is-del">−{stats.removed}</span>}
