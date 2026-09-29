@@ -105,7 +105,7 @@ export default function SharedNoteView({
   // Closing the modal mid-pause still lands the last words.
   useEffect(() => () => { void flush(); }, [flush]);
 
-  const onChange = useCallback(({ markdown, source }: { markdown: string; source: 'user' | 'programmatic' }) => {
+  const onChange = useCallback(({ markdown, source }: { markdown: string; source: 'user' | 'programmatic' | 'remote' }) => {
     if (!canEdit || source !== 'user') return;
     if (hasBridgePlaceholder(markdown) || markdown === baseline.current) return;
     pending.current = markdown;

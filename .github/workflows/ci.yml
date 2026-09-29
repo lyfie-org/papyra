@@ -72,11 +72,56 @@ jobs:
         working-directory: papyra.web
         run: pnpm run build
 
-  # A green light only when BOTH halves pass — handy as the single required
+  collab:
+    name: Collab server — type-check, lint, test & bundle
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup pnpm
+        uses: pnpm/action-setup@v6
+        with:
+          version: 11.5.1
+
+      - name: Setup Node 22
+        uses: actions/setup-node@v7
+        with:
+          node-version: '22'
+          cache: 'pnpm'
+
+      - name: Install
+        run: pnpm install --frozen-lockfile
+
+      - name: Type-check
+        working-directory: papyra.collab
+        run: pnpm run typecheck
+
+      - name: Lint
+        working-directory: papyra.collab
+        run: pnpm run lint
+
+      # Ticket auth, block-level 3-way merge (incl. randomized no-loss check),
+      # room lifecycle, and real-WebSocket multi-client convergence.
+      - name: Test
+        working-directory: papyra.collab
+        run: pnpm run test
+
+      - name: Bundle
+        working-directory: papyra.collab
+        run: pnpm run build
+
+      # Boot the *built* single-file bundle (what the Docker image ships) and
+      # run two collaborators through it end to end.
+      - name: Selftest the bundle
+        working-directory: papyra.collab
+        run: pnpm run selftest
+
+  # A green light only when ALL jobs pass — handy as the single required
   # status check on a branch-protection rule.
   ci-ok:
     name: CI passed
-    needs: [backend, frontend]
+    needs: [backend, frontend, collab]
     runs-on: ubuntu-latest
     steps:
       - run: echo "All checks green."

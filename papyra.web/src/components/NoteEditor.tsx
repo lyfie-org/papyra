@@ -407,7 +407,7 @@ export default function NoteEditor({ note, isDraft = false }: { note: Note; isDr
   // typing was silently never saved. `source` distinguishes a real edit from our
   // own setMarkdown (remote adopt, time-machine preview), so a programmatic
   // mutation can no longer masquerade as one.
-  const onEditorChange = useCallback(({ markdown, source }: { markdown: string; source: 'user' | 'programmatic' }) => {
+  const onEditorChange = useCallback(({ markdown, source }: { markdown: string; source: 'user' | 'programmatic' | 'remote' }) => {
     if (source !== 'user') return;
     if (awaitingBaseline.current) {
       awaitingBaseline.current = false;

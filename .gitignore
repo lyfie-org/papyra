@@ -541,3 +541,7 @@ papyra.app/.astro/
 
 # Throwaway vault for the blog screenshots (see blog/assets/capture/README.md)
 .blogdata/
+
+# Collab server bundle (esbuild output, rebuilt by `pnpm --filter papyra-collab build`
+# and by the Dockerfile collab stage).
+papyra.collab/dist/
