@@ -6,6 +6,10 @@ a Docker Hub tag and a GitHub Release.
 
 <!-- new releases are inserted directly below this line -->
 
+## [0.2.3] - 2026-09-29
+
+- fix(sso): send the public-URL redirect_uri to the identity provider (991c94c)
+
 ## [0.2.2] - 2026-09-29
 
 - feat: show-then-edit settings, multiple authenticators, one session per browser (7d01628)
