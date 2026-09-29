@@ -12,10 +12,31 @@
 // Needs the .NET SDK (the API runs with `dotnet run`).
 
 import { spawn } from 'node:child_process';
+import { createHmac, randomBytes } from 'node:crypto';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join, resolve } from 'node:path';
 import { chromium } from 'playwright';
+
+// RFC 6238 (SHA-1, 6 digits, 30 s) — what an authenticator app would show.
+const B32 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+function base32(bytes) {
+  let bits = '';
+  for (const b of bytes) bits += b.toString(2).padStart(8, '0');
+  let out = '';
+  for (let i = 0; i < bits.length; i += 5) out += B32[parseInt(bits.slice(i, i + 5).padEnd(5, '0'), 2)];
+  return out;
+}
+function totp(secret) {
+  let bits = '';
+  for (const ch of secret) bits += B32.indexOf(ch).toString(2).padStart(5, '0');
+  const key = Buffer.from(bits.match(/.{8}/g).map((b) => parseInt(b, 2)));
+  const counter = Buffer.alloc(8);
+  counter.writeBigUInt64BE(BigInt(Math.floor(Date.now() / 30_000)));
+  const h = createHmac('sha1', key).update(counter).digest();
+  const o = h[h.length - 1] & 0xf;
+  return String((h.readUInt32BE(o) & 0x7fffffff) % 1_000_000).padStart(6, '0');
+}
 
 const WEB = resolve(import.meta.dirname, '..');
 const API_PROJECT = resolve(WEB, '../papyra.api/src/Papyra.Api');
@@ -79,8 +100,10 @@ try {
   page.on('dialog', (d) => { failures.push(`unexpected native dialog: ${d.type()} "${d.message()}"`); void d.dismiss(); });
 
   // First user + an empty note to work in.
+  // The first admin needs an authenticator: enrol a throwaway one.
+  const totpSecret = base32(randomBytes(20));
   const setup = await page.request.post(`${ORIGIN}/api/auth/setup`, {
-    data: { username: 'e2e', name: 'E2E', password: 'Tr0ub4dor&3-papyra-e2e!' },
+    data: { username: 'e2e', name: 'E2E', password: 'Tr0ub4dor&3-papyra-e2e!', totpSecret, totpCode: totp(totpSecret) },
   });
   if (!setup.ok()) throw new Error(`setup failed: ${setup.status()} ${await setup.text()}`);
   const put = await page.request.put(`${ORIGIN}/api/notes/${NOTE}`, {
