@@ -35,6 +35,7 @@ public sealed class VaultObserver : BackgroundService
     private readonly SearchIndexService? _search;
     private readonly ConflictState? _conflicts;
     private readonly IHubContext<NotesHub>? _hub;
+    private readonly Collab.ICollabEngine? _collab;
     private readonly ILogger<VaultObserver> _logger;
 
     // One watcher per tenant, keyed by userId.
@@ -57,7 +58,8 @@ public sealed class VaultObserver : BackgroundService
         ILogger<VaultObserver> logger,
         IHubContext<NotesHub>? hub = null,
         SearchIndexService? search = null,
-        ConflictState? conflicts = null)
+        ConflictState? conflicts = null,
+        Collab.ICollabEngine? collab = null)
     {
         _options = options;
         _storage = storage;
@@ -67,6 +69,7 @@ public sealed class VaultObserver : BackgroundService
         _hub = hub;
         _search = search;
         _conflicts = conflicts;
+        _collab = collab;
     }
 
     protected override Task ExecuteAsync(CancellationToken stoppingToken)
@@ -183,6 +186,11 @@ public sealed class VaultObserver : BackgroundService
                     _state.Upsert(userId, path, note);
                     _search?.IndexNote(userId, note);
                     await Broadcast(userId, existed ? "NoteUpdated" : "NoteCreated", note, token);
+                    // Changed outside the API (git sync, Syncthing, another editor):
+                    // if the note is open live, the room merges it in rather than
+                    // overwriting it on its next save.
+                    if (existed && _collab is not null && !note.Secure)
+                        await _collab.ExternalChangeAsync(userId, note.Id, note.Body, token);
                 }
             }
 

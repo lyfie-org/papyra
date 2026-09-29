@@ -21,6 +21,27 @@ COPY VERSION ./
 
 RUN pnpm --filter ./papyra.web build
 
+# ─── Stage 1b: Node — build the embedded collab engine ───────────────────────
+# Live multi-user editing runs INSIDE this image: papyra.collab is bundled into a
+# single dependency-free server.mjs that the API starts as a child process
+# (Collab/CollabHost.cs). No second container, nothing to configure.
+FROM --platform=$BUILDPLATFORM node:22-alpine AS collab
+
+RUN corepack enable && corepack prepare pnpm@11.5.1 --activate
+
+WORKDIR /build
+
+COPY pnpm-workspace.yaml package.json pnpm-lock.yaml ./
+COPY papyra.collab/package.json papyra.collab/
+
+RUN pnpm install --frozen-lockfile --filter papyra-collab...
+
+COPY papyra.collab/ papyra.collab/
+
+# Bundle, then boot the bundle once (two scripted editors over a real
+# WebSocket) so a broken engine fails the image build, not a user's install.
+RUN pnpm --filter papyra-collab build && pnpm --filter papyra-collab selftest
+
 # ─── Stage 2: .NET — restore ──────────────────────────────────────────────────
 FROM --platform=$BUILDPLATFORM mcr.microsoft.com/dotnet/sdk:10.0 AS dotnet-restore
 
@@ -49,12 +70,14 @@ FROM mcr.microsoft.com/dotnet/aspnet:10.0-alpine AS runtime
 # icu-libs: globalization; su-exec: drop privileges; shadow: usermod/groupmod realign;
 # tzdata: IANA time zones, so TZ sets the server's zone and a person's chosen zone
 # (Settings → Profile) resolves — without it every zone quietly reads as UTC.
-RUN apk add --no-cache icu-libs su-exec shadow tzdata
+# nodejs: runs the bundled collab engine (live editing) as a child of the API.
+RUN apk add --no-cache icu-libs su-exec shadow tzdata nodejs
 ENV DOTNET_SYSTEM_GLOBALIZATION_INVARIANT=false
 
 WORKDIR /app
 
 COPY --from=dotnet-publish /app/publish ./
+COPY --from=collab /build/papyra.collab/dist/server.mjs ./collab/server.mjs
 COPY entrypoint.sh /usr/local/bin/entrypoint.sh
 RUN chmod +x /usr/local/bin/entrypoint.sh
 

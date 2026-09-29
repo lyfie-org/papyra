@@ -15,6 +15,7 @@ using Microsoft.AspNetCore.SignalR;
 using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Options;
+using Papyra.Api.Collab;
 using Papyra.Api.Data;
 using Papyra.Api.Features;
 using Papyra.Api.Hubs;
@@ -229,6 +230,9 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<ImportService>());
 
 // Real-time push: the observer broadcasts metadata-only note events to clients.
 builder.Services.AddSignalR();
+// Live collaboration: the embedded engine (papyra.collab) runs as a child
+// process of this API — see Collab/CollabHost.cs. Nothing to configure.
+builder.Services.AddCollab(builder.Configuration);
 
 // ── Cookie auth ──────────────────────────────────────────────────────────────
 // Sessions ride a single HttpOnly cookie. SameSite=Strict + (in prod) Secure;
@@ -931,7 +935,14 @@ app.MapScalarApiReference("/docs", options =>
            .WithCustomCss(".scalar-app .references-header { display: none !important; }"));
 
 // ── Health ─────────────────────────────────────────────────────────────────
-app.MapGet("/health", () => Results.Ok(new { status = "Healthy", app = "Papyra API" }))
+app.MapGet("/health", (ICollabEngine collab) => Results.Ok(new
+    {
+        status = "Healthy",
+        app = "Papyra API",
+        // ok | starting | degraded | disabled — degraded never makes the app
+        // unhealthy: notes just use the classic editor.
+        collab = collab.Status.ToString().ToLowerInvariant(),
+    }))
     .ExcludeFromDescription();
 
 // ── Auth: first-admin setup ──────────────────────────────────────────────────
@@ -2828,6 +2839,8 @@ notes.MapPut("/{id}", async (
     IHostEnvironment env,
     ILoggerFactory loggerFactory,
     HttpContext http,
+    ICollabEngine collab,
+    NoteWriteLocks writeLocks,
     CancellationToken ct) =>
 {
     // A new note's file starts under its id until it has a title (then it is
@@ -2912,6 +2925,28 @@ notes.MapPut("/{id}", async (
         path = PathGuard.ResolveAndVerify(notesDir, Path.GetFileName(fresh), loggerFactory.CreateLogger("PathGuard"));
     }
 
+    // Locking a note someone has open live: save the room and close it for
+    // good first, then lock exactly what the room saved.
+    var closedRoom = prior is not null && note.Secure && !wasSecure && await collab.IsRoomActiveAsync(uid, id, ct);
+    if (closedRoom) await collab.CloseAsync(uid, id, flush: true, ct);
+
+    // From here to the write, nothing else may write this note — a live room
+    // saves its body in the background (see NoteWriteLocks).
+    using var writeLock = await writeLocks.AcquireAsync(uid, id, ct);
+    if (prior is not null && File.Exists(path))
+    {
+        var onDisk = await storage.ReadAsync(path, ct);
+        // A live editor's metadata save (header) or any save that didn't touch
+        // the body keeps the body as it is on disk right now — the freshest
+        // copy, possibly just saved by the room — never a stale one.
+        if (onDisk is not null && (http.Request.Headers.ContainsKey(CollabEndpoints.CollabClientHeader)
+                                   || note.Body == prior.Body
+                                   || closedRoom))
+            note.Body = onDisk.Body;
+        else if (await CollabEndpoints.BodyWriteGuardAsync(collab, uid, id, onDisk?.Body, note.Body, ct) is { } busy)
+            return busy;
+    }
+
     // Snapshot the prior on-disk revision before we overwrite it (throttled).
     var snapRoot = PapyraPaths.UserSnapshotsDir(config, env.ContentRootPath, uid);
     var noteSnapDir = PathGuard.ResolveAndVerify(snapRoot, id, loggerFactory.CreateLogger("PathGuard"));
@@ -2959,11 +2994,17 @@ notes.MapDelete("/{id}", async (
     WriteRing writeRing,
     SearchIndexService search,
     EmbeddingService embeddings,
+    ICollabEngine collab,
+    CollabStateStore collabStates,
     CancellationToken ct) =>
 {
     var uid = Uid(user);
     var path = state.PathFor(uid, id);
     if (path is null) return Results.NotFound();
+
+    // Anyone still in the note's live room is sent away; nothing is saved.
+    await collab.CloseAsync(uid, id, flush: false, ct);
+    collabStates.Delete(uid, id);
 
     writeRing.Mark(path); // watcher ignores the delete echo
     if (File.Exists(path)) File.Delete(path);
@@ -2981,11 +3022,16 @@ notes.MapDelete("/{id}", async (
 notes.MapPost("/{id}/trash", async (
     string id, ClaimsPrincipal user, VaultState state,
     MarkdownStorageService storage, WriteRing writeRing, SearchIndexService search,
-    EmbeddingService embeddings, CancellationToken ct) =>
+    EmbeddingService embeddings, ICollabEngine collab, NoteWriteLocks writeLocks, CancellationToken ct) =>
 {
     var uid = Uid(user);
     var path = state.PathFor(uid, id);
     if (path is null || !state.TryGet(uid, path, out var note) || note is null) return Results.NotFound();
+
+    // A live room saves what everyone typed, then closes: nothing is lost.
+    await collab.CloseAsync(uid, id, flush: true, ct);
+    using var writeLock = await writeLocks.AcquireAsync(uid, id, ct);
+    note = await storage.ReadAsync(path, ct) ?? note;
 
     note.Trashed = true;
     note.TrashedAt = DateTime.UtcNow;
@@ -3000,11 +3046,13 @@ notes.MapPost("/{id}/trash", async (
 notes.MapPost("/{id}/untrash", async (
     string id, ClaimsPrincipal user, VaultState state,
     MarkdownStorageService storage, WriteRing writeRing, SearchIndexService search,
-    EmbeddingService embeddings, CancellationToken ct) =>
+    EmbeddingService embeddings, NoteWriteLocks writeLocks, CancellationToken ct) =>
 {
     var uid = Uid(user);
     var path = state.PathFor(uid, id);
     if (path is null || !state.TryGet(uid, path, out var note) || note is null) return Results.NotFound();
+    using var writeLock = await writeLocks.AcquireAsync(uid, id, ct);
+    note = await storage.ReadAsync(path, ct) ?? note;
 
     note.Trashed = false;
     note.TrashedAt = null;
@@ -3027,7 +3075,8 @@ notes.MapPost("/bulk", async (
     BulkNoteAction body, ClaimsPrincipal user, VaultState state,
     MarkdownStorageService storage, WriteRing writeRing, SearchIndexService search,
     EmbeddingService embeddings, WebhookDispatcherService webhooks,
-    IHubContext<NotesHub> hub, CancellationToken ct) =>
+    IHubContext<NotesHub> hub, ICollabEngine collab, CollabStateStore collabStates, NoteWriteLocks writeLocks,
+    CancellationToken ct) =>
 {
     var action = body.Action?.Trim().ToLowerInvariant();
     if (action is not ("pin" or "unpin" or "archive" or "unarchive" or "trash" or "untrash" or "delete"))
@@ -3059,6 +3108,8 @@ notes.MapPost("/bulk", async (
                 results.Add(new { id, status = "notTrashed" });
                 continue;
             }
+            await collab.CloseAsync(uid, id, flush: false, ct);
+            collabStates.Delete(uid, id);
             writeRing.Mark(path);
             if (File.Exists(path)) File.Delete(path);
             state.Remove(uid, path);
@@ -3069,6 +3120,12 @@ notes.MapPost("/bulk", async (
             changed++;
             continue;
         }
+
+        // Trashing closes any live room after it saves; every flag write then
+        // re-reads the body under the note's write lock (see NoteWriteLocks).
+        if (action == "trash") await collab.CloseAsync(uid, id, flush: true, ct);
+        using var writeLock = await writeLocks.AcquireAsync(uid, id, ct);
+        note = await storage.ReadAsync(path, ct) ?? note;
 
         var before = (note.Pinned, note.Archived, note.Trashed);
         switch (action)
@@ -4103,7 +4160,8 @@ notes.MapPost("/{id}/shares", async (
 var shares = app.MapGroup("/api/shares").RequireAuthorization().WithTags("Sharing");
 
 shares.MapDelete("/{shareId:int}", async (
-    int shareId, ClaimsPrincipal user, AppDbContext db, IHubContext<NotesHub> hub, CancellationToken ct) =>
+    int shareId, ClaimsPrincipal user, AppDbContext db, IHubContext<NotesHub> hub, ICollabEngine collab,
+    CancellationToken ct) =>
 {
     var uid = int.Parse(Uid(user));
     var share = await db.Shares.FirstOrDefaultAsync(s => s.Id == shareId && s.OwnerId == uid, ct);
@@ -4113,7 +4171,11 @@ shares.MapDelete("/{shareId:int}", async (
     // The grantee's rail and any open copy of the note have to let go now, not
     // on their next reload.
     if (share.GranteeUserId is { } gone)
+    {
         await hub.Clients.User(gone.ToString()).SendAsync("SharesChanged", ct);
+        // ...and out of the live room, if they are in it (their open ticket is void too).
+        await collab.KickAsync(share.OwnerId.ToString(), share.NoteId, gone, ct);
+    }
     return Results.NoContent();
 });
 
@@ -4324,14 +4386,14 @@ shares.MapPut("/incoming/{shareId:int}", async (
     int shareId, SharedBodyWrite body, ClaimsPrincipal user, AppDbContext db, VaultState state,
     MarkdownStorageService storage, WriteRing writeRing, SearchIndexService search,
     SnapshotService snapshots, IConfiguration config, IHostEnvironment env,
-    IHubContext<NotesHub> hub, VaultObserverOptions vault, ILoggerFactory lf, CancellationToken ct) =>
+    IHubContext<NotesHub> hub, VaultObserverOptions vault, ILoggerFactory lf, ICollabEngine collab, NoteWriteLocks writeLocks, CancellationToken ct) =>
 {
     var uid = int.Parse(Uid(user));
     var share = await db.Shares.FirstOrDefaultAsync(s => s.Id == shareId && s.GranteeUserId == uid, ct);
     if (share is null) return Results.NotFound();
     if (share.Access != "edit") return Results.Forbid();
     return await ApplySharedEdit(share.OwnerId.ToString(), share.NoteId, body.Body ?? string.Empty,
-        state, storage, writeRing, search, snapshots, config, env, hub, vault, lf, ct);
+        state, storage, writeRing, search, snapshots, config, env, hub, vault, lf, collab, writeLocks, ct);
 });
 
 // ── Notifications (the bell) ─────────────────────────────────────────────────
@@ -4726,7 +4788,7 @@ app.MapPut("/api/shared/{token}", async (
     string token, SharedBodyWrite body, AppDbContext db, VaultState state, MarkdownStorageService storage,
     WriteRing writeRing, SearchIndexService search, SnapshotService snapshots,
     IConfiguration config, IHostEnvironment env, IHubContext<NotesHub> hub,
-    VaultObserverOptions vault, ILoggerFactory lf, CancellationToken ct) =>
+    VaultObserverOptions vault, ILoggerFactory lf, ICollabEngine collab, NoteWriteLocks writeLocks, CancellationToken ct) =>
 {
     var share = await db.Shares.FirstOrDefaultAsync(s => s.Token == token && s.Kind == "link", ct);
     if (share is null) return Results.NotFound();
@@ -4734,7 +4796,7 @@ app.MapPut("/api/shared/{token}", async (
         return Results.Json(new { error = "This link has expired." }, statusCode: StatusCodes.Status410Gone);
     if (share.Access != "edit") return Results.Forbid();
     return await ApplySharedEdit(share.OwnerId.ToString(), share.NoteId, body.Body ?? string.Empty,
-        state, storage, writeRing, search, snapshots, config, env, hub, vault, lf, ct);
+        state, storage, writeRing, search, snapshots, config, env, hub, vault, lf, collab, writeLocks, ct);
 });
 
 // ── Search ────────────────────────────────────────────────────────────────────
@@ -5958,6 +6020,7 @@ app.MapFallback("/api/{**rest}", (HttpContext http) =>
     Results.Json(new { error = "No such endpoint.", path = http.Request.Path.Value }, statusCode: StatusCodes.Status404NotFound))
     .ExcludeFromDescription();
 
+app.MapCollab();
 app.MapFallbackToFile("index.html");
 
 app.Run();
@@ -6219,11 +6282,17 @@ static async Task<IResult> ApplySharedEdit(
     string ownerUid, string noteId, string newBody,
     VaultState state, MarkdownStorageService storage, WriteRing writeRing, SearchIndexService search,
     SnapshotService snapshots, IConfiguration config, IHostEnvironment env,
-    IHubContext<NotesHub> hub, VaultObserverOptions vault, ILoggerFactory lf, CancellationToken ct)
+    IHubContext<NotesHub> hub, VaultObserverOptions vault, ILoggerFactory lf,
+    ICollabEngine collab, NoteWriteLocks writeLocks, CancellationToken ct)
 {
     var path = OwnerNotePath(state, vault, lf, ownerUid, noteId);
+    using var writeLock = await writeLocks.AcquireAsync(ownerUid, noteId, ct);
     var note = await storage.ReadAsync(path, ct);
     if (note is null) return Results.NotFound();
+    // A body write through the classic path while the note is open live would
+    // overwrite everyone in the room.
+    if (await CollabEndpoints.BodyWriteGuardAsync(collab, ownerUid, noteId, note.Body, newBody, ct) is { } busy)
+        return busy;
     // A locked note is not writable from outside the vault either: the editor on
     // the other end was handed an empty body, so saving it would erase the note.
     if (note.Secure) return Results.Json(

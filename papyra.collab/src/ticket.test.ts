@@ -43,6 +43,14 @@ describe('tickets', () => {
     expect(verifyTicket(SECRET, `${forged}.${signature}`, '7:Inbox', NOW)).toBe('bad-signature')
   })
 
+  it('accepts a ticket minted by Papyra.Api (CollabTests.TicketVector)', () => {
+    const vector =
+      'eyJ2IjoxLCJ1aWQiOjMsIm5hbWUiOiJBZGEiLCJvd25lciI6Nywibm90ZSI6IkluYm94IiwiYWNjZXNzIjoiZWRpdCIsImlhdCI6MTgwMDAwMDAwMDAwMCwiZXhwIjoxODAwMDAwMDYwfQ' +
+      '.FPaundGhcCenfDvoWwLM2ZVRxQk4kYQFBhGWkzo0TdU'
+    expect(verifyTicket(SECRET, vector, '7:Inbox', NOW)).toEqual(base)
+    expect(mintTicket(SECRET, base)).toBe(vector)
+  })
+
   it('refuses garbage', () => {
     for (const token of ['', 'abc', 'abc.', '.abc', 'a.b.c']) {
       expect(verifyTicket(SECRET, token, '7:Inbox', NOW)).not.toEqual(base)

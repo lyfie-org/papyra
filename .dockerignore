@@ -5,6 +5,8 @@ papyra.api/**/*.trx
 
 papyra.web/node_modules/
 papyra.web/dist/
+papyra.collab/node_modules/
+papyra.collab/dist/
 
 # Stale local SPA build — the frontend stage rebuilds and COPYs a fresh wwwroot
 # into the publish stage, so never send a developer's local build into the context.

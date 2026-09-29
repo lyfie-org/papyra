@@ -5,12 +5,13 @@
   "type": "module",
   "description": "Papyra live-collaboration server (Hocuspocus + headless luthor). Runs as a child process of the API.",
   "scripts": {
-    "dev": "tsx watch src/main.ts",
+    "dev": "tsx watch --env-file=.env.development src/main.ts",
     "build": "node build.mjs",
     "selftest": "node dist/server.mjs --selftest",
     "typecheck": "tsc --noEmit",
     "lint": "eslint .",
-    "test": "vitest run"
+    "test": "vitest run",
+    "e2e": "tsx scripts/e2e.ts"
   },
   "dependencies": {
     "@hocuspocus/provider": "^4.7.0",

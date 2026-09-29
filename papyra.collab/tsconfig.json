@@ -14,5 +14,5 @@
     "noUnusedParameters": true,
     "noFallthroughCasesInSwitch": true
   },
-  "include": ["src", "build.mjs", "vitest.config.ts"]
+  "include": ["src", "scripts", "build.mjs", "vitest.config.ts"]
 }

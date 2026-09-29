@@ -2,7 +2,7 @@
 // editor on its doc, so tests and the selftest edit exactly like a browser
 // (Lexical updates → @lexical/yjs → wire), without a browser.
 import * as Y from 'yjs'
-import { HocuspocusProvider } from '@hocuspocus/provider'
+import { HocuspocusProvider, HocuspocusProviderWebsocket } from '@hocuspocus/provider'
 import { $getRoot, $isElementNode, $isTextNode, type LexicalNode } from 'lexical'
 import {
   createPapyraHeadlessCollab,
@@ -34,7 +34,17 @@ function firstText(node: LexicalNode | null): LexicalNode | null {
   return null
 }
 
-export function createTestClient(url: string, room: string, token: string): TestClient {
+/**
+ * `WebSocketImpl` lets a Node client send headers a browser would (the session
+ * cookie the API's /collab proxy requires) — Node's WebSocket takes them as an
+ * option.
+ */
+export function createTestClient(
+  url: string,
+  room: string,
+  token: string,
+  WebSocketImpl?: unknown,
+): TestClient {
   const doc = new Y.Doc()
   const collab = createPapyraHeadlessCollab(doc)
   let resolveSynced!: () => void
@@ -42,8 +52,11 @@ export function createTestClient(url: string, room: string, token: string): Test
   const synced = new Promise<void>((resolve) => (resolveSynced = resolve))
   const closed = new Promise<string>((resolve) => (resolveClosed = resolve))
 
+  const socket = WebSocketImpl
+    ? new HocuspocusProviderWebsocket({ url, WebSocketPolyfill: WebSocketImpl })
+    : undefined
   const provider = new HocuspocusProvider({
-    url,
+    ...(socket ? { websocketProvider: socket } : { url }),
     name: room,
     document: doc,
     token,
@@ -51,6 +64,8 @@ export function createTestClient(url: string, room: string, token: string): Test
     onClose: ({ event }) => resolveClosed(event.reason),
     onAuthenticationFailed: ({ reason }) => resolveClosed(`auth-failed:${reason}`),
   })
+  // A shared websocket isn't managed by the provider: attach explicitly.
+  if (socket) provider.attach()
 
   return {
     provider,
@@ -74,6 +89,7 @@ export function createTestClient(url: string, room: string, token: string): Test
     markdown: () => collab.getMarkdown(),
     destroy() {
       provider.destroy()
+      socket?.destroy()
       collab.dispose()
     },
   }
