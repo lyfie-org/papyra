@@ -4,7 +4,7 @@ import type { IndexeddbPersistence } from 'y-indexeddb';
 import type { Provider } from '@lexical/yjs';
 import type { CollaborationExtension } from '@lyfie/luthor-headless/collab';
 import { collabColor } from '../lib/collabColors';
-import { forgetCollabRoomCache, rememberCollabRoomCache } from '../lib/collabCache';
+import { findCollabRoomCache, forgetCollabRoomCache, rememberCollabRoomCache } from '../lib/collabCache';
 
 /**
  * Live editing of a shared note: one Yjs room per note, served by the
@@ -22,6 +22,11 @@ import { forgetCollabRoomCache, rememberCollabRoomCache } from '../lib/collabCac
  * on its doc (offline) while a throwaway doc *probes* the room: same epoch →
  * the same doc reconnects (no remount, caret kept, offline edits merge); a new
  * epoch or a changed access → the editor is rebuilt on a fresh session.
+ *
+ * Offline open: with no ticket to be had (no network), a note this device has
+ * edited live before opens on its IndexedDB copy — editable, marked offline —
+ * and reaches the room through the same probe once the network is back. The
+ * copy is checked to still hold the recorded lineage before it is shown.
  */
 
 /**
@@ -147,6 +152,8 @@ interface Join {
   key: string;
   ticket: CollabTicket;
   gen: number;
+  /** Opened from this device's copy, without a ticket: the IndexedDB to load. */
+  offline?: { db: string; epoch: string };
 }
 
 interface Session {
@@ -159,6 +166,8 @@ interface Session {
   epoch: string | null;
   /** Disconnected on purpose or lost: status events are ignored until it reconnects. */
   retired: boolean;
+  /** An offline open that hasn't reached the room yet (see Join.offline). */
+  unreached: boolean;
   destroyed: boolean;
 }
 
@@ -171,6 +180,11 @@ class RoomStore {
   private timer: ReturnType<typeof setTimeout> | undefined;
   private pending: (() => void) | null = null;
   private backoff = REJOIN_MIN_MS;
+  /**
+   * A cached (offline) session is on screen and still finding the room: its
+   * probe owns reconnecting, so a ticket must not rebuild the editor under it.
+   */
+  offlineOpen = false;
 
   keepTicket(value: string) { this.fresh = { value, at: Date.now() }; }
 
@@ -199,7 +213,7 @@ class RoomStore {
   }
 
   resetBackoff() { this.backoff = REJOIN_MIN_MS; }
-  cancel() { clearTimeout(this.timer); this.pending = null; }
+  cancel() { clearTimeout(this.timer); this.pending = null; this.offlineOpen = false; }
 }
 
 function wsUrl(path: string): string {
@@ -263,6 +277,11 @@ export function useCollabRoom(
     const scheduleRetry = () => store.retry(() => setAttempt((a) => a + 1));
     void requestCollabTicket(JSON.parse(targetKey) as CollabTarget).then((result) => {
       if (cancelled) return;
+      // The cached session's probe takes it from here (and checks the lineage).
+      if (store.offlineOpen && (result.kind === 'ok' || result.kind === 'offline')) {
+        if (result.kind === 'ok') store.retryNow();
+        return;
+      }
       if (result.kind === 'ok') {
         store.keepTicket(result.ticket.ticket);
         setJoin({ key: targetKey, ticket: result.ticket, gen: nextGen++ });
@@ -293,10 +312,43 @@ export function useCollabRoom(
 
   const current = join && join.key === targetKey ? join : null;
 
+  // No ticket (offline) and nothing on screen: open this device's copy of the
+  // room, if it has one and it still holds the recorded lineage. A copy that
+  // doesn't (cleared by the browser, half-written) is never shown — typing
+  // into an empty doc would land beside the note when it merges.
+  const offlineNow = !!targetKey && outcome?.key === targetKey && outcome.status === 'offline';
+  const joined = !!current;
+  useEffect(() => {
+    if (!targetKey || !offlineNow || joined || !libs) return;
+    const found = findCollabRoomCache(targetKey);
+    if (!found) return;
+    let cancelled = false;
+    const { room, cache } = found;
+    const doc = new libs.Y.Doc();
+    const idb = new libs.IndexeddbPersistence(cache.db, doc);
+    void idb.whenSynced.then(() => {
+      const epoch = doc.getMap<string>(ROOM_META).get(EPOCH_KEY);
+      void idb.destroy().catch(() => {});
+      doc.destroy();
+      if (cancelled || epoch !== cache.epoch) return;
+      store.cancel();
+      store.offlineOpen = true;
+      setJoin({
+        key: targetKey,
+        ticket: {
+          ticket: '', room, access: 'edit', uid: cache.uid, username: cache.username, name: cache.name, url: cache.url,
+        },
+        gen: nextGen++,
+        offline: { db: cache.db, epoch: cache.epoch },
+      });
+    });
+    return () => { cancelled = true; };
+  }, [targetKey, offlineNow, joined, libs, store]);
+
   const collaboration = useMemo(() => {
     if (!current || !libs) return null;
     const { Y, HocuspocusProvider, HocuspocusProviderWebsocket, IndexeddbPersistence, CollaborationExtension } = libs;
-    const { ticket, key, gen } = current;
+    const { ticket, key, gen, offline } = current;
     const target = JSON.parse(key) as CollabTarget;
     const setStatus = (status: CollabStatus, synced?: boolean) =>
       setOutcome((o) => ({
@@ -329,7 +381,8 @@ export function useCollabRoom(
           maxAttempts: 0,
         });
         const session: Session = {
-          gen, socket, idb: null, synced: false, epoch: null, retired: false, destroyed: false,
+          gen, socket, idb: null, synced: false, epoch: offline?.epoch ?? null,
+          retired: !!offline, unreached: !!offline, destroyed: false,
           provider: null as unknown as HocuspocusProvider,
         };
 
@@ -340,6 +393,7 @@ export function useCollabRoom(
           void requestCollabTicket(target).then((result) => {
             if (session.destroyed) return;
             if (result.kind === 'revoked' || result.kind === 'gone') {
+              store.offlineOpen = false;
               setStatus(result.kind);
               return;
             }
@@ -352,6 +406,7 @@ export function useCollabRoom(
             }
             const next = result.ticket;
             if (next.access !== ticket.access) {
+              store.offlineOpen = false;
               store.keepTicket(next.ticket);
               setJoin({ key, ticket: next, gen: nextGen++ });
               return;
@@ -374,11 +429,13 @@ export function useCollabRoom(
                 store.retry(probe);
               } else if (epoch !== null && epoch === session.epoch) {
                 session.retired = false;
+                session.unreached = false;
                 setStatus('connecting');
                 void socket.connect();
               } else {
                 // The room was rebuilt from its file: this doc can't merge.
                 console.warn('[papyra] live note was rebuilt from its file while offline; reloading it');
+                store.offlineOpen = false;
                 setJoin({ key, ticket: next, gen: nextGen++ });
               }
             };
@@ -433,18 +490,25 @@ export function useCollabRoom(
           onSynced: ({ state }) => {
             if (!state || session.retired) return;
             session.synced = true;
+            store.offlineOpen = false;
             store.resetBackoff();
             setStatus('live', true);
             if (session.epoch === null) {
               const epoch = doc.getMap<string>(ROOM_META).get(EPOCH_KEY);
               session.epoch = typeof epoch === 'string' ? epoch : null;
             }
-            if (ticket.access === 'edit' && !session.idb) {
+            if (ticket.access === 'view') {
+              // A viewer keeps no copy — nor one from when they could edit.
+              forgetCollabRoomCache(ticket.room);
+            } else if (!session.idb) {
               const epoch = session.epoch;
               if (epoch !== null) {
                 const name = `papyra-collab:${ticket.room}:${epoch}`;
                 session.idb = new IndexeddbPersistence(name, doc);
-                rememberCollabRoomCache(ticket.room, name);
+                rememberCollabRoomCache(ticket.room, {
+                  db: name, target: key, epoch,
+                  uid: ticket.uid, username: ticket.username, name: ticket.name, url: ticket.url,
+                });
               }
             }
           },
@@ -473,11 +537,30 @@ export function useCollabRoom(
         store.sessions.set(gen, session);
         setProvider({ gen, provider: session.provider });
 
+        // Offline open: fill the doc from this device's copy, then look for the
+        // room. Only once Lexical is bound (its first connect) — updates that
+        // land before it observes the doc would never reach the editor.
+        const openCopy = (db: string) => {
+          if (session.idb) return;
+          const idb = new IndexeddbPersistence(db, doc);
+          session.idb = idb;
+          void idb.whenSynced.then(() => {
+            if (session.destroyed) return;
+            session.synced = true;
+            setStatus('offline', true);
+            probe();
+          });
+        };
+
         // Lexical's Provider shape; connect/disconnect drive our own socket.
         return {
           awareness: session.provider.awareness,
           connect: () => {
             if (session.destroyed) return;
+            if (offline && session.unreached) {
+              openCopy(offline.db);
+              return;
+            }
             session.retired = false;
             void socket.connect();
           },
