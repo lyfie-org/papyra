@@ -1,6 +1,7 @@
 // Live rooms: one per open shared note. Each room binds a headless Papyra
 // editor to the Hocuspocus Y.Doc so the server can read the doc as markdown
 // (to save) and write markdown into it (to adopt external file edits).
+import { randomUUID } from 'node:crypto'
 import * as Y from 'yjs'
 import {
   $createParagraphNode,
@@ -21,6 +22,15 @@ import { parseRoomName } from './ticket'
 // luthor once serialized placeholders instead of embeds; that text is never
 // the note and must never reach disk (mirrors papyra.web lib/bridgePlaceholder).
 const BRIDGE_PLACEHOLDER = /\[Unsupported [\w-]+ preserved in markdown metadata\]/
+
+/**
+ * Room metadata lives beside the editor's root type. `epoch` names the doc's
+ * Yjs lineage: it changes whenever the room is rebuilt from the file instead
+ * of from persisted state. Browsers key their offline (IndexedDB) copy by it,
+ * because updates from one lineage merged into another duplicate content.
+ */
+export const ROOM_META = 'papyra'
+export const EPOCH_KEY = 'epoch'
 
 export interface Logger {
   info(message: string): void
@@ -172,6 +182,8 @@ export class RoomRegistry {
     // empty one — so content can never be duplicated.
     if (collab.isEmpty()) collab.setMarkdown(stored.body)
     ensureEditable(collab)
+    const meta = document.getMap<string>(ROOM_META)
+    if (!useState || typeof meta.get(EPOCH_KEY) !== 'string') meta.set(EPOCH_KEY, randomUUID())
 
     this.rooms.set(documentName, {
       owner: parsed.owner,

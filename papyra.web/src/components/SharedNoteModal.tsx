@@ -10,7 +10,8 @@ import './SharedNoteModal.css';
 
 /**
  * A note shared with you, open over whatever page you are on (`?open=<shareId>`).
- * Editors save as they type; viewers can ask for edit access. Keyed under
+ * Opens in the note's live room (see SharedNoteView); viewers can ask for
+ * edit access. Keyed under
  * ['shares', 'incoming'] so an approval pushed over the hub flips it editable.
  */
 export default function SharedNoteModal({ shareId, onClose }: { shareId: number; onClose: () => void }) {
@@ -73,6 +74,9 @@ export default function SharedNoteModal({ shareId, onClose }: { shareId: number;
             onSave={save}
             onRequestEdit={requestEdit}
             mediaUrl={(f) => `/api/shares/incoming/${shareId}/media/${encodeURIComponent(f)}`}
+            // Signed in: join the note's live room (classic saves if the
+            // collab engine is off).
+            collab={{ shareId }}
           />
         ) : <LoadingBar label="Loading shared note" />)}
       </div>

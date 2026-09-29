@@ -3,6 +3,7 @@ import { useLocation, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { PapyraEditor, type PapyraEditorRef } from '@lyfie/luthor/presets/papyra';
 import '@lyfie/luthor/styles.css';
+import { LexicalCollaboration } from '@lexical/react/LexicalCollaborationContext';
 import { $getRoot, CLEAR_HISTORY_COMMAND, type LexicalEditor } from 'lexical';
 import { hasBridgePlaceholder } from '../lib/bridgePlaceholder';
 import type { Note } from '../types/note';
@@ -38,6 +39,12 @@ import { editedLabel, fullStamp, useMinuteTick, useTimeZone } from '../lib/timeZ
 import LinkCards from './LinkCards';
 import LinkHoverCard from './LinkHoverCard';
 import MediaTools from './MediaTools';
+import LoadingBar from './LoadingBar';
+import CollabPresence from './CollabPresence';
+import { useShareSummary } from '../hooks/useShares';
+import { useCollabRoom } from '../hooks/useCollabRoom';
+import { useCollabCursorLabels } from '../hooks/useCollabCursorLabels';
+import { COLLAB_HEADER } from '../lib/notesApi';
 
 /*
  * luthor ≤2.9.7 serializes a just-adopted document without the Papyra preset's
@@ -193,6 +200,28 @@ export default function NoteEditor({ note, isDraft = false }: { note: Note; isDr
   // not the draft (see getDraft and NoteHistory).
   const suppressSave = useRef(false);
 
+  // ── Live editing ─────────────────────────────────────────────────────────
+  // A note shared with at least one person opens in its live room (the
+  // embedded collab engine): everyone's carets, no lost edits. Unshared notes
+  // keep the classic autosave editor and never depend on the engine. Once live
+  // for this note, it stays live until closed — dropping back mid-session
+  // would remount on a body the room may not have saved yet.
+  const shareSummary = useShareSummary();
+  const sharedWithPeople = !!shareSummary.data?.some((s) => s.noteId === note.id && s.people.length > 0);
+  const collabEligible = !isDraft && !note.secure && note.kind !== 'inbox';
+  const [collabLatch, setCollabLatch] = useState<string | null>(null);
+  if (collabEligible && sharedWithPeople && collabLatch !== note.id) setCollabLatch(note.id);
+  const collabOn = collabEligible && (sharedWithPeople || collabLatch === note.id);
+  // Joined only after the classic draft is flushed (see the effect below), so
+  // the room seeds from the latest text.
+  const [joinedId, setJoinedId] = useState<string | null>(null);
+  // The room owns the body while this is true: saves send metadata only, and
+  // the editor's own changes never schedule an autosave. Mirrored into a ref
+  // for the save paths, which read it at write time.
+  const collabRef = useRef(false);
+  const cursorsRef = useRef<HTMLDivElement>(null);
+  const isCollab = useCallback(() => collabRef.current, []);
+
   // Read the live draft on demand: title from the ref, body from Luthor's ref
   // (falling back to the last value mirrored on input when the ref is gone).
   //
@@ -204,7 +233,9 @@ export default function NoteEditor({ note, isDraft = false }: { note: Note; isDr
   // Nor may placeholder text (see hasBridgePlaceholder) ever reach a writer:
   // then the last good body mirrored from the editor stands in.
   const getDraft = useCallback((): Draft => {
-    if (suppressSave.current) return { title: titleRef.current, body: latestBody.current };
+    // Live: the body on disk is the room's; ours is only a placeholder the
+    // server ignores (see COLLAB_HEADER), held steady so it never reads dirty.
+    if (suppressSave.current || collabRef.current) return { title: titleRef.current, body: latestBody.current };
     const md = editorRef.current?.getMarkdown();
     return {
       title: titleRef.current,
@@ -241,7 +272,7 @@ export default function NoteEditor({ note, isDraft = false }: { note: Note; isDr
     [offerMentionShare],
   );
 
-  const { status, isDirty, bump, reset, flush, savedRef } = useAutoSave(note, getDraft, getSaveDraft, onSaved);
+  const { status, isDirty, bump, reset, flush, savedRef } = useAutoSave(note, getDraft, getSaveDraft, onSaved, isCollab);
   // Keyboard users land inside the editor instead of at the top of the page.
   useDialogFocus(sheetRef);
 
@@ -260,6 +291,40 @@ export default function NoteEditor({ note, isDraft = false }: { note: Note; isDr
   const [previewTitle, setPreviewTitle] = useState<string | null>(null);
   // Asking for the vault PIN before a lock can come off (see toggleSecure).
   const [unlockToChangeLock, setUnlockToChangeLock] = useState(false);
+
+  // Going live: save the classic draft first (a plain body write — the room
+  // isn't ours yet), then join. The fallback editor (engine off) remounts on
+  // that same saved text.
+  useEffect(() => {
+    if (!collabOn) return;
+    let cancelled = false;
+    void flush().then(() => {
+      if (cancelled) return;
+      setBody(latestBody.current);
+      setJoinedId(note.id);
+    });
+    return () => { cancelled = true; };
+  }, [collabOn, note.id, flush]);
+  // History reads past versions in a classic, read-only canvas, so the room is
+  // left while it is open and rejoined after.
+  const room = useCollabRoom(
+    collabOn && joinedId === note.id && !history ? { noteId: note.id } : null,
+    cursorsRef,
+  );
+  // Live mode, unless the engine said it is off (then: classic autosave).
+  const [collabDownFor, setCollabDownFor] = useState<string | null>(null);
+  if (room.status === 'unavailable' && collabDownFor !== note.id) setCollabDownFor(note.id);
+  const collabLive = collabOn && collabDownFor !== note.id;
+  const collabActive = collabLive && joinedId === note.id;
+  const liveEditorKey = collabLive && !history && room.collaboration
+    ? `${room.generation}-${theme}-${note.color ?? ''}` : null;
+  useCollabCursorLabels(cursorsRef, liveEditorKey);
+  // Read-only until the room has delivered the note, and again while offline
+  // for a viewer; typing into an unsynced doc would land beside the note.
+  useEffect(() => {
+    if (liveEditorKey && lexicalEditor) lexicalEditor.setEditable(room.synced);
+  }, [liveEditorKey, lexicalEditor, room.synced]);
+  useEffect(() => { collabRef.current = collabActive; }, [collabActive]);
 
   // What the editor currently displays — the yardstick for detecting that the
   // server snapshot (refreshed by SignalR invalidation) carries a new revision.
@@ -309,6 +374,8 @@ export default function NoteEditor({ note, isDraft = false }: { note: Note; isDr
     setHistory(false);
     const remote = deferredRemote.current;
     deferredRemote.current = null;
+    // Live: the preview canvas unmounts and the room is rejoined.
+    if (collabRef.current) return;
     if (remote) { applyRemote(remote); return; } // fresh, editable mount
     const lexical = editorRef.current?.getLexicalEditor();
     editorRef.current?.setMarkdown(latestBody.current);
@@ -370,6 +437,18 @@ export default function NoteEditor({ note, isDraft = false }: { note: Note; isDr
     const incoming = { title: note.title, body: note.body };
     if (note.id !== shown.current.id) { applyRemote(incoming); return; }
     if (incoming.title === shown.current.title && incoming.body === shown.current.body) return;
+    if (collabLive) {
+      // The room owns the body (peers' edits arrive through it, caret-safe);
+      // only a title renamed elsewhere comes this way — taken unless ours is
+      // mid-edit.
+      if (incoming.title !== shown.current.title && titleRef.current === savedRef.current.title) {
+        titleRef.current = incoming.title;
+        setTitle(incoming.title);
+        reset({ title: incoming.title, body: latestBody.current });
+      }
+      shown.current = { id: note.id, ...incoming };
+      return;
+    }
     if (history) {
       // Nothing unsaved can be lost: history is only entered after a flush, and
       // the canvas is read-only while it is open.
@@ -396,7 +475,7 @@ export default function NoteEditor({ note, isDraft = false }: { note: Note; isDr
     // Dirty: protect the caret, surface the conflict for the user to resolve.
     shown.current = { id: note.id, ...incoming };
     setPending(incoming);
-  }, [note, isDirty, applyRemote, savedRef, getDraft, history]);
+  }, [note, isDirty, applyRemote, savedRef, getDraft, history, collabLive, reset]);
 
   // Keep my local edits and let the next save overwrite the remote revision.
   const keepLocal = useCallback(() => { setPending(null); bump(); }, [bump]);
@@ -409,6 +488,8 @@ export default function NoteEditor({ note, isDraft = false }: { note: Note; isDr
   // mutation can no longer masquerade as one.
   const onEditorChange = useCallback(({ markdown, source }: { markdown: string; source: 'user' | 'programmatic' | 'remote' }) => {
     if (source !== 'user') return;
+    // Live: every keystroke is already in the room, which saves it.
+    if (collabRef.current && !suppressSave.current) return;
     if (awaitingBaseline.current) {
       awaitingBaseline.current = false;
       if (!hasBridgePlaceholder(markdown)) {
@@ -462,7 +543,7 @@ export default function NoteEditor({ note, isDraft = false }: { note: Note; isDr
         body: draft.body,
         // `secure` is never sent from here (see toggleSecure); the API reads an
         // absent value as "leave the lock alone".
-      }, note.updated);
+      }, note.updated, { collab: collabRef.current });
       reset(draft);
       // A color flip remounts the editor (theme swap, see key/style below); seed the
       // fresh mount with the live text so unsaved edits survive the remount.
@@ -494,7 +575,9 @@ export default function NoteEditor({ note, isDraft = false }: { note: Note; isDr
     try {
       res = await vaultFetch(`/api/notes/${encodeURIComponent(note.id)}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: collabRef.current
+          ? { 'Content-Type': 'application/json', [COLLAB_HEADER]: 'frontmatter' }
+          : { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           title: draft.title, tags: note.tags, color: note.color, pinned: note.pinned,
           archived: note.archived, kind: note.kind, body: draft.body, secure: next,
@@ -528,6 +611,13 @@ export default function NoteEditor({ note, isDraft = false }: { note: Note; isDr
   const openHistory = useCallback(async () => {
     if (history) return;
     await flush();
+    // Live: "Now" is the room's text as on screen; the preview canvas starts there.
+    if (collabRef.current) {
+      let live: string | undefined;
+      try { live = editorRef.current?.getMarkdown(); } catch { /* not synced yet */ }
+      if (live !== undefined && !hasBridgePlaceholder(live)) latestBody.current = live;
+      setBody(latestBody.current);
+    }
     // Cancel any still-pending debounce from edits made just before opening —
     // otherwise it could fire mid-preview and flush the previewed (old) body.
     const draft = getDraft();
@@ -717,6 +807,15 @@ export default function NoteEditor({ note, isDraft = false }: { note: Note; isDr
           readOnly={isLocked || history}
           onChange={(e) => { titleRef.current = e.target.value; setTitle(e.target.value); bump(); }}
         />
+        {collabLive && !history && !focus && (
+          <CollabPresence
+            provider={room.provider}
+            status={room.status === 'offline' && !room.collaboration ? 'offline' : room.status}
+            cursorsRef={cursorsRef}
+            selfUid={room.self?.uid ?? null}
+            viewOnly={!room.collaboration}
+          />
+        )}
       </header>
 
       {!focus && <TagEditor tags={note.tags} onChange={(tags) => saveFrontmatter({ tags })} />}
@@ -747,8 +846,58 @@ export default function NoteEditor({ note, isDraft = false }: { note: Note; isDr
           the bubbling `input` event, so a React onInput here would never fire. */}
       {!isLocked && (
       <div className="note-editor__canvas">
+        {collabLive && !history && (room.status === 'gone' ? (
+          <p className="note-editor__live-note" role="status">
+            This note was moved to Trash, deleted or locked while it was open.
+          </p>
+        ) : room.collaboration ? (
+          <>
+            {/* Lexical ≥0.32 needs this provider above CollaborationPlugin;
+                luthor's PapyraEditor doesn't add it. */}
+            <LexicalCollaboration>
+              <PapyraEditor
+                // A new session (reconnect, access change) is a new Yjs doc: a
+                // fresh editor. Theme/tint remounts rebind the same session.
+                key={`${note.id}-live-${room.generation}-${editorTheme}-${colored ? 'tint' : 'plain'}`}
+                initialTheme={theme}
+                colored={colored}
+                toolbar={toolbarShown && !focus}
+                toolbarAlignment="center"
+                toolbarLayout={PAPYRA_TOOLBAR_LAYOUT}
+                toolbarItems={toolbarItems}
+                imageUploadHandler={imageUploadHandler}
+                defaultEditorView="visual"
+                blockAnchors="off"
+                placeholder="Start writing…"
+                adapter={adapter}
+                collaboration={room.collaboration}
+                // No onChange: the room saves every keystroke, and luthor
+                // baselines onChange with getMarkdown() at mount — which
+                // throws on a collab doc the room hasn't filled yet.
+                onDesync={(info) => console.warn('[papyra] editor DOM diverged from model', info)}
+                onReady={(methods) => {
+                  editorRef.current = methods;
+                  const lexical = methods.getLexicalEditor();
+                  setLexicalEditor(lexical ?? null);
+                  lexical?.getRootElement()?.setAttribute('aria-label', 'Note body');
+                  // Nothing to type into until the room has sent the note.
+                  lexical?.setEditable(room.synced);
+                }}
+              />
+            </LexicalCollaboration>
+            {/* Peers' carets, labels and selection tints (Lexical paints them). */}
+            <div ref={cursorsRef} className="collab-cursors" aria-hidden="true" />
+          </>
+        ) : room.status === 'offline' ? null : (
+          <LoadingBar label="Joining the live note" />
+        ))}
+        {/* Classic editor: unshared notes, the engine being off, history
+            previews of a live note, and a live note opened while offline
+            (read-only: its edits belong to the room). */}
+        {(!collabLive || history || (room.status === 'offline' && !room.collaboration)) && (
         <PapyraEditor
-          key={`${note.id}-${editorKey}-${editorTheme}-${colored ? 'tint' : 'plain'}`}
+          key={`${note.id}-${editorKey}-${editorTheme}-${colored ? 'tint' : 'plain'}${collabLive ? '-ro' : ''}`}
+          readOnly={collabLive}
           initialTheme={theme}
           colored={colored}
           // Not in focus mode (distraction-free) or while history previews an
@@ -803,7 +952,7 @@ export default function NoteEditor({ note, isDraft = false }: { note: Note; isDr
             // an app theme switch) builds a fresh, editable canvas from the live
             // body — so history is over; leave it rather than leave its bar over
             // an editor that is no longer showing a preview.
-            if (suppressSave.current) {
+            if (suppressSave.current && !collabRef.current) {
               suppressSave.current = false;
               setPreviewTitle(null);
               setHistory(false);
@@ -832,6 +981,7 @@ export default function NoteEditor({ note, isDraft = false }: { note: Note; isDr
             reset({ title: titleRef.current, body: normalised });
           }}
         />
+        )}
       </div>
       )}
 

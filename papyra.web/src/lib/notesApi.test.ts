@@ -58,4 +58,11 @@ describe('mergeQueued', () => {
     const merged = mergeQueued([note()], [entry({ id: 'a' })]);
     expect(merged[0].id).toBe('a');
   });
+
+  it("keeps the room's body under a live editor's queued metadata write", () => {
+    const merged = mergeQueued([note()], [entry({ collab: true })]);
+    expect(merged[0].body).toBe('server body');
+    expect(merged[0].title).toBe('A (edited offline)');
+    expect(merged[0].tags).toEqual(['t']);
+  });
 });

@@ -31,6 +31,20 @@ function isOffline(res?: Response): boolean {
 }
 
 /**
+ * A live (collaborative) editor's write carries `X-Papyra-Collab`: the API then
+ * keeps the body that is on disk — the room's, flushed by the collab engine —
+ * and takes only the metadata. Without it a stale body would be refused
+ * (409 `collab_active`) and park in the outbox forever.
+ */
+export const COLLAB_HEADER = 'X-Papyra-Collab';
+
+function writeHeaders(collab: boolean): Record<string, string> {
+  return collab
+    ? { 'Content-Type': 'application/json', [COLLAB_HEADER]: 'frontmatter' }
+    : { 'Content-Type': 'application/json' };
+}
+
+/**
  * Persist a note. Returns 'saved' when the API took it, 'queued' when it was
  * parked in the outbox. Throws only for real API rejections (401/403/413/…),
  * which are the caller's problem, not the network's.
@@ -39,9 +53,12 @@ export async function putNote(
   id: string,
   payload: NoteWritePayload,
   base?: string,
+  /** `collab`: sent from a live editor — metadata only, the room owns the body. */
+  opts?: { collab?: boolean },
 ): Promise<SaveOutcome> {
+  const collab = !!opts?.collab;
   const park = async (): Promise<SaveOutcome> => {
-    await queueWrite({ id, payload, base, queuedAt: new Date().toISOString() });
+    await queueWrite({ id, payload, base, queuedAt: new Date().toISOString(), ...(collab ? { collab } : {}) });
     await refreshPending();
     setSync({ online: false });
     return 'queued';
@@ -56,7 +73,7 @@ export async function putNote(
   try {
     res = await fetch(`/api/notes/${encodeURIComponent(id)}`, {
       method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
+      headers: writeHeaders(collab),
       body: JSON.stringify(payload),
       // A hung server must not hold a save open forever; the outbox is right there.
       signal: AbortSignal.timeout(SAVE_TIMEOUT_MS),
@@ -115,6 +132,14 @@ export function mergeQueued(notes: Note[], queued: OutboxEntry[]): Note[] {
   const byId = new Map(notes.map((n) => [n.id, n]));
   for (const entry of queued) {
     const existing = byId.get(entry.id);
+    // A live editor's queued write is metadata only; its body is a placeholder
+    // the server will ignore, so it must not paint over the room's text either.
+    if (entry.collab && existing) {
+      const { body: _ignored, ...meta } = entry.payload;
+      void _ignored;
+      byId.set(entry.id, { ...existing, ...meta, id: entry.id, updated: entry.queuedAt });
+      continue;
+    }
     byId.set(entry.id, {
       ...(existing ?? {
         id: entry.id, trashed: false, secure: false, updated: entry.queuedAt,
@@ -162,7 +187,7 @@ export async function flushOutbox(): Promise<{ synced: number; conflicts: string
     try {
       res = await fetch(`/api/notes/${encodeURIComponent(entry.id)}`, {
         method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
+        headers: writeHeaders(!!entry.collab),
         body: JSON.stringify(entry.payload),
       });
     } catch {

@@ -27,6 +27,11 @@ export interface OutboxEntry {
   base?: string;
   /** When the edit was queued (ISO) — surfaced in the UI. */
   queuedAt: string;
+  /**
+   * Written from a live (collaborative) editor: only the metadata is the
+   * writer's — the body belongs to the room, so the server keeps its own.
+   */
+  collab?: boolean;
 }
 
 const DB_NAME = 'papyra-outbox';

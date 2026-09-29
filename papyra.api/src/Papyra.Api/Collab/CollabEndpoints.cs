@@ -117,6 +117,8 @@ public static class CollabEndpoints
             ticket = CollabTicket.Mint(engine.Secret, ticket),
             room = CollabTicket.RoomName(access.OwnerId, access.NoteId),
             access = access.Access,
+            uid,
+            username = me.Username,
             name = ticket.Name,
             url = "/collab",
         });

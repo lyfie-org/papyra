@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import * as Y from 'yjs'
 import { createPapyraHeadlessCollab } from '@lyfie/luthor/presets/papyra-collab'
 import { createMemoryNotesApi } from './memoryApi'
-import { applyMarkdownMinimal, RoomRegistry } from './rooms'
+import { applyMarkdownMinimal, EPOCH_KEY, ROOM_META, RoomRegistry } from './rooms'
 
 const ROOM = '7:note'
 const quiet = { info: () => {}, warn: () => {}, error: vi.fn() }
@@ -81,6 +81,27 @@ describe('RoomRegistry', () => {
     const reopened = new Y.Doc()
     await rooms.load(ROOM, reopened)
     expect(createPapyraHeadlessCollab(reopened).getMarkdown()).toBe('Rewritten by git')
+  })
+
+  it('keeps the lineage epoch across persisted reopens and renews it on a rebuild', async () => {
+    const { api, rooms, doc } = setup('Hello')
+    await rooms.load(ROOM, doc)
+    const epoch = doc.getMap(ROOM_META).get(EPOCH_KEY)
+    expect(typeof epoch).toBe('string')
+    edit(doc, 'Hello again')
+    await rooms.store(ROOM)
+    rooms.dispose(ROOM)
+
+    const reopened = new Y.Doc()
+    await rooms.load(ROOM, reopened)
+    expect(reopened.getMap(ROOM_META).get(EPOCH_KEY)).toBe(epoch)
+    rooms.dispose(ROOM)
+
+    // Rebuilt from the file: a new Yjs lineage, so a new epoch.
+    api.writeExternally(ROOM, 'Rewritten by git')
+    const rebuilt = new Y.Doc()
+    await rooms.load(ROOM, rebuilt)
+    expect(rebuilt.getMap(ROOM_META).get(EPOCH_KEY)).not.toBe(epoch)
   })
 
   it('merges a file edit made mid-session instead of overwriting it', async () => {
