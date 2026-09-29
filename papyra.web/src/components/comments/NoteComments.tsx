@@ -75,6 +75,9 @@ export default function NoteComments({
   const data = api.data;
   const { toast } = useToast();
   const [anchors, setAnchors] = useState<Map<number, Range>>(new Map());
+  // The note text the anchors were found in — so "not found" is only believed
+  // once the note has actually rendered (a live note syncs after mount).
+  const [anchoredText, setAnchoredText] = useState<string | null>(null);
   const [active, setActive] = useState<number | null>(null);
   const [hover, setHover] = useState<number | null>(null);
   const [draft, setDraft] = useState<{ quote: TextQuote; range: Range } | null>(null);
@@ -102,6 +105,7 @@ export default function NoteComments({
         if (r) next.set(t.id, r);
       }
       setAnchors(next);
+      setAnchoredText(index.text);
     };
     run();
     // Typing, a remote edit arriving through the room, a remount: re-anchor.
@@ -139,8 +143,10 @@ export default function NoteComments({
       setRailBox(width >= RAIL_MIN ? { left: right + RAIL_GAP, width } : null);
     };
     measure();
+    // The sheet (its width) and the page (the room beside it).
     const ro = new ResizeObserver(measure);
     ro.observe(sheetEl);
+    ro.observe(document.documentElement);
     window.addEventListener('resize', measure);
     return () => { ro.disconnect(); window.removeEventListener('resize', measure); };
   }, [focusMode, sheetRef]);
@@ -278,7 +284,9 @@ export default function NoteComments({
     const thread = threads.find(t => t.id === openThreadId);
     if (!thread) return;
     const range = anchors.get(openThreadId);
-    if (!range && !thread.resolved && thread.quote && rootEl && rootEl.textContent === '') return; // not rendered yet
+    // A passage we haven't looked for in the rendered note yet: wait, rather
+    // than call it detached and open the panel.
+    if (!range && !thread.resolved && thread.quote && (!anchoredText?.trim() || !rootEl)) return;
     opened.current = openThreadId;
     if (range) {
       range.startContainer.parentElement?.scrollIntoView({ block: 'center', behavior: 'smooth' });
@@ -286,7 +294,7 @@ export default function NoteComments({
     } else {
       onPanelOpen();
     }
-  }, [openThreadId, data, threads, anchors, rootEl, onPanelOpen]);
+  }, [openThreadId, data, threads, anchors, anchoredText, rootEl, onPanelOpen]);
 
   const jumpTo = useCallback((t: CommentThread) => {
     const range = anchors.get(t.id);

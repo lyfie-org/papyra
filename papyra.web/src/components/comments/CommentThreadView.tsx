@@ -25,8 +25,8 @@ function Body({ text, people }: { text: string; people: Set<string> }) {
   return <p className="comment__body">{parts}</p>;
 }
 
-function Item({ c, data, api, onFirstDeleted }: {
-  c: NoteCommentItem; data: CommentsData; api: Api; onFirstDeleted?: () => void;
+function Item({ c, data, api, root, replies, onFirstDeleted }: {
+  c: NoteCommentItem; data: CommentsData; api: Api; root: boolean; replies: number; onFirstDeleted?: () => void;
 }) {
   const [editing, setEditing] = useState(false);
   const [menu, setMenu] = useState(false);
@@ -38,8 +38,10 @@ function Item({ c, data, api, onFirstDeleted }: {
   async function remove() {
     setMenu(false);
     const ok = await confirm({
-      title: onFirstDeleted ? 'Delete this thread?' : 'Delete this comment?',
-      body: onFirstDeleted ? 'The comment and every reply to it are deleted for everyone.' : 'It’s deleted for everyone.',
+      title: root && replies > 0 ? 'Delete this thread?' : 'Delete this comment?',
+      body: root && replies > 0
+        ? `The comment and its ${replies === 1 ? 'reply' : `${replies} replies`} are deleted for everyone.`
+        : 'It’s deleted for everyone.',
       confirmLabel: 'Delete',
       destructive: true,
     });
@@ -145,7 +147,8 @@ export default function CommentThreadView({ thread, data, api, showQuote, detach
       )}
       <ul className="comment-thread__list">
         {thread.comments.map((c, i) => (
-          <Item key={c.id} c={c} data={data} api={api} onFirstDeleted={i === 0 ? onClosed : undefined} />
+          <Item key={c.id} c={c} data={data} api={api} root={i === 0} replies={thread.comments.length - 1}
+            onFirstDeleted={i === 0 ? onClosed : undefined} />
         ))}
       </ul>
       <div className="comment-thread__foot">

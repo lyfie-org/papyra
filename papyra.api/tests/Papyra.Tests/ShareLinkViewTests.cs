@@ -96,4 +96,91 @@ public sealed class ShareLinkViewTests
             Directory.Delete(dir, recursive: true);
         }
     }
+
+    private static async Task<(WebApplicationFactory<Program> Factory, string Dir, HttpClient Owner)> OwnerAppAsync()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "papyra-view-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(b =>
+        {
+            b.UseEnvironment("Development");
+            b.UseSetting("Papyra:DataDir", dir);
+        });
+        var owner = factory.CreateClient();
+        Assert.Equal(HttpStatusCode.OK, (await owner.PostSetupAsync(new SetupRequest(
+            Username: "admin", Name: "Admin", Email: "a@b.c", Password: "hunter2!"))).StatusCode);
+        await owner.PutAsJsonAsync("/api/notes/n1", new NoteWrite("N", null, null, false, false, "body"));
+        return (factory, dir, owner);
+    }
+
+    private static async Task<string> LinkAsync(HttpClient owner, int? maxViews, DateTime? expires = null)
+    {
+        var res = await owner.PostAsJsonAsync("/api/notes/n1/shares", new ShareWrite(
+            Kind: "link", Access: "view", GranteeUsername: null, ExpiresUtc: expires, MaxViews: maxViews));
+        return (await res.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("token").GetString()!;
+    }
+
+    private static async Task<int> ViewCountAsync(HttpClient owner, string token) =>
+        (await owner.GetFromJsonAsync<JsonElement>("/api/notes/n1/shares")).EnumerateArray()
+            .Single(s => s.GetProperty("token").GetString() == token).GetProperty("viewCount").GetInt32();
+
+    private static void Cleanup(WebApplicationFactory<Program> factory, string dir)
+    {
+        factory.Dispose();
+        SqliteConnection.ClearAllPools();
+        try { Directory.Delete(dir, recursive: true); } catch (IOException) { /* temp dir */ }
+    }
+
+    [Fact]
+    public async Task RefusedReads_AndMedia_NeverSpendAView()
+    {
+        var (factory, dir, owner) = await OwnerAppAsync();
+        try
+        {
+            var expired = await LinkAsync(owner, 1, DateTime.UtcNow.AddMinutes(-1));
+            Assert.Equal(HttpStatusCode.Gone, (await factory.CreateClient().SendAsync(Load(expired, "a"))).StatusCode);
+            Assert.Equal(0, await ViewCountAsync(owner, expired));
+
+            var once = await LinkAsync(owner, 1);
+            // Media is part of the page, not a view.
+            await factory.CreateClient().GetAsync($"/api/shared/{once}/media/nothing.png");
+            Assert.Equal(0, await ViewCountAsync(owner, once));
+            Assert.Equal(HttpStatusCode.NotFound, (await factory.CreateClient().SendAsync(Load("no-such-token", "a"))).StatusCode);
+
+            // Locked after sharing: refused, and the one view is still there to spend.
+            await TestAuth.SetVaultPinAsync(owner, "hunter2!");
+            await owner.PutAsJsonAsync("/api/notes/n1", new NoteWrite("N", null, null, false, false, "body", Kind: null, Secure: true));
+            Assert.Equal(HttpStatusCode.Gone, (await factory.CreateClient().SendAsync(Load(once, "a"))).StatusCode);
+            Assert.Equal(0, await ViewCountAsync(owner, once));
+        }
+        finally { Cleanup(factory, dir); }
+    }
+
+    [Fact]
+    public async Task ACookieOnlyExcusesTheLoadItWasIssuedFor()
+    {
+        var (factory, dir, owner) = await OwnerAppAsync();
+        try
+        {
+            var token = await LinkAsync(owner, null);
+            var visitor = factory.CreateClient();
+            await visitor.SendAsync(Load(token, "one"));
+            await visitor.SendAsync(Load(token, "one"));
+            Assert.Equal(1, await ViewCountAsync(owner, token));
+
+            // A forged cookie, or a real one presented with another load's id, is a new view.
+            var forged = Load(token, "two");
+            forged.Headers.Add("Cookie", "papyra_view_1=forged");
+            await factory.CreateClient().SendAsync(forged);
+            await visitor.SendAsync(Load(token, "three"));
+            Assert.Equal(3, await ViewCountAsync(owner, token));
+
+            // An absurd id is ignored — so every request counts, as with no id at all.
+            var huge = new string('x', 65);
+            await visitor.SendAsync(Load(token, huge));
+            await visitor.SendAsync(Load(token, huge));
+            Assert.Equal(5, await ViewCountAsync(owner, token));
+        }
+        finally { Cleanup(factory, dir); }
+    }
 }
