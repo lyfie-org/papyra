@@ -39,12 +39,14 @@ import { editedLabel, fullStamp, useMinuteTick, useTimeZone } from '../lib/timeZ
 import LinkCards from './LinkCards';
 import LinkHoverCard from './LinkHoverCard';
 import MediaTools from './MediaTools';
-import LoadingBar from './LoadingBar';
 import CollabPresence from './CollabPresence';
+import CollabJoining from './CollabJoining';
 import { useShareSummary } from '../hooks/useShares';
 import { useCollabRoom } from '../hooks/useCollabRoom';
 import { useCollabCursorLabels } from '../hooks/useCollabCursorLabels';
 import { COLLAB_HEADER } from '../lib/notesApi';
+import NoteComments, { CommentsButton } from './comments/NoteComments';
+import { useComments } from '../hooks/useComments';
 
 /*
  * luthor ≤2.9.7 serializes a just-adopted document without the Papyra preset's
@@ -325,6 +327,16 @@ export default function NoteEditor({ note, isDraft = false }: { note: Note; isDr
     if (liveEditorKey && lexicalEditor) lexicalEditor.setEditable(room.synced);
   }, [liveEditorKey, lexicalEditor, room.synced]);
   useEffect(() => { collabRef.current = collabActive; }, [collabActive]);
+
+  // Comments: every saved, unlocked note can take them (see NoteComments).
+  // A notification's "Open" lands here with ?comment=<thread>.
+  const commentsOn = !isDraft && !note.secure;
+  const comments = useComments(commentsOn ? { noteId: note.id } : null);
+  const [commentsPanel, setCommentsPanel] = useState(false);
+  const [openThreadId] = useState(() => Number(new URLSearchParams(window.location.search).get('comment')) || null);
+  const openComments = useCallback(() => setCommentsPanel(true), []);
+  const closeComments = useCallback(() => setCommentsPanel(false), []);
+  const openCommentCount = comments.data?.threads.filter(t => !t.resolved).length ?? 0;
 
   // What the editor currently displays — the yardstick for detecting that the
   // server snapshot (refreshed by SignalR invalidation) carries a new revision.
@@ -786,6 +798,9 @@ export default function NoteEditor({ note, isDraft = false }: { note: Note; isDr
           >
             {ambient.playing ? <Volume2 size={16} /> : <VolumeX size={16} />}
           </button>
+          {commentsOn && comments.data && !history && (
+            <CommentsButton count={openCommentCount} pressed={commentsPanel} onClick={() => setCommentsPanel(o => !o)} />
+          )}
           <button type="button" className="note-editor__focusbtn" aria-label="Exit focus mode" onClick={exitFocus}>
             <Minimize2 size={16} />
           </button>
@@ -807,6 +822,9 @@ export default function NoteEditor({ note, isDraft = false }: { note: Note; isDr
           readOnly={isLocked || history}
           onChange={(e) => { titleRef.current = e.target.value; setTitle(e.target.value); bump(); }}
         />
+        {commentsOn && comments.data && !history && !focus && (
+          <CommentsButton count={openCommentCount} pressed={commentsPanel} onClick={() => setCommentsPanel(o => !o)} />
+        )}
         {collabLive && !history && !focus && (
           <CollabPresence
             provider={room.provider}
@@ -852,6 +870,10 @@ export default function NoteEditor({ note, isDraft = false }: { note: Note; isDr
           </p>
         ) : room.collaboration ? (
           <>
+            {/* Until the room has sent the note, show what we already have —
+                blurred, inert — instead of an empty "Start writing…" canvas. */}
+            {!room.synced && <CollabJoining body={body} />}
+            <div className={room.synced ? undefined : 'collab-live--pending'} aria-hidden={room.synced ? undefined : true}>
             {/* Lexical ≥0.32 needs this provider above CollaborationPlugin;
                 luthor's PapyraEditor doesn't add it. */}
             <LexicalCollaboration>
@@ -885,11 +907,12 @@ export default function NoteEditor({ note, isDraft = false }: { note: Note; isDr
                 }}
               />
             </LexicalCollaboration>
+            </div>
             {/* Peers' carets, labels and selection tints (Lexical paints them). */}
             <div ref={cursorsRef} className="collab-cursors" aria-hidden="true" />
           </>
         ) : room.status === 'offline' ? null : (
-          <LoadingBar label="Joining the live note" />
+          <CollabJoining body={body} />
         ))}
         {/* Classic editor: unshared notes, the engine being off, history
             previews of a live note, and a live note opened while offline
@@ -1039,6 +1062,18 @@ export default function NoteEditor({ note, isDraft = false }: { note: Note; isDr
       )}
 
       {shareOpen && <ShareDialog note={note} onClose={() => setShareOpen(false)} />}
+      {commentsOn && !history && !isLocked && (
+        <NoteComments
+          api={comments}
+          rootEl={lexicalEditor?.getRootElement() ?? null}
+          sheetRef={sheetRef}
+          focusMode={focus}
+          panelOpen={commentsPanel}
+          onPanelOpen={openComments}
+          onPanelClose={closeComments}
+          openThreadId={openThreadId}
+        />
+      )}
     </section>
     </div>
   );

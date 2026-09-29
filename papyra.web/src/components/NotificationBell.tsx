@@ -133,12 +133,15 @@ function Item({ n, onNavigate }: { n: AppNotification; onNavigate: () => void })
 
   const who = <strong className="notif__who">@{n.actor}</strong>;
   const noteName = n.title != null ? <span className="notif__note">{quoted(n)}</span> : 'a note';
-  const canOpen = n.available && n.shareId != null;
+  const isComment = n.kind === 'comment' || n.kind === 'comment_reply' || n.kind === 'comment_mention';
+  const canOpen = n.available && (n.shareId != null || (isComment && n.mine));
 
   function open() {
     onNavigate();
-    if (n.mine) navigate(`/note/${encodeURIComponent(n.noteId)}`);
-    else if (n.shareId != null) navigate(`/?open=${n.shareId}`);
+    // A comment opens the note with its thread in view.
+    const thread = isComment && n.threadId ? `comment=${n.threadId}` : '';
+    if (n.mine) navigate(`/note/${encodeURIComponent(n.noteId)}${thread ? `?${thread}` : ''}`);
+    else if (n.shareId != null) navigate(`/?open=${n.shareId}${thread ? `&${thread}` : ''}`);
   }
 
   async function decide(approve: boolean) {
@@ -159,6 +162,9 @@ function Item({ n, onNavigate }: { n: AppNotification; onNavigate: () => void })
     case 'access_approved': line = <>{who} approved your request · you {n.access === 'edit' ? 'can edit' : 'can view'} {noteName}</>; break;
     case 'access_denied': line = <>{who} declined your request for {noteName}</>; break;
     case 'access_requested': line = <>{who} is asking to {n.access === 'edit' ? 'edit' : 'view'} {noteName}</>; break;
+    case 'comment': line = <>{who} commented on {noteName}</>; break;
+    case 'comment_reply': line = <>{who} replied to a comment on {noteName}</>; break;
+    case 'comment_mention': line = <>{who} mentioned you in a comment on {noteName}</>; break;
   }
 
   return (
@@ -168,7 +174,7 @@ function Item({ n, onNavigate }: { n: AppNotification; onNavigate: () => void })
         <p className="notif__line">{line}</p>
         <time className="notif__time" dateTime={n.createdUtc}>{ago(n.createdUtc)}</time>
 
-        {n.kind === 'mention' && n.text && <blockquote className="notif__quote">{n.text}</blockquote>}
+        {(n.kind === 'mention' || isComment) && n.text && <blockquote className="notif__quote">{n.text}</blockquote>}
 
         {!n.available && <p className="notif__muted">That note is no longer available.</p>}
 
@@ -201,7 +207,7 @@ function Item({ n, onNavigate }: { n: AppNotification; onNavigate: () => void })
           canOpen ? (
             <div className="notif__actions">
               <button type="button" className="notif__link" onClick={open}>
-                Open {n.shareAccess === 'edit' ? '· you can edit' : '· view only'}
+                {isComment ? 'Open comment' : <>Open {n.shareAccess === 'edit' ? '· you can edit' : '· view only'}</>}
               </button>
             </div>
           ) : n.kind === 'mention' ? (

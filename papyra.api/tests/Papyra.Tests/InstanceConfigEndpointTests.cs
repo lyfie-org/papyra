@@ -1,9 +1,14 @@
 using System.Net;
 using System.Net.Http.Json;
 using System.Text.Json;
+using Microsoft.AspNetCore.Authentication.OpenIdConnect;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
 using Microsoft.Data.Sqlite;
+using Microsoft.Extensions.DependencyInjection;
+using Microsoft.IdentityModel.Protocols;
+using Microsoft.IdentityModel.Protocols.OpenIdConnect;
 
 namespace Papyra.Tests;
 
@@ -178,6 +183,42 @@ public sealed class InstanceConfigEndpointTests
             pub = await factory.CreateClient().GetFromJsonAsync<JsonElement>("/api/auth/providers");
             Assert.Single(pub.GetProperty("providers").EnumerateArray());
             Assert.Equal(HttpStatusCode.NotFound, (await anon.GetAsync("/api/auth/login/sso/google")).StatusCode);
+        }
+        finally { Cleanup(factory, dir); }
+    }
+
+    [Fact]
+    public async Task SsoLogin_RedirectsToTheProvider_WithThePublicRedirectUri()
+    {
+        // A reachable IdP, stood in for by a static discovery document. Every
+        // other test stops at "unreachable" (502), which is how setting the
+        // handler's own redirect-uri state key in OnRedirectToIdentityProvider
+        // (→ "same key already added", a 500 on every click) went unnoticed.
+        var dir = Path.Combine(Path.GetTempPath(), "papyra-cfg-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(b =>
+        {
+            b.UseEnvironment("Development");
+            b.UseSetting("Papyra:DataDir", dir);
+            b.ConfigureTestServices(s => s.PostConfigureAll<OpenIdConnectOptions>(o =>
+                o.ConfigurationManager = new StaticConfigurationManager<OpenIdConnectConfiguration>(new OpenIdConnectConfiguration
+                {
+                    Issuer = "https://idp.example.com",
+                    AuthorizationEndpoint = "https://idp.example.com/authorize",
+                    TokenEndpoint = "https://idp.example.com/token",
+                })));
+        });
+        try
+        {
+            var admin = await AdminAsync(factory);
+            Assert.Equal(HttpStatusCode.OK, (await admin.PostAsJsonAsync("/api/auth/oidc/providers", Provider("Authentik"))).StatusCode);
+
+            var anon = factory.CreateClient(new WebApplicationFactoryClientOptions { AllowAutoRedirect = false });
+            var res = await anon.GetAsync("/api/auth/login/sso/authentik");
+            Assert.Equal(HttpStatusCode.Redirect, res.StatusCode);
+            var location = res.Headers.Location!.ToString();
+            Assert.StartsWith("https://idp.example.com/authorize?", location);
+            Assert.Contains("redirect_uri=" + Uri.EscapeDataString("http://localhost/signin-oidc/authentik"), location);
         }
         finally { Cleanup(factory, dir); }
     }

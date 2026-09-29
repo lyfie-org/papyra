@@ -27,6 +27,7 @@ public static class EnvAliases
     [
         ("PAPYRA_DATA_DIR", "Papyra:DataDir"),
         ("PAPYRA_ALLOW_INSECURE_COOKIES", "Papyra:AllowInsecureCookies"),
+        ("PAPYRA_ERROR_DETAILS", "Papyra:ErrorDetails"),
         ("PAPYRA_AI_ENABLED", "Features:Ai"),
         ("PAPYRA_COLLAB_ENABLED", "Features:Collab"),
         ("PAPYRA_OLLAMA_URL", "Ollama:BaseUrl"),

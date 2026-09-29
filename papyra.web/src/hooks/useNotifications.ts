@@ -6,7 +6,10 @@ export type NotificationKind =
   | 'access_upgraded'
   | 'access_requested'
   | 'access_approved'
-  | 'access_denied';
+  | 'access_denied'
+  | 'comment'
+  | 'comment_reply'
+  | 'comment_mention';
 
 /**
  * One entry in the bell. What it may show of the note (title, the mentioning
@@ -35,6 +38,8 @@ export interface AppNotification {
   requestStatus: 'pending' | 'approved' | 'denied' | null;
   /** The caller has asked for access to this note and is still waiting. */
   requestPending: boolean;
+  /** comment_* events: the thread to open the note at. */
+  threadId?: number | null;
 }
 
 export const NOTIFICATIONS_KEY = ['notifications'] as const;

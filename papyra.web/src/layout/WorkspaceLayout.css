@@ -508,3 +508,24 @@
 @media (prefers-reduced-motion: reduce) {
   .workspace__vault-dot { animation: none; }
 }
+
+/* A note that crashed while opening: the error in the note's place. */
+.workspace__note-crash {
+  position: fixed;
+  inset: 0;
+  z-index: 120;
+  display: grid;
+  place-items: center;
+  padding: var(--space-4);
+  background: color-mix(in srgb, var(--scrim) 55%, transparent);
+}
+.workspace__note-crash-box {
+  width: min(100%, 36rem);
+  max-height: calc(100dvh - 2 * var(--space-4));
+  overflow: auto;
+  padding: var(--space-6);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}

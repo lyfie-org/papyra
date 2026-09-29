@@ -110,6 +110,10 @@ public sealed class AccountDeletion
         db.BlockGrants.RemoveRange(db.BlockGrants.Where(g => g.SourceOwnerId == id || g.GranteeUserId == id));
         db.WebAuthnCredentials.RemoveRange(db.WebAuthnCredentials.Where(c => c.UserId == id));
         db.ExternalLogins.RemoveRange(db.ExternalLogins.Where(l => l.UserId == id));
+        // Their comments, and every comment on their notes (the notes are going).
+        var commentIds = db.NoteComments.Where(c => c.AuthorId == id || c.OwnerId == id).Select(c => c.Id);
+        db.CommentReactions.RemoveRange(db.CommentReactions.Where(r => r.UserId == id || commentIds.Contains(r.CommentId)));
+        db.NoteComments.RemoveRange(db.NoteComments.Where(c => c.AuthorId == id || c.OwnerId == id));
         db.Webhooks.RemoveRange(db.Webhooks.Where(w => w.UserId == id));
         db.SmartCollections.RemoveRange(db.SmartCollections.Where(c => c.UserId == id));
         db.AuthTokens.RemoveRange(db.AuthTokens.Where(t => t.UserId == id));

@@ -59,6 +59,7 @@ public static class NotificationCatalog
     public const string Shared = "collab.shared";
     public const string AccessRequested = "collab.access_requested";
     public const string AccessAnswered = "collab.access_answered";
+    public const string Comments = "collab.comments";
 
     // Running the instance.
     public const string AdminAccountChanges = "admin.accounts";
@@ -110,6 +111,8 @@ public static class NotificationCatalog
             "Someone asks to see a note of yours they were mentioned in."),
         new(AccessAnswered, "collab", "Answers to your requests",
             "Your request to see someone's note was approved or declined."),
+        new(Comments, "collab", "Comments",
+            "Someone comments on your note, replies in a thread you're part of, or @mentions you in a comment."),
 
         new(AdminAccountChanges, "admin", "Account changes",
             "Another administrator adds, removes, disables or changes the role of an account.", AdminOnly: true),

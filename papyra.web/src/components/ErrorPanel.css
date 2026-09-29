@@ -1,0 +1,183 @@
+/* ── Error panel ───────────────────────────────────────────────────────────────
+   A failure explained: sentence, reference, folded trace, a way out. Calm, not
+   alarming — the danger colour accents the icon, not the whole card. */
+.error-panel {
+  width: min(640px, 100%);
+  color: var(--text);
+  font: 400 var(--fs-sm) / 1.6 var(--sans);
+}
+.error-panel--page {
+  padding: var(--space-8) clamp(var(--space-5), 5vw, var(--space-10));
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+.error-panel--inline {
+  margin: var(--space-8) auto;
+  padding: var(--space-6);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+}
+.error-panel--dialog { width: 100%; }
+
+.error-panel__head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+}
+.error-panel__icon {
+  display: inline-grid;
+  place-items: center;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  background: var(--danger-bg);
+  color: var(--danger);
+}
+.error-panel__eyebrow {
+  margin: 0;
+  font: 500 var(--fs-2xs) / 1 var(--sans);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--danger);
+}
+.error-panel__title {
+  margin: 0 0 var(--space-2);
+  font: 400 var(--fs-2xl) / 1.2 var(--heading);
+  color: var(--text-h);
+}
+.error-panel--dialog .error-panel__title,
+.error-panel--inline .error-panel__title { font-size: var(--fs-xl); }
+.error-panel__message { margin: 0 0 var(--space-4); }
+
+.error-panel__ref { margin: 0 0 var(--space-4); }
+.error-panel__ref code {
+  margin-left: var(--space-1);
+  padding: 3px var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  font: 500 var(--fs-xs) / 1.4 var(--mono);
+  color: var(--text-h);
+  user-select: all;
+}
+
+.error-panel__trace {
+  margin-bottom: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--code-bg);
+}
+.error-panel__trace summary {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-3);
+  list-style: none;
+  cursor: pointer;
+  font-weight: 500;
+  color: var(--text-h);
+}
+.error-panel__trace summary::-webkit-details-marker { display: none; }
+.error-panel__chevron { transition: transform var(--dur-fast) var(--ease); }
+.error-panel__trace[open] .error-panel__chevron { transform: rotate(90deg); }
+.error-panel__request {
+  margin: 0;
+  padding: 0 var(--space-3) var(--space-2);
+  font: 500 var(--fs-xs) / 1.5 var(--mono);
+  color: var(--text-h);
+}
+.error-panel__trace pre {
+  margin: 0;
+  padding: 0 var(--space-3) var(--space-3);
+  max-height: 280px;
+  overflow: auto;
+  font: 400 var(--fs-2xs) / 1.6 var(--mono);
+  white-space: pre-wrap;
+  word-break: break-word;
+  color: var(--text);
+}
+.error-panel__trace pre.error-panel__components {
+  padding-top: var(--space-2);
+  border-top: 1px dashed var(--border);
+}
+
+.error-panel__actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2);
+}
+.error-panel__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--text-h);
+  font: 500 var(--fs-sm) / 1.2 var(--sans);
+  cursor: pointer;
+  transition: border-color var(--dur-fast) var(--ease), background-color var(--dur-fast) var(--ease);
+}
+.error-panel__btn:hover { border-color: var(--border-hover); }
+.error-panel__btn--primary {
+  border-color: var(--accent-border);
+  background: var(--accent);
+  color: var(--accent-fg);
+}
+.error-panel__btn--primary:hover { background: var(--accent-hover); }
+.error-panel__hint {
+  margin: var(--space-3) 0 0;
+  font-size: var(--fs-xs);
+}
+
+/* Full-screen host for page-level errors (a crash, a 404). */
+.error-screen {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  align-content: center;
+  padding: var(--space-6) var(--space-4);
+  background: var(--bg);
+}
+.error-screen__brand {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-5);
+  font: 400 var(--fs-xl) / 1 var(--heading);
+  color: var(--text-h);
+  text-decoration: none;
+}
+.error-screen__brand img { width: 30px; height: 30px; }
+
+/* The server-error details dialog (ServerErrorNotices). */
+.error-dialog {
+  position: fixed;
+  inset: 0;
+  z-index: 185;
+  display: grid;
+  place-items: center;
+  padding: var(--space-4);
+  background: color-mix(in srgb, var(--scrim) 55%, transparent);
+  -webkit-backdrop-filter: blur(6px);
+  backdrop-filter: blur(6px);
+}
+.error-dialog__box {
+  width: min(100%, 36rem);
+  max-height: calc(100dvh - 2 * var(--space-4));
+  overflow: auto;
+  padding: var(--space-6);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .error-panel__chevron { transition: none; }
+}

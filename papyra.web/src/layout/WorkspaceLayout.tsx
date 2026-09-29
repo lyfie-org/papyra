@@ -9,7 +9,9 @@ import ChatPanel from '../components/ChatPanel';
 import SearchBar from '../components/SearchBar';
 import HelpSheet from '../components/HelpSheet';
 import { useTheme } from '../hooks/useTheme';
-import { rememberPage } from '../lib/noteLink';
+import { backgroundPage, rememberPage } from '../lib/noteLink';
+import ErrorBoundary from '../components/ErrorBoundary';
+import ErrorPanel from '../components/ErrorPanel';
 import NoteEditorPage from '../pages/NoteEditorPage';
 import { useRealLocation } from '../lib/realLocation';
 import { clearSessionData } from '../lib/session';
@@ -282,7 +284,9 @@ Papyra ${versionText}${server.stale ? ' — reload to finish updating' : ''} —
         <main className="workspace__desk">
           <OriginTracker />
           <DeskScrollReset />
-          <Outlet />
+          {/* A crash in one page or one note stays there: the shell, the
+              sidebar and the way out keep working. */}
+          <DeskPage />
           <NoteOverlay />
         </main>
       </div>
@@ -329,6 +333,7 @@ function DeskScrollReset() {
   const location = useLocation();
   const params = new URLSearchParams(location.search);
   params.delete('open'); // ?open= overlays a shared note; the page underneath stays put
+  params.delete('comment'); // ?comment= jumps to a thread in the open note
   params.delete('s');    // Settings' jump-to-section scrolls on its own
   const page = `${location.pathname}?${params.toString()}`;
   const ref = useRef<HTMLSpanElement | null>(null);
@@ -343,7 +348,36 @@ function DeskScrollReset() {
 // opening a list from To Do no longer flashes the Notes desk in behind it.
 function NoteOverlay() {
   const real = useRealLocation();
+  const navigate = useNavigate();
   const match = real ? matchPath('/note/:id', real.pathname) : null;
   if (!match?.params.id) return null;
-  return <NoteEditorPage key={match.params.id} id={match.params.id} />;
+  return (
+    <ErrorBoundary resetKey={match.params.id} fallback={(info) => (
+      <div className="workspace__note-crash" role="dialog" aria-modal="true" aria-label="This note couldn’t open">
+        <div className="workspace__note-crash-box">
+          <ErrorPanel info={{ ...info, title: 'This note couldn’t open' }} variant="dialog" actions={[
+            { label: 'Close note', onClick: () => { const bg = backgroundPage(); navigate(bg.pathname + bg.search); }, primary: true },
+            { label: 'Reload', onClick: () => window.location.reload() },
+          ]} />
+        </div>
+      </div>
+    )}>
+      <NoteEditorPage key={match.params.id} id={match.params.id} />
+    </ErrorBoundary>
+  );
+}
+
+// The routed page, behind a boundary that resets when you navigate away.
+function DeskPage() {
+  const { pathname } = useLocation();
+  return (
+    <ErrorBoundary resetKey={pathname} fallback={(info, reset) => (
+      <ErrorPanel info={info} variant="inline" actions={[
+        { label: 'Try again', onClick: reset, primary: true },
+        { label: 'Reload', onClick: () => window.location.reload() },
+      ]} />
+    )}>
+      <Outlet />
+    </ErrorBoundary>
+  );
 }

@@ -334,10 +334,10 @@ builder.Services.AddSingleton(new SsoHooks(new OpenIdConnectEvents
     // internal host, and the IdP rejects it.
     OnRedirectToIdentityProvider = async ctx =>
     {
-        var uri = await PublicRedirectUri(ctx.HttpContext, ctx.Scheme.Name);
-        ctx.ProtocolMessage.RedirectUri = uri;
-        // Carried in state to the code redemption, which must send the same value.
-        ctx.Properties.Items[OpenIdConnectDefaults.RedirectUriForCodePropertiesKey] = uri;
+        // The handler itself carries this value in state to the code redemption
+        // (it Items.Add()s it after this event — setting that key here too threw
+        // "same key already added" and turned every SSO click into a 500).
+        ctx.ProtocolMessage.RedirectUri = await PublicRedirectUri(ctx.HttpContext, ctx.Scheme.Name);
     },
     OnAuthorizationCodeReceived = async ctx =>
     {
@@ -348,13 +348,16 @@ builder.Services.AddSingleton(new SsoHooks(new OpenIdConnectEvents
     // IdP refusing the code, a token that fails validation, a throw below)
     // lands here. Unhandled it is a bare 500; the admin needs the log line
     // and the person needs the sign-in page with a reason.
+    // The reference rides to the sign-in page, so "SSO failed (ref E7K2-QX9M)"
+    // finds this log line.
     OnRemoteFailure = ctx =>
     {
+        var errorId = ErrorPages.NewErrorId();
         ctx.HttpContext.RequestServices.GetRequiredService<ILoggerFactory>()
             .CreateLogger("Papyra.Sso")
-            .LogWarning(ctx.Failure, "SSO sign-in via {Scheme} failed: {Reason}", ctx.Scheme.Name, ctx.Failure?.Message);
+            .LogWarning(ctx.Failure, "SSO sign-in via {Scheme} failed ({ErrorId}): {Reason}", ctx.Scheme.Name, errorId, ctx.Failure?.Message);
         ctx.HandleResponse();
-        ctx.Response.Redirect("/login?sso=failed");
+        ctx.Response.Redirect($"/login?sso=failed&ref={errorId}");
         return Task.CompletedTask;
     },
     // Existing accounts only — SSO never creates one. Within a provider the
@@ -644,6 +647,33 @@ using (var scope = app.Services.CreateScope())
 // key, the access log, the HTTPS check below — sees the real client rather than
 // the proxy. See ForwardedNetworks for whom that trusts.
 if (forwardedNetworks.Count > 0) app.UseForwardedHeaders();
+
+// ── Unhandled errors ──────────────────────────────────────────────────────────
+// Right after the real client address is known, so it wraps everything else.
+// Anything that escapes a handler gets an error id, logged beside the full
+// exception, and a readable answer: JSON the SPA renders for API calls, a
+// Papyra-styled page for browser navigations (the SSO callback, redirects) —
+// never the browser's bare "HTTP ERROR 500". See ErrorPages.
+var errorDetails = app.Configuration.GetValue("Papyra:ErrorDetails", true);
+var serverVersion = ReadServerVersion(app.Environment.WebRootPath);
+app.Use(async (context, next) =>
+{
+    try
+    {
+        await next();
+    }
+    catch (OperationCanceledException) when (context.RequestAborted.IsCancellationRequested)
+    {
+        // The client went away; there is nobody to answer.
+    }
+    catch (Exception ex)
+    {
+        var errorId = ErrorPages.NewErrorId();
+        app.Logger.LogError(ex, "Unhandled error {ErrorId} on {Method} {Path}", errorId, context.Request.Method, context.Request.Path.Value);
+        if (context.Response.HasStarted) throw;
+        await ErrorPages.WriteAsync(context, ErrorPages.For(context, ex, errorId, errorDetails, serverVersion));
+    }
+});
 
 // ── Response hardening ────────────────────────────────────────────────────────
 // Papyra serves its own SPA, so these apply to the whole origin. The CSP's
@@ -1007,13 +1037,22 @@ app.Use(async (context, next) =>
     // recognises it.
     catch (Exception ex) when (IsNetworkFailure(ex))
     {
-        app.Logger.LogWarning(ex, "SSO sign-in failed — the configured authority was unreachable");
+        var errorId = ErrorPages.NewErrorId();
+        app.Logger.LogWarning(ex, "SSO sign-in failed ({ErrorId}) — the configured authority was unreachable", errorId);
         // Anything already streamed can't be replaced with a clean error.
         if (context.Response.HasStarted) throw;
+        // Someone clicked the button: back to the sign-in page with the reason,
+        // not a page of JSON.
+        if (context.Request.Headers.Accept.ToString().Contains("text/html", StringComparison.OrdinalIgnoreCase))
+        {
+            context.Response.Redirect($"/login?sso=unreachable&ref={errorId}");
+            return;
+        }
         context.Response.StatusCode = StatusCodes.Status502BadGateway;
         await context.Response.WriteAsJsonAsync(new
         {
             error = "Couldn't reach the identity provider. Check the Authority URL in Settings → SSO.",
+            errorId,
         });
     }
 });
@@ -2728,6 +2767,9 @@ admin.MapDelete("/{id:int}", async (int id, ClaimsPrincipal me, AppDbContext db,
     db.Notifications.RemoveRange(db.Notifications.Where(n => n.UserId == id || n.ActorUserId == id));
     db.KnownDevices.RemoveRange(db.KnownDevices.Where(d => d.UserId == id));
     db.ExternalLogins.RemoveRange(db.ExternalLogins.Where(l => l.UserId == id));
+    var commentIds = db.NoteComments.Where(c => c.AuthorId == id || c.OwnerId == id).Select(c => c.Id);
+    db.CommentReactions.RemoveRange(db.CommentReactions.Where(r => r.UserId == id || commentIds.Contains(r.CommentId)));
+    db.NoteComments.RemoveRange(db.NoteComments.Where(c => c.AuthorId == id || c.OwnerId == id));
     db.Users.Remove(user);
     await db.SaveChangesAsync(ct);
     await TellOtherAdmins(db, email, int.Parse(Uid(me)), $"{user.Username}'s account was deleted",
@@ -4974,6 +5016,9 @@ notifications.MapGet("/", async (ClaimsPrincipal user, AppDbContext db, VaultSta
         .Select(r => (r.OwnerId, r.NoteId)).ToHashSet();
     var grantIds = rows.Where(n => n.BlockGrantId != null).Select(n => n.BlockGrantId!.Value).ToHashSet();
     var grants = await db.BlockGrants.Where(g => grantIds.Contains(g.Id)).ToDictionaryAsync(g => g.Id, ct);
+    var commentIds = rows.Where(n => n.CommentId != null).Select(n => n.CommentId!.Value).ToHashSet();
+    var comments = await db.NoteComments.Where(c => commentIds.Contains(c.Id))
+        .ToDictionaryAsync(c => c.Id, c => new { c.Body, Thread = c.ThreadId ?? c.Id }, ct);
 
     var result = rows.Select(n =>
     {
@@ -4992,6 +5037,11 @@ notifications.MapGet("/", async (ClaimsPrincipal user, AppDbContext db, VaultSta
                 ? BlockResolver.Resolve(note!.Body, g.BlockId)
                 : BlockResolver.ResolveLine(note!.Body, g.BlockText);
 
+        // A comment's words are shown only to someone who can still see the note.
+        var comment = n.CommentId is { } cid ? comments.GetValueOrDefault(cid) : null;
+        if (visible && comment is not null)
+            text = comment.Body.Length <= 280 ? comment.Body : comment.Body[..277].TrimEnd() + "…";
+
         var request = n.AccessRequestId is { } rid ? requests.GetValueOrDefault(rid) : null;
         var actor = actors.GetValueOrDefault(n.ActorUserId);
         return new
@@ -5008,6 +5058,8 @@ notifications.MapGet("/", async (ClaimsPrincipal user, AppDbContext db, VaultSta
             requestId = n.AccessRequestId,
             requestStatus = request?.Status,
             requestPending = myPending.Contains((n.OwnerId, n.NoteId)),
+            // Opens the note with this thread in view.
+            threadId = visible ? comment?.Thread : null,
         };
     });
     return Results.Ok(result);
@@ -5244,13 +5296,14 @@ accessRequests.MapPost("/{id:int}/deny", async (
 
 // Public: read a link-shared note (enforces expiry + view cap, counts the view).
 //
-// A view is a visit, not a request. The first read hands the browser a signed,
-// HttpOnly cookie scoped to this link; reads that carry it for the next hour
-// don't count again and aren't refused. Without it a "view once" link died on
-// its own first visit — anything that loaded the page twice (a reload, the
-// service worker taking over, a remount) spent the only view. The cookie is
-// Data-Protection-signed, so it can't be minted to dodge a limit, and it names
-// the share and token, so it opens nothing else.
+// A view is a page load, not a request. The page sends a random id minted once
+// per load (X-Papyra-View); the first read answered for it hands back a signed,
+// HttpOnly cookie naming that id, and repeat requests from the SAME load (React
+// remounts, a retry) don't count again. A reload mints a new id, so it is a new
+// view — a "view once" link refuses it. (This used to be an hour-long grace
+// cookie per browser, which let a view-once link be reloaded as often as the
+// reader liked.) No header — curl, an old client — counts every request.
+// The cookie is Data-Protection-signed, so it can't be minted to dodge a limit.
 app.MapGet("/api/shared/{token}", async (
     string token, HttpContext http, IDataProtectionProvider dataProtection, AppDbContext db,
     VaultState state, MarkdownStorageService storage, EmailSender email,
@@ -5261,14 +5314,16 @@ app.MapGet("/api/shared/{token}", async (
     if (share.ExpiresUtc is { } exp && exp < DateTime.UtcNow)
         return Results.Json(new { error = "This link has expired." }, statusCode: StatusCodes.Status410Gone);
 
-    var viewer = dataProtection.CreateProtector("Papyra.SharedLinkView.v1").ToTimeLimitedDataProtector();
+    var viewer = dataProtection.CreateProtector("Papyra.SharedLinkView.v2").ToTimeLimitedDataProtector();
     var cookieName = $"papyra_view_{share.Id}";
-    var visit = $"{share.Id}:{token}";
+    var viewId = http.Request.Headers["X-Papyra-View"].ToString();
+    if (viewId.Length is 0 or > 64) viewId = string.Empty;
+    var visit = $"{share.Id}:{token}:{viewId}";
     var counted = false;
-    if (http.Request.Cookies.TryGetValue(cookieName, out var cookie))
+    if (viewId.Length > 0 && http.Request.Cookies.TryGetValue(cookieName, out var cookie))
     {
         try { counted = viewer.Unprotect(cookie) == visit; }
-        catch (System.Security.Cryptography.CryptographicException) { /* expired or forged: a new visit */ }
+        catch (System.Security.Cryptography.CryptographicException) { /* expired or forged: a new view */ }
     }
 
     if (!counted && share.MaxViews is { } mv && share.ViewCount >= mv)
@@ -5285,8 +5340,8 @@ app.MapGet("/api/shared/{token}", async (
     {
         share.ViewCount++;
         await db.SaveChangesAsync(ct);
-        var lifetime = TimeSpan.FromHours(1);
-        http.Response.Cookies.Append(cookieName, viewer.Protect(visit, lifetime), new CookieOptions
+        var lifetime = TimeSpan.FromMinutes(30);
+        if (viewId.Length > 0) http.Response.Cookies.Append(cookieName, viewer.Protect(visit, lifetime), new CookieOptions
         {
             HttpOnly = true,
             Secure = http.Request.IsHttps,
@@ -6568,6 +6623,7 @@ app.MapFallback("/api/{**rest}", (HttpContext http) =>
     .ExcludeFromDescription();
 
 app.MapCollab();
+app.MapComments();
 app.MapFallbackToFile("index.html");
 
 app.Run();
@@ -6663,6 +6719,20 @@ static List<System.Net.IPNetwork> ForwardedNetworks(string[] configured, bool de
 static string? RenameProblem(string? name) =>
     name is not null && name.Trim().Length > 60 ? "Keep it under 60 characters." : null;
 
+
+// The release this server is running, from the version.json the web build
+// writes beside index.html ("dev" when there isn't one).
+static string ReadServerVersion(string? webRoot)
+{
+    try
+    {
+        var path = Path.Combine(webRoot ?? "wwwroot", "version.json");
+        if (!File.Exists(path)) return "dev";
+        using var doc = System.Text.Json.JsonDocument.Parse(File.ReadAllText(path));
+        return doc.RootElement.TryGetProperty("version", out var v) && v.GetString() is { Length: > 0 } s ? s : "dev";
+    }
+    catch (Exception) { return "dev"; }
+}
 
 // The OIDC callback the IdP must whitelist — same derivation as the value shown
 // in Settings → SSO, so what the admin registered is what gets sent.

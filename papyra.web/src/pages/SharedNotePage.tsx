@@ -6,6 +6,14 @@ import { useTheme } from '../hooks/useTheme';
 import SharedNoteView, { type SharedNote } from '../components/SharedNoteView';
 import './SharedNotePage.css';
 import LoadingBar from '../components/LoadingBar';
+import ErrorPanel from '../components/ErrorPanel';
+import { serverErrorInfo, type ErrorInfo } from '../lib/errorReport';
+
+// One id per page load. The server counts a view per id, so a remount or retry
+// inside this load is one view, and a reload is another (a "view once" link
+// refuses it). getRandomValues, not randomUUID: the latter needs a secure
+// context, and some self-hosters serve plain HTTP over a VPN.
+const PAGE_VIEW = Array.from(crypto.getRandomValues(new Uint8Array(16)), b => b.toString(16).padStart(2, '0')).join('');
 
 // Public landing for a tokenised share link. No session required — the token is
 // the authorisation. Expired/limit-reached links return a friendly message.
@@ -13,6 +21,8 @@ export default function SharedNotePage() {
   const { token } = useParams<{ token: string }>();
   const [note, setNote] = useState<SharedNote | null>(null);
   const [error, setError] = useState<string | null>(null);
+  // A server failure (not "expired", "not found"): the reference to report.
+  const [failure, setFailure] = useState<ErrorInfo | null>(null);
   const [loading, setLoading] = useState(true);
   // Fetch counts a view server-side, so guard against React StrictMode's
   // double-invoke (dev) firing it twice — one visit must be exactly one view.
@@ -24,11 +34,17 @@ export default function SharedNotePage() {
     if (fetchedToken.current === token) return;
     fetchedToken.current = token ?? null;
     (async () => {
-      const res = await fetch(`/api/shared/${token}`);
-      if (res.ok) { setNote(await res.json()); }
-      else {
-        const data = await res.json().catch(() => null);
-        setError(data?.error ?? (res.status === 404 ? 'This shared note was not found.' : 'Couldn’t load this note.'));
+      try {
+        const res = await fetch(`/api/shared/${token}`, { headers: { 'X-Papyra-View': PAGE_VIEW }, cache: 'no-store' });
+        if (res.ok) { setNote(await res.json()); }
+        else {
+          const data = await res.json().catch(() => null);
+          const info = res.status >= 500 ? serverErrorInfo(data, res.status) : null;
+          if (info) setFailure({ ...info, title: 'Couldn’t open this shared note' });
+          else setError(data?.error ?? (res.status === 404 ? 'This shared note was not found.' : 'Couldn’t load this note.'));
+        }
+      } catch {
+        setError('Couldn’t reach Papyra. Check your connection and reload.');
       }
       setLoading(false);
     })();
@@ -61,6 +77,7 @@ export default function SharedNotePage() {
       <main className="shared-page__main">
         {loading && <LoadingBar label="Loading shared note" />}
         {error && <p className="shared-page__status">{error}</p>}
+        {failure && <ErrorPanel info={failure} variant="inline" actions={[{ label: 'Reload', onClick: () => window.location.reload(), primary: true }]} />}
         {note && (
           <SharedNoteView
             note={note}
