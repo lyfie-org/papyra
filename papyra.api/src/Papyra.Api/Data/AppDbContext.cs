@@ -20,6 +20,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<Notification> Notifications => Set<Notification>();
     public DbSet<AuthToken> AuthTokens => Set<AuthToken>();
     public DbSet<KnownDevice> KnownDevices => Set<KnownDevice>();
+    public DbSet<UserSession> UserSessions => Set<UserSession>();
     public DbSet<ChatSession> ChatSessions => Set<ChatSession>();
     public DbSet<ChatMessage> ChatMessages => Set<ChatMessage>();
 
@@ -33,6 +34,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         // (non-SSO) accounts with a null ExternalId don't collide.
         modelBuilder.Entity<User>().HasIndex(u => u.ExternalId).IsUnique();
         modelBuilder.Entity<KnownDevice>().HasIndex(d => new { d.UserId, d.DeviceHash }).IsUnique();
+        modelBuilder.Entity<UserSession>().HasIndex(s => s.SessionHash).IsUnique();
+        modelBuilder.Entity<UserSession>().HasIndex(s => s.UserId);
         modelBuilder.Entity<ApiKey>().HasIndex(k => k.TokenHash).IsUnique();
         // Reset/invite tokens are looked up by hash on redemption.
         modelBuilder.Entity<AuthToken>().HasIndex(t => t.TokenHash).IsUnique();

@@ -2,6 +2,9 @@ import { useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { Download, Lock, ShieldCheck, X } from 'lucide-react';
 import VaultUnlock from './VaultUnlock';
+import CodeField from './CodeField';
+import { requestEmailCode } from '../lib/emailCode';
+import { useAuth } from '../hooks/useAuth';
 import { useDialogFocus } from '../hooks/useDialogFocus';
 import { useVault } from '../hooks/useVault';
 import { vaultFetch } from '../lib/vault';
@@ -10,7 +13,7 @@ import './ExportDialog.css';
 /**
  * Confirm-then-download for "Export all notes". The export is every note you
  * own — your vault included, in its own `vault/` folder — so it asks for what
- * guards the account (password) and what guards the vault (PIN or biometric).
+ * guards the account (a code) and what guards the vault (PIN or biometric).
  * The server answers with a one-time ticket; the download is a plain link, so
  * the browser saves the file itself. An email goes to the account afterwards.
  */
@@ -19,25 +22,26 @@ export default function ExportDialog({ onClose }: { onClose: () => void }) {
   useDialogFocus(ref);
   const { status, open } = useVault();
   const needsVault = !!status.data?.pinSet;
-  const [password, setPassword] = useState('');
+  const { user } = useAuth();
+  const [code, setCode] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [started, setStarted] = useState(false);
 
   async function start(e: React.FormEvent) {
     e.preventDefault();
-    if (!password || busy) return;
+    if (code.length !== 6 || busy) return;
     setBusy(true);
     setError(null);
     try {
       const res = await vaultFetch('/api/export/authorize', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ password }),
+        body: JSON.stringify({ code }),
       });
       const data = await res.json().catch(() => null);
-      if (!res.ok || !data?.ticket) { setError(data?.error ?? 'Couldn’t start the export.'); return; }
-      setPassword('');
+      if (!res.ok || !data?.ticket) { setError(data?.error ?? 'Couldn’t start the export.'); setCode(''); return; }
+      setCode('');
       setStarted(true);
       window.location.href = `/api/export?ticket=${encodeURIComponent(data.ticket)}`;
     } catch {
@@ -78,18 +82,13 @@ export default function ExportDialog({ onClose }: { onClose: () => void }) {
               </li>
               <li className="export-dialog__step">
                 <form onSubmit={start} className="export-dialog__form">
-                  <label className="export-dialog__field">
-                    <span>Your account password</span>
-                    <input
-                      type="password"
-                      autoComplete="current-password"
-                      value={password}
-                      onChange={(e) => { setPassword(e.target.value); setError(null); }}
-                      disabled={needsVault && !open}
-                    />
-                  </label>
+                  <CodeField
+                    value={code}
+                    onChange={(c) => { setCode(c); setError(null); }}
+                    onEmail={user?.canEmailCode ? () => requestEmailCode('/api/auth/step-up/email') : undefined}
+                  />
                   {error && <p className="settings__error" role="alert">{error}</p>}
-                  <button type="submit" className="settings__btn" disabled={busy || !password || (needsVault && !open)}>
+                  <button type="submit" className="settings__btn" disabled={busy || code.length !== 6 || (needsVault && !open)}>
                     <Download size={16} /> {busy ? 'Preparing…' : 'Export'}
                   </button>
                 </form>

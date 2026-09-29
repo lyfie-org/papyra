@@ -11,7 +11,7 @@ import { createPortal } from 'react-dom';
 import { useDismiss } from '../hooks/useDismiss';
 import { useGitConfig, useSaveGitConfig } from '../hooks/useGitSync';
 import {
-  useOidcConfig, useSaveOidcConfig, useSmtpConfig, useSaveSmtpConfig,
+  useSmtpConfig, useSaveSmtpConfig,
   useSendTestEmail, useInviteUser,
 } from '../hooks/useInstanceConfig';
 import NotificationSettings from '../components/NotificationSettings';
@@ -52,6 +52,10 @@ import LoadingBar from '../components/LoadingBar';
 import AboutPanel from '../components/AboutPanel';
 import ExportDialog from '../components/ExportDialog';
 import DeleteAccountSection from '../components/DeleteAccountSection';
+import CodeField from '../components/CodeField';
+import { requestEmailCode } from '../lib/emailCode';
+import SsoGuide from '../components/SsoGuide';
+import SessionsSection from '../components/SessionsSection';
 import AuthenticatorSection from '../components/AuthenticatorSection';
 import { fetchWithProgress } from '../lib/progress';
 import { MASKED_SECRET, NO_AUTOFILL } from '../lib/autofill';
@@ -702,6 +706,7 @@ function AppearanceTab() {
 // borrowed session cannot quietly add its own fingerprint.
 function SecurityTab() {
   const confirm = useConfirm();
+  const { user } = useAuth();
   const { status, open, lock } = useVault();
   const { devices, enroll, revoke, enrolling, error, setError } = useWebAuthnDevices();
   const [name, setName] = useState('');
@@ -743,27 +748,17 @@ function SecurityTab() {
 
   return (
     <div className="settings__panel">
-      <h2 id="vault-pin" className="settings__subhead">Vault PIN</h2>
-      <p className="settings__hint">Opens locked notes. Separate from your account password.</p>
-      {status.isLoading && <LoadingBar label="Loading" />}
-      {s && (
-        <>
-          {s.pinDisabled && (
-            <p className="settings__error" role="alert">
-              Your PIN is switched off after too many wrong tries. Set a new one below to turn it back on.
-            </p>
-          )}
-          <VaultPinForm />
-          {pinSet && open && (
-            <p className="settings__msg">
-              <LockOpen size={14} /> Your vault is open on this device.
-              <button type="button" className="settings__link" onClick={() => void lock()}>Lock it now</button>
-            </p>
-          )}
-        </>
-      )}
+      {/* The whole picture in one line, so four kinds of "prove it's you" read as one plan. */}
+      <p className="settings__hint">
+        {user?.twoFactorLogin
+          ? 'You sign in with your password and a code from your authenticator app. Sensitive changes ask for that code too.'
+          : 'You sign in with your password. Sensitive changes ask for a code from your authenticator app.'}
+        {' '}Locked notes open with your PIN.
+      </p>
 
-      <h2 id="biometric-unlock" className="settings__subhead">Biometric unlock (optional)</h2>
+      <AuthenticatorSection />
+
+      <h2 id="biometric-unlock" className="settings__subhead">Passkeys (optional)</h2>
       <p className="settings__hint">Unlock your vault or sign in with Touch ID, Face ID or Windows Hello.</p>
 
       {!pinSet && s && (
@@ -848,7 +843,27 @@ function SecurityTab() {
         <p className="settings__hint">No devices yet.</p>
       )}
 
-      <AuthenticatorSection />
+      <h2 id="vault-pin" className="settings__subhead">Locked-notes PIN</h2>
+      <p className="settings__hint">Opens locked notes. Separate from your account password.</p>
+      {status.isLoading && <LoadingBar label="Loading" />}
+      {s && (
+        <>
+          {s.pinDisabled && (
+            <p className="settings__error" role="alert">
+              Your PIN is switched off after too many wrong tries. Set a new one below to turn it back on.
+            </p>
+          )}
+          <VaultPinForm />
+          {pinSet && open && (
+            <p className="settings__msg">
+              <LockOpen size={14} /> Your vault is open on this device.
+              <button type="button" className="settings__link" onClick={() => void lock()}>Lock it now</button>
+            </p>
+          )}
+        </>
+      )}
+
+      <SessionsSection />
 
       <DeleteAccountSection />
     </div>
@@ -1051,8 +1066,9 @@ function EncryptedBackupSection() {
 
       <h2 id="restore-backup" className="settings__subhead">Restore from encrypted backup</h2>
       <p className="settings__hint settings__hint--warn">
-        <ShieldAlert size={15} /> Restoring <strong>replaces</strong> all your current notes and attachments with the
-        backup’s contents. Enter the password the backup was sealed with.
+        <ShieldAlert size={15} />
+        {/* One text run: the row is flex, so bare text and <strong> would split into columns. */}
+        <span>Replaces <strong>all</strong> your notes and attachments. Use the password the backup was made with.</span>
       </p>
       <div className="settings__row">
         <input
@@ -1093,20 +1109,27 @@ function KeysTab() {
   const [name, setName] = useState('');
   const [created, setCreated] = useState<string | null>(null); // raw token, shown once
   const [copied, setCopied] = useState(false);
+  // A key reads and writes everything: the server asks for a code first.
+  const { user } = useAuth();
+  const [askCode, setAskCode] = useState(false);
+  const [code, setCode] = useState('');
+  const [keyError, setKeyError] = useState<string | null>(null);
 
   async function create(e: React.FormEvent) {
     e.preventDefault();
+    if (!askCode) { setAskCode(true); setKeyError(null); return; }
     const res = await fetch('/api/keys', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name }),
+      body: JSON.stringify({ name, code }),
     });
-    if (res.ok) {
-      const data = await res.json();
-      setCreated(data.token);
-      setName('');
-      await queryClient.invalidateQueries({ queryKey: ['apiKeys'] });
-    }
+    const data = await res.json().catch(() => null);
+    setCode('');
+    if (!res.ok) { setKeyError(data?.error ?? 'Couldn’t create the key.'); return; }
+    setCreated(data.token);
+    setName('');
+    setAskCode(false);
+    await queryClient.invalidateQueries({ queryKey: ['apiKeys'] });
   }
 
   async function revoke(id: number) {
@@ -1146,8 +1169,23 @@ function KeysTab() {
           value={name}
           onChange={e => setName(e.target.value)}
         />
-        <button type="submit" className="settings__btn"><KeyRound size={15} /> Generate key</button>
+        {!askCode && <button type="submit" className="settings__btn"><KeyRound size={15} /> Generate key</button>}
       </form>
+      {askCode && (
+        <form className="settings__form" onSubmit={create}>
+          <CodeField
+            value={code}
+            onChange={c => { setCode(c); setKeyError(null); }}
+            autoFocus
+            onEmail={user?.canEmailCode ? () => requestEmailCode('/api/auth/step-up/email') : undefined}
+          />
+          <div className="settings__form-actions">
+            <button type="submit" className="settings__btn" disabled={code.length !== 6}><KeyRound size={15} /> Generate key</button>
+            <button type="button" className="settings__btn settings__btn--quiet" onClick={() => { setAskCode(false); setCode(''); setKeyError(null); }}>Cancel</button>
+          </div>
+        </form>
+      )}
+      {keyError && <p className="settings__error" role="alert">{keyError}</p>}
 
       {isLoading && <LoadingBar label="Loading API keys" />}
       {keys && keys.length > 0 && (
@@ -1428,92 +1466,11 @@ function NotificationsTab() {
 // running the published container can't reach. Saving here takes effect immediately:
 // the server evicts the cached auth options rather than waiting for a restart.
 function SsoTab() {
-  const { data, isLoading, isError } = useOidcConfig();
-  const save = useSaveOidcConfig();
-
-  const [enabledEdit, setEnabled] = useState<boolean | null>(null);
-  const [authorityEdit, setAuthority] = useState<string | null>(null);
-  const [clientIdEdit, setClientId] = useState<string | null>(null);
-  const [displayNameEdit, setDisplayName] = useState<string | null>(null);
-  const [secret, setSecret] = useState('');
-  const [saved, setSaved] = useState(false);
-
-  // null means "not edited yet", so the field shows the server's value without an
-  // effect copying it into state on every refetch.
-  const enabled = enabledEdit ?? data?.enabled ?? false;
-  const authority = authorityEdit ?? data?.authority ?? '';
-  const clientId = clientIdEdit ?? data?.clientId ?? '';
-  const displayName = displayNameEdit ?? data?.displayName ?? '';
-
-  function submit(e: React.FormEvent) {
-    e.preventDefault();
-    setSaved(false);
-    save.mutate(
-      { enabled, authority, clientId, displayName, clientSecret: secret.trim() === '' ? undefined : secret },
-      { onSuccess: () => { setSecret(''); setSaved(true); } },
-    );
-  }
-
-  if (isLoading) return <div className="settings__panel"><LoadingBar label="Loading settings" /></div>;
-  if (isError) return <div className="settings__panel"><p className="settings__error">Couldn’t load the SSO configuration.</p></div>;
-
   return (
     <div className="settings__panel">
-      <h2 id="oidc" className="settings__subhead">Single sign-on (OIDC)</h2>
-      <p className="settings__hint">Sign in with an existing identity provider.</p>
-
-      <div className="settings__callout" role="note">
-        <AlertTriangle size={18} aria-hidden="true" />
-        <div>
-          <strong>Add this redirect URI to your provider.</strong>
-          <p>
-            Allow <code>{data?.redirectUri}</code> in your provider.
-          </p>
-        </div>
-      </div>
-
-      <form className="settings__form" onSubmit={submit}>
-        <label className="settings__field settings__field--inline">
-          <input type="checkbox" role="switch" className="switch" checked={enabled} onChange={e => setEnabled(e.target.checked)} />
-          Enable SSO on the sign-in screen
-        </label>
-
-        <label className="settings__field">Authority (issuer URL)
-          <input
-            type="url" value={authority} placeholder="https://login.example.com"
-            onChange={e => setAuthority(e.target.value)}
-          />
-        </label>
-        <label className="settings__field">Client ID
-          <input type="text" value={clientId} onChange={e => setClientId(e.target.value)} />
-        </label>
-        <label className="settings__field">
-          Client secret {data?.hasClientSecret && <span className="settings__hint">(stored — leave blank to keep it)</span>}
-          <input
-            {...MASKED_SECRET} value={secret}
-            placeholder={data?.hasClientSecret ? '••••••••' : 'Client secret'}
-            onChange={e => setSecret(e.target.value)}
-          />
-        </label>
-        <label className="settings__field">Button label
-          <input
-            type="text" value={displayName} placeholder="SSO"
-            onChange={e => setDisplayName(e.target.value)}
-          />
-        </label>
-
-        <div className="settings__form-actions">
-          <button type="submit" className="settings__btn" disabled={save.isPending}>
-            {save.isPending ? 'Saving…' : 'Save SSO settings'}
-          </button>
-          {saved && <span className="settings__msg"><CheckCircle2 size={15} /> Saved — active immediately</span>}
-          {save.isError && <span className="settings__error">{(save.error as Error).message}</span>}
-        </div>
-      </form>
-
-      <dl className="settings__details">
-        <div><dt>Status</dt><dd>{data?.ready ? 'Ready — the sign-in screen offers SSO' : 'Not active'}</dd></div>
-      </dl>
+      <h2 id="oidc" className="settings__subhead">Single sign-on</h2>
+      <p className="settings__hint">Let people sign in with your identity provider.</p>
+      <SsoGuide />
     </div>
   );
 }

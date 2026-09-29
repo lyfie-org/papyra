@@ -24,6 +24,15 @@ public sealed class EmailTemplateTests
     }
 
     [Fact]
+    public void Render_CarriesTheLogo_AndNoBoilerplateFooter()
+    {
+        Assert.NotNull(EmailTemplate.LogoPng);                                // embedded, so the sender can attach it
+        var html = EmailTemplate.Render("Hi", "Body.");
+        Assert.Contains($"src=\"cid:{EmailTemplate.LogoContentId}\"", html);
+        Assert.DoesNotContain("because of your account", html);
+    }
+
+    [Fact]
     public void PlainText_AppendsAlignedDetails()
     {
         var text = EmailTemplate.PlainText("Hello.", [new EmailDetail("When", "today"), new EmailDetail("IP", "1.2.3.4")]);

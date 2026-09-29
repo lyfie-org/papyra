@@ -95,10 +95,11 @@ public sealed class ProfileEndpointsTests
     {
         Assert.Equal(HttpStatusCode.OK, (await Put(client, username: "burger")).StatusCode);
         var other = factory.CreateClient();
-        var ok = await other.PostAsJsonAsync("/api/auth/login", new { username = "burger", password = "hunter2!" });
+        // The authenticator was set up as "admin"; renaming keeps it.
+        var ok = await other.LoginAsync("burger", "hunter2!", enrolledAs: "admin");
         Assert.Equal(HttpStatusCode.OK, ok.StatusCode);
         var old = factory.CreateClient();
-        var bad = await old.PostAsJsonAsync("/api/auth/login", new { username = "admin", password = "hunter2!" });
+        var bad = await old.LoginAsync("admin", "hunter2!");
         Assert.Equal(HttpStatusCode.Unauthorized, bad.StatusCode);
     });
 
@@ -194,25 +195,22 @@ public sealed class ProfileEndpointsTests
     [Fact]
     public Task EmailChange_NeedsProof_FromTheAccount() => InApp(async (client, _, _, _) =>
     {
-        // Without an authenticator (and with no mail), the password is the proof.
-        Assert.Equal(HttpStatusCode.NoContent,
-            (await client.PostAsJsonAsync("/api/auth/totp/remove", new { password = "hunter2!" })).StatusCode);
-
-        // No code (mail is off here) and no password: refused, address unchanged.
-        var bare = await client.PutAsJsonAsync("/api/auth/profile", new ProfileRequest(null, "new@example.com"));
+        // No code: refused, address unchanged. The password alone isn't proof
+        // once there is an authenticator.
+        var bare = await client.PutAsJsonAsync("/api/auth/profile", new ProfileRequest(null, "new@example.com", CurrentPassword: "hunter2!"));
         Assert.Equal(HttpStatusCode.PreconditionRequired, bare.StatusCode);
-        Assert.Equal("currentPassword", await ErrorField(bare));
+        Assert.Equal("totpCode", await ErrorField(bare));
 
-        var wrong = await client.PutAsJsonAsync("/api/auth/profile", new ProfileRequest(null, "new@example.com", CurrentPassword: "nope"));
-        Assert.Equal(HttpStatusCode.PreconditionRequired, wrong.StatusCode);
+        var wrong = await client.PutAsJsonAsync("/api/auth/profile", new ProfileRequest(null, "new@example.com", TotpCode: "12345"));
+        Assert.Equal(HttpStatusCode.BadRequest, wrong.StatusCode);
         Assert.Equal("admin@example.com", (await Me(client)).GetProperty("email").GetString());
 
-        // Asking for a code says a password is what counts on this server.
+        // Asking how to prove it says: the authenticator (mail is off here).
         var code = await client.PostAsJsonAsync("/api/auth/email/code", new EmailCodeRequest("new@example.com"));
         Assert.Equal(HttpStatusCode.OK, code.StatusCode);
-        Assert.True((await code.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("passwordRequired").GetBoolean());
+        Assert.Equal("totp", (await code.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("method").GetString());
 
-        Assert.Equal(HttpStatusCode.OK, (await Put(client, totp: false, email: "new@example.com")).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await Put(client, email: "new@example.com")).StatusCode);
         Assert.Equal("new@example.com", (await Me(client)).GetProperty("email").GetString());
 
         // Same address, any case: not a change, nothing to prove.
@@ -246,7 +244,7 @@ public sealed class ProfileEndpointsTests
 
         // A new browser signing in gets it straight away.
         var other = factory.CreateClient();
-        var login = await other.PostAsJsonAsync("/api/auth/login", new { username = "admin", password = "hunter2!" });
+        var login = await other.LoginAsync("admin", "hunter2!");
         Assert.Equal("dark", (await login.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("theme").GetString());
         Assert.Equal("dark", (await Me(other)).GetProperty("theme").GetString());
     });

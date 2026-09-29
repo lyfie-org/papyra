@@ -104,7 +104,7 @@ public sealed class CollabTests
             Username: username, Name: username, Email: $"{username}@b.c", Password: Pw, Role: "User"))).StatusCode);
         var client = factory.CreateClient();
         Assert.Equal(HttpStatusCode.OK,
-            (await client.PostAsJsonAsync("/api/auth/login", new LoginRequest(username, Pw))).StatusCode);
+            (await client.LoginAsync(username, Pw)).StatusCode);
         await TestAuth.CompleteForcedPasswordChangeAsync(client, Pw);
         return client;
     }

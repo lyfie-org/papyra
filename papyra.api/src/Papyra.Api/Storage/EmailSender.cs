@@ -71,10 +71,6 @@ public sealed class EmailSender
     {
         if (!NotificationPrefs.Wants(user, eventId)) return EmailResult.OptedOut;
         if (string.IsNullOrWhiteSpace(toAddress)) return EmailResult.Fail("No recipient address.");
-        var ev = NotificationCatalog.Find(eventId);
-        // Anything a person can switch off says where, in the mail itself.
-        if (ev is { Critical: false })
-            body = body.TrimEnd() + "\n\nDon't want these? Switch them off in Papyra under Settings → Notifications.";
         return await SendAsync(toAddress, subject, body, details, ct);
     }
 
@@ -109,8 +105,17 @@ public sealed class EmailSender
                 BodyEncoding = System.Text.Encoding.UTF8,
                 SubjectEncoding = System.Text.Encoding.UTF8,
             };
-            message.AlternateViews.Add(AlternateView.CreateAlternateViewFromString(
-                EmailTemplate.Render(subject, body, details), System.Text.Encoding.UTF8, "text/html"));
+            var html = AlternateView.CreateAlternateViewFromString(
+                EmailTemplate.Render(subject, body, details), System.Text.Encoding.UTF8, "text/html");
+            // The logo travels inside the message (cid:), so it shows without
+            // the mail client fetching anything from this server.
+            if (EmailTemplate.LogoPng is { } logo)
+                html.LinkedResources.Add(new LinkedResource(new MemoryStream(logo), "image/png")
+                {
+                    ContentId = EmailTemplate.LogoContentId,
+                    TransferEncoding = System.Net.Mime.TransferEncoding.Base64,
+                });
+            message.AlternateViews.Add(html);
             message.To.Add(toAddress);
 
             using var client = new SmtpClient(_config.GetOrEmpty(SmtpKeys.Host))

@@ -55,7 +55,7 @@ public sealed class ChatSessionTests
         Assert.Equal(HttpStatusCode.OK, provision.StatusCode);
 
         var client = factory.CreateClient();
-        await client.PostAsJsonAsync("/api/auth/login", new LoginRequest(username, Pw));
+        await client.LoginAsync(username, Pw);
         await TestAuth.CompleteForcedPasswordChangeAsync(client, Pw);
         return client;
     }

@@ -111,15 +111,13 @@ public sealed class SecurityEndpointTests
 
             for (var i = 0; i < LoginThrottle.MaxFailures; i++)
             {
-                var attempt = await client.PostAsJsonAsync("/api/auth/login",
-                    new LoginRequest("admin", "wrong-password"));
+                var attempt = await client.LoginAsync("admin", "wrong-password");
                 Assert.Equal(HttpStatusCode.Unauthorized, attempt.StatusCode);
             }
 
             // Even the *correct* password is refused now — otherwise the lockout
             // would be trivially confirmable as a password oracle.
-            var correct = await client.PostAsJsonAsync("/api/auth/login",
-                new LoginRequest("admin", Pw));
+            var correct = await client.LoginAsync("admin", Pw);
             Assert.Equal(HttpStatusCode.TooManyRequests, correct.StatusCode);
         }
         finally { Cleanup(factory, dir); }
@@ -138,10 +136,10 @@ public sealed class SecurityEndpointTests
 
             var attacker = factory.CreateClient();
             for (var i = 0; i < LoginThrottle.MaxFailures; i++)
-                await attacker.PostAsJsonAsync("/api/auth/login", new LoginRequest("admin", "nope"));
+                await attacker.LoginAsync("admin", "nope");
 
             var bea = await factory.CreateClient()
-                .PostAsJsonAsync("/api/auth/login", new LoginRequest("bea", Pw));
+                .LoginAsync("bea", Pw);
             Assert.Equal(HttpStatusCode.OK, bea.StatusCode);
         }
         finally { Cleanup(factory, dir); }
@@ -157,15 +155,15 @@ public sealed class SecurityEndpointTests
             var client = factory.CreateClient();
 
             for (var i = 0; i < LoginThrottle.MaxFailures - 1; i++)
-                await client.PostAsJsonAsync("/api/auth/login", new LoginRequest("admin", "nope"));
+                await client.LoginAsync("admin", "nope");
 
-            var good = await client.PostAsJsonAsync("/api/auth/login", new LoginRequest("admin", Pw));
+            var good = await client.LoginAsync("admin", Pw);
             Assert.Equal(HttpStatusCode.OK, good.StatusCode);
 
             // Budget restored: a fresh run of failures is needed to lock again.
             for (var i = 0; i < LoginThrottle.MaxFailures - 1; i++)
             {
-                var again = await client.PostAsJsonAsync("/api/auth/login", new LoginRequest("admin", "nope"));
+                var again = await client.LoginAsync("admin", "nope");
                 Assert.Equal(HttpStatusCode.Unauthorized, again.StatusCode);
             }
         }
@@ -181,10 +179,8 @@ public sealed class SecurityEndpointTests
             await SeedAdminAsync(factory);
             var client = factory.CreateClient();
 
-            var wrongPassword = await client.PostAsJsonAsync("/api/auth/login",
-                new LoginRequest("admin", "definitely-not-it"));
-            var noSuchUser = await client.PostAsJsonAsync("/api/auth/login",
-                new LoginRequest("ghost", "definitely-not-it"));
+            var wrongPassword = await client.LoginAsync("admin", "definitely-not-it");
+            var noSuchUser = await client.LoginAsync("ghost", "definitely-not-it");
 
             Assert.Equal(wrongPassword.StatusCode, noSuchUser.StatusCode);
             Assert.Equal(

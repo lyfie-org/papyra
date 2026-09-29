@@ -44,6 +44,11 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- The logo at the top of every email, sent as an inline (cid:) image. -->
+    <EmbeddedResource Include="Assets\email-logo.png" LogicalName="Papyra.EmailLogo.png" />
+  </ItemGroup>
+
+  <ItemGroup>
     <AssemblyAttribute Include="System.Runtime.CompilerServices.InternalsVisibleToAttribute">
       <_Parameter1>Papyra.Tests</_Parameter1>
     </AssemblyAttribute>

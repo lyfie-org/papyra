@@ -1,0 +1,35 @@
+.sessions {
+  display: flex;
+  flex-direction: column;
+  margin: 0 0 var(--space-3);
+  padding: 0;
+  list-style: none;
+}
+
+.sessions__row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  padding: var(--space-3) 0;
+  border-bottom: 1px solid var(--border);
+}
+.sessions__row:last-child { border-bottom: 0; }
+
+.sessions__icon { flex: none; color: var(--text); }
+
+.sessions__text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.sessions__label { color: var(--text-h); font-size: 0.92rem; }
+.sessions__here { color: var(--accent-text); font-weight: 600; }
+.sessions__meta {
+  overflow: hidden;
+  color: var(--text);
+  font-size: 0.8rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}

@@ -11,6 +11,7 @@ import TokenPage from './pages/TokenPage';
 import TrashPage from './pages/TrashPage';
 import SettingsPage from './pages/SettingsPage';
 import ChoosePasswordPage from './pages/ChoosePasswordPage';
+import SetUpAuthenticatorPage from './pages/SetUpAuthenticatorPage';
 import SharedNotePage from './pages/SharedNotePage';
 import LoginPage from './pages/LoginPage';
 import SetupPage from './pages/SetupPage';
@@ -63,6 +64,8 @@ function RequireAuth() {
   // An account waiting out its deletion week can only cancel (or sign out).
   if (user?.deletionScheduledUtc) return <DeletionScheduledPage username={user.username} scheduledUtc={user.deletionScheduledUtc} />;
   if (user?.mustChangePassword) return <ChoosePasswordPage username={user.username} />;
+  // Every account has an authenticator; the server refuses the rest until there is one.
+  if (user?.mustSetUpTotp) return <SetUpAuthenticatorPage username={user.username} hasPassword={user.hasPassword !== false} />;
   return (
     <FocusProvider>
       <ThemeAccountSync key={user?.id} />

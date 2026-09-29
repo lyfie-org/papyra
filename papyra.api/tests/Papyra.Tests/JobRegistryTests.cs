@@ -238,7 +238,7 @@ public sealed class JobRegistryTests
                 Username: "bea", Name: "Bea", Email: "b@b.c", Password: Pw, Role: "User"));
 
             var bea = factory.CreateClient();
-            await bea.PostAsJsonAsync("/api/auth/login", new LoginRequest("bea", Pw));
+            await bea.LoginAsync("bea", Pw);
             await TestAuth.CompleteForcedPasswordChangeAsync(bea, Pw);
 
             Assert.Equal(HttpStatusCode.Forbidden, (await bea.GetAsync("/api/jobs")).StatusCode);

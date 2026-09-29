@@ -67,7 +67,7 @@ public sealed class AccountDeletionTests
         Assert.Equal(HttpStatusCode.OK, (await admin.PostAsJsonAsync("/api/auth/users", new ProvisionRequest(
             Username: "bea", Name: "Bea", Email: "bea@example.com", Password: "hunter2!", Role: "User"))).StatusCode);
         var bea = factory.CreateClient();
-        await bea.PostAsJsonAsync("/api/auth/login", new LoginRequest("bea", "hunter2!"));
+        await bea.LoginAsync("bea", "hunter2!");
         await TestAuth.CompleteForcedPasswordChangeAsync(bea, "hunter2!");
         await bea.PutAsJsonAsync("/api/notes/n1", new NoteWrite("Mine", null, null, false, false, "private"));
 

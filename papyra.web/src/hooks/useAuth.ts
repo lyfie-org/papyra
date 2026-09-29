@@ -15,6 +15,14 @@ export interface AuthUser {
   mustChangePassword?: boolean;
   /** An authenticator app is set up: its codes confirm sensitive changes. */
   totpEnabled?: boolean;
+  /** No authenticator yet: the app shows the set-up screen before anything else. */
+  mustSetUpTotp?: boolean;
+  /** Two-step sign-in is on (always, for admins). */
+  twoFactorLogin?: boolean;
+  /** False for SSO accounts, which have no Papyra password. */
+  hasPassword?: boolean;
+  /** This Papyra can email this account a code (the fallback to the authenticator). */
+  canEmailCode?: boolean;
   /** IANA zone chosen under Settings → Profile; null/absent = the server's. */
   timeZone?: string | null;
   /** The server's own zone (the container's TZ), as an IANA name. */
@@ -33,7 +41,7 @@ interface AuthProbe {
   state: Exclude<AuthState, 'loading'>;
   user: AuthUser | null;
   /** Why the session ended, when the server said — the sign-in page explains it. */
-  reason?: 'account_disabled';
+  reason?: 'account_disabled' | 'session_ended';
 }
 
 async function probeAuth(): Promise<AuthProbe> {
@@ -41,7 +49,8 @@ async function probeAuth(): Promise<AuthProbe> {
   if (res.status === 428) return { state: 'setup', user: null };
   if (res.status === 401) {
     const body = await res.json().catch(() => null) as { code?: string } | null;
-    return { state: 'login', user: null, reason: body?.code === 'account_disabled' ? 'account_disabled' : undefined };
+    const reason = body?.code === 'account_disabled' || body?.code === 'session_ended' ? body.code : undefined;
+    return { state: 'login', user: null, reason };
   }
   if (!res.ok) return { state: 'error', user: null };
   return { state: 'authed', user: (await res.json()) as AuthUser };

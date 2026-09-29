@@ -9,7 +9,7 @@ public sealed record EmailDetail(string Label, string Value);
 
 /// <summary>
 /// Every Papyra email, framed the same way: a light, paper-toned card with the
-/// wordmark, the message, a button for its link and an optional details table.
+/// logo and wordmark, the message, a button for its link and an optional details table.
 ///
 /// Callers still write plain text — the text part is sent as-is, and this turns
 /// the same words into the HTML part — so no message can be pretty in one form
@@ -34,6 +34,24 @@ public static partial class EmailTemplate
 
     private const string Serif = "'Marcellus', Georgia, 'Times New Roman', serif";
     private const string Sans = "'Sora', -apple-system, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif";
+
+    /// <summary>Content-ID of the inline logo the sender attaches (see <see cref="LogoPng"/>).</summary>
+    public const string LogoContentId = "papyra-logo";
+
+    /// <summary>
+    /// The logo as PNG bytes, or null if the resource is missing. Mail clients
+    /// block data: URIs and ignore SVG, so it rides along as an inline image.
+    /// </summary>
+    public static byte[]? LogoPng { get; } = LoadLogo();
+
+    private static byte[]? LoadLogo()
+    {
+        using var stream = typeof(EmailTemplate).Assembly.GetManifestResourceStream("Papyra.EmailLogo.png");
+        if (stream is null) return null;
+        using var ms = new MemoryStream();
+        stream.CopyTo(ms);
+        return ms.ToArray();
+    }
 
     [GeneratedRegex(@"https?://[^\s<>""]+")]
     private static partial Regex Url();
@@ -76,8 +94,11 @@ public static partial class EmailTemplate
           .Append($"<div style=\"display:none;max-height:0;overflow:hidden;opacity:0;\">{Enc(Preheader(text))}</div>")
           .Append($"<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"background:{Page};\"><tr><td align=\"center\" style=\"padding:40px 16px;\">")
           .Append("<table role=\"presentation\" width=\"100%\" cellpadding=\"0\" cellspacing=\"0\" style=\"max-width:560px;\">")
-          // Wordmark
-          .Append($"<tr><td style=\"padding:0 8px 18px;font-family:{Serif};font-size:26px;letter-spacing:-0.3px;color:{Ink};\">Papyra</td></tr>")
+          // Logo + wordmark
+          .Append($"<tr><td style=\"padding:0 8px 18px;font-family:{Serif};font-size:26px;letter-spacing:-0.3px;color:{Ink};\">")
+          .Append(LogoPng is null ? "" :
+              $"<img src=\"cid:{LogoContentId}\" width=\"32\" height=\"32\" alt=\"\" style=\"display:inline-block;vertical-align:middle;margin:0 10px 0 0;border:0;\">")
+          .Append("<span style=\"vertical-align:middle;\">Papyra</span></td></tr>")
           // Card
           .Append($"<tr><td class=\"card\" style=\"background:{Card};border:1px solid {Edge};border-radius:16px;padding:36px 40px;\">")
           .Append($"<h1 style=\"margin:0 0 18px;font-family:{Serif};font-weight:400;font-size:24px;line-height:1.25;color:{Ink};\">{Enc(subject)}</h1>")
@@ -108,7 +129,7 @@ public static partial class EmailTemplate
         sb.Append("</td></tr>")
           // Footer
           .Append($"<tr><td style=\"padding:20px 8px 0;font-family:{Sans};font-size:12px;line-height:1.6;color:{Muted};\">")
-          .Append("Sent by your Papyra — a notebook you run yourself. You're getting this because of your account there.")
+          .Append("Sent by your Papyra — a notebook you run yourself.")
           .Append("</td></tr></table></td></tr></table></body></html>");
         return sb.ToString();
     }

@@ -5,6 +5,7 @@ import settingsPage from '../pages/SettingsPage.tsx?raw';
 import aboutPanel from '../components/AboutPanel.tsx?raw';
 import deleteAccount from '../components/DeleteAccountSection.tsx?raw';
 import authenticator from '../components/AuthenticatorSection.tsx?raw';
+import sessions from '../components/SessionsSection.tsx?raw';
 import usersPanel from '../pages/ManageUsersPage.tsx?raw';
 import { SETTINGS_INDEX, searchSettings, settingsHref } from './settingsIndex';
 
@@ -42,6 +43,7 @@ describe('settingsIndex', () => {
       ...[...aboutPanel.matchAll(/<h2 id="([a-z-]+)"/g)].map(m => m[1]),
       ...[...deleteAccount.matchAll(/<h2 id="([a-z-]+)"/g)].map(m => m[1]),
       ...[...authenticator.matchAll(/<h2 id="([a-z-]+)"/g)].map(m => m[1]),
+      ...[...sessions.matchAll(/<h2 id="([a-z-]+)"/g)].map(m => m[1]),
       ...[...usersPanel.matchAll(/<h2 id="([a-z-]+)"/g)].map(m => m[1]),
     ]);
     for (const entry of SETTINGS_INDEX) {
@@ -76,7 +78,7 @@ describe('settingsIndex', () => {
     expect(dark.map(h => h.sectionLabel)).toContain('Theme');
 
     const passkey = searchSettings('passkey', false);
-    expect(passkey.map(h => h.sectionLabel)).toContain('Biometric unlock');
+    expect(passkey.map(h => h.sectionLabel)).toContain('Passkeys');
 
     const smtp = searchSettings('smtp', true);
     expect(smtp.map(h => h.sectionLabel)).toContain('Outbound email (SMTP)');

@@ -177,8 +177,7 @@ public sealed class NotesEndpointsTests
             await SeedAdminAsync(seeded);
 
             var client = factory.CreateClient();
-            var login = await client.PostAsJsonAsync("/api/auth/login",
-                new LoginRequest(Username: "admin", Password: "hunter2!"));
+            var login = await client.LoginAsync(username: "admin", password: "hunter2!");
             Assert.Equal(HttpStatusCode.OK, login.StatusCode);
 
             var ok = await client.GetAsync("/api/notes");
@@ -208,8 +207,7 @@ public sealed class NotesEndpointsTests
             await SeedAdminAsync(seeded);
 
             var client = factory.CreateClient();
-            var login = await client.PostAsJsonAsync("/api/auth/login",
-                new LoginRequest(Username: "admin", Password: "wrong"));
+            var login = await client.LoginAsync(username: "admin", password: "wrong");
             Assert.Equal(HttpStatusCode.Unauthorized, login.StatusCode);
         }
         finally
@@ -285,7 +283,7 @@ public sealed class NotesEndpointsTests
             await owner.PutAsJsonAsync("/api/notes/k1", new NoteWrite(
                 Title: "Keyed", Tags: null, Color: null, Pinned: false, Archived: false, Body: "via key"));
 
-            var keyRes = await owner.PostAsJsonAsync("/api/keys", new ApiKeyWrite("CLI"));
+            var keyRes = await owner.PostAsJsonAsync("/api/keys", new ApiKeyWrite("CLI", await TestAuth.CodeAsync(owner)));
             Assert.Equal(HttpStatusCode.OK, keyRes.StatusCode);
             var token = (await keyRes.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>())
                 .GetProperty("token").GetString()!;

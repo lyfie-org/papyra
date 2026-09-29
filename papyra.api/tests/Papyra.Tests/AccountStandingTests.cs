@@ -55,7 +55,7 @@ public sealed class AccountStandingTests
         Assert.Equal(HttpStatusCode.OK, res.StatusCode);
         var id = (await res.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetInt32();
         var client = factory.CreateClient();
-        Assert.Equal(HttpStatusCode.OK, (await client.PostAsJsonAsync("/api/auth/login", new LoginRequest(username, Pw))).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await client.LoginAsync(username, Pw)).StatusCode);
         await TestAuth.CompleteForcedPasswordChangeAsync(client, Pw);
         return (id, client);
     }
@@ -119,7 +119,7 @@ public sealed class AccountStandingTests
             var (beaId, bea) = await UserAsync(factory, admin, "bea");
 
             // An API key minted before the lock-out.
-            var keyRes = await bea.PostAsJsonAsync("/api/keys", new { name = "script" });
+            var keyRes = await bea.PostAsJsonAsync("/api/keys", new { name = "script", code = await TestAuth.CodeAsync(bea) });
             Assert.Equal(HttpStatusCode.OK, keyRes.StatusCode);
             var token = (await keyRes.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("token").GetString()!;
 
@@ -139,12 +139,12 @@ public sealed class AccountStandingTests
 
             // And the right password no longer signs in.
             var fresh = factory.CreateClient();
-            var login = await fresh.PostAsJsonAsync("/api/auth/login", new LoginRequest("bea", Pw));
+            var login = await fresh.LoginAsync("bea", Pw);
             Assert.Equal(HttpStatusCode.Forbidden, login.StatusCode);
             Assert.Equal("account_disabled", (await login.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("code").GetString());
 
             // A wrong password still gets the generic answer: "disabled" is not a free oracle.
-            var wrong = await fresh.PostAsJsonAsync("/api/auth/login", new LoginRequest("bea", "not-it-at-all"));
+            var wrong = await fresh.LoginAsync("bea", "not-it-at-all");
             Assert.Equal(HttpStatusCode.Unauthorized, wrong.StatusCode);
 
             // Admins see it, with the reason.
@@ -156,7 +156,7 @@ public sealed class AccountStandingTests
             // Turned back on: the password works again.
             Assert.Equal(HttpStatusCode.NoContent, (await admin.PostAsync($"/api/auth/users/{beaId}/enable", null)).StatusCode);
             Assert.Equal(HttpStatusCode.OK,
-                (await factory.CreateClient().PostAsJsonAsync("/api/auth/login", new LoginRequest("bea", Pw))).StatusCode);
+                (await factory.CreateClient().LoginAsync("bea", Pw)).StatusCode);
         }
         finally { Cleanup(factory, dir); }
     }
@@ -237,7 +237,7 @@ public sealed class AccountStandingTests
             await UserAsync(factory, admin, "bea");
 
             var browser = factory.CreateClient();
-            var first = await browser.PostAsJsonAsync("/api/auth/login", new LoginRequest("bea", Pw));
+            var first = await browser.LoginAsync("bea", Pw);
             Assert.Equal(HttpStatusCode.OK, first.StatusCode);
             Assert.Contains(first.Headers.GetValues("Set-Cookie"), c => c.StartsWith("papyra.device=", StringComparison.Ordinal));
 

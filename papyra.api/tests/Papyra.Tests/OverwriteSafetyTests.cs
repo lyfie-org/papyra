@@ -206,7 +206,7 @@ public sealed class OverwriteSafetyTests
 
             // A second client so the grantee carries their own session cookie.
             var guest = factory.CreateClient();
-            var login = await guest.PostAsJsonAsync("/api/auth/login", new LoginRequest("guest", "hunter2!"));
+            var login = await guest.LoginAsync("guest", "hunter2!");
             Assert.Equal(HttpStatusCode.OK, login.StatusCode);
             await TestAuth.CompleteForcedPasswordChangeAsync(guest, "hunter2!");
 

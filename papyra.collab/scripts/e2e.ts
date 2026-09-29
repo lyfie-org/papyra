@@ -112,6 +112,9 @@ async function main(): Promise<void> {
   const bea = new Session()
   await bea.json('POST', '/api/auth/login', { username: 'bea', password: PASSWORD })
   await bea.json('POST', '/api/auth/password', { current: PASSWORD, next: PASSWORD })
+  // Every account has an authenticator; the API refuses the rest until there is one.
+  const beaTotp = await bea.json<{ secret: string }>('POST', '/api/auth/totp/begin')
+  await bea.json('POST', '/api/auth/totp', { secret: beaTotp.secret, code: totp(beaTotp.secret), password: PASSWORD })
   step('bea provisioned')
 
   await owner.json('PUT', '/api/notes/e2e-live', {
