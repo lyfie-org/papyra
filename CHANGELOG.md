@@ -6,6 +6,11 @@ a Docker Hub tag and a GitHub Release.
 
 <!-- new releases are inserted directly below this line -->
 
+## [0.2.5] - 2026-09-29
+
+- test: end-to-end coverage for SSO, share views, error pages, comments (bf31db7)
+- fix(sso,shares): SSO challenge 500, view-once links; feat: note comments, error pages, joining preview (16d12e3)
+
 ## [0.2.4] - 2026-09-29
 
 - feat: multiple SSO providers, renames, real client IPs, windowed notes grid (9c97de0)
