@@ -452,6 +452,19 @@ builder.Services.AddRateLimiter(options =>
                 Window = TimeSpan.FromMinutes(1),
                 QueueLimit = 0,
             }));
+
+    // Live-editing tickets: one per (re)connect of each open note/tab, so a healthy
+    // client asks a handful of times an hour. Per account, well above a desk of
+    // tabs riding out a flaky network, far below a loop hammering the endpoint.
+    options.AddPolicy(CollabEndpoints.TicketRateLimit, ctx =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            ctx.User.FindFirstValue(ClaimTypes.NameIdentifier) ?? ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 60,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0,
+            }));
 });
 
 // Behind a reverse proxy every request otherwise arrives from the proxy's address,

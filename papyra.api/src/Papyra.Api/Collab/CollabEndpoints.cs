@@ -29,6 +29,9 @@ public static class CollabEndpoints
     /// <summary>Header a collaborative editor sets on metadata saves: keep the body on disk, the room owns it.</summary>
     public const string CollabClientHeader = "X-Papyra-Collab";
 
+    /// <summary>Rate-limiter policy for <c>POST /api/collab/ticket</c> (registered in Program.cs).</summary>
+    public const string TicketRateLimit = "collab-ticket";
+
     public static IServiceCollection AddCollab(this IServiceCollection services, IConfiguration config)
     {
         var options = CollabOptions.From(config);
@@ -45,7 +48,7 @@ public static class CollabEndpoints
 
     public static void MapCollab(this WebApplication app)
     {
-        app.MapPost("/api/collab/ticket", IssueTicket).RequireAuthorization().WithTags("Collaboration")
+        app.MapPost("/api/collab/ticket", IssueTicket).RequireAuthorization().RequireRateLimiting(TicketRateLimit).WithTags("Collaboration")
             .WithSummary("Get a ticket to join a note's live editing room");
 
         var forwarderClient = new HttpMessageInvoker(new SocketsHttpHandler

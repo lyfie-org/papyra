@@ -38,6 +38,24 @@ export interface Logger {
   error(message: string): void
 }
 
+/** Counters since the engine booted, surfaced on `/healthz` and in slow-save logs. */
+export interface RoomStats {
+  /** Rooms ever opened. */
+  opened: number
+  /** Successful saves through the API. */
+  saves: number
+  /** Saves the API refused because the file moved on (each is merged and retried). */
+  conflicts: number
+  /** Saves that failed outright (network, 5xx). */
+  failures: number
+  /** Duration of the last / slowest successful save, ms. */
+  lastSaveMs: number
+  maxSaveMs: number
+}
+
+/** A save slower than this is worth a log line. */
+const SLOW_SAVE_MS = 2000
+
 interface Room {
   owner: number
   note: string
@@ -148,6 +166,7 @@ export class RoomRegistry {
   private readonly api: NotesApi
   private readonly log: Logger
   private readonly closeRoom: (documentName: string) => void
+  readonly stats: RoomStats = { opened: 0, saves: 0, conflicts: 0, failures: 0, lastSaveMs: 0, maxSaveMs: 0 }
 
   constructor(options: RoomRegistryOptions) {
     this.api = options.api
@@ -195,6 +214,7 @@ export class RoomRegistry {
       gone: false,
       queue: Promise.resolve(),
     })
+    this.stats.opened += 1
     this.log.info(`[${documentName}] opened (${useState ? 'persisted state' : 'from file'})`)
   }
 
@@ -220,13 +240,25 @@ export class RoomRegistry {
       }
       if (markdown === room.base) return
 
-      const result = await this.api.save(room.owner, room.note, {
-        body: markdown,
-        baseHash: room.baseHash,
-        yState: Y.encodeStateAsUpdate(room.collab.doc),
-        contributors: [...room.contributors],
-      })
+      const started = performance.now()
+      let result: Awaited<ReturnType<NotesApi['save']>>
+      try {
+        result = await this.api.save(room.owner, room.note, {
+          body: markdown,
+          baseHash: room.baseHash,
+          yState: Y.encodeStateAsUpdate(room.collab.doc),
+          contributors: [...room.contributors],
+        })
+      } catch (error) {
+        this.stats.failures += 1
+        throw error
+      }
       if (result.kind === 'saved') {
+        const took = Math.round(performance.now() - started)
+        this.stats.saves += 1
+        this.stats.lastSaveMs = took
+        this.stats.maxSaveMs = Math.max(this.stats.maxSaveMs, took)
+        if (took > SLOW_SAVE_MS) this.log.warn(`[${documentName}] slow save: ${took}ms`)
         room.base = markdown
         room.baseHash = result.hash
         room.contributors.clear()
@@ -238,6 +270,7 @@ export class RoomRegistry {
       }
       // The file moved on underneath us: fold its changes into the room, then
       // retry against the new hash.
+      this.stats.conflicts += 1
       this.reconcile(documentName, room, result.current)
     }
     this.log.warn(`[${documentName}] save still conflicting after retries; will retry on next change`)

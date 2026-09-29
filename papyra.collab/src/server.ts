@@ -100,6 +100,7 @@ export function createCollabServer(options: CollabServerOptions) {
         status: 'ok',
         rooms: instance?.getDocumentsCount() ?? 0,
         connections: instance?.getConnectionsCount() ?? 0,
+        stats: rooms.stats,
       })
       return
     }

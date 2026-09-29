@@ -116,6 +116,16 @@ describe('RoomRegistry', () => {
     expect(peer().getMarkdown()).toBe(merged)
   })
 
+  it('counts opens, saves and conflicts for /healthz', async () => {
+    const { api, rooms, doc } = setup('Intro\n\nMiddle')
+    await rooms.load(ROOM, doc)
+    edit(doc, 'Intro (room)\n\nMiddle')
+    api.writeExternally(ROOM, 'Intro\n\nMiddle (file)')
+    await rooms.store(ROOM)
+    expect(rooms.stats).toMatchObject({ opened: 1, saves: 1, conflicts: 1, failures: 0 })
+    expect(rooms.stats.maxSaveMs).toBeGreaterThanOrEqual(rooms.stats.lastSaveMs)
+  })
+
   it('adopts an external change pushed by the API', async () => {
     const { api, rooms, doc, peer } = setup('One\n\nTwo')
     await rooms.load(ROOM, doc)

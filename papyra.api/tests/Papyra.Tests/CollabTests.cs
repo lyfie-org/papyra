@@ -214,6 +214,28 @@ public sealed class CollabTests
         finally { Cleanup(factory, dir); }
     }
 
+    [Fact]
+    public async Task TicketEndpointIsRateLimitedPerAccount()
+    {
+        var (factory, dir, _) = NewApp();
+        try
+        {
+            var owner = await OwnerAsync(factory);
+            await WriteAsync(owner, "n1", "Hello");
+            var bea = await MemberAsync(factory, owner, "bea");
+
+            HttpStatusCode last = default;
+            for (var i = 0; i < 65; i++)
+                last = (await owner.PostAsJsonAsync("/api/collab/ticket", new CollabTicketRequest("n1", null))).StatusCode;
+            Assert.Equal(HttpStatusCode.TooManyRequests, last);
+
+            // Another account has its own budget.
+            var other = await bea.PostAsJsonAsync("/api/collab/ticket", new CollabTicketRequest("nope", null));
+            Assert.NotEqual(HttpStatusCode.TooManyRequests, other.StatusCode);
+        }
+        finally { Cleanup(factory, dir); }
+    }
+
     // ── Engine data path ───────────────────────────────────────────────────────
 
     [Fact]

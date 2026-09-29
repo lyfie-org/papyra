@@ -152,5 +152,6 @@ describe('collab server', () => {
     expect(res.status).toBe(403)
     const health = await fetch(`${http}/healthz`)
     expect(health.status).toBe(200)
+    expect(await health.json()).toMatchObject({ status: 'ok', stats: { opened: 0, saves: 0, conflicts: 0 } })
   })
 })
