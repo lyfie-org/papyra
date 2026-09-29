@@ -133,7 +133,7 @@ public sealed class TotpTests
     });
 
     [Fact]
-    public Task SettingsCanReplaceAndRemoveIt_WithThePassword() => WithFreshAppAsync(async (_, client) =>
+    public Task SettingsCanReplaceIt_WithThePassword_ButNotRemoveIt() => WithFreshAppAsync(async (_, client) =>
     {
         Assert.Equal(HttpStatusCode.OK, (await client.PostSetupAsync(new SetupRequest(
             Username: "admin", Name: null, Email: "a@b.c", Password: "hunter2!"))).StatusCode);
@@ -148,10 +148,85 @@ public sealed class TotpTests
             (await client.PostAsJsonAsync("/api/auth/totp", new { secret, code = Now(secret), password = "hunter2!" })).StatusCode);
         Assert.True((await client.GetFromJsonAsync<JsonElement>("/api/auth/totp")).GetProperty("enabled").GetBoolean());
 
-        Assert.Equal(HttpStatusCode.Unauthorized,
-            (await client.PostAsJsonAsync("/api/auth/totp/remove", new { password = "wrong" })).StatusCode);
-        Assert.Equal(HttpStatusCode.NoContent,
+        // Every account keeps one: there is no way to remove it, only replace it.
+        Assert.Equal(HttpStatusCode.NotFound,
             (await client.PostAsJsonAsync("/api/auth/totp/remove", new { password = "hunter2!" })).StatusCode);
-        Assert.False((await client.GetFromJsonAsync<JsonElement>("/api/auth/me")).GetProperty("totpEnabled").GetBoolean());
+
+        // And an admin always signs in with a code.
+        Assert.Equal(HttpStatusCode.BadRequest,
+            (await client.PutAsJsonAsync("/api/auth/totp/login", new { enabled = false })).StatusCode);
+    });
+
+    [Fact]
+    public Task TwoStepSignIn_AsksForTheCode_AndRememberedDevicesSkipIt() => WithFreshAppAsync(async (factory, admin) =>
+    {
+        Assert.Equal(HttpStatusCode.OK, (await admin.PostSetupAsync(new SetupRequest(
+            Username: "admin", Name: null, Email: "a@b.c", Password: "hunter2!"))).StatusCode);
+
+        var browser = factory.CreateClient();
+        var first = await (await browser.PostAsJsonAsync("/api/auth/login", new { username = "admin", password = "hunter2!", remember = true }))
+            .Content.ReadFromJsonAsync<JsonElement>();
+        Assert.True(first.GetProperty("twoFactorRequired").GetBoolean());
+        var ticket = first.GetProperty("ticket").GetString();
+        // The password alone signed nothing in.
+        Assert.Equal(HttpStatusCode.Unauthorized, (await browser.GetAsync("/api/notes")).StatusCode);
+
+        Assert.Equal(HttpStatusCode.Unauthorized,
+            (await browser.PostAsJsonAsync("/api/auth/login/2fa", new { ticket, code = "12345" })).StatusCode);
+        Assert.Equal(HttpStatusCode.OK,
+            (await browser.PostAsJsonAsync("/api/auth/login/2fa", new { ticket, code = TestAuth.TotpCode(browser) })).StatusCode);
+        Assert.Equal(HttpStatusCode.OK, (await browser.GetAsync("/api/notes")).StatusCode);
+
+        // Same browser, signed out and back in: remembered, so no code this time.
+        await browser.PostAsync("/api/auth/logout", null);
+        var again = await (await browser.PostAsJsonAsync("/api/auth/login", new { username = "admin", password = "hunter2!" }))
+            .Content.ReadFromJsonAsync<JsonElement>();
+        Assert.False(again.TryGetProperty("twoFactorRequired", out _));
+        Assert.Equal(HttpStatusCode.OK, (await browser.GetAsync("/api/notes")).StatusCode);
+    });
+
+    [Fact]
+    public Task SignedInDevices_ListAndEnd() => WithFreshAppAsync(async (factory, admin) =>
+    {
+        Assert.Equal(HttpStatusCode.OK, (await admin.PostSetupAsync(new SetupRequest(
+            Username: "admin", Name: null, Email: "a@b.c", Password: "hunter2!"))).StatusCode);
+        var laptop = factory.CreateClient();
+        Assert.Equal(HttpStatusCode.OK, (await laptop.LoginAsync("admin", "hunter2!")).StatusCode);
+
+        var list = (await admin.GetFromJsonAsync<JsonElement>("/api/auth/sessions")).EnumerateArray().ToList();
+        Assert.Equal(2, list.Count);
+        Assert.Single(list, s => s.GetProperty("current").GetBoolean());
+        var other = list.Single(s => !s.GetProperty("current").GetBoolean()).GetProperty("id").GetInt32();
+
+        Assert.Equal(HttpStatusCode.NoContent, (await admin.DeleteAsync($"/api/auth/sessions/{other}")).StatusCode);
+        var ended = await laptop.GetAsync("/api/notes");
+        Assert.Equal(HttpStatusCode.Unauthorized, ended.StatusCode);
+        Assert.Equal("session_ended", (await ended.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("code").GetString());
+        Assert.Equal(HttpStatusCode.OK, (await admin.GetAsync("/api/notes")).StatusCode);
+    });
+
+    [Fact]
+    public Task AnAdminCanResetSomeonesAuthenticator() => WithFreshAppAsync(async (factory, admin) =>
+    {
+        Assert.Equal(HttpStatusCode.OK, (await admin.PostSetupAsync(new SetupRequest(
+            Username: "admin", Name: null, Email: "a@b.c", Password: "hunter2!"))).StatusCode);
+        var made = await (await admin.PostAsJsonAsync("/api/auth/users", new ProvisionRequest(
+            Username: "bea", Name: "Bea", Email: "bea@example.com", Password: "hunter2!", Role: "User"))).Content.ReadFromJsonAsync<JsonElement>();
+        var beaId = made.GetProperty("id").GetInt32();
+        var bea = factory.CreateClient();
+        await bea.LoginAsync("bea", "hunter2!");
+        await TestAuth.CompleteForcedPasswordChangeAsync(bea, "hunter2!");
+        Assert.Equal(HttpStatusCode.OK, (await bea.GetAsync("/api/notes")).StatusCode);
+
+        Assert.Equal(HttpStatusCode.NoContent, (await admin.PostAsync($"/api/auth/users/{beaId}/reset-2fa", null)).StatusCode);
+        // Signed out everywhere; signing back in lands on setting a new one up.
+        Assert.Equal(HttpStatusCode.Unauthorized, (await bea.GetAsync("/api/notes")).StatusCode);
+        var back = factory.CreateClient();
+        Assert.Equal(HttpStatusCode.OK, (await back.LoginAsync("bea", "hunter2!")).StatusCode);
+        var gated = await back.GetAsync("/api/notes");
+        Assert.Equal("totp_setup_required", (await gated.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("code").GetString());
+
+        // Only an admin can do it.
+        Assert.Equal(HttpStatusCode.Forbidden, (await back.PostAsync($"/api/auth/users/{beaId}/reset-2fa", null)).StatusCode);
     });
 }

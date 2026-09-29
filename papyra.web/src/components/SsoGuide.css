@@ -1,0 +1,95 @@
+.sso-guide__steps {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-5, 1.5rem);
+  margin: var(--space-3) 0 0;
+  padding: 0;
+  list-style: none;
+  counter-reset: sso-step;
+}
+
+.sso-guide__steps > li {
+  position: relative;
+  padding-left: 2.2rem;
+  counter-increment: sso-step;
+}
+
+/* The step number, in a sage circle — the same shape as the setup wizard's dots. */
+.sso-guide__steps > li::before {
+  content: counter(sso-step);
+  position: absolute;
+  top: 0;
+  left: 0;
+  display: grid;
+  place-items: center;
+  width: 1.5rem;
+  height: 1.5rem;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  color: var(--text-h);
+  font-family: var(--sans);
+  font-size: 0.8rem;
+}
+
+.sso-guide__step-title {
+  margin: 0 0 var(--space-2);
+  color: var(--text-h);
+  font-family: var(--sans);
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+/* Five providers wrap on a phone instead of scrolling sideways. */
+.sso-guide .settings__segment { flex-wrap: wrap; max-width: 100%; }
+
+.sso-guide__howto {
+  margin: 0 0 var(--space-3);
+  padding-left: 1.1rem;
+  color: var(--text);
+  font-size: 0.9rem;
+  line-height: 1.6;
+}
+
+.sso-guide__copy {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  max-width: 100%;
+  padding: 0.55rem 0.7rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+}
+.sso-guide__copy-label { color: var(--text); font-size: 0.8rem; }
+.sso-guide__copy code {
+  flex: 1 1 12rem;
+  min-width: 0;
+  overflow-wrap: anywhere;
+  color: var(--text-h);
+  font-family: var(--mono);
+  font-size: 0.85rem;
+}
+.sso-guide__copy-btn {
+  display: inline-grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--text);
+  cursor: pointer;
+}
+.sso-guide__copy-btn:hover { border-color: var(--border-hover); color: var(--text-h); }
+.sso-guide__copy-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+.sso-guide__button-preview {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  color: var(--text);
+  font-size: 0.9rem;
+  white-space: nowrap;
+}
+.sso-guide__button-preview input { flex: 1; min-width: 0; }

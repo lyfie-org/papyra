@@ -182,6 +182,8 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<GitSyncService>())
 // per purpose because the jobs differ by orders of magnitude: a status probe must
 // fail fast enough that the settings page never hangs on it, while a model pull is
 // several gigabytes over whatever connection the self-hoster has.
+// Admin's "Test" on the SSO guide: fetch the provider's discovery document.
+builder.Services.AddHttpClient("sso-probe").ConfigureHttpClient(c => c.Timeout = TimeSpan.FromSeconds(8));
 builder.Services.AddHttpClient("ai-probe").ConfigureHttpClient(c => c.Timeout = TimeSpan.FromSeconds(3));
 builder.Services.AddHttpClient("ai-embed").ConfigureHttpClient(c => c.Timeout = TimeSpan.FromSeconds(60));
 builder.Services.AddHttpClient("ai-chat").ConfigureHttpClient(c => c.Timeout = TimeSpan.FromMinutes(5));
@@ -216,6 +218,8 @@ builder.Services.AddSingleton<UnlockTokenStore>();
 builder.Services.AddScoped<BiometricAuthService>();
 builder.Services.AddScoped<VaultPinService>();
 builder.Services.AddSingleton<TotpService>();
+builder.Services.AddScoped<StepUpService>();
+builder.Services.AddSingleton<PendingSignInStore>();
 
 // Background import queue: drains uploaded Obsidian/Keep archives into the vault
 // off the request thread, pushing progress over SignalR. Singleton so the endpoint
@@ -379,11 +383,10 @@ builder.Services.ConfigureOptions<OidcOptionsConfigurator>();
                 await SignInNotices.RecordAsync(
                     ctx.HttpContext, db, sp.GetRequiredService<EmailSender>(), user, "Single sign-on", ctx.HttpContext.RequestAborted);
 
-                var identity = new ClaimsIdentity(CookieAuthenticationDefaults.AuthenticationScheme);
-                identity.AddClaim(new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()));
-                identity.AddClaim(new Claim(ClaimTypes.Name, user.Username));
-                identity.AddClaim(new Claim(ClaimTypes.Role, user.Role));
-                ctx.Principal = new ClaimsPrincipal(identity);
+                // The identity provider already asked for whatever second factor
+                // it enforces, so SSO skips Papyra's own two-step sign-in.
+                var sid = await Sessions.CreateAsync(ctx.HttpContext, db, user, remember: false, "Single sign-on", ctx.HttpContext.RequestAborted);
+                ctx.Principal = Sessions.Principal(user, sid);
             },
         };
     });
@@ -822,7 +825,7 @@ app.Use(async (context, next) =>
         var db = context.RequestServices.GetRequiredService<AppDbContext>();
         var flags = await db.Users
             .Where(u => u.Id == callerId)
-            .Select(u => new { u.MustChangePassword, u.DeletionScheduledUtc, u.DisabledUtc, u.Role })
+            .Select(u => new { u.MustChangePassword, u.DeletionScheduledUtc, u.DisabledUtc, u.Role, HasTotp = u.TotpSecret != null })
             .FirstOrDefaultAsync(context.RequestAborted);
 
         if (flags?.DisabledUtc is not null && !path.StartsWithSegments("/api/auth/logout"))
@@ -834,6 +837,49 @@ app.Use(async (context, next) =>
                 new { error = "This account has been disabled. Ask your Papyra administrator.", code = "account_disabled" },
                 statusCode: StatusCodes.Status401Unauthorized).ExecuteAsync(context);
             return;
+        }
+
+        // Browser sessions are rows (Security/Sessions.cs): one ended from
+        // Settings → Security stops here on its next request.
+        var isCookie = context.User.Identity.AuthenticationType == CookieAuthenticationDefaults.AuthenticationScheme;
+        if (isCookie && flags is not null)
+        {
+            var now = DateTime.UtcNow;
+            if (Sessions.CurrentSid(context.User) is not { } sid)
+            {
+                // A cookie from before sessions were tracked: adopt it as one,
+                // rather than signing everybody out on upgrade.
+                var ticket = await context.AuthenticateAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+                var remember = ticket.Properties?.IsPersistent == true;
+                if (await db.Users.FindAsync([callerId], context.RequestAborted) is { } owner)
+                {
+                    var adopted = await Sessions.CreateAsync(context, db, owner, remember, "Password", context.RequestAborted);
+                    await Sessions.IssueCookieAsync(context, owner, adopted, remember);
+                    context.User = Sessions.Principal(owner, adopted);
+                }
+            }
+            else
+            {
+                var hash = Sessions.Hash(sid);
+                var row = await db.UserSessions.FirstOrDefaultAsync(s => s.SessionHash == hash, context.RequestAborted);
+                if (row is null || row.UserId != callerId || row.ExpiresUtc < now)
+                {
+                    await context.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+                    if (!path.StartsWithSegments("/api/auth/logout"))
+                    {
+                        await Results.Json(new { error = "You were signed out on this device.", code = "session_ended" },
+                            statusCode: StatusCodes.Status401Unauthorized).ExecuteAsync(context);
+                        return;
+                    }
+                }
+                else if (now - row.LastSeenUtc > Sessions.TouchEvery)
+                {
+                    row.LastSeenUtc = now;
+                    row.ExpiresUtc = now + (row.Remember ? Sessions.RememberFor : Sessions.DefaultFor);
+                    row.LastIp = context.Connection.RemoteIpAddress?.ToString();
+                    await db.SaveChangesAsync(context.RequestAborted);
+                }
+            }
         }
 
         if (flags is not null && context.User.FindFirstValue(ClaimTypes.Role) != flags.Role
@@ -848,7 +894,8 @@ app.Use(async (context, next) =>
         var exempt = path.StartsWithSegments("/hubs")
             || path.StartsWithSegments("/api/auth/me")
             || path.StartsWithSegments("/api/auth/password")
-            || path.StartsWithSegments("/api/auth/logout");
+            || path.StartsWithSegments("/api/auth/logout")
+            || path.StartsWithSegments("/api/auth/totp");
         if (!exempt && flags is not null)
         {
             // An account on its way out can do one thing: cancel.
@@ -863,6 +910,17 @@ app.Use(async (context, next) =>
             {
                 await Results.Json(
                     new { error = "Choose your own password before you carry on.", code = "password_change_required" },
+                    statusCode: StatusCodes.Status403Forbidden).ExecuteAsync(context);
+                return;
+            }
+            // Every account has an authenticator: sensitive steps ask for its
+            // code. One signed in without (a new account, or after an admin reset
+            // it) sets it up before anything else. Scripts on an API key are
+            // left alone — they never answer a code anyway.
+            if (!flags.HasTotp && isCookie)
+            {
+                await Results.Json(
+                    new { error = "Set up an authenticator app to carry on.", code = "totp_setup_required" },
                     statusCode: StatusCodes.Status403Forbidden).ExecuteAsync(context);
                 return;
             }
@@ -1252,7 +1310,7 @@ auth.MapPost("/setup", async (
         }
     }
 
-    await SignInAsync(http, user); // the first admin starts signed in
+    await Sessions.SignInAsync(http, db, user, remember: false, "Setup", ct); // the first admin starts signed in
     return Results.Ok(new
     {
         user.Id, user.Username, user.Name, user.Email, user.Role, user.TimeZone, user.Theme,
@@ -1263,7 +1321,8 @@ auth.MapPost("/setup", async (
 // Validate credentials against the BCrypt hash and mint the session cookie. Same
 // generic 401 for unknown user and bad password so we don't leak which one failed.
 auth.MapPost("/login", async (
-    LoginRequest body, HttpContext http, AppDbContext db, LoginThrottle throttle, EmailSender email, CancellationToken ct) =>
+    LoginRequest body, HttpContext http, AppDbContext db, LoginThrottle throttle, EmailSender email,
+    PendingSignInStore pending, StepUpService stepUp, CancellationToken ct) =>
 {
     if (string.IsNullOrWhiteSpace(body.Username) || string.IsNullOrWhiteSpace(body.Password))
         return Results.BadRequest(new { error = "Username and password are required." });
@@ -1300,9 +1359,58 @@ auth.MapPost("/login", async (
     // Only after the password checks out, so "disabled" is never a free answer
     // to "does this account exist".
     if (user!.DisabledUtc is not null) return AccountDisabled();
-    await SignInAsync(http, user);
+    var remember = body.Remember == true;
+
+    // Two-step sign-in: the password was right, now the authenticator. A browser
+    // the person told to remember them skips it until that runs out.
+    if (NeedsSecondStep(user) && !await SignInNotices.IsTrustedAsync(http, db, user.Id, ct))
+        return Results.Ok(new { twoFactorRequired = true, ticket = pending.Issue(user.Id, remember), canEmail = stepUp.CanEmail(user) });
+
+    await Sessions.SignInAsync(http, db, user, remember, "Password", ct);
     await SignInNotices.RecordAsync(http, db, email, user, "Password", ct);
     return Results.Ok(new { user.Id, user.Username, user.Name, user.Email, user.Role, user.TimeZone, user.Theme, serverTimeZone = ServerTimeZoneId() });
+}).RequireRateLimiting(AuthRateLimit);
+
+// Step two: the code for a sign-in whose password was right. The ticket from
+// /login stands in for the password, so it's never sent twice.
+auth.MapPost("/login/2fa", async (
+    LoginCodeRequest body, HttpContext http, AppDbContext db, LoginThrottle throttle, EmailSender email,
+    PendingSignInStore pending, StepUpService stepUp, CancellationToken ct) =>
+{
+    if (pending.Find(body.Ticket) is not { } p)
+        return Results.Json(new { error = "That sign-in timed out. Enter your password again.", code = "ticket_expired" }, statusCode: 401);
+    var user = await db.Users.FindAsync([p.UserId], ct);
+    if (user is null || user.DisabledUtc is not null) { pending.Spend(body.Ticket!); return AccountDisabled(); }
+    if (throttle.IsLockedOut(user.Username))
+        return Results.Json(new { error = "Too many failed attempts. Try again later." }, statusCode: StatusCodes.Status429TooManyRequests);
+
+    if (!await stepUp.VerifyAsync(db, user, body.Code, ct))
+    {
+        throttle.RecordFailure(user.Username);
+        pending.Fail(body.Ticket!);
+        return Results.Json(new { error = "That code didn’t match. Try the newest one.", field = "code" }, statusCode: 401);
+    }
+    pending.Spend(body.Ticket!);
+    throttle.Reset(user.Username);
+    await db.SaveChangesAsync(ct);
+
+    await Sessions.SignInAsync(http, db, user, p.Remember, "Password + code", ct);
+    var device = await SignInNotices.RecordAsync(http, db, email, user, "Password + code", ct);
+    if (p.Remember) await SignInNotices.TrustAsync(http, db, user.Id, device, Sessions.RememberFor, ct);
+    return Results.Ok(new { user.Id, user.Username, user.Name, user.Email, user.Role, user.TimeZone, user.Theme, serverTimeZone = ServerTimeZoneId() });
+}).RequireRateLimiting(AuthRateLimit);
+
+// No authenticator to hand: email the code instead (where mail works).
+auth.MapPost("/login/2fa/email", async (
+    LoginCodeRequest body, HttpContext http, AppDbContext db, PendingSignInStore pending, StepUpService stepUp, CancellationToken ct) =>
+{
+    if (pending.Find(body.Ticket) is not { } p)
+        return Results.Json(new { error = "That sign-in timed out. Enter your password again.", code = "ticket_expired" }, statusCode: 401);
+    var user = await db.Users.FindAsync([p.UserId], ct);
+    if (user is null) return Results.NotFound();
+    return await stepUp.EmailCodeAsync(db, user, RequestDetails(user, http), ct) is { } sentTo
+        ? Results.Ok(new { sentTo })
+        : Results.BadRequest(new { error = "A code can't be emailed to this account." });
 }).RequireRateLimiting(AuthRateLimit);
 
 // ── Sign in with a passkey ──────────────────────────────────────────────────────
@@ -1349,15 +1457,21 @@ auth.MapPost("/passkey/verify", async (
 
     throttle.Reset(username);
     if (user.DisabledUtc is not null) return AccountDisabled();
-    await SignInAsync(http, user);
+    // A passkey is already two factors (the device, and the face or finger that unlocks it).
+    await Sessions.SignInAsync(http, db, user, body.Remember == true, "Passkey", ct);
     await SignInNotices.RecordAsync(http, db, email, user, "Passkey", ct);
     return Results.Ok(new { user.Id, user.Username, user.Name, user.Email, user.Role, user.TimeZone, user.Theme, serverTimeZone = ServerTimeZoneId() });
 }).RequireRateLimiting(AuthRateLimit);
 
-auth.MapPost("/logout", async (HttpContext http, UnlockTokenStore unlockTokens) =>
+auth.MapPost("/logout", async (HttpContext http, AppDbContext db, UnlockTokenStore unlockTokens) =>
 {
     // An open vault closes with the session.
     if (http.User.FindFirstValue(ClaimTypes.NameIdentifier) is { } uid) unlockTokens.RevokeUser(uid);
+    if (Sessions.CurrentSid(http.User) is { } sid)
+    {
+        var hash = Sessions.Hash(sid);
+        await db.UserSessions.Where(s => s.SessionHash == hash).ExecuteDeleteAsync();
+    }
     await http.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
     return Results.NoContent();
 });
@@ -1468,6 +1582,7 @@ auth.MapPost("/reset-password", async (
     row.UsedUtc = DateTime.UtcNow;   // burn it in the same transaction as the change
     await RewrapGitBackupKeyAsync(db, git, user.Id.ToString(), body.Password!, ct);
     await db.SaveChangesAsync(ct);
+    await Sessions.RevokeAllAsync(db, user.Id, ct: ct);
 
     // Security mail, sent regardless of notification preferences: being told your
     // password changed is how you find out it wasn't you who changed it.
@@ -1519,7 +1634,7 @@ auth.MapPost("/accept-invite", async (
 
 // Current-session probe the SPA auth guard polls: 428 before any user exists
 // (route to /setup), 401 when unauthenticated (route to /login), else the user.
-auth.MapGet("/me", async (HttpContext http, AppDbContext db, CancellationToken ct) =>
+auth.MapGet("/me", async (HttpContext http, AppDbContext db, StepUpService stepUp, CancellationToken ct) =>
 {
     if (!await db.Users.AnyAsync(ct))
         return Results.Json(new { error = "Setup required.", code = "setup_required" },
@@ -1552,6 +1667,13 @@ auth.MapGet("/me", async (HttpContext http, AppDbContext db, CancellationToken c
         // The theme follows the person, not the browser: every sign-in opens in it.
         user.Theme,
         totpEnabled = TotpService.IsEnabled(user),
+        // Signed in without one: the app shows the set-up screen (see the gate above).
+        mustSetUpTotp = !TotpService.IsEnabled(user),
+        // SSO accounts have no Papyra password to confirm things with.
+        hasPassword = !string.IsNullOrEmpty(user.PasswordHash),
+        // Whether "email me a code instead" can be offered.
+        canEmailCode = stepUp.CanEmail(user),
+        twoFactorLogin = TotpService.IsEnabled(user) && (user.Role == "Admin" || user.TwoFactorLogin),
     });
 });
 
@@ -1923,7 +2045,7 @@ auth.MapPut("/profile", async (
     // name is what the rest of this session sees. Only for a cookie session — an
     // API-key request has no cookie to replace.
     if (renamed && principal.Identity?.AuthenticationType == CookieAuthenticationDefaults.AuthenticationScheme)
-        await SignInAsync(http, user);
+        await Sessions.SignInAsync(http, db, user, remember: false, "Password", ct);
 
     // To the address being replaced: it's the one an attacker who took the
     // session would want to stop hearing from Papyra.
@@ -2018,7 +2140,9 @@ auth.MapPost("/totp", async (
     if (user is null) return Results.NotFound();
     var key = $"totp:{user.Id}";
     if (throttle.IsLockedOut(key)) return Results.Json(new { error = "Too many attempts. Try again later." }, statusCode: 429);
-    if (string.IsNullOrEmpty(body.Password) || !BCrypt.Net.BCrypt.Verify(body.Password, user.PasswordHash))
+    // An SSO account has no Papyra password; its identity provider vouched for it.
+    if (!string.IsNullOrEmpty(user.PasswordHash)
+        && (string.IsNullOrEmpty(body.Password) || !BCrypt.Net.BCrypt.Verify(body.Password, user.PasswordHash)))
     {
         throttle.RecordFailure(key);
         return Results.Json(new { error = "That password isn't right.", field = "password" }, statusCode: 401);
@@ -2041,29 +2165,75 @@ auth.MapPost("/totp", async (
     return Results.Ok(new { enabled = true });
 }).RequireAuthorization().RequireRateLimiting(AuthRateLimit);
 
-auth.MapPost("/totp/remove", async (
-    TotpRemoveRequest body, ClaimsPrincipal principal, HttpContext http, AppDbContext db,
-    EmailSender mail, LoginThrottle throttle, CancellationToken ct) =>
+// Two-step sign-in on or off. Always on for administrators. Turning it off
+// asks for a code — it's the one switch an intruder would want flipped.
+auth.MapPut("/totp/login", async (
+    TwoFactorLoginRequest body, ClaimsPrincipal principal, AppDbContext db, StepUpService stepUp,
+    LoginThrottle throttle, CancellationToken ct) =>
 {
     if (IsApiKey(principal)) return Results.Json(new { error = "Use the app, not an API key." }, statusCode: 403);
     var user = await db.Users.FindAsync([int.Parse(Uid(principal))], ct);
     if (user is null) return Results.NotFound();
-    if (!TotpService.IsEnabled(user)) return Results.NoContent();
-    var key = $"totp:{user.Id}";
-    if (throttle.IsLockedOut(key)) return Results.Json(new { error = "Too many attempts. Try again later." }, statusCode: 429);
-    if (string.IsNullOrEmpty(body.Password) || !BCrypt.Net.BCrypt.Verify(body.Password, user.PasswordHash))
+    if (!body.Enabled && user.Role == "Admin")
+        return Results.BadRequest(new { error = "Administrators always sign in with a code." });
+    if (!body.Enabled)
     {
-        throttle.RecordFailure(key);
-        return Results.Json(new { error = "That password isn't right.", field = "password" }, statusCode: 401);
+        var key = $"totp:{user.Id}";
+        if (throttle.IsLockedOut(key)) return Results.Json(new { error = "Too many attempts. Try again later." }, statusCode: 429);
+        if (!await stepUp.VerifyAsync(db, user, body.Code, ct))
+        {
+            throttle.RecordFailure(key);
+            return Results.BadRequest(new { error = "That code didn’t match. Try the newest one.", field = "code" });
+        }
     }
-    TotpService.Disable(user);
+    user.TwoFactorLogin = body.Enabled;
     await db.SaveChangesAsync(ct);
-    throttle.Reset(key);
-    await mail.NotifyAsync(user, NotificationCatalog.TotpChanged, "Your Papyra authenticator was removed",
-        $"The authenticator app on @{user.Username} was removed.\n\nIf that wasn't you, change your password now.",
-        RequestDetails(user, http), ct);
-    return Results.NoContent();
+    return Results.Ok(new { twoFactorLogin = body.Enabled || user.Role == "Admin" });
 }).RequireAuthorization().RequireRateLimiting(AuthRateLimit);
+
+// Email a code for a step that asks for one, for anyone without their authenticator to hand.
+auth.MapPost("/step-up/email", async (ClaimsPrincipal principal, HttpContext http, AppDbContext db, StepUpService stepUp, CancellationToken ct) =>
+{
+    var user = await db.Users.FindAsync([int.Parse(Uid(principal))], ct);
+    if (user is null) return Results.NotFound();
+    return await stepUp.EmailCodeAsync(db, user, RequestDetails(user, http), ct) is { } sentTo
+        ? Results.Ok(new { sentTo })
+        : Results.BadRequest(new { error = "A code can't be emailed to this account." });
+}).RequireAuthorization().RequireRateLimiting(AuthRateLimit);
+
+// ── Signed-in devices ─────────────────────────────────────────────────────────
+// Every browser signed in to the account, newest activity first, and a way to
+// end any of them (it signs out on its next request).
+auth.MapGet("/sessions", async (ClaimsPrincipal principal, AppDbContext db, CancellationToken ct) =>
+{
+    var uid = int.Parse(Uid(principal));
+    var current = Sessions.CurrentSid(principal) is { } sid ? Sessions.Hash(sid) : null;
+    var now = DateTime.UtcNow;
+    var rows = await db.UserSessions.Where(s => s.UserId == uid && s.ExpiresUtc > now)
+        .OrderByDescending(s => s.LastSeenUtc).ToListAsync(ct);
+    return Results.Ok(rows.Select(s => new
+    {
+        s.Id, s.Label, s.Method, s.Remember, ip = s.LastIp,
+        createdUtc = AsUtc(s.CreatedUtc), lastSeenUtc = AsUtc(s.LastSeenUtc),
+        current = s.SessionHash == current,
+    }));
+}).RequireAuthorization();
+
+auth.MapDelete("/sessions/{id:int}", async (int id, ClaimsPrincipal principal, AppDbContext db, CancellationToken ct) =>
+{
+    var uid = int.Parse(Uid(principal));
+    await db.UserSessions.Where(s => s.Id == id && s.UserId == uid).ExecuteDeleteAsync(ct);
+    return Results.NoContent();
+}).RequireAuthorization();
+
+auth.MapPost("/sessions/revoke-others", async (ClaimsPrincipal principal, AppDbContext db, CancellationToken ct) =>
+{
+    var uid = int.Parse(Uid(principal));
+    await Sessions.RevokeAllAsync(db, uid, Sessions.CurrentSid(principal), ct);
+    // A remembered browser shouldn't skip the code after being signed out.
+    await db.KnownDevices.Where(d => d.UserId == uid).ExecuteUpdateAsync(u => u.SetProperty(d => d.TrustedUntilUtc, (DateTime?)null), ct);
+    return Results.NoContent();
+}).RequireAuthorization();
 
 // Live "is this username free?" for the profile form. Usernames are unique per
 // Papyra, case-insensitively. Answers only what the mention typeahead already
@@ -2108,6 +2278,8 @@ auth.MapPost("/password", async (
     await RewrapGitBackupKeyAsync(db, git, user.Id.ToString(), body.Next!, ct);
     await db.SaveChangesAsync(ct);
     unlockTokens.RevokeUser(user.Id.ToString());
+    // Everywhere else signs in again with the new password.
+    await Sessions.RevokeAllAsync(db, user.Id, Sessions.CurrentSid(http.User), ct);
     await email.NotifyAsync(user, NotificationCatalog.PasswordChanged,
         "Your Papyra password was changed",
         $"The password for \"{user.Username}\" was just changed from inside Papyra.\n\n"
@@ -2231,6 +2403,7 @@ admin.MapGet("/", async (AppDbContext db, CancellationToken ct) =>
         u.DisabledReason,
         lastSignInUtc = AsUtc(u.LastSignInUtc),
         sso = u.ExternalId is not null,
+        totpEnabled = TotpService.IsEnabled(u),
         deletionScheduledUtc = AsUtc(u.DeletionScheduledUtc),
     })));
 
@@ -2315,7 +2488,10 @@ admin.MapPost("/{id:int}/reset", async (
     user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(password);
     user.PasswordChangedUtc = DateTime.UtcNow;
     user.MustChangePassword = true;
+    // Lost the phone too: they set a new authenticator up at their next sign-in.
+    if (body.ResetTwoFactor == true) ResetTwoFactor(user);
     await db.SaveChangesAsync(ct);
+    await ForgetSignInsAsync(db, user.Id, ct);
 
     var emailed = false;
     if (body.SendEmail == true && !string.IsNullOrWhiteSpace(user.Email))
@@ -2331,6 +2507,23 @@ admin.MapPost("/{id:int}/reset", async (
     }
 
     return Results.Ok(new { password, emailed });
+});
+
+// Lost authenticator: clear it. The owner signs in with their password and sets a
+// new one up before anything else (the enrolment gate), and every open session
+// and remembered browser is forgotten.
+admin.MapPost("/{id:int}/reset-2fa", async (int id, HttpContext http, AppDbContext db, EmailSender email, CancellationToken ct) =>
+{
+    var user = await db.Users.FindAsync([id], ct);
+    if (user is null) return Results.NotFound();
+    ResetTwoFactor(user);
+    await db.SaveChangesAsync(ct);
+    await ForgetSignInsAsync(db, user.Id, ct);
+    await email.NotifyAsync(user, NotificationCatalog.TotpChanged, "Your Papyra authenticator was reset",
+        $"An administrator reset the authenticator on @{user.Username}. Set a new one up the next time you sign in.\n\n"
+        + "If you didn't ask for this, tell your administrator.",
+        RequestDetails(user, http), ct);
+    return Results.NoContent();
 });
 
 // A recovery link for an account whose owner can't sign in and shouldn't be read
@@ -2608,9 +2801,12 @@ auth.MapPut("/notifications", async (
 // extension, and saving the form without retyping it keeps the stored value.
 var oidcAdmin = auth.MapGroup("/oidc").RequireAuthorization(p => p.RequireRole("Admin")).WithTags("Admin");
 
-oidcAdmin.MapGet("/", async (InstanceConfigStore config, CancellationToken ct) =>
+oidcAdmin.MapGet("/", async (InstanceConfigStore config, EmailSender email, HttpContext http, CancellationToken ct) =>
 {
     await config.EnsureLoadedAsync(ct);
+    // Absolute, from the public URL when one is set (Settings → Email), else the
+    // address this page was loaded from — what the provider must be told.
+    var origin = email.PublicUrl($"{http.Request.Scheme}://{http.Request.Host}").TrimEnd('/');
     return Results.Ok(new
     {
         enabled = config.GetBool(OidcKeys.Enabled),
@@ -2621,7 +2817,8 @@ oidcAdmin.MapGet("/", async (InstanceConfigStore config, CancellationToken ct) =
         // The exact URI the IdP must whitelist. Getting this wrong is the most
         // common OIDC setup failure, so hand it to the admin rather than making
         // them infer it.
-        redirectUri = "/signin-oidc",
+        redirectUri = $"{origin}/signin-oidc",
+        origin,
         ready = SsoConfigured(config),
     });
 });
@@ -2672,6 +2869,31 @@ oidcAdmin.MapPut("/", async (
     .WithDescription(
         "Stores the OIDC authority, client id and secret. Takes effect immediately — " +
         "the cached authentication options for the `oidc` scheme are evicted on save.");
+
+// "Test" in the SSO guide: can Papyra reach the provider, and is it an OIDC
+// provider? Fetches its discovery document and reports what it found, so a
+// wrong issuer URL fails here, with a reason, instead of at someone's sign-in.
+oidcAdmin.MapPost("/test", async (OidcTestRequest body, IHttpClientFactory http, CancellationToken ct) =>
+{
+    var authority = body.Authority?.Trim().TrimEnd('/') ?? string.Empty;
+    if (!Uri.TryCreate(authority, UriKind.Absolute, out var uri) || (uri.Scheme != Uri.UriSchemeHttps && !uri.IsLoopback))
+        return Results.Ok(new { ok = false, error = "Use the issuer URL, starting with https://." });
+    try
+    {
+        using var res = await http.CreateClient("sso-probe").GetAsync($"{authority}/.well-known/openid-configuration", ct);
+        if (!res.IsSuccessStatusCode)
+            return Results.Ok(new { ok = false, error = $"The provider answered {(int)res.StatusCode}. Check the issuer URL — it's usually shown on the app's page in your provider." });
+        using var doc = System.Text.Json.JsonDocument.Parse(await res.Content.ReadAsStringAsync(ct));
+        var issuer = doc.RootElement.TryGetProperty("issuer", out var i) ? i.GetString() : null;
+        if (issuer is null || !doc.RootElement.TryGetProperty("authorization_endpoint", out _))
+            return Results.Ok(new { ok = false, error = "That address answered, but not like a sign-in provider." });
+        return Results.Ok(new { ok = true, issuer });
+    }
+    catch (Exception ex) when (ex is HttpRequestException or TaskCanceledException or System.Text.Json.JsonException)
+    {
+        return Results.Ok(new { ok = false, error = "Couldn’t reach that address from this server." });
+    }
+}).RequireRateLimiting(AuthRateLimit);
 
 // ── Admin: outbound mail (SMTP) ───────────────────────────────────────────────
 // Admin-only, same shape as the SSO panel: the password is write-only, and a
@@ -3488,10 +3710,23 @@ keys.MapGet("/", async (ClaimsPrincipal user, AppDbContext db, CancellationToken
 });
 
 keys.MapPost("/", async (
-    ApiKeyWrite body, ClaimsPrincipal user, AppDbContext db, EmailSender email, HttpContext http, CancellationToken ct) =>
+    ApiKeyWrite body, ClaimsPrincipal user, AppDbContext db, EmailSender email, HttpContext http,
+    StepUpService stepUp, LoginThrottle throttle, CancellationToken ct) =>
 {
     var uid = int.Parse(Uid(user));
     var name = string.IsNullOrWhiteSpace(body.Name) ? "Untitled key" : body.Name.Trim();
+
+    // A key reads and writes everything, for as long as it lives: confirm it's you.
+    var me = await db.Users.FindAsync([uid], ct);
+    if (me is null) return Results.NotFound();
+    var throttleKey = $"apikey:{uid}";
+    if (throttle.IsLockedOut(throttleKey))
+        return Results.Json(new { error = "Too many attempts. Try again later." }, statusCode: StatusCodes.Status429TooManyRequests);
+    if (!await stepUp.VerifyAsync(db, me, body.Code, ct))
+    {
+        throttle.RecordFailure(throttleKey);
+        return Results.Json(new { error = "That code didn’t match. Try the newest one.", field = "code" }, statusCode: StatusCodes.Status401Unauthorized);
+    }
 
     // 32 bytes of entropy → high enough that a plain SHA-256 (no per-row bcrypt) is
     // a safe, fast lookup key.
@@ -5692,7 +5927,7 @@ app.MapGet("/api/link-preview", async (string? url, LinkPreviewService previews,
 // ── Export all notes ──────────────────────────────────────────────────────────
 // Everything a person owns, as plain files — so it is guarded like the keys to
 // the account. Two steps:
-//   1. POST /api/export/authorize — the account password AND an open vault (the
+//   1. POST /api/export/authorize — a code (authenticator or emailed) AND an open vault (the
 //      vault PIN or a biometric device, via X-Unlock-Token) earn a one-time
 //      ticket, good for two minutes. An API key can't: this is a person's act.
 //   2. GET /api/export?ticket=… — the download itself (a plain link, so the
@@ -5701,7 +5936,7 @@ app.MapGet("/api/link-preview", async (string? url, LinkPreviewService previews,
 // Locked (vault) notes travel too, in a separate `vault/` folder.
 app.MapPost("/api/export/authorize", async (
     ExportAuthorizeRequest body, ClaimsPrincipal user, HttpContext http, AppDbContext db,
-    ExportTicketStore tickets, LoginThrottle throttle, CancellationToken ct) =>
+    ExportTicketStore tickets, LoginThrottle throttle, StepUpService stepUp, CancellationToken ct) =>
 {
     if (IsApiKey(user)) return Results.Json(new { error = "Exports need you signed in, not an API key." }, statusCode: StatusCodes.Status403Forbidden);
     var uid = Uid(user);
@@ -5711,16 +5946,17 @@ app.MapPost("/api/export/authorize", async (
     var throttleKey = $"export:{me.Username}";
     if (throttle.IsLockedOut(throttleKey))
         return Results.Json(new { error = "Too many attempts. Try again later." }, statusCode: StatusCodes.Status429TooManyRequests);
-    if (string.IsNullOrEmpty(body.Password) || string.IsNullOrEmpty(me.PasswordHash)
-        || !BCrypt.Net.BCrypt.Verify(body.Password, me.PasswordHash))
-    {
-        throttle.RecordFailure(throttleKey);
-        return Results.Json(new { error = "That password isn't right.", code = "password" }, statusCode: StatusCodes.Status401Unauthorized);
-    }
     // The vault must be open right now. Every account has a PIN before it can
-    // lock anything; without one there is simply no vault to prove.
+    // lock anything; without one there is simply no vault to prove. Checked
+    // before the code, so a closed vault doesn't use a code up.
     if (!string.IsNullOrEmpty(me.VaultPinHash) && !UnlockedNow(http, uid))
         return Results.Json(new { error = "Unlock your vault to export.", code = "locked" }, statusCode: StatusCodes.Status401Unauthorized);
+    if (!await stepUp.VerifyAsync(db, me, body.Code, ct))
+    {
+        throttle.RecordFailure(throttleKey);
+        return Results.Json(new { error = "That code didn’t match. Try the newest one.", code = "code" }, statusCode: StatusCodes.Status401Unauthorized);
+    }
+    await db.SaveChangesAsync(ct);
 
     throttle.Reset(throttleKey);
     return Results.Ok(new { ticket = tickets.Issue(uid) });
@@ -6660,16 +6896,23 @@ static string ServerTimeZoneId()
     return TimeZoneInfo.TryConvertWindowsIdToIanaId(local.Id, out var iana) ? iana : "UTC";
 }
 
-static async Task SignInAsync(HttpContext http, User user)
+// Two-step sign-in applies: an authenticator exists, and it's an admin (always)
+// or someone who left the switch on.
+static bool NeedsSecondStep(User user) =>
+    TotpService.IsEnabled(user) && (user.Role == "Admin" || user.TwoFactorLogin);
+
+static void ResetTwoFactor(User user)
 {
-    var claims = new List<Claim>
-    {
-        new(ClaimTypes.NameIdentifier, user.Id.ToString()),
-        new(ClaimTypes.Name, user.Username),
-        new(ClaimTypes.Role, user.Role),
-    };
-    var identity = new ClaimsIdentity(claims, CookieAuthenticationDefaults.AuthenticationScheme);
-    await http.SignInAsync(CookieAuthenticationDefaults.AuthenticationScheme, new ClaimsPrincipal(identity));
+    TotpService.Disable(user);
+    user.TwoFactorLogin = true;
+}
+
+// Sign an account out everywhere and forget the browsers it trusted.
+static async Task ForgetSignInsAsync(AppDbContext db, int userId, CancellationToken ct)
+{
+    await Sessions.RevokeAllAsync(db, userId, ct: ct);
+    await db.KnownDevices.Where(d => d.UserId == userId)
+        .ExecuteUpdateAsync(u => u.SetProperty(d => d.TrustedUntilUtc, (DateTime?)null), ct);
 }
 
 // PUT payload for an upsert. Id comes from the route; the body carries metadata +
@@ -6714,7 +6957,6 @@ public sealed record SetupEmailVerifyRequest(string? Email, string? Code);
 public sealed record SetupTotpRequest(string? Account);
 public sealed record TotpVerifyRequest(string? Secret, string? Code);
 public sealed record TotpEnableRequest(string? Secret, string? Code, string? Password);
-public sealed record TotpRemoveRequest(string? Password);
 
 // A backup staged by POST /api/auth/setup/restore, waiting for POST /setup.
 public sealed record SetupRestoreMeta(
@@ -6735,7 +6977,10 @@ public sealed record GitRestoreRequest(
 // Login payload. Both required; failures answer with a generic 401.
 public sealed record LoginRequest(
     string? Username,
-    string? Password);
+    string? Password,
+    bool? Remember = null);
+public sealed record LoginCodeRequest(string? Ticket, string? Code = null);
+public sealed record TwoFactorLoginRequest(bool Enabled, string? Code = null);
 
 // Admin-provisioned user. Username is required; a blank Password means "generate
 // one". Role defaults to "User". SendEmail mails the sign-in details, which needs
@@ -6751,7 +6996,8 @@ public sealed record ProvisionRequest(
 // Admin password reset payload. A blank Password means "generate one".
 public sealed record ResetRequest(
     string? Password,
-    bool? SendEmail = null);
+    bool? SendEmail = null,
+    bool? ResetTwoFactor = null);
 
 // Admin request for a one-time reset link on someone else's account.
 public sealed record RecoveryLinkRequest(bool? SendEmail = null);
@@ -6767,6 +7013,7 @@ public sealed record PasswordRequest(string? Current, string? Next);
 
 // Admin SSO configuration payload. ClientSecret is null when the admin left the
 // field blank, which means "keep whatever is stored".
+public sealed record OidcTestRequest(string? Authority);
 public sealed record OidcConfigWrite(
     bool? Enabled, string? Authority, string? ClientId, string? ClientSecret, string? DisplayName);
 
@@ -6809,7 +7056,7 @@ public sealed record NotificationPrefsWrite(bool? Mention, bool? Share, Notifica
 public sealed record UserSuggestion(string Username, string Name);
 
 // API key creation payload (just a human label).
-public sealed record ApiKeyWrite(string? Name);
+public sealed record ApiKeyWrite(string? Name, string? Code = null);
 
 // Webhook registration: which event, the target URL, and an optional shared secret
 // (one is generated + returned once if omitted).
@@ -6844,10 +7091,10 @@ public sealed record ChatSessionRename(string? Title);
 // WebAuthn unlock: the browser's assertion response.
 public sealed record WebAuthnAssertRequest(Fido2NetLib.AuthenticatorAssertionRawResponse? Response);
 public sealed record PasskeyOptionsRequest(string? Username);
-public sealed record ExportAuthorizeRequest(string? Password);
+public sealed record ExportAuthorizeRequest(string? Code);
 public sealed record AccountDeletePassword(string? Password);
 public sealed record AccountDeleteRequest(string? Password, string? Code, string? ConfirmUsername);
-public sealed record PasskeyVerifyRequest(string? Username, Fido2NetLib.AuthenticatorAssertionRawResponse? Response);
+public sealed record PasskeyVerifyRequest(string? Username, Fido2NetLib.AuthenticatorAssertionRawResponse? Response, bool? Remember = null);
 
 // Encrypted-backup generation payload: the account password (verified, then reused
 // as the vault encryption secret).

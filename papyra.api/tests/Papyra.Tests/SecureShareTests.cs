@@ -49,7 +49,7 @@ public sealed class SecureShareTests
 
         var client = factory.CreateClient();
         Assert.Equal(HttpStatusCode.OK,
-            (await client.PostAsJsonAsync("/api/auth/login", new LoginRequest(username, Pw))).StatusCode);
+            (await client.LoginAsync(username, Pw)).StatusCode);
         await TestAuth.CompleteForcedPasswordChangeAsync(client, Pw);
         return client;
     }

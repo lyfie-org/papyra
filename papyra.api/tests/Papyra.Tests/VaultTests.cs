@@ -395,11 +395,11 @@ public sealed class VaultTests
             var hit = Assert.Single(await client.GetFromJsonAsync<List<Note>>($"/api/collections/{byTitle}/notes") ?? []);
             Assert.Equal(string.Empty, hit.Body);
 
-            // Export: needs the password AND an open vault; without either there is no ticket.
+            // Export: needs a code AND an open vault; without either there is no ticket.
             Assert.Equal(HttpStatusCode.Unauthorized,
-                (await client.PostAsJsonAsync("/api/export/authorize", new { password = Pw })).StatusCode);
+                (await client.PostAsJsonAsync("/api/export/authorize", new { code = "000000" })).StatusCode);
             Assert.Equal(HttpStatusCode.Forbidden, (await client.GetAsync("/api/export")).StatusCode);
-            var authorize = new HttpRequestMessage(HttpMethod.Post, "/api/export/authorize") { Content = JsonContent.Create(new { password = Pw }) };
+            var authorize = new HttpRequestMessage(HttpMethod.Post, "/api/export/authorize") { Content = JsonContent.Create(new { code = await TestAuth.CodeAsync(client) }) };
             authorize.Headers.Add("X-Unlock-Token", unlock);
             var authorized = await client.SendAsync(authorize);
             Assert.Equal(HttpStatusCode.OK, authorized.StatusCode);
@@ -426,7 +426,7 @@ public sealed class VaultTests
         {
             var token = await TestAuth.SetVaultPinAsync(client, Pw);
             await WriteAsync(client, "s1", "secret", secure: true);
-            var key = (await JsonAsync(await client.PostAsJsonAsync("/api/keys", new { name = "script" })))
+            var key = (await JsonAsync(await client.PostAsJsonAsync("/api/keys", new { name = "script", code = await TestAuth.CodeAsync(client) })))
                 .GetProperty("token").GetString()!;
 
             var bot = factory.CreateClient();

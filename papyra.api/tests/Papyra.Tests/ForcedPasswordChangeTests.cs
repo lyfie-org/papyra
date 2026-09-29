@@ -67,7 +67,7 @@ public sealed class ForcedPasswordChangeTests
 
             var bea = factory.CreateClient();
             Assert.Equal(HttpStatusCode.OK,
-                (await bea.PostAsJsonAsync("/api/auth/login", new LoginRequest("bea", Pw))).StatusCode);
+                (await bea.LoginAsync("bea", Pw)).StatusCode);
 
             // Blocked, and the code says why so the SPA can route rather than guess.
             var notes = await bea.GetAsync("/api/notes");
@@ -95,12 +95,17 @@ public sealed class ForcedPasswordChangeTests
             await ProvisionAsync(admin, "bea", Pw);
 
             var bea = factory.CreateClient();
-            await bea.PostAsJsonAsync("/api/auth/login", new LoginRequest("bea", Pw));
+            await bea.LoginAsync("bea", Pw);
 
             var change = await bea.PostAsJsonAsync("/api/auth/password",
                 new PasswordRequest(Current: Pw, Next: "her own one"));
             Assert.Equal(HttpStatusCode.NoContent, change.StatusCode);
 
+            // Next the authenticator every account has, then the notes.
+            var gated = await bea.GetAsync("/api/notes");
+            Assert.Equal(HttpStatusCode.Forbidden, gated.StatusCode);
+            Assert.Equal("totp_setup_required", (await gated.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("code").GetString());
+            await TestAuth.EnrolTotpAsync(bea, "her own one");
             Assert.Equal(HttpStatusCode.OK, (await bea.GetAsync("/api/notes")).StatusCode);
             var me = await bea.GetAsync("/api/auth/me");
             Assert.False((await me.Content.ReadFromJsonAsync<JsonElement>())
@@ -123,14 +128,15 @@ public sealed class ForcedPasswordChangeTests
             var beaId = created.GetProperty("id").GetInt32();
 
             var bea = factory.CreateClient();
-            await bea.PostAsJsonAsync("/api/auth/login", new LoginRequest("bea", Pw));
+            await bea.LoginAsync("bea", Pw);
             await TestAuth.CompleteForcedPasswordChangeAsync(bea, Pw);
             Assert.Equal(HttpStatusCode.OK, (await bea.GetAsync("/api/notes")).StatusCode);
 
             var reset = await admin.PostAsJsonAsync($"/api/auth/users/{beaId}/reset", new ResetRequest(Password: null));
             Assert.Equal(HttpStatusCode.OK, reset.StatusCode);
 
-            Assert.Equal(HttpStatusCode.Forbidden, (await bea.GetAsync("/api/notes")).StatusCode);
+            // Stronger than the flag: the reset signs the account out everywhere.
+            Assert.Equal(HttpStatusCode.Unauthorized, (await bea.GetAsync("/api/notes")).StatusCode);
         }
         finally { Cleanup(factory, dir); }
     }
@@ -152,7 +158,7 @@ public sealed class ForcedPasswordChangeTests
             // It is a real password, not a placeholder.
             var bea = factory.CreateClient();
             Assert.Equal(HttpStatusCode.OK,
-                (await bea.PostAsJsonAsync("/api/auth/login", new LoginRequest("bea", generated))).StatusCode);
+                (await bea.LoginAsync("bea", generated)).StatusCode);
 
             // And nothing can read it back — the roster carries the flag, not the password.
             var roster = await (await admin.GetAsync("/api/auth/users")).Content.ReadFromJsonAsync<JsonElement>();
@@ -192,9 +198,9 @@ public sealed class ForcedPasswordChangeTests
 
             var bea = factory.CreateClient();
             Assert.Equal(HttpStatusCode.Unauthorized,
-                (await bea.PostAsJsonAsync("/api/auth/login", new LoginRequest("bea", Pw))).StatusCode);
+                (await bea.LoginAsync("bea", Pw)).StatusCode);
             Assert.Equal(HttpStatusCode.OK,
-                (await bea.PostAsJsonAsync("/api/auth/login", new LoginRequest("bea", temporary))).StatusCode);
+                (await bea.LoginAsync("bea", temporary)).StatusCode);
             Assert.Equal(HttpStatusCode.Forbidden, (await bea.GetAsync("/api/notes")).StatusCode);
         }
         finally { Cleanup(factory, dir); }
@@ -227,7 +233,8 @@ public sealed class ForcedPasswordChangeTests
             // Setting a password through the link is the owner choosing one, so the
             // account comes back to life without a second trip through the form.
             var bea = factory.CreateClient();
-            await bea.PostAsJsonAsync("/api/auth/login", new LoginRequest("bea", "chosen by bea"));
+            await bea.LoginAsync("bea", "chosen by bea");
+            await TestAuth.EnrolTotpAsync(bea, "chosen by bea");
             Assert.Equal(HttpStatusCode.OK, (await bea.GetAsync("/api/notes")).StatusCode);
 
             // Single use.
@@ -248,7 +255,7 @@ public sealed class ForcedPasswordChangeTests
             var beaId = (await ProvisionAsync(admin, "bea", Pw)).GetProperty("id").GetInt32();
 
             var bea = factory.CreateClient();
-            await bea.PostAsJsonAsync("/api/auth/login", new LoginRequest("bea", Pw));
+            await bea.LoginAsync("bea", Pw);
             await TestAuth.CompleteForcedPasswordChangeAsync(bea, Pw);
 
             Assert.Equal(HttpStatusCode.Forbidden, (await bea.PostAsJsonAsync("/api/auth/users",

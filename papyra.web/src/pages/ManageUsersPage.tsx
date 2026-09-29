@@ -3,6 +3,7 @@ import { createPortal } from 'react-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   UserPlus, KeyRound, Link2, Trash2, Copy, ShieldAlert, MoreHorizontal, Ban, CircleCheck, Clock,
+  RotateCcw, Smartphone,
 } from 'lucide-react';
 import EmptyState from '../components/EmptyState';
 import Avatar from '../components/Avatar';
@@ -29,6 +30,7 @@ export interface ManagedUser {
   disabledReason: string | null;
   lastSignInUtc: string | null;
   sso: boolean;
+  totpEnabled?: boolean;
   deletionScheduledUtc: string | null;
 }
 
@@ -106,22 +108,38 @@ export default function UsersPanel() {
     await refresh();
   }
 
-  async function resetPassword(target: ManagedUser) {
+  // Lost everything (phone and email too): reset both, and they start over at
+  // their next sign-in — a new password, then a new authenticator.
+  async function resetPassword(target: ManagedUser, withAuthenticator = false) {
     if (!(await confirm({
-      title: `Reset the password for ${target.username}?`,
-      body: 'A new password is generated and shown to you once. They keep their notes, and are asked to choose their own password the next time they sign in.',
-      confirmLabel: 'Reset password',
+      title: withAuthenticator ? `Reset sign-in for ${target.username}?` : `Reset the password for ${target.username}?`,
+      body: withAuthenticator
+        ? 'A new password is shown to you once, and their authenticator is cleared. They keep their notes, and set both up again at their next sign-in.'
+        : 'A new password is shown to you once. They keep their notes and choose their own at their next sign-in.',
+      confirmLabel: withAuthenticator ? 'Reset both' : 'Reset password',
     }))) return;
 
     const res = await fetch(`/api/auth/users/${target.id}/reset`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ password: null, sendEmail: Boolean(target.email) }),
+      body: JSON.stringify({ password: null, sendEmail: Boolean(target.email), resetTwoFactor: withAuthenticator }),
     });
     if (!res.ok) { toast(await readError(res, 'Couldn’t reset that password.')); return; }
 
     const body = await res.json() as { password: string; emailed: boolean };
     setCredentials({ username: target.username, password: body.password, emailed: body.emailed });
+    await refresh();
+  }
+
+  async function resetAuthenticator(target: ManagedUser) {
+    if (!(await confirm({
+      title: `Reset the authenticator for ${target.username}?`,
+      body: 'For a lost phone. They’re signed out everywhere and set up a new authenticator at their next sign-in.',
+      confirmLabel: 'Reset authenticator',
+    }))) return;
+    const res = await fetch(`/api/auth/users/${target.id}/reset-2fa`, { method: 'POST' });
+    if (!res.ok) { toast(await readError(res, 'Couldn’t reset the authenticator.')); return; }
+    toast(`${target.username} will set up a new authenticator at their next sign-in.`);
     await refresh();
   }
 
@@ -220,6 +238,8 @@ export default function UsersPanel() {
                   isMe={isMe}
                   lastAdmin={lastAdmin}
                   onReset={() => void resetPassword(u)}
+                  onResetBoth={() => void resetPassword(u, true)}
+                  onResetTotp={() => void resetAuthenticator(u)}
                   onLink={() => void recoveryLink(u)}
                   onDisable={() => setDisabling(u)}
                   onEnable={() => void enable(u)}
@@ -280,9 +300,10 @@ function PersonStatus({ user }: { user: ManagedUser }) {
 
 // A row's actions, behind one "…" — five inline links per row made the list
 // read as a wall of underlines.
-function PersonMenu({ user, isMe, lastAdmin, onReset, onLink, onDisable, onEnable, onDelete }: {
+function PersonMenu({ user, isMe, lastAdmin, onReset, onResetBoth, onResetTotp, onLink, onDisable, onEnable, onDelete }: {
   user: ManagedUser; isMe: boolean; lastAdmin: boolean;
-  onReset: () => void; onLink: () => void; onDisable: () => void; onEnable: () => void; onDelete: () => void;
+  onReset: () => void; onResetBoth: () => void; onResetTotp: () => void;
+  onLink: () => void; onDisable: () => void; onEnable: () => void; onDelete: () => void;
 }) {
   const [open, setOpen] = useState(false);
   const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
@@ -353,6 +374,17 @@ function PersonMenu({ user, isMe, lastAdmin, onReset, onLink, onDisable, onEnabl
           <button type="button" role="menuitem" className="card-menu__item" onClick={run(onLink)} disabled={user.sso}>
             <Link2 size={15} /> Recovery link
           </button>
+          {!isMe && (
+            <>
+              <button type="button" role="menuitem" className="card-menu__item" onClick={run(onResetTotp)} disabled={!user.totpEnabled}
+                title={user.totpEnabled ? undefined : 'No authenticator set up yet'}>
+                <Smartphone size={15} /> Reset authenticator
+              </button>
+              <button type="button" role="menuitem" className="card-menu__item" onClick={run(onResetBoth)} disabled={user.sso}>
+                <RotateCcw size={15} /> Reset password + authenticator
+              </button>
+            </>
+          )}
           {!isMe && (
             <>
               <div className="card-menu__sep" role="separator" />

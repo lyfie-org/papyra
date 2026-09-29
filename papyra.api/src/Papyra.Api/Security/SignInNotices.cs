@@ -21,7 +21,37 @@ public static class SignInNotices
 {
     public const string CookieName = "papyra.device";
 
-    public static async Task RecordAsync(
+    /// <summary>The stored hash of this browser's device cookie, or null before it has one.</summary>
+    public static string? DeviceHash(HttpContext http)
+    {
+        var id = http.Request.Cookies[CookieName];
+        if (string.IsNullOrEmpty(id) || id.Length is < 16 or > 128) return null;
+        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(id))).ToLowerInvariant();
+    }
+
+    /// <summary>Whether "Remember this device" still vouches for this browser for this account.</summary>
+    public static async Task<bool> IsTrustedAsync(HttpContext http, AppDbContext db, int userId, CancellationToken ct)
+    {
+        if (DeviceHash(http) is not { } hash) return false;
+        var now = DateTime.UtcNow;
+        return await db.KnownDevices.AnyAsync(d => d.UserId == userId && d.DeviceHash == hash && d.TrustedUntilUtc > now, ct);
+    }
+
+    /// <summary>
+    /// Remember this browser for <paramref name="days"/>: signing in here skips the
+    /// authenticator code until then. Call after <see cref="RecordAsync"/>, which
+    /// sets the device cookie this keys on.
+    /// </summary>
+    public static async Task TrustAsync(HttpContext http, AppDbContext db, int userId, string deviceHash, TimeSpan span, CancellationToken ct)
+    {
+        var device = await db.KnownDevices.FirstOrDefaultAsync(d => d.UserId == userId && d.DeviceHash == deviceHash, ct);
+        if (device is null) return;
+        device.TrustedUntilUtc = DateTime.UtcNow + span;
+        await db.SaveChangesAsync(ct);
+    }
+
+    /// <returns>This browser's device hash (see <see cref="TrustAsync"/>).</returns>
+    public static async Task<string> RecordAsync(
         HttpContext http, AppDbContext db, EmailSender email, User user, string method, CancellationToken ct)
     {
         var now = DateTime.UtcNow;
@@ -64,7 +94,7 @@ public static class SignInNotices
         }
         await db.SaveChangesAsync(ct);
 
-        if (!isNew) return;
+        if (!isNew) return hash;
         await email.NotifyAsync(user, NotificationCatalog.NewSignIn,
             "New sign-in to your Papyra account",
             $"Your account \"{user.Username}\" was just signed in to from a browser it hasn't seen before.\n\n"
@@ -76,6 +106,7 @@ public static class SignInNotices
                 new("Address", ip ?? "unknown"),
                 new("Signed in with", method),
             ], ct);
+        return hash;
     }
 
     /// <summary>A moment in the person's own time zone, for the details table of an email.</summary>

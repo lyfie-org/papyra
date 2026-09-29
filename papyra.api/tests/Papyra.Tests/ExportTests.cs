@@ -39,7 +39,7 @@ public sealed class ExportTests
             var when = new DateTime(2024, 3, 5, 10, 30, 0, DateTimeKind.Utc);
             File.SetLastWriteTimeUtc(oldFile, when);
 
-            var ticket = (await (await client.PostAsJsonAsync("/api/export/authorize", new { password = "hunter2!" }))
+            var ticket = (await (await client.PostAsJsonAsync("/api/export/authorize", new { code = await TestAuth.CodeAsync(client) }))
                 .Content.ReadFromJsonAsync<System.Text.Json.JsonElement>()).GetProperty("ticket").GetString();
             var res = await client.GetAsync($"/api/export?ticket={ticket}");
             Assert.Equal(HttpStatusCode.OK, res.StatusCode);

@@ -15,6 +15,8 @@ export interface OidcConfig {
   hasClientSecret: boolean;
   displayName: string;
   redirectUri: string;
+  /** This Papyra's public address (the Launch URL some providers ask for). */
+  origin?: string;
   ready: boolean;
 }
 

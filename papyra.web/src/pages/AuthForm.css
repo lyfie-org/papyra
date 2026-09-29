@@ -165,3 +165,15 @@
 .auth__passkey:disabled { opacity: 0.6; cursor: default; }
 /* Passkey and SSO stacked under one "or": keep them apart. */
 .auth__passkey + .auth__sso { margin-top: var(--space-2); }
+
+/* "Remember this device" — a plain checkbox under the password. */
+.auth__remember {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: var(--fs-sm, 0.875rem);
+  cursor: pointer;
+}
+.auth__remember input { accent-color: var(--accent); width: 1rem; height: 1rem; }

@@ -156,7 +156,7 @@ public sealed class AvatarTests
             Assert.Equal(HttpStatusCode.OK, provision.StatusCode);
 
             var bea = factory.CreateClient();
-            await bea.PostAsJsonAsync("/api/auth/login", new LoginRequest("bea", Pw));
+            await bea.LoginAsync("bea", Pw);
             await TestAuth.CompleteForcedPasswordChangeAsync(bea, Pw);
 
             var seen = await bea.GetAsync("/api/auth/avatar/owner");

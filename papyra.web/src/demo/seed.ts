@@ -20,6 +20,11 @@ export const DEMO_USER = {
   // A demo that hides half its own settings undersells the product. (The AI tab
   // is held back with the assistant itself — see lib/features.ts.)
   role: 'Admin',
+  // Signed in the way every account is: with an authenticator.
+  totpEnabled: true,
+  twoFactorLogin: true,
+  hasPassword: true,
+  canEmailCode: false,
 };
 
 /** Ages the seed relative to the visit, so nothing reads as stale. */

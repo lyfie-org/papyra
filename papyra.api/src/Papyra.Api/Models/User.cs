@@ -67,6 +67,12 @@ public class User
     /// <summary>The last time step a code was accepted for, so a code can't be replayed.</summary>
     public long? TotpLastStep { get; set; }
     public DateTime? TotpEnabledUtc { get; set; }
+    /// <summary>
+    /// Ask for the authenticator code at sign-in (two-step sign-in). Always on for
+    /// administrators whatever this says; people can switch it off for themselves.
+    /// Sensitive actions ask for a code either way.
+    /// </summary>
+    public bool TwoFactorLogin { get; set; } = true;
 
     /// <summary>
     /// IANA time zone the person reads times in ("Europe/Berlin"). Null = the
@@ -107,6 +113,32 @@ public class KnownDevice
     public string? LastIp { get; set; }
     public DateTime FirstSeenUtc { get; set; }
     public DateTime LastSeenUtc { get; set; }
+    /// <summary>
+    /// "Remember this device": until then, signing in here skips the
+    /// authenticator code. Null = ask every time.
+    /// </summary>
+    public DateTime? TrustedUntilUtc { get; set; }
+}
+
+// One signed-in browser. The session cookie carries its id (the `sid` claim) and
+// every request checks the row, so a session revoked from Settings → Security →
+// Signed-in devices ends on its very next request, not when its cookie expires.
+public class UserSession
+{
+    public int Id { get; set; }
+    public int UserId { get; set; }
+    /// <summary>SHA-256 of the random session id in the cookie.</summary>
+    public string SessionHash { get; set; } = string.Empty;
+    /// <summary>"Chrome on Windows".</summary>
+    public string Label { get; set; } = string.Empty;
+    public string? LastIp { get; set; }
+    /// <summary>How it signed in: Password, Passkey, Single sign-on…</summary>
+    public string Method { get; set; } = string.Empty;
+    /// <summary>Signed in with "Remember this device": a long-lived cookie.</summary>
+    public bool Remember { get; set; }
+    public DateTime CreatedUtc { get; set; }
+    public DateTime LastSeenUtc { get; set; }
+    public DateTime ExpiresUtc { get; set; }
 }
 
 // A one-time token for a password reset or an invitation. Rows are short-lived

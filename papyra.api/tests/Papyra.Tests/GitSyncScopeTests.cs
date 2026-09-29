@@ -47,7 +47,7 @@ public sealed class GitSyncScopeTests
         Assert.Equal(HttpStatusCode.OK, provision.StatusCode);
 
         var client = factory.CreateClient();
-        var login = await client.PostAsJsonAsync("/api/auth/login", new LoginRequest(username, Pw));
+        var login = await client.LoginAsync(username, Pw);
         Assert.Equal(HttpStatusCode.OK, login.StatusCode);
         await TestAuth.CompleteForcedPasswordChangeAsync(client, Pw);
         return client;

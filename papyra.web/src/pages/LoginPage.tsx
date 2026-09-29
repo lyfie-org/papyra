@@ -1,22 +1,29 @@
 import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
-import { Fingerprint } from 'lucide-react';
+import { ArrowLeft, Fingerprint } from 'lucide-react';
 import { assertionToJson, isWebAuthnAvailable, toRequestOptions, webAuthnErrorMessage } from '../lib/webauthn';
+import CodeField from '../components/CodeField';
+import { requestEmailCode } from '../lib/emailCode';
 import './AuthForm.css';
 
 export default function LoginPage() {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
+  // "Remember this device": stay signed in for 30 days, and skip the code here.
+  const [remember, setRemember] = useState(false);
+  // Two-step sign-in: the password was right, the code is next.
+  const [step2, setStep2] = useState<{ ticket: string; canEmail: boolean } | null>(null);
+  const [code, setCode] = useState('');
   // Arriving here because an admin disabled the account — mid-session (the
   // auth probe says why) or back from single sign-on (?disabled=1).
   const queryClient = useQueryClient();
   const [error, setError] = useState<string | null>(() => {
     const probe = queryClient.getQueryData<{ reason?: string }>(['auth']);
     const fromSso = new URLSearchParams(window.location.search).has('disabled');
-    return probe?.reason === 'account_disabled' || fromSso
-      ? 'This account has been disabled. Ask your Papyra administrator.'
-      : null;
+    if (probe?.reason === 'account_disabled' || fromSso) return 'This account has been disabled. Ask your Papyra administrator.';
+    if (probe?.reason === 'session_ended') return 'You were signed out on this device.';
+    return null;
   });
   const [busy, setBusy] = useState(false);
   // Whether an SSO button belongs on this screen (server tells us if OIDC is on).
@@ -94,7 +101,7 @@ export default function LoginPage() {
       const res = await fetch('/api/auth/passkey/verify', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username: name, response: assertionToJson(assertion) }),
+        body: JSON.stringify({ username: name, response: assertionToJson(assertion), remember }),
       });
       const data = await res.json().catch(() => null);
       if (!res.ok) { setError(data?.error ?? 'That passkey didn’t work.'); return; }
@@ -121,7 +128,7 @@ export default function LoginPage() {
       const res = await fetch('/api/auth/login', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ username, password }),
+        body: JSON.stringify({ username, password, remember }),
       });
       if (!res.ok) {
         // A disabled account or a lockout says so; anything else stays vague.
@@ -129,12 +136,70 @@ export default function LoginPage() {
         setError(data?.code === 'account_disabled' || res.status === 429 ? (data?.error ?? 'Try again later.') : 'Invalid credentials.');
         return;
       }
-      signedIn(await res.json());
+      const data = await res.json();
+      if (data?.twoFactorRequired) {
+        setStep2({ ticket: data.ticket, canEmail: !!data.canEmail });
+        setCode('');
+        return;
+      }
+      signedIn(data);
     } catch {
       setError('Couldn’t reach the server.');
     } finally {
       setBusy(false);
     }
+  }
+
+  async function submitCode(e: React.FormEvent) {
+    e.preventDefault();
+    if (!step2) return;
+    setError(null);
+    setBusy(true);
+    try {
+      const res = await fetch('/api/auth/login/2fa', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ ticket: step2.ticket, code }),
+      });
+      const data = await res.json().catch(() => null);
+      if (!res.ok) {
+        // A timed-out or spent ticket goes back to the password.
+        if (data?.code === 'ticket_expired' || data?.code === 'account_disabled') setStep2(null);
+        setError(data?.error ?? 'That code didn’t work.');
+        setCode('');
+        return;
+      }
+      signedIn(data);
+    } catch {
+      setError('Couldn’t reach the server.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (step2) {
+    return (
+      <div className="auth">
+        <form className="auth__card" onSubmit={submitCode}>
+          <h1 className="auth__title">One more step</h1>
+          <p className="auth__tagline">Enter the code from your authenticator app.</p>
+          {error && <p className="auth__error" role="alert">{error}</p>}
+          <CodeField
+            value={code}
+            onChange={setCode}
+            autoFocus
+            label="Code"
+            onEmail={step2.canEmail ? () => requestEmailCode('/api/auth/login/2fa/email', { ticket: step2.ticket }) : undefined}
+          />
+          <button className="auth__submit" type="submit" disabled={busy || code.length !== 6}>
+            {busy ? 'Checking…' : 'Sign in'}
+          </button>
+          <button type="button" className="auth__link" onClick={() => { setStep2(null); setError(null); }}>
+            <ArrowLeft size={12} aria-hidden="true" /> Back
+          </button>
+        </form>
+      </div>
+    );
   }
 
   return (
@@ -152,6 +217,10 @@ export default function LoginPage() {
         <label className="auth__field">
           Password
           <input type="password" value={password} onChange={e => setPassword(e.target.value)} autoComplete="current-password" required />
+        </label>
+        <label className="auth__remember">
+          <input type="checkbox" checked={remember} onChange={e => setRemember(e.target.checked)} />
+          Remember this device
         </label>
 
         <button className="auth__submit" type="submit" disabled={busy}>

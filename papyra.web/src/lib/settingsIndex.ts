@@ -52,8 +52,9 @@ export const SETTINGS_INDEX: SettingsEntry[] = [
   { tab: 'notifications', tabLabel: 'Notifications', section: 'email-notifications', sectionLabel: 'What Papyra tells you about', keywords: ['email', 'mentions', 'shares', 'backup', 'new sign-in', 'login alert', 'security email', 'push'] },
 
   { tab: 'security', tabLabel: 'Security', keywords: ['privacy', 'lock'] },
-  { tab: 'security', tabLabel: 'Security', section: 'biometric-unlock', sectionLabel: 'Biometric unlock', keywords: ['passkey', 'fingerprint', 'face', 'vault', 'webauthn', 'device'] },
-  { tab: 'security', tabLabel: 'Security', section: 'authenticator', sectionLabel: 'Authenticator app', keywords: ['totp', '2fa', 'two-factor', 'otp', 'code', 'google authenticator', 'authy'] },
+  { tab: 'security', tabLabel: 'Security', section: 'biometric-unlock', sectionLabel: 'Passkeys', keywords: ['passkey', 'biometric', 'fingerprint', 'face', 'vault', 'webauthn', 'device'] },
+  { tab: 'security', tabLabel: 'Security', section: 'authenticator', sectionLabel: 'Two-step sign-in', keywords: ['totp', '2fa', 'two-factor', 'otp', 'code', 'authenticator', 'google authenticator', 'authy'] },
+  { tab: 'security', tabLabel: 'Security', section: 'signed-in-devices', sectionLabel: 'Signed-in devices', keywords: ['sessions', 'devices', 'sign out', 'log out', 'logged in', 'remember'] },
   { tab: 'security', tabLabel: 'Security', section: 'delete-account', sectionLabel: 'Delete account', keywords: ['delete account', 'close account', 'remove my data', 'erase', 'gdpr'] },
 
   { tab: 'data', tabLabel: 'Data & Storage', keywords: ['storage', 'files'] },
