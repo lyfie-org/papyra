@@ -21,6 +21,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<AuthToken> AuthTokens => Set<AuthToken>();
     public DbSet<KnownDevice> KnownDevices => Set<KnownDevice>();
     public DbSet<UserSession> UserSessions => Set<UserSession>();
+    public DbSet<UserAuthenticator> UserAuthenticators => Set<UserAuthenticator>();
     public DbSet<ChatSession> ChatSessions => Set<ChatSession>();
     public DbSet<ChatMessage> ChatMessages => Set<ChatMessage>();
 
@@ -36,6 +37,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         modelBuilder.Entity<KnownDevice>().HasIndex(d => new { d.UserId, d.DeviceHash }).IsUnique();
         modelBuilder.Entity<UserSession>().HasIndex(s => s.SessionHash).IsUnique();
         modelBuilder.Entity<UserSession>().HasIndex(s => s.UserId);
+        modelBuilder.Entity<UserAuthenticator>().HasIndex(a => a.UserId);
         modelBuilder.Entity<ApiKey>().HasIndex(k => k.TokenHash).IsUnique();
         // Reset/invite tokens are looked up by hash on redemption.
         modelBuilder.Entity<AuthToken>().HasIndex(t => t.TokenHash).IsUnique();

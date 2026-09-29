@@ -763,7 +763,9 @@
 /* ── API keys ─────────────────────────────────────────────────────── */
 .settings__token {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
+  margin-bottom: var(--space-4);
   gap: 0.6rem;
   padding: 0.7rem 0.9rem;
   border: 1px solid var(--accent-border);
@@ -771,12 +773,20 @@
   background: var(--accent-bg);
 }
 .settings__token-value {
-  flex: 1;
+  flex: 1 1 14rem;
   min-width: 0;
   overflow-x: auto;
   white-space: nowrap;
   background: transparent;
   color: var(--text-h);
+  font-size: 0.8rem;
+}
+
+/* A key's visible prefix, beside its name. */
+.settings__key-prefix {
+  margin-left: 0.35rem;
+  color: var(--text);
+  font-family: var(--mono);
   font-size: 0.8rem;
 }
 

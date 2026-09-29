@@ -217,7 +217,7 @@ builder.Services.AddSingleton<WebAuthnChallengeStore>();
 builder.Services.AddSingleton<UnlockTokenStore>();
 builder.Services.AddScoped<BiometricAuthService>();
 builder.Services.AddScoped<VaultPinService>();
-builder.Services.AddSingleton<TotpService>();
+builder.Services.AddScoped<TotpService>();
 builder.Services.AddScoped<StepUpService>();
 builder.Services.AddSingleton<PendingSignInStore>();
 
@@ -825,7 +825,7 @@ app.Use(async (context, next) =>
         var db = context.RequestServices.GetRequiredService<AppDbContext>();
         var flags = await db.Users
             .Where(u => u.Id == callerId)
-            .Select(u => new { u.MustChangePassword, u.DeletionScheduledUtc, u.DisabledUtc, u.Role, HasTotp = u.TotpSecret != null })
+            .Select(u => new { u.MustChangePassword, u.DeletionScheduledUtc, u.DisabledUtc, u.Role, HasTotp = db.UserAuthenticators.Any(a => a.UserId == u.Id) })
             .FirstOrDefaultAsync(context.RequestAborted);
 
         if (flags?.DisabledUtc is not null && !path.StartsWithSegments("/api/auth/logout"))
@@ -845,17 +845,16 @@ app.Use(async (context, next) =>
         if (isCookie && flags is not null)
         {
             var now = DateTime.UtcNow;
+            // A cookie from before sessions were tracked (no sid) is signed out
+            // once; the next sign-in starts a tracked session.
             if (Sessions.CurrentSid(context.User) is not { } sid)
             {
-                // A cookie from before sessions were tracked: adopt it as one,
-                // rather than signing everybody out on upgrade.
-                var ticket = await context.AuthenticateAsync(CookieAuthenticationDefaults.AuthenticationScheme);
-                var remember = ticket.Properties?.IsPersistent == true;
-                if (await db.Users.FindAsync([callerId], context.RequestAborted) is { } owner)
+                await context.SignOutAsync(CookieAuthenticationDefaults.AuthenticationScheme);
+                if (!path.StartsWithSegments("/api/auth/logout"))
                 {
-                    var adopted = await Sessions.CreateAsync(context, db, owner, remember, "Password", context.RequestAborted);
-                    await Sessions.IssueCookieAsync(context, owner, adopted, remember);
-                    context.User = Sessions.Principal(owner, adopted);
+                    await Results.Json(new { error = "Please sign in again.", code = "session_ended" },
+                        statusCode: StatusCodes.Status401Unauthorized).ExecuteAsync(context);
+                    return;
                 }
             }
             else
@@ -1275,11 +1274,12 @@ auth.MapPost("/setup", async (
         TimeZone = string.IsNullOrEmpty(zone) ? null : zone,
         Theme = body.Theme,
     };
-    totp.Enable(user, totpSecret, totpStep.Value);
 
     db.Users.Add(user);
     if (emailToken is not null) emailToken.UsedUtc = DateTime.UtcNow;
     if (totpProof is not null) totpProof.UsedUtc = DateTime.UtcNow;
+    await db.SaveChangesAsync(ct);
+    totp.Add(user.Id, "Authenticator app", totpSecret, totpStep.Value);
     await db.SaveChangesAsync(ct);
 
     observer.WatchUser(user.Id.ToString()); // create + watch the new tenant's vault
@@ -1322,7 +1322,7 @@ auth.MapPost("/setup", async (
 // generic 401 for unknown user and bad password so we don't leak which one failed.
 auth.MapPost("/login", async (
     LoginRequest body, HttpContext http, AppDbContext db, LoginThrottle throttle, EmailSender email,
-    PendingSignInStore pending, StepUpService stepUp, CancellationToken ct) =>
+    PendingSignInStore pending, StepUpService stepUp, TotpService totp, CancellationToken ct) =>
 {
     if (string.IsNullOrWhiteSpace(body.Username) || string.IsNullOrWhiteSpace(body.Password))
         return Results.BadRequest(new { error = "Username and password are required." });
@@ -1363,7 +1363,7 @@ auth.MapPost("/login", async (
 
     // Two-step sign-in: the password was right, now the authenticator. A browser
     // the person told to remember them skips it until that runs out.
-    if (NeedsSecondStep(user) && !await SignInNotices.IsTrustedAsync(http, db, user.Id, ct))
+    if (NeedsSecondStep(user, await totp.HasAnyAsync(user.Id, ct)) && !await SignInNotices.IsTrustedAsync(http, db, user.Id, ct))
         return Results.Ok(new { twoFactorRequired = true, ticket = pending.Issue(user.Id, remember), canEmail = stepUp.CanEmail(user) });
 
     await Sessions.SignInAsync(http, db, user, remember, "Password", ct);
@@ -1634,7 +1634,7 @@ auth.MapPost("/accept-invite", async (
 
 // Current-session probe the SPA auth guard polls: 428 before any user exists
 // (route to /setup), 401 when unauthenticated (route to /login), else the user.
-auth.MapGet("/me", async (HttpContext http, AppDbContext db, StepUpService stepUp, CancellationToken ct) =>
+auth.MapGet("/me", async (HttpContext http, AppDbContext db, StepUpService stepUp, TotpService totp, CancellationToken ct) =>
 {
     if (!await db.Users.AnyAsync(ct))
         return Results.Json(new { error = "Setup required.", code = "setup_required" },
@@ -1650,6 +1650,7 @@ auth.MapGet("/me", async (HttpContext http, AppDbContext db, StepUpService stepU
         return Results.Json(new { error = "Not authenticated." },
             statusCode: StatusCodes.Status401Unauthorized);
 
+    var hasTotp = await totp.HasAnyAsync(user.Id, ct);
     return Results.Ok(new
     {
         user.Id, user.Username, user.Name, user.Email, user.Role,
@@ -1666,14 +1667,14 @@ auth.MapGet("/me", async (HttpContext http, AppDbContext db, StepUpService stepU
         serverTimeZone = ServerTimeZoneId(),
         // The theme follows the person, not the browser: every sign-in opens in it.
         user.Theme,
-        totpEnabled = TotpService.IsEnabled(user),
+        totpEnabled = hasTotp,
         // Signed in without one: the app shows the set-up screen (see the gate above).
-        mustSetUpTotp = !TotpService.IsEnabled(user),
+        mustSetUpTotp = !hasTotp,
         // SSO accounts have no Papyra password to confirm things with.
         hasPassword = !string.IsNullOrEmpty(user.PasswordHash),
         // Whether "email me a code instead" can be offered.
         canEmailCode = stepUp.CanEmail(user),
-        twoFactorLogin = TotpService.IsEnabled(user) && (user.Role == "Admin" || user.TwoFactorLogin),
+        twoFactorLogin = NeedsSecondStep(user, hasTotp),
     });
 });
 
@@ -1985,13 +1986,13 @@ auth.MapPut("/profile", async (
                 return Results.Json(new { error = "Too many attempts. Try again later.", field = "emailCode" }, statusCode: 429);
             if (!string.IsNullOrWhiteSpace(body.TotpCode))
             {
-                if (!totp.Verify(user, body.TotpCode))
+                if (!await totp.VerifyAsync(user, body.TotpCode, ct))
                 {
                     throttle.RecordFailure(key);
                     return Results.BadRequest(new { error = "That authenticator code didn’t match. Try the newest one.", field = "totpCode" });
                 }
             }
-            else if (TotpService.IsEnabled(user) && string.IsNullOrWhiteSpace(body.EmailCode))
+            else if (await totp.HasAnyAsync(user.Id, ct) && string.IsNullOrWhiteSpace(body.EmailCode))
             {
                 return Results.Json(new { error = "Enter the code from your authenticator app.", field = "totpCode", code = "totp_required" },
                     statusCode: StatusCodes.Status428PreconditionRequired);
@@ -2063,7 +2064,7 @@ auth.MapPut("/profile", async (
 // Step one of changing your email: a six-digit code to the address you have now,
 // bound to the address you are moving to. PUT /profile spends it.
 auth.MapPost("/email/code", async (
-    EmailCodeRequest body, ClaimsPrincipal principal, HttpContext http, AppDbContext db, EmailSender mail, CancellationToken ct) =>
+    EmailCodeRequest body, ClaimsPrincipal principal, HttpContext http, AppDbContext db, EmailSender mail, TotpService totp, CancellationToken ct) =>
 {
     var user = await db.Users.FindAsync([int.Parse(Uid(principal))], ct);
     if (user is null) return Results.NotFound();
@@ -2079,7 +2080,8 @@ auth.MapPost("/email/code", async (
     var canEmail = mail.IsConfigured;
     // An authenticator is the first choice: nothing has to be delivered. Email is
     // the fallback, on request, when this Papyra can send it.
-    if (TotpService.IsEnabled(user) && !(body.ViaEmail && canEmail))
+    var hasTotp = await totp.HasAnyAsync(user.Id, ct);
+    if (hasTotp && !(body.ViaEmail && canEmail))
         return Results.Ok(new { required = true, method = "totp", canEmail });
     if (!canEmail) return Results.Ok(new { required = false, passwordRequired = true });
 
@@ -2102,22 +2104,22 @@ auth.MapPost("/email/code", async (
         + "If this wasn't you, don't share the code: change your password now. Your email stays as it is.",
         [new EmailDetail("Code", code), new EmailDetail("New address", wanted), .. RequestDetails(user, http)], ct);
     return sent.Sent
-        ? Results.Ok(new { required = true, method = "email", sentTo = MaskEmail(user.Email), totp = TotpService.IsEnabled(user) })
+        ? Results.Ok(new { required = true, method = "email", sentTo = MaskEmail(user.Email), totp = hasTotp })
         : Results.BadRequest(new { error = "The code couldn't be emailed. Try again shortly." });
 }).RequireAuthorization().RequireRateLimiting(AuthRateLimit);
 
-// ── Authenticator app (TOTP) ──────────────────────────────────────────────────
+// ── Authenticator apps (TOTP) ─────────────────────────────────────────────────
 // The first way to confirm a sensitive action; an emailed code is the second.
-// Setting one up, replacing it or removing it asks for the account password, and
-// is only for a signed-in person — never an API key.
-auth.MapGet("/totp", async (ClaimsPrincipal principal, AppDbContext db, CancellationToken ct) =>
+// An account can have several (a phone and a password manager); any one of them
+// answers. Adding one asks for the password — and, once there is one already, a
+// code — and it's only for a signed-in person, never an API key.
+auth.MapGet("/totp", async (ClaimsPrincipal principal, TotpService totp, CancellationToken ct) =>
 {
-    var user = await db.Users.FindAsync([int.Parse(Uid(principal))], ct);
-    if (user is null) return Results.NotFound();
+    var list = await totp.ListAsync(int.Parse(Uid(principal)), ct);
     return Results.Ok(new
     {
-        enabled = TotpService.IsEnabled(user),
-        enabledUtc = user.TotpEnabledUtc is { } at ? DateTime.SpecifyKind(at, DateTimeKind.Utc) : (DateTime?)null,
+        enabled = list.Count > 0,
+        authenticators = list.Select(a => new { a.Id, a.Name, createdUtc = AsUtc(a.CreatedUtc), lastUsedUtc = AsUtc(a.LastUsedUtc) }),
     });
 }).RequireAuthorization();
 
@@ -2133,7 +2135,7 @@ auth.MapPost("/totp/begin", async (ClaimsPrincipal principal, AppDbContext db, C
 
 auth.MapPost("/totp", async (
     TotpEnableRequest body, ClaimsPrincipal principal, HttpContext http, AppDbContext db, TotpService totp,
-    EmailSender mail, LoginThrottle throttle, CancellationToken ct) =>
+    StepUpService stepUp, EmailSender mail, LoginThrottle throttle, CancellationToken ct) =>
 {
     if (IsApiKey(principal)) return Results.Json(new { error = "Use the app, not an API key." }, statusCode: 403);
     var user = await db.Users.FindAsync([int.Parse(Uid(principal))], ct);
@@ -2147,22 +2149,56 @@ auth.MapPost("/totp", async (
         throttle.RecordFailure(key);
         return Results.Json(new { error = "That password isn't right.", field = "password" }, statusCode: 401);
     }
+    // A second app is a second key to the account: prove the first one.
+    var existing = await totp.HasAnyAsync(user.Id, ct);
+    if (existing && !await stepUp.VerifyAsync(db, user, body.ConfirmCode, ct))
+    {
+        throttle.RecordFailure(key);
+        return Results.BadRequest(new { error = "Enter a code from an authenticator you already have.", field = "confirmCode" });
+    }
     var secret = body.Secret?.Trim() ?? string.Empty;
     if (Totp.Match(secret, body.Code, DateTimeOffset.UtcNow) is not { } step)
     {
         throttle.RecordFailure(key);
         return Results.BadRequest(new { error = "That code didn’t match. Check the time on your phone and try the newest code.", field = "totpCode" });
     }
-    var replaced = TotpService.IsEnabled(user);
-    totp.Enable(user, secret, step);
+    totp.Add(user.Id, body.Name ?? string.Empty, secret, step);
     await db.SaveChangesAsync(ct);
     throttle.Reset(key);
     await mail.NotifyAsync(user, NotificationCatalog.TotpChanged,
-        replaced ? "Your Papyra authenticator was replaced" : "An authenticator was added to your Papyra account",
-        $"An authenticator app was {(replaced ? "set up again" : "set up")} for @{user.Username}. Its codes now confirm sensitive changes.\n\n"
+        "An authenticator was added to your Papyra account",
+        $"An authenticator app was added to @{user.Username}. Its codes now confirm sensitive changes.\n\n"
         + "If that wasn't you, change your password now.",
         RequestDetails(user, http), ct);
     return Results.Ok(new { enabled = true });
+}).RequireAuthorization().RequireRateLimiting(AuthRateLimit);
+
+// Remove one app (confirmed with a code). The last one stays: every account keeps one.
+auth.MapPost("/totp/{id:int}/remove", async (
+    int id, StepUpCodeRequest body, ClaimsPrincipal principal, HttpContext http, AppDbContext db, TotpService totp,
+    StepUpService stepUp, EmailSender mail, LoginThrottle throttle, CancellationToken ct) =>
+{
+    if (IsApiKey(principal)) return Results.Json(new { error = "Use the app, not an API key." }, statusCode: 403);
+    var user = await db.Users.FindAsync([int.Parse(Uid(principal))], ct);
+    if (user is null) return Results.NotFound();
+    var list = await totp.ListAsync(user.Id, ct);
+    var target = list.FirstOrDefault(a => a.Id == id);
+    if (target is null) return Results.NotFound();
+    if (list.Count == 1) return Results.BadRequest(new { error = "Add another authenticator before removing this one." });
+    var key = $"totp:{user.Id}";
+    if (throttle.IsLockedOut(key)) return Results.Json(new { error = "Too many attempts. Try again later." }, statusCode: 429);
+    if (!await stepUp.VerifyAsync(db, user, body.Code, ct))
+    {
+        throttle.RecordFailure(key);
+        return Results.BadRequest(new { error = "That code didn’t match. Try the newest one.", field = "code" });
+    }
+    db.UserAuthenticators.Remove(target);
+    await db.SaveChangesAsync(ct);
+    throttle.Reset(key);
+    await mail.NotifyAsync(user, NotificationCatalog.TotpChanged, "An authenticator was removed from your Papyra account",
+        $"\"{target.Name}\" can no longer confirm changes on @{user.Username}.\n\nIf that wasn't you, change your password now.",
+        RequestDetails(user, http), ct);
+    return Results.NoContent();
 }).RequireAuthorization().RequireRateLimiting(AuthRateLimit);
 
 // Two-step sign-in on or off. Always on for administrators. Turning it off
@@ -2395,7 +2431,9 @@ jobsApi.MapPost("/{id}/run", async (string id, JobRegistry jobs, CancellationTok
 var admin = auth.MapGroup("/users").RequireAuthorization(p => p.RequireRole("Admin")).WithTags("Admin");
 
 admin.MapGet("/", async (AppDbContext db, CancellationToken ct) =>
-    Results.Ok((await db.Users.OrderBy(u => u.Id).ToListAsync(ct)).Select(u => new
+{
+    var withTotp = (await db.UserAuthenticators.Select(a => a.UserId).Distinct().ToListAsync(ct)).ToHashSet();
+    return Results.Ok((await db.Users.OrderBy(u => u.Id).ToListAsync(ct)).Select(u => new
     {
         u.Id, u.Username, u.Name, u.Email, u.Role, u.MustChangePassword,
         disabled = u.DisabledUtc is not null,
@@ -2403,9 +2441,10 @@ admin.MapGet("/", async (AppDbContext db, CancellationToken ct) =>
         u.DisabledReason,
         lastSignInUtc = AsUtc(u.LastSignInUtc),
         sso = u.ExternalId is not null,
-        totpEnabled = TotpService.IsEnabled(u),
+        totpEnabled = withTotp.Contains(u.Id),
         deletionScheduledUtc = AsUtc(u.DeletionScheduledUtc),
-    })));
+    }));
+});
 
 // Create an account on someone's behalf. The admin may type a first password or
 // leave it blank for a generated one; either way the account is flagged
@@ -2475,7 +2514,7 @@ admin.MapPost("/", async (
 // provisioning: typed or generated, returned once, and the account must change
 // it before it can be used for anything else.
 admin.MapPost("/{id:int}/reset", async (
-    int id, ResetRequest body, AppDbContext db, EmailSender email, CancellationToken ct) =>
+    int id, ResetRequest body, AppDbContext db, EmailSender email, TotpService totp, CancellationToken ct) =>
 {
     var generated = string.IsNullOrWhiteSpace(body.Password);
     var password = generated ? GeneratePassword() : body.Password!;
@@ -2489,7 +2528,7 @@ admin.MapPost("/{id:int}/reset", async (
     user.PasswordChangedUtc = DateTime.UtcNow;
     user.MustChangePassword = true;
     // Lost the phone too: they set a new authenticator up at their next sign-in.
-    if (body.ResetTwoFactor == true) ResetTwoFactor(user);
+    if (body.ResetTwoFactor == true) await ResetTwoFactorAsync(totp, user, ct);
     await db.SaveChangesAsync(ct);
     await ForgetSignInsAsync(db, user.Id, ct);
 
@@ -2512,11 +2551,11 @@ admin.MapPost("/{id:int}/reset", async (
 // Lost authenticator: clear it. The owner signs in with their password and sets a
 // new one up before anything else (the enrolment gate), and every open session
 // and remembered browser is forgotten.
-admin.MapPost("/{id:int}/reset-2fa", async (int id, HttpContext http, AppDbContext db, EmailSender email, CancellationToken ct) =>
+admin.MapPost("/{id:int}/reset-2fa", async (int id, HttpContext http, AppDbContext db, EmailSender email, TotpService totp, CancellationToken ct) =>
 {
     var user = await db.Users.FindAsync([id], ct);
     if (user is null) return Results.NotFound();
-    ResetTwoFactor(user);
+    await ResetTwoFactorAsync(totp, user, ct);
     await db.SaveChangesAsync(ct);
     await ForgetSignInsAsync(db, user.Id, ct);
     await email.NotifyAsync(user, NotificationCatalog.TotpChanged, "Your Papyra authenticator was reset",
@@ -5752,17 +5791,17 @@ var accountDelete = app.MapGroup("/api/account/delete").RequireAuthorization().W
                 statusCode: StatusCodes.Status403Forbidden)
             : await next(ctx));
 
-accountDelete.MapGet("/", async (ClaimsPrincipal principal, AppDbContext db, EmailSender email, CancellationToken ct) =>
+accountDelete.MapGet("/", async (ClaimsPrincipal principal, AppDbContext db, EmailSender email, TotpService totp, CancellationToken ct) =>
 {
     var me = await db.Users.FindAsync([int.Parse(Uid(principal))], ct);
     if (me is null) return Results.NotFound();
-    await Task.CompletedTask;
+    var hasTotp = await totp.HasAnyAsync(me.Id, ct);
     var blockers = new List<string>();
     if (me.PasswordChangedUtc is { } changed && DateTime.UtcNow - DateTime.SpecifyKind(changed, DateTimeKind.Utc) < AccountDeletion.MinPasswordAge)
         blockers.Add($"Your password was changed less than 24 hours ago. You can delete the account after {DateTime.SpecifyKind(changed, DateTimeKind.Utc).Add(AccountDeletion.MinPasswordAge):u}.");
     if (string.IsNullOrEmpty(me.VaultPinHash)) blockers.Add("Set a vault PIN first (Settings → Security) — it is one of the checks.");
     // A code confirms it: the authenticator's, or one emailed to the account.
-    if (!TotpService.IsEnabled(me))
+    if (!hasTotp)
     {
         if (string.IsNullOrWhiteSpace(me.Email)) blockers.Add("Set up an authenticator app (Settings → Security) or add an email address — a code confirms it.");
         else if (!email.IsConfigured) blockers.Add("Set up an authenticator app (Settings → Security) — this Papyra can't email you a code.");
@@ -5774,7 +5813,7 @@ accountDelete.MapGet("/", async (ClaimsPrincipal principal, AppDbContext db, Ema
         scheduledUtc = me.DeletionScheduledUtc is { } s ? DateTime.SpecifyKind(s, DateTimeKind.Utc) : (DateTime?)null,
         blockers,
         graceDays = (int)AccountDeletion.GracePeriod.TotalDays,
-        totp = TotpService.IsEnabled(me),
+        totp = hasTotp,
         canEmail = email.IsConfigured && !string.IsNullOrWhiteSpace(me.Email),
     });
 });
@@ -5848,7 +5887,7 @@ accountDelete.MapPost("/", async (
         return Results.BadRequest(new { error = "You're the only administrator. Make someone else an admin first." });
 
     // Either code will do: the authenticator's, or the one emailed by /code.
-    if (!totp.Verify(me, body.Code))
+    if (!await totp.VerifyAsync(me, body.Code, ct))
     {
         var hash = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(System.Text.Encoding.UTF8.GetBytes($"{me.Id}:{body.Code?.Trim()}")));
         var token = await db.AuthTokens.FirstOrDefaultAsync(t => t.UserId == me.Id && t.Kind == "account-delete" && t.TokenHash == hash, ct);
@@ -6898,12 +6937,12 @@ static string ServerTimeZoneId()
 
 // Two-step sign-in applies: an authenticator exists, and it's an admin (always)
 // or someone who left the switch on.
-static bool NeedsSecondStep(User user) =>
-    TotpService.IsEnabled(user) && (user.Role == "Admin" || user.TwoFactorLogin);
+static bool NeedsSecondStep(User user, bool hasAuthenticator) =>
+    hasAuthenticator && (user.Role == "Admin" || user.TwoFactorLogin);
 
-static void ResetTwoFactor(User user)
+static async Task ResetTwoFactorAsync(TotpService totp, User user, CancellationToken ct)
 {
-    TotpService.Disable(user);
+    await totp.ClearAsync(user.Id, ct);
     user.TwoFactorLogin = true;
 }
 
@@ -6956,7 +6995,8 @@ public sealed record SetupEmailCodeRequest(string? Email);
 public sealed record SetupEmailVerifyRequest(string? Email, string? Code);
 public sealed record SetupTotpRequest(string? Account);
 public sealed record TotpVerifyRequest(string? Secret, string? Code);
-public sealed record TotpEnableRequest(string? Secret, string? Code, string? Password);
+public sealed record TotpEnableRequest(string? Secret, string? Code, string? Password, string? Name = null, string? ConfirmCode = null);
+public sealed record StepUpCodeRequest(string? Code);
 
 // A backup staged by POST /api/auth/setup/restore, waiting for POST /setup.
 public sealed record SetupRestoreMeta(

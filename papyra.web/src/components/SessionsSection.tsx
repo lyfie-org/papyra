@@ -1,6 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { LogOut, Monitor } from 'lucide-react';
 import LoadingBar from './LoadingBar';
+import { SettingGroup } from './SettingRow';
 import { useConfirm } from '../lib/confirmContext';
 import { parseUtc } from '../lib/vault';
 import './SessionsSection.css';
@@ -57,37 +58,35 @@ export default function SessionsSection() {
   const others = (data ?? []).filter(s => !s.current).length;
 
   return (
-    <>
-      <h2 id="signed-in-devices" className="settings__subhead">Signed-in devices</h2>
-      {isLoading && <LoadingBar label="Loading devices" />}
-      {data && (
-        <ul className="sessions">
-          {data.map(s => (
-            <li key={s.id} className="sessions__row">
-              <Monitor size={18} aria-hidden="true" className="sessions__icon" />
-              <span className="sessions__text">
-                <span className="sessions__label">
-                  {s.label}{s.current && <span className="sessions__here"> · this device</span>}
-                </span>
-                <span className="sessions__meta">
-                  {s.current ? 'Active now' : `Last active ${parseUtc(s.lastSeenUtc).toLocaleString()}`}
-                  {s.ip ? ` · ${s.ip}` : ''}{s.remember ? ' · remembered' : ''}
-                </span>
-              </span>
-              {!s.current && (
-                <button type="button" className="settings__link settings__link--danger" onClick={() => void end(s)}>
-                  <LogOut size={13} /> Sign out
-                </button>
-              )}
-            </li>
-          ))}
-        </ul>
-      )}
-      {others > 0 && (
+    <SettingGroup
+      title="Signed-in devices"
+      id="signed-in-devices"
+      footer={others > 0 && (
         <button type="button" className="settings__btn settings__btn--quiet" onClick={() => void endOthers()}>
           <LogOut size={15} /> Sign out all other devices
         </button>
       )}
-    </>
+    >
+      {isLoading && <div className="setting-row"><div className="setting-row__line"><LoadingBar label="Loading devices" /></div></div>}
+      {(data ?? []).map(s => (
+        <div key={s.id} className="setting-row">
+          <div className="setting-row__line">
+            <Monitor size={18} aria-hidden="true" className="sessions__icon" />
+            <div className="setting-row__text">
+              <span className="setting-row__value">
+                {s.label}{s.current && <span className="sessions__here"> · this device</span>}
+              </span>
+              <span className="setting-row__hint">
+                {s.current ? 'Active now' : `Last active ${parseUtc(s.lastSeenUtc).toLocaleString()}`}
+                {s.ip ? ` · ${s.ip.replace(/^::ffff:/, '')}` : ''}{s.remember ? ' · remembered' : ''}
+              </span>
+            </div>
+            {!s.current && (
+              <button type="button" className="setting-row__action" onClick={() => void end(s)}>Sign out</button>
+            )}
+          </div>
+        </div>
+      ))}
+    </SettingGroup>
   );
 }

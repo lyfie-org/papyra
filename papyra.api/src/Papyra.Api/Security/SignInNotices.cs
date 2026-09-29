@@ -21,6 +21,32 @@ public static class SignInNotices
 {
     public const string CookieName = "papyra.device";
 
+    /// <summary>
+    /// This browser's device hash, giving it a device cookie first if it has none.
+    /// Called by both the session and the sign-in notice within one request, so
+    /// the id is remembered on the request and only one cookie is minted.
+    /// </summary>
+    public static string EnsureDevice(HttpContext http)
+    {
+        const string key = "papyra.device.id";
+        var id = http.Items[key] as string ?? http.Request.Cookies[CookieName];
+        if (string.IsNullOrEmpty(id) || id.Length is < 16 or > 128)
+            id = Convert.ToHexString(RandomNumberGenerator.GetBytes(24)).ToLowerInvariant();
+        if (http.Items[key] is null)
+        {
+            http.Items[key] = id;
+            http.Response.Cookies.Append(CookieName, id, new CookieOptions
+            {
+                HttpOnly = true,
+                SameSite = SameSiteMode.Lax,
+                Secure = http.Request.IsHttps,
+                MaxAge = TimeSpan.FromDays(400),
+                IsEssential = true,
+            });
+        }
+        return Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(id))).ToLowerInvariant();
+    }
+
     /// <summary>The stored hash of this browser's device cookie, or null before it has one.</summary>
     public static string? DeviceHash(HttpContext http)
     {
@@ -57,21 +83,7 @@ public static class SignInNotices
         var now = DateTime.UtcNow;
         user.LastSignInUtc = now;
 
-        var id = http.Request.Cookies[CookieName];
-        if (string.IsNullOrEmpty(id) || id.Length is < 16 or > 128)
-        {
-            id = Convert.ToHexString(RandomNumberGenerator.GetBytes(24)).ToLowerInvariant();
-        }
-        http.Response.Cookies.Append(CookieName, id, new CookieOptions
-        {
-            HttpOnly = true,
-            SameSite = SameSiteMode.Lax,
-            Secure = http.Request.IsHttps,
-            MaxAge = TimeSpan.FromDays(400),
-            IsEssential = true,
-        });
-
-        var hash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(id))).ToLowerInvariant();
+        var hash = EnsureDevice(http);
         var ip = http.Connection.RemoteIpAddress?.ToString();
         var label = Describe(http.Request.Headers.UserAgent.ToString());
 

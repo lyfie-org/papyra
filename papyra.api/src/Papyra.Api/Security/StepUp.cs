@@ -32,7 +32,7 @@ public sealed class StepUpService(TotpService totp, EmailSender mail)
     public async Task<bool> VerifyAsync(AppDbContext db, User user, string? code, CancellationToken ct)
     {
         if (string.IsNullOrWhiteSpace(code)) return false;
-        if (totp.Verify(user, code)) return true;
+        if (await totp.VerifyAsync(user, code, ct)) return true;
         var hash = CodeHash(user.Id, code);
         var token = await db.AuthTokens.FirstOrDefaultAsync(t => t.UserId == user.Id && t.Kind == Kind && t.TokenHash == hash, ct);
         if (token is null || token.UsedUtc is not null || token.ExpiresUtc < DateTime.UtcNow) return false;

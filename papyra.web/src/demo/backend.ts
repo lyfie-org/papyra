@@ -221,7 +221,7 @@ const routes: Route[] = [
   ],
   ['POST', /^\/api\/auth\/password$/, () => serverOnly('Changing your password')],
   ['POST', /^\/api\/auth\/avatar$/, () => serverOnly('Uploading a picture')],
-  ['GET', /^\/api\/auth\/totp$/, () => json({ enabled: true, enabledUtc: null })],
+  ['GET', /^\/api\/auth\/totp$/, () => json({ enabled: true, authenticators: [{ id: 1, name: 'Phone', createdUtc: new Date().toISOString(), lastUsedUtc: null }] })],
   ['PUT', /^\/api\/auth\/totp\/login$/, () => serverOnly('Two-step sign-in')],
   ['POST', /^\/api\/auth\/totp/, () => serverOnly('An authenticator app')],
   ['POST', /^\/api\/auth\/step-up\/email$/, () => serverOnly('Emailed codes')],
