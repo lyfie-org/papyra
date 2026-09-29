@@ -10,10 +10,12 @@ import { useInPlaceWikilinks } from '../hooks/useInPlaceWikilinks';
 import { tintInkClass } from '../lib/noteColors';
 import { hasBridgePlaceholder } from '../lib/bridgePlaceholder';
 import { useCollabRoom } from '../hooks/useCollabRoom';
+import NoteComments, { CommentsButton } from './comments/NoteComments';
+import { useComments } from '../hooks/useComments';
 import { useCollabCursorLabels } from '../hooks/useCollabCursorLabels';
 import type { LexicalEditor } from 'lexical';
 import CollabPresence from './CollabPresence';
-import LoadingBar from './LoadingBar';
+import CollabJoining from './CollabJoining';
 import './SharedNoteView.css';
 
 export interface SharedNote {
@@ -81,6 +83,13 @@ export default function SharedNoteView({
     if (liveKey && lexical) lexical.setEditable(liveEdit && room.synced);
   }, [liveKey, lexical, liveEdit, room.synced]);
 
+  // Comments: signed-in sharees only (a public link has no one to sign them).
+  const comments = useComments(collab ? { shareId: collab.shareId } : null);
+  const [commentsPanel, setCommentsPanel] = useState(false);
+  const [openThreadId] = useState(() => Number(new URLSearchParams(window.location.search).get('comment')) || null);
+  const openComments = useCallback(() => setCommentsPanel(true), []);
+  const closeComments = useCallback(() => setCommentsPanel(false), []);
+
   // Minimal host seam: media resolves through the share endpoint; uploads and
   // note navigation are inert on a shared surface.
   const adapter = useMemo<PapyraEditorAdapter>(() => ({
@@ -146,6 +155,10 @@ export default function SharedNoteView({
     <article ref={articleRef} className={`shared-note${colored ? ` shared-note--colored${tintInkClass(note.color, theme)}` : ''}`} style={style}>
       <header className="shared-note__bar">
         <h1 className="shared-note__title">{note.title.trim() || 'Untitled'}</h1>
+        {comments.data && (
+          <CommentsButton count={comments.data.threads.filter(t => !t.resolved).length} pressed={commentsPanel}
+            onClick={() => setCommentsPanel(o => !o)} />
+        )}
         {live ? (
           <>
             <CollabPresence
@@ -214,6 +227,8 @@ export default function SharedNoteView({
             </p>
           ) : room.collaboration ? (
             <>
+              {!room.synced && <CollabJoining body={note.body} />}
+              <div className={room.synced ? undefined : 'collab-live--pending'} aria-hidden={room.synced ? undefined : true}>
               {/* Lexical ≥0.32 needs this provider above CollaborationPlugin;
                   luthor's PapyraEditor doesn't add it. */}
               <LexicalCollaboration>
@@ -235,6 +250,7 @@ export default function SharedNoteView({
                   }}
                 />
               </LexicalCollaboration>
+              </div>
               <div ref={cursorsRef} className="collab-cursors" aria-hidden="true" />
             </>
           ) : room.status === 'offline' ? (
@@ -249,7 +265,7 @@ export default function SharedNoteView({
               adapter={adapter}
               onReady={(m) => { m.setMarkdown(note.body); }}
             />
-          ) : <LoadingBar label="Joining the live note" />}
+          ) : <CollabJoining body={note.body} />}
         </div>
       )}
 
@@ -267,11 +283,24 @@ export default function SharedNoteView({
         onChange={onChange}
         onReady={(m) => {
           editorRef.current = m;
+          setLexical(m.getLexicalEditor() ?? null);
           m.setMarkdown(note.body);
           const read = m.getMarkdown();
           baseline.current = hasBridgePlaceholder(read) ? note.body : read;
         }}
       />
+      )}
+      {collab && room.status !== 'revoked' && room.status !== 'gone' && (
+        <NoteComments
+          api={comments}
+          rootEl={lexical?.getRootElement() ?? null}
+          sheetRef={articleRef}
+          focusMode={false}
+          panelOpen={commentsPanel}
+          onPanelOpen={openComments}
+          onPanelClose={closeComments}
+          openThreadId={openThreadId}
+        />
       )}
     </article>
   );

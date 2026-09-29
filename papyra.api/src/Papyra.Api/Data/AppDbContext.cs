@@ -25,6 +25,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<ExternalLogin> ExternalLogins => Set<ExternalLogin>();
     public DbSet<ChatSession> ChatSessions => Set<ChatSession>();
     public DbSet<ChatMessage> ChatMessages => Set<ChatMessage>();
+    public DbSet<NoteComment> NoteComments => Set<NoteComment>();
+    public DbSet<CommentReaction> CommentReactions => Set<CommentReaction>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -75,5 +77,10 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         modelBuilder.Entity<ChatSession>().HasIndex(c => new { c.UserId, c.UpdatedUtc });
         // A thread is read in order, always by session.
         modelBuilder.Entity<ChatMessage>().HasIndex(m => new { m.SessionId, m.Id });
+        // A note's comments are read together; replies by their thread.
+        modelBuilder.Entity<NoteComment>().HasIndex(c => new { c.OwnerId, c.NoteId });
+        modelBuilder.Entity<NoteComment>().HasIndex(c => c.ThreadId);
+        // One of each emoji per person per comment: reacting again takes it back.
+        modelBuilder.Entity<CommentReaction>().HasIndex(r => new { r.CommentId, r.UserId, r.Emoji }).IsUnique();
     }
 }

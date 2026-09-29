@@ -35,6 +35,22 @@
 }
 
 
+/* Commented passages (components/comments). A warm wash behind the text — the
+   ink keeps its own colour, so contrast is the text's own. Stronger for the
+   thread in hand. A coloured note keeps light paper, so it keeps the light set. */
+:root,
+[data-theme='dark'] .note-editor--colored,
+[data-theme='dark'] .shared-note--colored {
+  --comment-mark: rgba(212, 150, 40, 0.22);
+  --comment-mark-active: rgba(212, 150, 40, 0.46);
+  --comment-rule: rgba(170, 110, 20, 0.75);
+}
+[data-theme='dark'] {
+  --comment-mark: rgba(230, 180, 90, 0.18);
+  --comment-mark-active: rgba(230, 180, 90, 0.38);
+  --comment-rule: rgba(230, 180, 90, 0.8);
+}
+
 /* Theme switch: ThemeProvider runs it as a view transition, so the whole page
    cross-fades as two composited snapshots. Slightly longer and softer than UI
    motion — it is the whole room changing its light. */

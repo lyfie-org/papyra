@@ -195,7 +195,7 @@ export default function NotesPage() {
       )}
 
       {openShare != null && (
-        <SharedNoteModal shareId={openShare} onClose={() => setFilter((p) => p.delete('open'))} />
+        <SharedNoteModal shareId={openShare} onClose={() => setFilter((p) => { p.delete('open'); p.delete('comment'); })} />
       )}
 
       {resolving && (

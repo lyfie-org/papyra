@@ -30,8 +30,12 @@ export default function LoginPage() {
     const params = new URLSearchParams(window.location.search);
     if (probe?.reason === 'account_disabled' || params.has('disabled')) return 'This account has been disabled. Ask your Papyra administrator.';
     // Back from single sign-on without a session (see OnTokenValidated / OnRemoteFailure).
-    if (params.get('sso') === 'no_account') return 'No Papyra account uses that email. Ask your Papyra administrator to add you first.';
-    if (params.get('sso') === 'failed') return 'Single sign-on didn’t finish. Try again — if it keeps failing, your administrator can see why in the server log.';
+    // The server's reference finds the log line; quoting it beats "it broke".
+    const ref = params.get('ref');
+    const quote = ref ? ` Reference ${ref}.` : '';
+    if (params.get('sso') === 'no_account') return 'You signed in with your identity provider, but no Papyra account uses the email it sent. Ask your Papyra administrator to add you — or to set the same email on your existing account.';
+    if (params.get('sso') === 'unreachable') return `Couldn’t reach the identity provider, so single sign-on can’t start. Your administrator should check its Authority URL in Settings → SSO.${quote}`;
+    if (params.get('sso') === 'failed') return `Single sign-on didn’t finish. Try again — if it keeps failing, give your administrator this reference; the server log says why.${quote}`;
     if (probe?.reason === 'session_ended') return 'You were signed out on this device.';
     return null;
   });

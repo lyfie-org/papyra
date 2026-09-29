@@ -1,0 +1,51 @@
+/* ── Joining a live note ──────────────────────────────────────────────────────
+   The last-known text, blurred and inert, with a chip over it until the room
+   has synced. Same inset as the editor body so nothing jumps when it arrives. */
+.collab-joining {
+  position: relative;
+  min-height: 160px;
+  padding: var(--space-4) var(--sheet-pad, var(--space-5));
+}
+/* Takes the canvas slot in flow; the hidden live editor sits over it. */
+.collab-joining__ghost {
+  filter: blur(5px);
+  opacity: 0.55;
+  user-select: none;
+  pointer-events: none;
+  color: var(--text);
+  transition: filter var(--dur) var(--ease), opacity var(--dur) var(--ease);
+}
+.collab-joining__chip {
+  position: absolute;
+  top: var(--space-6);
+  left: 50%;
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-2) var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  box-shadow: var(--shadow-card);
+  font: 500 var(--fs-xs) / 1.4 var(--sans);
+  color: var(--text-h);
+  white-space: nowrap;
+}
+.collab-joining__spin { animation: collab-joining-spin 0.9s linear infinite; }
+@keyframes collab-joining-spin { to { transform: rotate(360deg); } }
+
+/* The live editor, mounted (it has to be, to sync) but out of sight and
+   untouchable until the document is in. */
+.collab-live--pending {
+  position: absolute;
+  inset: 0;
+  overflow: hidden;
+  opacity: 0;
+  pointer-events: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .collab-joining__spin { animation: none; }
+  .collab-joining__ghost { transition: none; }
+}

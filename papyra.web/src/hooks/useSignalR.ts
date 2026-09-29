@@ -58,6 +58,11 @@ export function useSignalR(): ServerStatus {
     // Sharing is cross-user: another account shared, upgraded, revoked or
     // answered a request, or mentioned us. Refresh the surfaces that show it
     // (rail, Shared with me, inbox) in place rather than on the next reload.
+    // Someone commented, replied, reacted or resolved on a note we can see.
+    // Only the open note's thread list is mounted, so this refetches one query.
+    connection.on('CommentsChanged', () => {
+      void queryClient.invalidateQueries({ queryKey: ['comments'] });
+    });
     connection.on('SharesChanged', () => {
       void queryClient.invalidateQueries({ queryKey: ['shares', 'incoming'] });
       void queryClient.invalidateQueries({ queryKey: ['notifications'] });

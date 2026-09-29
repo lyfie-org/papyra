@@ -16,7 +16,8 @@ public class Notification
 
     /// <summary>
     /// "mention" | "shared" | "access_upgraded" | "access_requested" |
-    /// "access_approved" | "access_denied".
+    /// "access_approved" | "access_denied" | "comment" | "comment_reply" |
+    /// "comment_mention".
     /// </summary>
     public string Kind { get; set; } = string.Empty;
 
@@ -34,6 +35,8 @@ public class Notification
     public int? AccessRequestId { get; set; }
     /// <summary>The mention (BlockGrant) a "mention" event is about.</summary>
     public int? BlockGrantId { get; set; }
+    /// <summary>The comment a comment_* event is about.</summary>
+    public int? CommentId { get; set; }
 
     public DateTime CreatedUtc { get; set; }
     public DateTime? ReadUtc { get; set; }

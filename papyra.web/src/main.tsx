@@ -19,6 +19,14 @@ import { ShareOfferProvider } from './components/ShareOfferProvider.tsx';
 import './index.css';
 import App from './App.tsx';
 import TopProgressBar from './components/TopProgressBar.tsx';
+import ErrorBoundary from './components/ErrorBoundary.tsx';
+import ErrorScreen from './components/ErrorScreen.tsx';
+import { crashActions } from './lib/errorActions.ts';
+import ServerErrorNotices from './components/ServerErrorNotices.tsx';
+import { installServerErrorWatch } from './lib/errorReport.ts';
+
+// Before anything fetches: a server 500 anywhere surfaces its reference.
+installServerErrorWatch();
 
 // Demo mode: stand up the in-browser fake server BEFORE React mounts, so the
 // very first request the app makes (the /api/auth/me session probe) is already
@@ -59,10 +67,13 @@ if (import.meta.env.PROD && !import.meta.env.VITE_DEMO && 'serviceWorker' in nav
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
+    {/* Last line of defence: a crash anywhere shows what broke, not a blank page. */}
+    <ErrorBoundary fallback={(info) => <ErrorScreen info={info} actions={crashActions} />}>
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
         <TopProgressBar />
         <ToastProvider>
+          <ServerErrorNotices />
           <ConfirmProvider>
             <ShareOfferProvider>
               <BrowserRouter basename={import.meta.env.BASE_URL}>
@@ -73,5 +84,6 @@ createRoot(document.getElementById('root')!).render(
         </ToastProvider>
       </ThemeProvider>
     </QueryClientProvider>
+    </ErrorBoundary>
   </StrictMode>,
 );

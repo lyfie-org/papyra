@@ -25,6 +25,8 @@ import { RealLocationContext } from './lib/realLocation';
 import LoadingBar from './components/LoadingBar';
 import SharedWithMePage from './pages/SharedWithMePage';
 import DeletionScheduledPage from './pages/DeletionScheduledPage';
+import NotFoundPage from './pages/NotFoundPage';
+import ErrorScreen from './components/ErrorScreen';
 
 // Gate the workspace behind a live session. The /me probe decides where an
 // unauthenticated visitor lands: /setup before any admin exists, else /login.
@@ -50,12 +52,16 @@ function RequireAuth() {
   if (state === 'login') return <Navigate to="/login" replace />;
   if (state === 'error') {
     return (
-      <div className="app-bootstrap">
-        <p>Couldn’t reach the server.</p>
-        {/* Retries happen by themselves, but a server that took longer to start
-            than the retries lasted would otherwise leave a dead page. */}
-        <button type="button" className="app-bootstrap__retry" onClick={retry}>Try again</button>
-      </div>
+      <ErrorScreen
+        code="Can’t connect"
+        info={{
+          title: 'Couldn’t reach the server',
+          message: 'Papyra’s server isn’t answering. It may be restarting or updating — your notes are safe. Retries happen on their own.',
+        }}
+        // A server that took longer to start than the retries lasted would
+        // otherwise leave a dead page.
+        actions={[{ label: 'Try again', onClick: retry, primary: true }]}
+      />
     );
   }
   // A password somebody else chose is a password somebody else knows. The server
@@ -111,6 +117,7 @@ export default function App() {
         {/* Managing people is Settings → Users now (admins only); old links land there. */}
         <Route path="admin" element={<Navigate to="/settings?tab=users" replace />} />
       </Route>
+      <Route path="*" element={<NotFoundPage />} />
     </Routes>
     </RealLocationContext.Provider>
   );
