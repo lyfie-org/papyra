@@ -35,6 +35,10 @@ public interface ICollabEngine
     Task CloseAsync(string ownerUid, string noteId, bool flush, CancellationToken ct = default);
     /// <summary>The file changed outside the API (watcher): merge it into any live room.</summary>
     Task ExternalChangeAsync(string ownerUid, string noteId, string body, CancellationToken ct = default);
+    /// <summary>Save whatever a live room has pending, keeping the room open.</summary>
+    Task FlushAsync(string ownerUid, string noteId, CancellationToken ct = default);
+    /// <summary>An older version was restored: it replaces the live room's text (never merged).</summary>
+    Task RestoreAsync(string ownerUid, string noteId, string body, CancellationToken ct = default);
 }
 
 /// <summary>HTTP client for the engine's loopback-only internal routes.</summary>
@@ -99,6 +103,17 @@ public sealed class CollabEngine(CollabOptions options, IHttpClientFactory http,
     public async Task ExternalChangeAsync(string ownerUid, string noteId, string body, CancellationToken ct = default)
     {
         using var _ = await SendAsync(HttpMethod.Post, $"/rooms/{Room(ownerUid, noteId)}/external",
+            JsonContent.Create(new { body, hash = CollabHash.Of(body) }), ct);
+    }
+
+    public async Task FlushAsync(string ownerUid, string noteId, CancellationToken ct = default)
+    {
+        using var _ = await SendAsync(HttpMethod.Post, $"/rooms/{Room(ownerUid, noteId)}/flush", null, ct);
+    }
+
+    public async Task RestoreAsync(string ownerUid, string noteId, string body, CancellationToken ct = default)
+    {
+        using var _ = await SendAsync(HttpMethod.Post, $"/rooms/{Room(ownerUid, noteId)}/restore",
             JsonContent.Create(new { body, hash = CollabHash.Of(body) }), ct);
     }
 

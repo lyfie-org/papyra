@@ -174,7 +174,11 @@ public static class CollabEndpoints
         var externalPrior = saved?.Hash != currentHash;
         var snapRoot = PapyraPaths.UserSnapshotsDir(config, env.ContentRootPath, ownerUid);
         var noteSnapDir = PathGuard.ResolveAndVerify(snapRoot, noteId, lf.CreateLogger("PathGuard"));
-        await snapshots.CaptureAsync(noteSnapDir, path, ct, force: externalPrior);
+        var snapId = await snapshots.CaptureAsync(noteSnapDir, path, ct, force: externalPrior);
+        // The version just archived is the text the previous saves wrote: credit
+        // them — unless it came from outside, in which case nobody in the room wrote it.
+        if (externalPrior) await states.WritePendingContributorsAsync(ownerUid, noteId, [], ct);
+        else await states.AttributeSnapshotAsync(snapshots, ownerUid, noteId, noteSnapDir, snapId, ct);
 
         var prior = note.Body;
         note.Body = body.Body;
@@ -187,6 +191,12 @@ public static class CollabEndpoints
         embeddings.Enqueue(ownerUid, noteId, note.Body);
 
         var newHash = CollabHash.Of(note.Body);
+        // The people behind the text now on disk wait for the snapshot that will hold it.
+        if (body.Contributors is { Length: > 0 } wrote)
+        {
+            var waiting = await states.ReadPendingContributorsAsync(ownerUid, noteId, ct);
+            await states.WritePendingContributorsAsync(ownerUid, noteId, [.. waiting, .. wrote], ct);
+        }
         if (body.YState is { Length: > 0 } yState)
             await states.WriteAsync(ownerUid, noteId, Convert.FromBase64String(yState), newHash, ct);
 

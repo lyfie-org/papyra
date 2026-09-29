@@ -124,6 +124,20 @@ describe('RoomRegistry', () => {
     expect(peer().getMarkdown()).toBe('One\n\nTwo\n\nThree')
   })
 
+  it('replaces the room with a restored version instead of merging it', async () => {
+    const { api, rooms, doc, peer } = setup('Intro\n\nMiddle')
+    await rooms.load(ROOM, doc)
+    edit(doc, 'Intro (typed)\n\nMiddle')
+    const restored = api.writeExternally(ROOM, 'Old intro\n\nOld middle')
+    expect(await rooms.restore(ROOM, restored)).toBe(true)
+    expect(peer().getMarkdown()).toBe('Old intro\n\nOld middle')
+
+    // The restored file is the new ancestor: nothing left to save, nothing re-merged.
+    await rooms.store(ROOM)
+    expect(api.saves).toHaveLength(0)
+    expect(api.notes.get(ROOM)!.body).toBe('Old intro\n\nOld middle')
+  })
+
   it('closes the room and stops saving when the note is gone', async () => {
     const { api, closeRoom, rooms, doc } = setup('Hello')
     await rooms.load(ROOM, doc)

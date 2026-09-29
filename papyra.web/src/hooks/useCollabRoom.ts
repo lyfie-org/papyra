@@ -1,9 +1,8 @@
 import { useEffect, useMemo, useRef, useState, type RefObject } from 'react';
-import * as Y from 'yjs';
-import { HocuspocusProvider, HocuspocusProviderWebsocket } from '@hocuspocus/provider';
-import { IndexeddbPersistence } from 'y-indexeddb';
+import type { HocuspocusProvider, HocuspocusProviderWebsocket } from '@hocuspocus/provider';
+import type { IndexeddbPersistence } from 'y-indexeddb';
 import type { Provider } from '@lexical/yjs';
-import { CollaborationExtension } from '@lyfie/luthor-headless/collab';
+import type { CollaborationExtension } from '@lyfie/luthor-headless/collab';
 import { collabColor } from '../lib/collabColors';
 import { forgetCollabRoomCache, rememberCollabRoomCache } from '../lib/collabCache';
 
@@ -24,6 +23,40 @@ import { forgetCollabRoomCache, rememberCollabRoomCache } from '../lib/collabCac
  * the same doc reconnects (no remount, caret kept, offline edits merge); a new
  * epoch or a changed access → the editor is rebuilt on a fresh session.
  */
+
+/**
+ * The live-editing client (Yjs, Hocuspocus, y-indexeddb, luthor's collab
+ * binding) is only needed once a note is actually shared, so it is a separate
+ * chunk fetched the first time a room opens — never part of the main bundle.
+ */
+async function loadCollabLibs() {
+  const [Y, hocuspocus, idb, headless] = await Promise.all([
+    import('yjs'),
+    import('@hocuspocus/provider'),
+    import('y-indexeddb'),
+    import('@lyfie/luthor-headless/collab'),
+  ]);
+  return {
+    Y,
+    HocuspocusProvider: hocuspocus.HocuspocusProvider,
+    HocuspocusProviderWebsocket: hocuspocus.HocuspocusProviderWebsocket,
+    IndexeddbPersistence: idb.IndexeddbPersistence,
+    CollaborationExtension: headless.CollaborationExtension,
+  };
+}
+
+type CollabLibs = Awaited<ReturnType<typeof loadCollabLibs>>;
+
+let libsPromise: Promise<CollabLibs> | null = null;
+let loadedLibs: CollabLibs | null = null;
+
+function ensureCollabLibs(): Promise<CollabLibs> {
+  libsPromise ??= loadCollabLibs().then(
+    (libs) => { loadedLibs = libs; return libs; },
+    (error) => { libsPromise = null; throw error; }, // offline first try: ask again later
+  );
+  return libsPromise;
+}
 
 export type CollabTarget = { noteId: string } | { shareId: number };
 
@@ -200,6 +233,23 @@ export function useCollabRoom(
   const [outcome, setOutcome] = useState<{ key: string; status: CollabStatus; synced: boolean } | null>(null);
   const [attempt, setAttempt] = useState(0);
   const [provider, setProvider] = useState<{ gen: number; provider: HocuspocusProvider } | null>(null);
+  const [libs, setLibs] = useState<CollabLibs | null>(loadedLibs);
+
+  // Fetch the client chunk the first time a room is wanted; retry while it
+  // can't be had (a cold offline open) so the editor is never stuck.
+  useEffect(() => {
+    if (!targetKey || libs) return;
+    let cancelled = false;
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const load = () => {
+      ensureCollabLibs().then(
+        (loaded) => { if (!cancelled) setLibs(loaded); },
+        () => { if (!cancelled) timer = setTimeout(load, REJOIN_MAX_MS); },
+      );
+    };
+    load();
+    return () => { cancelled = true; clearTimeout(timer); };
+  }, [targetKey, libs]);
 
   // Mutable bookkeeping, touched only from effects and provider callbacks.
   const [store] = useState(() => new RoomStore());
@@ -244,7 +294,8 @@ export function useCollabRoom(
   const current = join && join.key === targetKey ? join : null;
 
   const collaboration = useMemo(() => {
-    if (!current) return null;
+    if (!current || !libs) return null;
+    const { Y, HocuspocusProvider, HocuspocusProviderWebsocket, IndexeddbPersistence, CollaborationExtension } = libs;
     const { ticket, key, gen } = current;
     const target = JSON.parse(key) as CollabTarget;
     const setStatus = (status: CollabStatus, synced?: boolean) =>
@@ -440,7 +491,7 @@ export function useCollabRoom(
         } as unknown as Provider;
       },
     });
-  }, [current, cursorsContainerRef, store]);
+  }, [current, libs, cursorsContainerRef, store]);
 
   // A join's sessions end with it (replaced, revoked, or the note closed).
   useEffect(() => {

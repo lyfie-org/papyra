@@ -67,6 +67,12 @@
   font-size: var(--fs-xs);
 }
 .note-history__muted { margin: 0; }
+.note-history__by {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
+}
 
 .note-history__stats {
   display: inline-flex;

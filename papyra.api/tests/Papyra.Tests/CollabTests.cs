@@ -54,9 +54,19 @@ public sealed class CollabTests
             Calls.Enqueue($"external {ownerUid}:{noteId}");
             return Task.CompletedTask;
         }
+        public Task FlushAsync(string ownerUid, string noteId, CancellationToken ct = default)
+        {
+            Calls.Enqueue($"flush {ownerUid}:{noteId}");
+            return Task.CompletedTask;
+        }
+        public Task RestoreAsync(string ownerUid, string noteId, string body, CancellationToken ct = default)
+        {
+            Calls.Enqueue($"restore {ownerUid}:{noteId}");
+            return Task.CompletedTask;
+        }
     }
 
-    private static (WebApplicationFactory<Program> Factory, string Dir, FakeEngine Engine) NewApp()
+    private static (WebApplicationFactory<Program> Factory, string Dir, FakeEngine Engine) NewApp(bool unthrottled = false)
     {
         var dir = Path.Combine(Path.GetTempPath(), "papyra-collab-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(dir);
@@ -66,6 +76,7 @@ public sealed class CollabTests
             b.UseEnvironment("Development");
             b.UseSetting("Papyra:DataDir", dir);
             b.UseSetting("Collab:Secret", Secret);
+            if (unthrottled) b.UseSetting("Papyra:SnapshotMinIntervalSeconds", "0");
             b.ConfigureTestServices(services => services.AddSingleton<ICollabEngine>(engine));
         });
         return (factory, dir, engine);
@@ -364,6 +375,66 @@ public sealed class CollabTests
 
             Assert.Equal(HttpStatusCode.OK, (await WriteAsync(owner, "n1", "Plain", secure: true)).StatusCode);
             Assert.Contains($"close {ownerId}:n1 flush", engine.Calls);
+        }
+        finally { Cleanup(factory, dir); }
+    }
+
+    [Fact]
+    public async Task HistoryNamesTheEditorsOfEachRoomVersion()
+    {
+        var (factory, dir, _) = NewApp(unthrottled: true);
+        try
+        {
+            var owner = await OwnerAsync(factory);
+            var bea = await MemberAsync(factory, owner, "bea");
+            var ownerId = await MyIdAsync(owner);
+            var beaId = await MyIdAsync(bea);
+            await WriteAsync(owner, "n1", "v1");
+            var engine = factory.CreateClient();
+            var url = $"/internal/collab/notes/{ownerId}/n1";
+            var state = Convert.ToBase64String([1]);
+
+            // Two saves by the room: the second archives what the first wrote,
+            // crediting the people behind it. The very first archived text
+            // (v1) came from outside the room, so it has no editors.
+            Assert.Equal(HttpStatusCode.OK, (await engine.SendAsync(Internal(HttpMethod.Put, url,
+                new CollabSaveRequest("v2", CollabHash.Of("v1"), state, [ownerId, beaId])))).StatusCode);
+            Assert.Equal(HttpStatusCode.OK, (await engine.SendAsync(Internal(HttpMethod.Put, url,
+                new CollabSaveRequest("v3", CollabHash.Of("v2"), state, [beaId])))).StatusCode);
+
+            var versions = (await owner.GetFromJsonAsync<JsonElement>("/api/notes/n1/snapshots")).EnumerateArray().ToList();
+            Assert.Equal(2, versions.Count);
+            var credited = versions.Single(v => v.GetProperty("editors").GetArrayLength() > 0)
+                .GetProperty("editors").EnumerateArray().Select(e => e.GetString()).ToList();
+            Assert.Equal(["Owner", "bea"], credited.OrderBy(n => n, StringComparer.Ordinal).ToList());
+        }
+        finally { Cleanup(factory, dir); }
+    }
+
+    [Fact]
+    public async Task RestoringWhileARoomIsLiveSavesItThenReplacesItsText()
+    {
+        var (factory, dir, engine) = NewApp();
+        try
+        {
+            var owner = await OwnerAsync(factory);
+            var ownerId = await MyIdAsync(owner);
+            await WriteAsync(owner, "n1", "Original");
+            var http = factory.CreateClient();
+            var url = $"/internal/collab/notes/{ownerId}/n1";
+            Assert.Equal(HttpStatusCode.OK, (await http.SendAsync(Internal(HttpMethod.Put, url,
+                new CollabSaveRequest("Edited live", CollabHash.Of("Original"), null, [ownerId])))).StatusCode);
+
+            var original = (await owner.GetFromJsonAsync<JsonElement>("/api/notes/n1/snapshots")).EnumerateArray().Single();
+            engine.ActiveRooms[$"{ownerId}:n1"] = true;
+            var restored = await owner.PostAsync($"/api/notes/n1/restore/{original.GetProperty("id").GetString()}", null);
+            Assert.Equal(HttpStatusCode.OK, restored.StatusCode);
+            Assert.Equal("Original", (await restored.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("body").GetString());
+
+            var calls = engine.Calls.ToList();
+            var flush = calls.IndexOf($"flush {ownerId}:n1");
+            var restore = calls.IndexOf($"restore {ownerId}:n1");
+            Assert.True(flush >= 0 && restore > flush, string.Join(" | ", calls));
         }
         finally { Cleanup(factory, dir); }
     }

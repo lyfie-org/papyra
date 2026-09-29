@@ -109,6 +109,27 @@ describe('collab server', () => {
     await waitFor(() => client.markdown() === 'One\n\nTwo from git', 5000, 'external adopt')
   })
 
+  it('flushes pending edits on request, and restore replaces them live', async () => {
+    const { api, ticket, connect, internal } = await start('One')
+    const client = connect(ticket(1))
+    await client.synced
+    await waitFor(() => client.markdown() === 'One')
+
+    client.type(0, 3, ' typed')
+    await waitFor(() => client.markdown() === 'One typed')
+    const flush = await internal(`/rooms/${encodeURIComponent(ROOM)}/flush`)
+    expect(await flush.json()).toEqual({ flushed: true })
+    expect(api.notes.get(ROOM)!.body).toBe('One typed')
+
+    const restored = api.writeExternally(ROOM, 'Back to before')
+    const res = await internal(`/rooms/${encodeURIComponent(ROOM)}/restore`, {
+      body: JSON.stringify({ body: restored.body, hash: restored.hash }),
+      headers: { 'Content-Type': 'application/json' },
+    })
+    expect(await res.json()).toEqual({ applied: true })
+    await waitFor(() => client.markdown() === 'Back to before', 5000, 'restore adopt')
+  })
+
   it('closes everyone out when the note is trashed', async () => {
     const { ticket, connect, internal } = await start()
     const client = connect(ticket(1))

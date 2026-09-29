@@ -1,3 +1,4 @@
+using System.Text.Json;
 using Papyra.Api.Storage;
 
 namespace Papyra.Api.Collab;
@@ -51,6 +52,59 @@ public sealed class CollabStateStore(IConfiguration config, IHostEnvironment env
         var (statePath, hashPath) = Files(ownerUid, noteId);
         if (File.Exists(hashPath)) File.Delete(hashPath);
         if (File.Exists(statePath)) File.Delete(statePath);
+        var pending = PendingPath(ownerUid, noteId);
+        if (File.Exists(pending)) File.Delete(pending);
+    }
+
+    // ── Who wrote what (history attribution) ────────────────────────────────
+    // The room saves often but a version is only archived every few minutes, so
+    // the people behind the file's current text are remembered here until the
+    // snapshot that will hold that text exists — then they move onto it.
+
+    private string PendingPath(string ownerUid, string noteId) =>
+        PathGuard.ResolveAndVerify(Dir(ownerUid), $"{noteId}.by", logger);
+
+    public async Task<int[]> ReadPendingContributorsAsync(string ownerUid, string noteId, CancellationToken ct)
+    {
+        var path = PendingPath(ownerUid, noteId);
+        if (!File.Exists(path)) return [];
+        try
+        {
+            return JsonSerializer.Deserialize<int[]>(await File.ReadAllTextAsync(path, ct)) ?? [];
+        }
+        catch (Exception ex) when (ex is IOException or JsonException)
+        {
+            return []; // attribution is best-effort; a torn file just means "unknown"
+        }
+    }
+
+    public async Task WritePendingContributorsAsync(
+        string ownerUid, string noteId, IReadOnlyCollection<int> uids, CancellationToken ct)
+    {
+        var path = PendingPath(ownerUid, noteId);
+        if (uids.Count == 0)
+        {
+            if (File.Exists(path)) File.Delete(path);
+            return;
+        }
+        Directory.CreateDirectory(Dir(ownerUid));
+        await WriteAtomicAsync(path, JsonSerializer.SerializeToUtf8Bytes(uids.Distinct().ToArray()), ct);
+    }
+
+    /// <summary>
+    /// A snapshot now holds the file's current text: hand it the people who
+    /// wrote that text. A null id (capture throttled) leaves them waiting for
+    /// the next snapshot.
+    /// </summary>
+    public async Task AttributeSnapshotAsync(
+        SnapshotService snapshots, string ownerUid, string noteId, string noteSnapDir, string? snapshotId,
+        CancellationToken ct)
+    {
+        if (snapshotId is null) return;
+        var pending = await ReadPendingContributorsAsync(ownerUid, noteId, ct);
+        if (pending.Length == 0) return;
+        snapshots.SetContributors(noteSnapDir, snapshotId, pending);
+        await WritePendingContributorsAsync(ownerUid, noteId, [], ct);
     }
 
     private static async Task WriteAtomicAsync(string path, byte[] bytes, CancellationToken ct)

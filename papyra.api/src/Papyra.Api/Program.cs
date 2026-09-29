@@ -3800,15 +3800,17 @@ settings.MapPut("/", async (SettingsRequest body, AppDbContext db, CancellationT
 // Throttled, age-pruned timestamped copies under the user's hidden .papyra dir.
 // List is metadata-only; the single-snapshot GET returns the archived body so the
 // editor can render a diff; restore atomically replaces the live .md.
-notes.MapGet("/{id}/snapshots", (
+notes.MapGet("/{id}/snapshots", async (
     string id,
     ClaimsPrincipal user,
     VaultState state,
     SnapshotService snapshots,
     VaultObserverOptions vault,
+    AppDbContext db,
     IConfiguration config,
     IHostEnvironment env,
-    ILoggerFactory loggerFactory) =>
+    ILoggerFactory loggerFactory,
+    CancellationToken ct) =>
 {
     var uid = Uid(user);
     var logger = loggerFactory.CreateLogger("PathGuard");
@@ -3817,7 +3819,22 @@ notes.MapGet("/{id}/snapshots", (
     // Distinct versions only, and none identical to the live note (see List).
     var live = state.PathFor(uid, id)
         ?? PathGuard.ResolveAndVerify(vault.UserNotesDir(uid), $"{id}.md", logger);
-    return Results.Ok(snapshots.List(dir, live).Select(s => new { id = s.Id, timestamp = s.TimestampUtc }));
+    var versions = snapshots.List(dir, live);
+
+    // Versions written by a live room carry who edited them ("edited by A, B").
+    var editors = versions.ToDictionary(v => v.Id, v => snapshots.ContributorsOf(dir, v.Id));
+    var uids = editors.Values.SelectMany(u => u).Distinct().ToList();
+    var names = uids.Count == 0
+        ? new Dictionary<int, string>()
+        : await db.Users.Where(u => uids.Contains(u.Id))
+            .Select(u => new { u.Id, u.Name, u.Username })
+            .ToDictionaryAsync(u => u.Id, u => string.IsNullOrWhiteSpace(u.Name) ? u.Username : u.Name, ct);
+    return Results.Ok(versions.Select(v => new
+    {
+        id = v.Id,
+        timestamp = v.TimestampUtc,
+        editors = editors[v.Id].Where(names.ContainsKey).Select(u => names[u]).ToArray(),
+    }));
 });
 
 notes.MapGet("/{id}/snapshots/{snapshotId}", async (
@@ -3859,6 +3876,9 @@ notes.MapPost("/{id}/restore/{snapshotId}", async (
     WriteRing writeRing,
     SearchIndexService search,
     VaultObserverOptions vault,
+    ICollabEngine collab,
+    CollabStateStore collabStates,
+    NoteWriteLocks writeLocks,
     IConfiguration config,
     IHostEnvironment env,
     ILoggerFactory loggerFactory,
@@ -3885,26 +3905,40 @@ notes.MapPost("/{id}/restore/{snapshotId}", async (
     // Forced past the throttle: a restore minutes after the last snapshot used to
     // skip the archive, and the version it replaced was simply gone.
     var noteSnapDir = PathGuard.ResolveAndVerify(snapRoot, id, logger);
-    var undoId = await snapshots.CaptureAsync(noteSnapDir, path, ct, force: true);
 
-    writeRing.Mark(path);
-    await snapshots.RestoreAsync(snapPath, path, ct);
+    // Someone editing this note live: save what they have typed first, so the
+    // version this restore replaces (and its undo) holds it. The room itself
+    // is then told to *replace* its text — a restore is never merged.
+    var liveRoom = await collab.IsRoomActiveAsync(uid, id, ct);
+    if (liveRoom) await collab.FlushAsync(uid, id, ct);
 
-    var note = await storage.ReadAsync(path, ct);
-    if (note is null) return Results.NotFound();
-    // The restored file is this note, whatever the archived copy's frontmatter
-    // says. A copy without an `id` (a file last written by another editor) would
-    // otherwise come back as an id-less note the vault ignores — the note would
-    // simply vanish from the app after a restore.
-    if (note.Id != id)
+    Note? note;
+    string? undoId;
+    using (await writeLocks.AcquireAsync(uid, id, ct))
     {
-        note.Id = id;
+        undoId = await snapshots.CaptureAsync(noteSnapDir, path, ct, force: true);
+        await collabStates.AttributeSnapshotAsync(snapshots, uid, id, noteSnapDir, undoId, ct);
+
         writeRing.Mark(path);
-        await storage.WriteAsync(path, note, ct);
-        note = await storage.ReadAsync(path, ct) ?? note;
+        await snapshots.RestoreAsync(snapPath, path, ct);
+
+        note = await storage.ReadAsync(path, ct);
+        if (note is null) return Results.NotFound();
+        // The restored file is this note, whatever the archived copy's frontmatter
+        // says. A copy without an `id` (a file last written by another editor) would
+        // otherwise come back as an id-less note the vault ignores — the note would
+        // simply vanish from the app after a restore.
+        if (note.Id != id)
+        {
+            note.Id = id;
+            writeRing.Mark(path);
+            await storage.WriteAsync(path, note, ct);
+            note = await storage.ReadAsync(path, ct) ?? note;
+        }
+        state.Upsert(uid, path, note);
+        search.IndexNote(uid, note);
     }
-    state.Upsert(uid, path, note);
-    search.IndexNote(uid, note);
+    if (liveRoom) await collab.RestoreAsync(uid, id, note.Body, ct);
     // The version that holds what was just replaced — restoring it undoes this.
     if (undoId is not null) http.Response.Headers["Papyra-Undo-Snapshot"] = undoId;
     return Results.Ok(note);

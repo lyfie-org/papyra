@@ -110,7 +110,7 @@ export function createCollabServer(options: CollabServerOptions) {
     }
 
     // /rooms/{room}[/action] — the room name is URL-encoded (note ids can hold ':' '/').
-    const match = /^\/rooms\/([^/]+)(?:\/(kick|close|external))?$/.exec(url.pathname)
+    const match = /^\/rooms\/([^/]+)(?:\/(kick|close|external|flush|restore))?$/.exec(url.pathname)
     if (!match || !instance) {
       json(response, 404, { error: 'not-found' })
       return
@@ -146,13 +146,21 @@ export function createCollabServer(options: CollabServerOptions) {
       json(response, 200, { closed: true })
       return
     }
-    if (action === 'external') {
+    if (action === 'flush') {
+      await rooms.store(documentName)
+      json(response, 200, { flushed: true })
+      return
+    }
+    if (action === 'external' || action === 'restore') {
       const body = (await readJson(request)) as { body?: unknown; hash?: unknown }
       if (typeof body.body !== 'string' || typeof body.hash !== 'string') {
         json(response, 400, { error: 'body and hash required' })
         return
       }
-      const applied = await rooms.external(documentName, { body: body.body, hash: body.hash })
+      const current = { body: body.body, hash: body.hash }
+      const applied = action === 'restore'
+        ? await rooms.restore(documentName, current)
+        : await rooms.external(documentName, current)
       json(response, 200, { applied })
       return
     }

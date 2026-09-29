@@ -255,6 +255,24 @@ export class RoomRegistry {
     return true
   }
 
+  /**
+   * The owner restored an older version: it *replaces* the room's text (no
+   * merge — that is what restore means). Applied in place as a server-origin
+   * change so everyone sees it live with their caret kept, and the restored
+   * file becomes the new common ancestor.
+   */
+  async restore(documentName: string, current: StoredNote): Promise<boolean> {
+    const room = this.rooms.get(documentName)
+    if (!room) return false
+    await serial(room, async () => {
+      applyMarkdownMinimal(room.collab, current.body)
+      room.base = normalize(current.body)
+      room.baseHash = current.hash
+      room.contributors.clear()
+    })
+    return true
+  }
+
   private reconcile(documentName: string, room: Room, current: StoredNote): void {
     const ours = room.collab.getMarkdown()
     const merged = mergeMarkdown(room.base, ours, current.body)

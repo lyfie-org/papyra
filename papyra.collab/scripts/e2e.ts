@@ -158,6 +158,25 @@ async function main(): Promise<void> {
     if (clobber.status !== 409) throw new Error(`classic write during live room returned ${clobber.status}, expected 409`)
     step('classic body write refused while live (409)')
 
+    // Restoring an older version while the room is live replaces everyone's
+    // text in place (never merged), and history credits who wrote the version
+    // the restore replaced.
+    const versions = await owner.json<Array<{ id: string }>>('GET', '/api/notes/e2e-live/snapshots')
+    if (versions.length === 0) throw new Error('no earlier version to restore')
+    const restoreRes = await owner.request('POST', `/api/notes/e2e-live/restore/${versions[0]!.id}`)
+    if (restoreRes.status !== 200) throw new Error(`restore while live returned ${restoreRes.status}`)
+    const undoId = restoreRes.headers.get('Papyra-Undo-Snapshot')
+    const original = 'Hello world\n\nSecond block'
+    await waitFor(() => a.markdown() === original && b.markdown() === original, 10_000, 'restore reaches the room')
+    step('restore replaced the live room in place')
+    if (!undoId) throw new Error('restore returned no undo snapshot')
+    const afterRestore = await owner.json<Array<{ id: string; editors: string[] }>>('GET', '/api/notes/e2e-live/snapshots')
+    const undo = afterRestore.find((v) => v.id === undoId)
+    if (!undo || !undo.editors.includes('Owner') || !undo.editors.includes('Bea')) {
+      throw new Error(`undo version should credit Owner and Bea, got ${JSON.stringify(undo)}`)
+    }
+    step('history credits the room editors (Owner, Bea)')
+
     await owner.json('DELETE', `/api/shares/${share.id}`)
     const reason = await Promise.race([b.closed, new Promise<string>((r) => setTimeout(() => r('timeout'), 10_000))])
     if (reason !== 'access-revoked') throw new Error(`revoked grantee closed with "${reason}"`)

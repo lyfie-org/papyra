@@ -45,6 +45,26 @@ function writeHeaders(collab: boolean): Record<string, string> {
 }
 
 /**
+ * A body write that lost to a live room (409 `collab_active`) can never win by
+ * repeating: the room owns the body and already holds everyone's edits (a live
+ * editor's are also in its own IndexedDB). Send it again as metadata-only so
+ * the title, tags and colour still land, and let the body go.
+ */
+async function retryMetadataOnly(
+  id: string, payload: NoteWritePayload, res: Response, signal?: AbortSignal,
+): Promise<Response | null> {
+  if (res.status !== 409) return null;
+  const code = ((await res.clone().json().catch(() => null)) as { code?: string } | null)?.code;
+  if (code !== 'collab_active') return null;
+  return fetch(`/api/notes/${encodeURIComponent(id)}`, {
+    method: 'PUT',
+    headers: writeHeaders(true),
+    body: JSON.stringify(payload),
+    signal,
+  });
+}
+
+/**
  * Persist a note. Returns 'saved' when the API took it, 'queued' when it was
  * parked in the outbox. Throws only for real API rejections (401/403/413/…),
  * which are the caller's problem, not the network's.
@@ -80,6 +100,14 @@ export async function putNote(
     });
   } catch {
     return park(); // network layer refused — treat as offline, never lose the edit
+  }
+
+  if (res.status === 409) {
+    try {
+      res = (await retryMetadataOnly(id, payload, res, AbortSignal.timeout(SAVE_TIMEOUT_MS))) ?? res;
+    } catch {
+      return park();
+    }
   }
 
   if (!res.ok) {
@@ -194,6 +222,21 @@ export async function flushOutbox(): Promise<{ synced: number; conflicts: string
       setSync({ syncing: false, online: false });
       await refreshPending();
       return { synced, conflicts }; // still offline — keep the rest queued
+    }
+    if (res.status === 409 && !entry.collab) {
+      // The note went live while this edit sat in the queue: its metadata
+      // still applies, its body is the room's now (and worth telling the user).
+      try {
+        const retried = await retryMetadataOnly(entry.id, entry.payload, res);
+        if (retried) {
+          res = retried;
+          if (res.ok && !movedOn) conflicts.push(entry.payload.title || entry.id);
+        }
+      } catch {
+        setSync({ syncing: false, online: false });
+        await refreshPending();
+        return { synced, conflicts };
+      }
     }
     if (!res.ok) {
       if (isOffline(res)) {

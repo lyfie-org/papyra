@@ -1,6 +1,7 @@
 using System.Collections.Concurrent;
 using System.Security.Cryptography;
 using System.Text;
+using System.Text.Json;
 using System.Text.RegularExpressions;
 
 namespace Papyra.Api.Storage;
@@ -93,6 +94,38 @@ public sealed partial class SnapshotService
         {
             _logger.LogWarning(ex, "Snapshot capture failed for {Dir}", noteSnapshotDir);
             return null;
+        }
+    }
+
+    // ── Contributors ─────────────────────────────────────────────────────────
+    // A version written by a live room also remembers *who* wrote it: a sidecar
+    // `{id}.by` (JSON user ids) beside the snapshot. Written once, by whoever
+    // archives the version; versions from plain saves simply have none.
+
+    public void SetContributors(string noteSnapshotDir, string snapshotId, IReadOnlyCollection<int> uids)
+    {
+        try
+        {
+            var path = Path.Combine(noteSnapshotDir, $"{snapshotId}.by");
+            if (uids.Count == 0 || File.Exists(path)) return;
+            File.WriteAllText(path, JsonSerializer.Serialize(uids.Distinct().ToArray()));
+        }
+        catch (Exception ex)
+        {
+            _logger.LogDebug(ex, "Could not record contributors for snapshot {Id}", snapshotId);
+        }
+    }
+
+    public int[] ContributorsOf(string noteSnapshotDir, string snapshotId)
+    {
+        try
+        {
+            var path = Path.Combine(noteSnapshotDir, $"{snapshotId}.by");
+            return File.Exists(path) ? JsonSerializer.Deserialize<int[]>(File.ReadAllText(path)) ?? [] : [];
+        }
+        catch (Exception ex) when (ex is IOException or JsonException)
+        {
+            return [];
         }
     }
 
@@ -250,6 +283,7 @@ public sealed partial class SnapshotService
             try
             {
                 File.Delete(p);
+                File.Delete(Path.ChangeExtension(p, ".by"));
                 _fingerprints.TryRemove(p, out _);
             }
             catch (IOException ex) { _logger.LogDebug(ex, "Could not prune snapshot {Path}", p); }
