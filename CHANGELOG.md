@@ -6,6 +6,15 @@ a Docker Hub tag and a GitHub Release.
 
 <!-- new releases are inserted directly below this line -->
 
+## [0.2.0] - 2026-09-29
+
+- feat(collab): open live notes offline from the device copy (03f37e1)
+- feat(collab): C5 hardening — ticket rate limit, engine stats, docs (bb7129f)
+- feat(collab): lifecycle hardening — restore-while-live, history attribution, lazy client (689c7eb)
+- feat(collab): live editing in the web app — room binding, presence, cursors (e11a4ea)
+- feat(collab): embed the live-editing engine in the API process tree (b5b970b)
+- feat(collab): embedded collab engine package (Hocuspocus + headless luthor) (539fbd3)
+
 ## [0.1.24] - 2026-09-28
 
 - feat: authenticator compulsory for the first admin (379ccf4)
