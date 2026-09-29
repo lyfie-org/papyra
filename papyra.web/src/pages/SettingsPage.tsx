@@ -57,6 +57,7 @@ import SsoSettings from '../components/SsoGuide';
 import AccountDetails from '../components/AccountDetails';
 import SettingRow, { SettingGroup } from '../components/SettingRow';
 import SessionsSection from '../components/SessionsSection';
+import RenameForm from '../components/RenameForm';
 import AuthenticatorSection from '../components/AuthenticatorSection';
 import { fetchWithProgress } from '../lib/progress';
 import { MASKED_SECRET, NO_AUTOFILL } from '../lib/autofill';
@@ -434,6 +435,7 @@ function SecurityTab() {
   const { devices, enroll, revoke, enrolling, error, setError } = useWebAuthnDevices();
   const [name, setName] = useState('');
   const [addingDevice, setAddingDevice] = useState(false);
+  const [renamingPasskey, setRenamingPasskey] = useState<number | null>(null);
   // Whether this machine actually offers Touch ID / Windows Hello, so we can
   // explain an unavailable button instead of just disabling it.
   const [platformAvailable, setPlatformAvailable] = useState<boolean | null>(null);
@@ -492,7 +494,7 @@ function SecurityTab() {
       >
         {devices.isLoading && <div className="setting-row"><div className="setting-row__line"><LoadingBar label="Loading devices" /></div></div>}
         {(devices.data ?? []).map(d => (
-          <div key={d.id} className="setting-row">
+          <div key={d.id} className={`setting-row${renamingPasskey === d.id ? ' is-open' : ''}`}>
             <div className="setting-row__line">
               <div className="setting-row__text">
                 <span className="setting-row__value">
@@ -503,11 +505,21 @@ function SecurityTab() {
                   {d.lastUsedUtc ? ` · last used ${parseUtc(d.lastUsedUtc).toLocaleDateString()}` : ''}
                 </span>
               </div>
-              <button type="button" className="setting-row__action" disabled={!open}
-                title={open ? undefined : 'Unlock your vault to remove a passkey'} onClick={() => void remove(d)}>
-                Remove
-              </button>
+              {renamingPasskey !== d.id && <>
+                <button type="button" className="setting-row__action" onClick={() => setRenamingPasskey(d.id)}>Rename</button>
+                <button type="button" className="setting-row__action" disabled={!open}
+                  title={open ? undefined : 'Unlock your vault to remove a passkey'} onClick={() => void remove(d)}>
+                  Remove
+                </button>
+              </>}
             </div>
+            {renamingPasskey === d.id && (
+              <div className="setting-row__editor">
+                <RenameForm url={`/api/auth/webauthn/credentials/${d.id}`} current={d.name} placeholder="e.g. Work laptop"
+                  onDone={async () => { await devices.refetch(); setRenamingPasskey(null); }}
+                  onCancel={() => setRenamingPasskey(null)} />
+              </div>
+            )}
           </div>
         ))}
         {devices.data && devices.data.length === 0 && !addingDevice && (
@@ -829,6 +841,7 @@ function KeysTab() {
   });
 
   const [name, setName] = useState('');
+  const [renamingKey, setRenamingKey] = useState<number | null>(null);
   const [created, setCreated] = useState<string | null>(null); // raw token, shown once
   const [copied, setCopied] = useState(false);
   // A key reads and writes everything: the server asks for a code first.
@@ -894,15 +907,26 @@ function KeysTab() {
       >
         {isLoading && <div className="setting-row"><div className="setting-row__line"><LoadingBar label="Loading API keys" /></div></div>}
         {(keys ?? []).map(k => (
-          <div key={k.id} className="setting-row"><div className="setting-row__line">
+          <div key={k.id} className={`setting-row${renamingKey === k.id ? ' is-open' : ''}`}><div className="setting-row__line">
             <div className="setting-row__text">
               <span className="setting-row__value">{k.name} <code className="settings__key-prefix">{k.prefix}…</code></span>
               <span className="setting-row__hint">
                 Created {new Date(k.createdUtc).toLocaleDateString()} · {k.lastUsedUtc ? `last used ${new Date(k.lastUsedUtc).toLocaleDateString()}` : 'never used'}
               </span>
             </div>
-            <button type="button" className="setting-row__action" onClick={() => void revoke(k.id)}>Revoke</button>
-          </div></div>
+            {renamingKey !== k.id && <>
+              <button type="button" className="setting-row__action" onClick={() => setRenamingKey(k.id)}>Rename</button>
+              <button type="button" className="setting-row__action" onClick={() => void revoke(k.id)}>Revoke</button>
+            </>}
+          </div>
+          {renamingKey === k.id && (
+            <div className="setting-row__editor">
+              <RenameForm url={`/api/keys/${k.id}`} current={k.name} placeholder="e.g. CLI, backup script"
+                onDone={async () => { await queryClient.invalidateQueries({ queryKey: ['apiKeys'] }); setRenamingKey(null); }}
+                onCancel={() => setRenamingKey(null)} />
+            </div>
+          )}
+          </div>
         ))}
         {keys && keys.length === 0 && !askCode && (
           <div className="setting-row"><div className="setting-row__line"><div className="setting-row__text">

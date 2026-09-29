@@ -1,6 +1,8 @@
+import { useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { LogOut, Monitor } from 'lucide-react';
 import LoadingBar from './LoadingBar';
+import RenameForm from './RenameForm';
 import { SettingGroup } from './SettingRow';
 import { useConfirm } from '../lib/confirmContext';
 import { parseUtc } from '../lib/vault';
@@ -24,6 +26,7 @@ interface Session {
 export default function SessionsSection() {
   const confirm = useConfirm();
   const queryClient = useQueryClient();
+  const [renaming, setRenaming] = useState<number | null>(null);
   const { data, isLoading } = useQuery<Session[]>({
     queryKey: ['sessions'],
     queryFn: async () => {
@@ -69,7 +72,7 @@ export default function SessionsSection() {
     >
       {isLoading && <div className="setting-row"><div className="setting-row__line"><LoadingBar label="Loading devices" /></div></div>}
       {(data ?? []).map(s => (
-        <div key={s.id} className="setting-row">
+        <div key={s.id} className={`setting-row${renaming === s.id ? ' is-open' : ''}`}>
           <div className="setting-row__line">
             <Monitor size={18} aria-hidden="true" className="sessions__icon" />
             <div className="setting-row__text">
@@ -81,10 +84,20 @@ export default function SessionsSection() {
                 {s.ip ? ` · ${s.ip.replace(/^::ffff:/, '')}` : ''}{s.remember ? ' · remembered' : ''}
               </span>
             </div>
-            {!s.current && (
+            {renaming !== s.id && (
+              <button type="button" className="setting-row__action" onClick={() => setRenaming(s.id)}>Rename</button>
+            )}
+            {!s.current && renaming !== s.id && (
               <button type="button" className="setting-row__action" onClick={() => void end(s)}>Sign out</button>
             )}
           </div>
+          {renaming === s.id && (
+            <div className="setting-row__editor">
+              <RenameForm url={`/api/auth/sessions/${s.id}`} current={s.label} placeholder="e.g. Office laptop"
+                onDone={async () => { await queryClient.invalidateQueries({ queryKey: ['sessions'] }); setRenaming(null); }}
+                onCancel={() => setRenaming(null)} />
+            </div>
+          )}
         </div>
       ))}
     </SettingGroup>

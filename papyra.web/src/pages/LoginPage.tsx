@@ -5,7 +5,14 @@ import { ArrowLeft, Fingerprint } from 'lucide-react';
 import { assertionToJson, isWebAuthnAvailable, toRequestOptions, webAuthnErrorMessage } from '../lib/webauthn';
 import CodeField from '../components/CodeField';
 import { requestEmailCode } from '../lib/emailCode';
+import { SsoIcon } from '../components/SsoIcon';
 import './AuthForm.css';
+
+/** What /api/auth/providers says to show (see SsoSettings). */
+interface SsoOptions {
+  display: 'buttons' | 'icons';
+  providers: { id: string; name: string; kind: string; icon: string | null; iconData: string | null; hoverText: string }[];
+}
 
 export default function LoginPage() {
   const [username, setUsername] = useState('');
@@ -30,7 +37,7 @@ export default function LoginPage() {
   });
   const [busy, setBusy] = useState(false);
   // Whether an SSO button belongs on this screen (server tells us if OIDC is on).
-  const [sso, setSso] = useState<{ enabled: boolean; name: string } | null>(null);
+  const [sso, setSso] = useState<SsoOptions | null>(null);
 
   // Forgot-password panel, inline rather than a separate route: it is two fields
   // and one request, and a dead-end page for someone already locked out is worse.
@@ -119,7 +126,7 @@ export default function LoginPage() {
   useEffect(() => {
     fetch('/api/auth/providers')
       .then(r => (r.ok ? r.json() : null))
-      .then(d => { if (d) setSso({ enabled: !!d.sso, name: d.ssoName ?? 'SSO' }); })
+      .then(d => { if (d?.sso) setSso({ display: d.display === 'icons' ? 'icons' : 'buttons', providers: d.providers ?? [] }); })
       .catch(() => { /* SSO simply stays hidden */ });
   }, []);
 
@@ -265,7 +272,7 @@ export default function LoginPage() {
           </div>
         )}
 
-        {(canPasskey || sso?.enabled) && <div className="auth__divider"><span>or</span></div>}
+        {(canPasskey || sso) && <div className="auth__divider"><span>or</span></div>}
 
         {canPasskey && (
           <button type="button" className="auth__sso auth__passkey" disabled={busy} onClick={() => void passkeySignIn()}>
@@ -273,16 +280,21 @@ export default function LoginPage() {
           </button>
         )}
 
-        {sso?.enabled && (
-          <>
-            <button
-              type="button"
-              className="auth__sso"
-              onClick={() => { window.location.href = '/api/auth/login/sso'; }}
-            >
-              Continue with {sso.name}
-            </button>
-          </>
+        {sso && sso.display === 'buttons' && sso.providers.map(p => (
+          <button key={p.id} type="button" className="auth__sso" title={p.hoverText}
+            onClick={() => { window.location.href = `/api/auth/login/sso/${p.id}`; }}>
+            <SsoIcon kind={p.kind} icon={p.icon} iconData={p.iconData} size={17} /> Continue with {p.name}
+          </button>
+        ))}
+        {sso && sso.display === 'icons' && (
+          <div className="auth__sso-icons">
+            {sso.providers.map(p => (
+              <button key={p.id} type="button" className="auth__sso-icon" title={p.hoverText} aria-label={p.hoverText}
+                onClick={() => { window.location.href = `/api/auth/login/sso/${p.id}`; }}>
+                <SsoIcon kind={p.kind} icon={p.icon} iconData={p.iconData} size={22} />
+              </button>
+            ))}
+          </div>
         )}
       </form>
     </div>

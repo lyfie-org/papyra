@@ -1,22 +1,26 @@
-import { useState } from 'react';
-import { Check, CheckCircle2, Copy, XCircle } from 'lucide-react';
+import { useRef, useState } from 'react';
+import { Check, CheckCircle2, Copy, Plus, Upload, XCircle } from 'lucide-react';
 import SettingRow, { SettingGroup } from './SettingRow';
 import LoadingBar from './LoadingBar';
-import { useOidcConfig, useSaveOidcConfig } from '../hooks/useInstanceConfig';
+import {
+  useDeleteSsoProvider, useOidcConfig, useSaveSsoDisplay, useSaveSsoProvider,
+  type SsoKind, type SsoProvider,
+} from '../hooks/useInstanceConfig';
+import { useConfirm } from '../lib/confirmContext';
 import { MASKED_SECRET } from '../lib/autofill';
+import { ICON_CHOICES, KIND_ICON, iconLabel } from '../lib/ssoIcons';
+import { SsoIcon } from './SsoIcon';
 import './SsoGuide.css';
 
-type ProviderId = 'authentik' | 'keycloak' | 'google' | 'entra' | 'other';
-
-interface Provider {
-  id: ProviderId;
+interface Kind {
+  id: SsoKind;
   name: string;
-  /** Where to click, in order, with the values to paste marked by `{redirect}`. */
+  /** Where to click, in order. */
   steps: string[];
   issuerHint: string;
 }
 
-const PROVIDERS: Provider[] = [
+const KINDS: Kind[] = [
   {
     id: 'authentik', name: 'Authentik',
     steps: [
@@ -75,10 +79,26 @@ const PROVIDERS: Provider[] = [
  */
 const ACCOUNT_RULES = [
   'Existing accounts only — SSO never creates one. Add people under Administration first.',
-  'First sign-in matches the provider’s email to the Papyra account’s email, then remembers the provider’s user id (sub).',
+  'First sign-in through a provider matches its email to the Papyra account’s email, then remembers that provider’s user id (sub).',
   'No roles or groups needed: admin rights stay in Papyra.',
   'Keep sub stable, and don’t let people change their own email in the provider.',
 ];
+
+const MAX_ICON_BYTES = 64 * 1024;
+
+/**
+ * The id the server will give a new provider — same rule as SsoProviders.NewId,
+ * so the redirect URI can be shown before the first save.
+ */
+function predictId(name: string, taken: string[]): string {
+  const used = new Set([...taken, 'oidc']);
+  let slug = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '');
+  if (slug.length > 24) slug = slug.slice(0, 24).replace(/^-+|-+$/g, '');
+  if (!slug) slug = 'sso';
+  let candidate = slug;
+  for (let n = 2; used.has(candidate); n++) candidate = `${slug}-${n}`;
+  return candidate;
+}
 
 function CopyValue({ label, value }: { label: string; value: string }) {
   const [copied, setCopied] = useState(false);
@@ -95,29 +115,37 @@ function CopyValue({ label, value }: { label: string; value: string }) {
 }
 
 /**
- * Settings → SSO as a short guide, the way GitHub walks you through an OAuth
- * app: pick your provider, do three things there (with the values to paste
- * right beside them), paste three things back, test, turn on.
+ * One provider's setup, the way GitHub walks you through an OAuth app: pick the
+ * provider, do a few things there (with the values to paste right beside
+ * them), paste three things back, choose how it looks, test, turn on.
  */
-export function SsoGuide({ onDone }: { onDone?: () => void }) {
-  const { data, isLoading, isError } = useOidcConfig();
-  const save = useSaveOidcConfig();
-
-  const [providerEdit, setProvider] = useState<ProviderId | null>(null);
-  const [authorityEdit, setAuthority] = useState<string | null>(null);
-  const [clientIdEdit, setClientId] = useState<string | null>(null);
-  const [displayNameEdit, setDisplayName] = useState<string | null>(null);
+export function SsoGuide({ provider, taken, redirectUriPrefix, onDone }: {
+  /** Editing this one; absent = adding a new provider. */
+  provider?: SsoProvider;
+  /** Ids already in use, to predict a new one's redirect URI. */
+  taken: string[];
+  redirectUriPrefix: string;
+  onDone: () => void;
+}) {
+  const save = useSaveSsoProvider();
+  const [kind, setKind] = useState<SsoKind>(provider?.kind ?? 'authentik');
+  const [authority, setAuthority] = useState(provider?.authority ?? '');
+  const [clientId, setClientId] = useState(provider?.clientId ?? '');
   const [secret, setSecret] = useState('');
+  const [nameEdit, setName] = useState<string | null>(provider ? provider.displayName : null);
+  const [hoverText, setHoverText] = useState(provider?.hoverText ?? '');
+  const [icon, setIcon] = useState<string | null>(provider?.icon ?? null);
+  const [iconData, setIconData] = useState<string | null>(provider?.iconData ?? null);
+  const [iconError, setIconError] = useState<string | null>(null);
   const [test, setTest] = useState<null | { ok: boolean; error?: string; issuer?: string }>(null);
   const [testing, setTesting] = useState(false);
-  const [saved, setSaved] = useState<string | null>(null);
+  const fileRef = useRef<HTMLInputElement | null>(null);
 
-  const authority = authorityEdit ?? data?.authority ?? '';
-  const clientId = clientIdEdit ?? data?.clientId ?? '';
-  const provider = PROVIDERS.find(p => p.id === (providerEdit ?? guess(authority))) ?? PROVIDERS[0];
-  const displayName = displayNameEdit ?? (data?.displayName || (provider.id === 'other' ? '' : provider.name));
-  const hasSecret = !!data?.hasClientSecret || secret.trim() !== '';
-  const complete = authority.trim() !== '' && clientId.trim() !== '' && hasSecret;
+  const k = KINDS.find(x => x.id === kind) ?? KINDS[0];
+  const name = nameEdit ?? (kind === 'other' ? '' : k.name);
+  const redirectUri = provider?.redirectUri ?? `${redirectUriPrefix}${predictId(name, taken)}`;
+  const hasSecret = !!provider?.hasClientSecret || secret.trim() !== '';
+  const complete = name.trim() !== '' && authority.trim() !== '' && clientId.trim() !== '' && hasSecret;
 
   async function runTest() {
     setTesting(true);
@@ -134,31 +162,39 @@ export function SsoGuide({ onDone }: { onDone?: () => void }) {
     }
   }
 
-  function store(enabled: boolean) {
-    setSaved(null);
-    save.mutate(
-      { enabled, authority: authority.trim(), clientId: clientId.trim(), displayName: displayName.trim(), clientSecret: secret.trim() === '' ? undefined : secret.trim() },
-      { onSuccess: () => { setSecret(''); setSaved(enabled ? 'On — the sign-in page shows the button.' : 'Saved. SSO is off.'); onDone?.(); } },
-    );
+  function pickFile(file: File | undefined) {
+    setIconError(null);
+    if (!file) return;
+    if (!/^image\/(png|jpeg|webp|gif|svg\+xml)$/.test(file.type)) { setIconError('Use a PNG, JPEG, WebP, GIF or SVG.'); return; }
+    if (file.size > MAX_ICON_BYTES) { setIconError('Keep it under 64 KB.'); return; }
+    const reader = new FileReader();
+    reader.onload = () => { setIconData(String(reader.result)); setIcon(null); };
+    reader.readAsDataURL(file);
   }
 
-  if (isLoading) return <LoadingBar label="Loading settings" />;
-  if (isError || !data) return <p className="settings__error">Couldn’t load the SSO settings.</p>;
+  function store(enabled: boolean) {
+    save.mutate({
+      id: provider?.id,
+      provider: {
+        kind, displayName: name.trim(), authority: authority.trim(), clientId: clientId.trim(), enabled,
+        clientSecret: secret.trim() === '' ? undefined : secret.trim(),
+        icon, iconData, hoverText: hoverText.trim() || null,
+      },
+    }, { onSuccess: onDone });
+  }
+
+  const chosen = iconData ? 'upload' : icon ?? 'default';
 
   return (
     <div className="sso-guide">
-      {data.ready && data.enabled && (
-        <p className="settings__msg"><CheckCircle2 size={15} /> SSO is on: “Continue with {data.displayName || 'SSO'}”.</p>
-      )}
-
       <ol className="sso-guide__steps">
         <li>
           <h3 className="sso-guide__step-title">Your provider</h3>
           <div className="settings__segment" role="radiogroup" aria-label="Identity provider">
-            {PROVIDERS.map(p => (
-              <button key={p.id} type="button" role="radio" aria-checked={p.id === provider.id}
-                className={`settings__segment-btn${p.id === provider.id ? ' is-active' : ''}`}
-                onClick={() => setProvider(p.id)}>
+            {KINDS.map(p => (
+              <button key={p.id} type="button" role="radio" aria-checked={p.id === kind}
+                className={`settings__segment-btn${p.id === kind ? ' is-active' : ''}`}
+                onClick={() => { setKind(p.id); setTest(null); }}>
                 {p.name}
               </button>
             ))}
@@ -166,11 +202,12 @@ export function SsoGuide({ onDone }: { onDone?: () => void }) {
         </li>
 
         <li>
-          <h3 className="sso-guide__step-title">In {provider.id === 'other' ? 'your provider' : provider.name}</h3>
+          <h3 className="sso-guide__step-title">In {kind === 'other' ? 'your provider' : k.name}</h3>
           <ol className="sso-guide__howto">
-            {provider.steps.map(step => <li key={step}>{step}</li>)}
+            {k.steps.map(step => <li key={step}>{step}</li>)}
           </ol>
-          <CopyValue label="Redirect URI" value={data.redirectUri} />
+          <CopyValue label="Redirect URI" value={redirectUri} />
+          {!provider && <p className="settings__hint">It ends with this provider’s name — rename it below first if you want a different one.</p>}
         </li>
 
         <li>
@@ -184,43 +221,80 @@ export function SsoGuide({ onDone }: { onDone?: () => void }) {
           <h3 className="sso-guide__step-title">Paste what it gives you</h3>
           <div className="settings__form">
             <label className="settings__field">Issuer URL
-              <input type="url" value={authority} placeholder={provider.issuerHint}
+              <input type="url" value={authority} placeholder={k.issuerHint}
                 onChange={e => { setAuthority(e.target.value); setTest(null); }} />
             </label>
             <label className="settings__field">Client ID
               <input type="text" value={clientId} onChange={e => setClientId(e.target.value)} />
             </label>
             <label className="settings__field">Client secret
-              <input {...MASKED_SECRET} value={secret} placeholder={data.hasClientSecret ? 'Saved — leave blank to keep' : ''}
+              <input {...MASKED_SECRET} value={secret} placeholder={provider?.hasClientSecret ? 'Saved — leave blank to keep' : ''}
                 onChange={e => setSecret(e.target.value)} />
             </label>
           </div>
         </li>
 
         <li>
-          <h3 className="sso-guide__step-title">Test and turn on</h3>
+          <h3 className="sso-guide__step-title">How it looks on the sign-in page</h3>
           <div className="settings__form">
-            <label className="settings__field">Button text
+            <label className="settings__field">Name
               <span className="sso-guide__button-preview">
-                Continue with <input type="text" value={displayName} placeholder="SSO" onChange={e => setDisplayName(e.target.value)} />
+                Continue with <input type="text" value={name} maxLength={40} placeholder="SSO" onChange={e => setName(e.target.value)} />
               </span>
             </label>
+            <label className="settings__field">Hover text
+              <input type="text" value={hoverText} maxLength={80} placeholder={`Continue with ${name || 'SSO'}`}
+                onChange={e => setHoverText(e.target.value)} />
+            </label>
+            <div className="settings__field" role="radiogroup" aria-label="Icon">
+              Icon
+              <div className="sso-guide__icons">
+                <button type="button" role="radio" aria-checked={chosen === 'default'} title={`Default (${iconLabel(KIND_ICON[kind])})`}
+                  className={`sso-guide__icon${chosen === 'default' ? ' is-active' : ''}`}
+                  onClick={() => { setIcon(null); setIconData(null); }}>
+                  <SsoIcon kind={kind} size={20} />
+                  <span className="sso-guide__icon-note">Default</span>
+                </button>
+                {ICON_CHOICES.map(key => (
+                  <button key={key} type="button" role="radio" aria-checked={chosen === key} title={iconLabel(key)}
+                    aria-label={iconLabel(key)}
+                    className={`sso-guide__icon${chosen === key ? ' is-active' : ''}`}
+                    onClick={() => { setIcon(key); setIconData(null); }}>
+                    <SsoIcon kind="other" icon={key} size={20} />
+                  </button>
+                ))}
+                <button type="button" role="radio" aria-checked={chosen === 'upload'} title="Upload your own"
+                  className={`sso-guide__icon${chosen === 'upload' ? ' is-active' : ''}`}
+                  onClick={() => fileRef.current?.click()}>
+                  {iconData ? <SsoIcon kind={kind} iconData={iconData} size={20} /> : <Upload size={18} aria-hidden="true" />}
+                  <span className="sso-guide__icon-note">Upload</span>
+                </button>
+                <input ref={fileRef} type="file" hidden accept="image/png,image/jpeg,image/webp,image/gif,image/svg+xml"
+                  onChange={e => { pickFile(e.target.files?.[0]); e.target.value = ''; }} />
+              </div>
+              {iconError && <span className="settings__error" role="alert">{iconError}</span>}
+            </div>
+          </div>
+        </li>
+
+        <li>
+          <h3 className="sso-guide__step-title">Test and turn on</h3>
+          <div className="settings__form">
             <div className="settings__form-actions">
               <button type="button" className="settings__btn settings__btn--quiet" disabled={!authority.trim() || testing} onClick={() => void runTest()}>
                 {testing ? 'Testing…' : 'Test connection'}
               </button>
               <button type="button" className="settings__btn" disabled={!complete || save.isPending} onClick={() => store(true)}>
-                {save.isPending ? 'Saving…' : data.enabled ? 'Save' : 'Turn on SSO'}
+                {save.isPending ? 'Saving…' : provider?.enabled ? 'Save' : 'Turn on'}
               </button>
-              {data.enabled && (
-                <button type="button" className="settings__btn settings__btn--quiet" disabled={save.isPending} onClick={() => store(false)}>Turn off</button>
-              )}
-              {onDone && <button type="button" className="settings__btn settings__btn--quiet" onClick={onDone}>Cancel</button>}
+              <button type="button" className="settings__btn settings__btn--quiet" disabled={!name.trim() || save.isPending} onClick={() => store(false)}>
+                {provider?.enabled ? 'Turn off' : 'Save, keep off'}
+              </button>
+              <button type="button" className="settings__btn settings__btn--quiet" onClick={onDone}>Cancel</button>
             </div>
             {test && (test.ok
               ? <p className="settings__msg"><CheckCircle2 size={15} /> Found {test.issuer}</p>
               : <p className="settings__error"><XCircle size={15} /> {test.error}</p>)}
-            {saved && <p className="settings__msg"><CheckCircle2 size={15} /> {saved}</p>}
             {save.isError && <p className="settings__error">{(save.error as Error).message}</p>}
           </div>
         </li>
@@ -229,45 +303,90 @@ export function SsoGuide({ onDone }: { onDone?: () => void }) {
   );
 }
 
-// Pick the tab that matches a saved issuer, so reopening the page shows the right steps.
-function guess(authority: string): ProviderId {
-  const a = authority.toLowerCase();
-  if (a.includes('/application/o/')) return 'authentik';
-  if (a.includes('/realms/')) return 'keycloak';
-  if (a.includes('accounts.google.com')) return 'google';
-  if (a.includes('login.microsoftonline.com')) return 'entra';
-  return authority ? 'other' : 'authentik';
-}
-
 /**
- * Settings → SSO. Configured: what's set, and Edit. Not yet: one button that
- * opens the guide.
+ * Settings → SSO. The providers people can sign in with (any number), how the
+ * sign-in page shows them, and a guide to add another.
  */
 export default function SsoSettings() {
   const { data, isLoading, isError } = useOidcConfig();
-  const [editing, setEditing] = useState(false);
+  const saveDisplay = useSaveSsoDisplay();
+  const remove = useDeleteSsoProvider();
+  const confirm = useConfirm();
+  const [editing, setEditing] = useState<string | 'new' | null>(null);
+
   if (isLoading) return <LoadingBar label="Loading settings" />;
   if (isError || !data) return <p className="settings__error">Couldn’t load the SSO settings.</p>;
-  if (editing) return <SsoGuide onDone={() => setEditing(false)} />;
 
-  const configured = !!(data.authority || data.clientId);
-  if (!configured) {
+  const taken = data.providers.map(p => p.id);
+  if (editing) {
     return (
-      <SettingGroup title="Single sign-on" id="oidc"
-        footer={<button type="button" className="settings__btn" onClick={() => setEditing(true)}>Set up single sign-on</button>}>
-        <SettingRow label="Status" value={null} empty="Not set up" hint="Authentik, Keycloak, Google, Microsoft Entra…" />
-      </SettingGroup>
+      <SsoGuide
+        key={editing}
+        provider={editing === 'new' ? undefined : data.providers.find(p => p.id === editing)}
+        taken={taken}
+        redirectUriPrefix={data.redirectUriPrefix}
+        onDone={() => setEditing(null)}
+      />
     );
   }
+
+  async function drop(p: SsoProvider) {
+    if (!(await confirm({
+      title: `Remove ${p.displayName}?`,
+      body: 'Its button leaves the sign-in page. People keep their accounts and can still sign in any other way; adding it back links them again by email.',
+      confirmLabel: 'Remove',
+      destructive: true,
+    }))) return;
+    remove.mutate(p.id);
+  }
+
   return (
-    <SettingGroup title="Single sign-on" id="oidc"
-      footer={<button type="button" className="settings__btn settings__btn--quiet" onClick={() => setEditing(true)}>Edit</button>}>
-      <SettingRow label="Status" value={data.enabled && data.ready ? 'On' : 'Off'} />
-      <SettingRow label="Sign-in button" value={`Continue with ${data.displayName || 'SSO'}`} />
-      <SettingRow label="Issuer" value={data.authority} />
-      <SettingRow label="Client ID" value={data.clientId} hint={data.hasClientSecret ? 'Client secret saved' : 'No client secret'} />
-      <SettingRow label="Redirect URI" value={data.redirectUri} />
-      <SettingRow label="Accounts" value="Existing only" hint="Linked by email on first sign-in, then by the provider’s user id (sub)" />
-    </SettingGroup>
+    <>
+      <SettingGroup title="Single sign-on" id="oidc"
+        footer={<button type="button" className="settings__btn settings__btn--quiet" onClick={() => setEditing('new')}>
+          <Plus size={15} /> Add a provider
+        </button>}>
+        {data.providers.length === 0 && (
+          <SettingRow label="Providers" value={null} empty="None yet" hint="Authentik, Keycloak, Google, Microsoft Entra… — add as many as you like." />
+        )}
+        {data.providers.map(p => (
+          <div key={p.id} className="setting-row"><div className="setting-row__line">
+            <span className="sso-row__icon"><SsoIcon kind={p.kind} icon={p.icon} iconData={p.iconData} size={18} /></span>
+            <div className="setting-row__text">
+              <span className="setting-row__value">
+                {p.displayName} · {p.ready ? 'On' : p.enabled ? 'Incomplete' : 'Off'}
+              </span>
+              <span className="setting-row__hint sso-row__uri">{p.redirectUri}</span>
+            </div>
+            <button type="button" className="setting-row__action" onClick={() => setEditing(p.id)}>Edit</button>
+            <button type="button" className="setting-row__action" onClick={() => void drop(p)}>Remove</button>
+          </div></div>
+        ))}
+        {data.providers.length > 0 && (
+          <SettingRow label="Accounts" value="Existing only" hint="Linked by email on first sign-in, then by each provider’s user id (sub)" />
+        )}
+      </SettingGroup>
+
+      {data.providers.length > 0 && (
+        <SettingGroup title="On the sign-in page" id="oidc-display">
+          <div className="setting-row"><div className="setting-row__line">
+            <div className="setting-row__text">
+              <span className="setting-row__value">{data.display === 'icons' ? 'A row of icons' : 'A button for each'}</span>
+              <span className="setting-row__hint">Icons show their hover text on hover.</span>
+            </div>
+            <div className="settings__segment" role="radiogroup" aria-label="Show providers as">
+              {(['buttons', 'icons'] as const).map(d => (
+                <button key={d} type="button" role="radio" aria-checked={data.display === d}
+                  className={`settings__segment-btn${data.display === d ? ' is-active' : ''}`}
+                  disabled={saveDisplay.isPending}
+                  onClick={() => saveDisplay.mutate(d)}>
+                  {d === 'buttons' ? 'Buttons' : 'Icons'}
+                </button>
+              ))}
+            </div>
+          </div></div>
+        </SettingGroup>
+      )}
+    </>
   );
 }

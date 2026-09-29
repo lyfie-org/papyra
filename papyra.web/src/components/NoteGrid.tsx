@@ -6,6 +6,7 @@ import { useSelection } from '../hooks/useSelection';
 import NoteCard, { type CardVariant } from './NoteCard';
 import SelectTick from './SelectTick';
 import BulkBar from './BulkBar';
+import { useRevealMore } from '../hooks/useRevealMore';
 import './NoteGrid.css';
 
 // Responsive column counts keyed by max viewport width (px). ~250px min col.
@@ -90,13 +91,16 @@ function MasonrySection({ notes, variant, conflictsByParent, onResolveConflict, 
   selectable: boolean;
   selection: Selection;
 }) {
+  // Mount a screenful or two and reveal more on scroll (see useRevealMore).
+  const { shown, sentinelRef } = useRevealMore(notes.length, 4);
   return (
+    <>
     <Masonry
       breakpointCols={BREAKPOINTS}
       className="note-grid"
       columnClassName="note-grid__col"
     >
-      {notes.map(note => (
+      {notes.slice(0, shown).map(note => (
         <Cell
           key={note.id}
           note={note}
@@ -110,6 +114,8 @@ function MasonrySection({ notes, variant, conflictsByParent, onResolveConflict, 
         />
       ))}
     </Masonry>
+    {shown < notes.length && <div ref={sentinelRef} className="note-grid__more" aria-hidden="true" />}
+    </>
   );
 }
 

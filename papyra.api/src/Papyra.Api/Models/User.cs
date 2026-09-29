@@ -175,3 +175,17 @@ public class UserAuthenticator
     public DateTime CreatedUtc { get; set; }
     public DateTime? LastUsedUtc { get; set; }
 }
+
+// A sign-in identity from an SSO provider, tied to a Papyra account. One account
+// can carry several (Authentik and Google, say); within a provider the subject
+// (`sub`) is the durable key — emails change, `sub` doesn't.
+public class ExternalLogin
+{
+    public int Id { get; set; }
+    public int UserId { get; set; }
+    /// <summary>The provider's id in Settings → SSO ("oidc" for the original single provider).</summary>
+    public string Provider { get; set; } = string.Empty;
+    /// <summary>The IdP's `sub` claim.</summary>
+    public string Subject { get; set; } = string.Empty;
+    public DateTime CreatedUtc { get; set; }
+}

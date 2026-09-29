@@ -165,6 +165,31 @@
 .auth__passkey:disabled { opacity: 0.6; cursor: default; }
 /* Passkey and SSO stacked under one "or": keep them apart. */
 .auth__passkey + .auth__sso { margin-top: var(--space-2); }
+.auth__sso + .auth__sso { margin-top: var(--space-2); }
+.auth__sso { display: flex; align-items: center; justify-content: center; gap: 0.5rem; }
+
+/* SSO as a row of round icons (Settings → SSO → On the sign-in page). */
+.auth__sso-icons {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--space-3);
+  margin-top: var(--space-2);
+}
+.auth__sso-icon {
+  display: inline-grid;
+  place-items: center;
+  width: 2.75rem;
+  height: 2.75rem;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--text-h);
+  cursor: pointer;
+  transition: border-color var(--dur-fast) var(--ease);
+}
+.auth__sso-icon:hover { border-color: var(--border-hover); }
+.auth__sso-icon:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
 /* "Remember this device" — a plain checkbox under the password. */
 .auth__remember {

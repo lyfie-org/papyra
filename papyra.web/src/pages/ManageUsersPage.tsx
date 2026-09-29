@@ -3,7 +3,7 @@ import { createPortal } from 'react-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import {
   UserPlus, KeyRound, Link2, Trash2, Copy, ShieldAlert, MoreHorizontal, Ban, CircleCheck, Clock,
-  RotateCcw, Smartphone,
+  RotateCcw, Smartphone, Pencil,
 } from 'lucide-react';
 import EmptyState from '../components/EmptyState';
 import Avatar from '../components/Avatar';
@@ -29,7 +29,10 @@ export interface ManagedUser {
   disabledUtc: string | null;
   disabledReason: string | null;
   lastSignInUtc: string | null;
+  /** Linked to at least one SSO provider. */
   sso: boolean;
+  /** False for an account that only ever signs in through SSO. */
+  hasPassword?: boolean;
   totpEnabled?: boolean;
   deletionScheduledUtc: string | null;
 }
@@ -69,6 +72,7 @@ export default function UsersPanel() {
   const [adding, setAdding] = useState(false);
   const [credentials, setCredentials] = useState<Credentials | null>(null);
   const [disabling, setDisabling] = useState<ManagedUser | null>(null);
+  const [editing, setEditing] = useState<ManagedUser | null>(null);
 
   const { data: users, isLoading, isError } = useQuery<ManagedUser[]>({
     queryKey: ['users'],
@@ -241,6 +245,7 @@ export default function UsersPanel() {
                   onResetBoth={() => void resetPassword(u, true)}
                   onResetTotp={() => void resetAuthenticator(u)}
                   onLink={() => void recoveryLink(u)}
+                  onEdit={() => setEditing(u)}
                   onDisable={() => setDisabling(u)}
                   onEnable={() => void enable(u)}
                   onDelete={() => void remove(u)}
@@ -267,6 +272,14 @@ export default function UsersPanel() {
             setDisabling(null);
             await refresh();
           }}
+        />
+      )}
+
+      {editing && (
+        <EditUserDialog
+          target={editing}
+          onClose={() => setEditing(null)}
+          onDone={async () => { toast(`Saved ${editing.username}’s details.`); setEditing(null); await refresh(); }}
         />
       )}
 
@@ -300,9 +313,9 @@ function PersonStatus({ user }: { user: ManagedUser }) {
 
 // A row's actions, behind one "…" — five inline links per row made the list
 // read as a wall of underlines.
-function PersonMenu({ user, isMe, lastAdmin, onReset, onResetBoth, onResetTotp, onLink, onDisable, onEnable, onDelete }: {
+function PersonMenu({ user, isMe, lastAdmin, onEdit, onReset, onResetBoth, onResetTotp, onLink, onDisable, onEnable, onDelete }: {
   user: ManagedUser; isMe: boolean; lastAdmin: boolean;
-  onReset: () => void; onResetBoth: () => void; onResetTotp: () => void;
+  onEdit: () => void; onReset: () => void; onResetBoth: () => void; onResetTotp: () => void;
   onLink: () => void; onDisable: () => void; onEnable: () => void; onDelete: () => void;
 }) {
   const [open, setOpen] = useState(false);
@@ -367,11 +380,16 @@ function PersonMenu({ user, isMe, lastAdmin, onReset, onResetBoth, onResetTotp, 
           role="menu"
           style={pos ? { top: pos.top, left: pos.left } : { visibility: 'hidden', top: 0, left: 0 }}
         >
-          <button type="button" role="menuitem" className="card-menu__item" onClick={run(onReset)} disabled={user.sso}
-            title={user.sso ? 'Signs in with single sign-on — no Papyra password' : undefined}>
+          {!isMe && (
+            <button type="button" role="menuitem" className="card-menu__item" onClick={run(onEdit)}>
+              <Pencil size={15} /> Edit details…
+            </button>
+          )}
+          <button type="button" role="menuitem" className="card-menu__item" onClick={run(onReset)} disabled={user.hasPassword === false}
+            title={user.hasPassword === false ? 'Signs in with single sign-on — no Papyra password' : undefined}>
             <KeyRound size={15} /> Reset password
           </button>
-          <button type="button" role="menuitem" className="card-menu__item" onClick={run(onLink)} disabled={user.sso}>
+          <button type="button" role="menuitem" className="card-menu__item" onClick={run(onLink)} disabled={user.hasPassword === false}>
             <Link2 size={15} /> Recovery link
           </button>
           {!isMe && (
@@ -380,7 +398,7 @@ function PersonMenu({ user, isMe, lastAdmin, onReset, onResetBoth, onResetTotp, 
                 title={user.totpEnabled ? undefined : 'No authenticator set up yet'}>
                 <Smartphone size={15} /> Reset authenticator
               </button>
-              <button type="button" role="menuitem" className="card-menu__item" onClick={run(onResetBoth)} disabled={user.sso}>
+              <button type="button" role="menuitem" className="card-menu__item" onClick={run(onResetBoth)} disabled={user.hasPassword === false}>
                 <RotateCcw size={15} /> Reset password + authenticator
               </button>
             </>
@@ -461,6 +479,65 @@ function DisableDialog({ target, onClose, onDone }: {
             <button type="button" className="users-dialog__btn" onClick={onClose}>Cancel</button>
             <button type="submit" className="users-dialog__btn users-dialog__btn--danger" disabled={busy}>
               <Ban size={15} aria-hidden="true" /> {busy ? 'Disabling…' : 'Disable account'}
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+// ── Edit details ──────────────────────────────────────────────────────────────
+// Name, username and email. The person is emailed (at the old address) what changed.
+function EditUserDialog({ target, onClose, onDone }: {
+  target: ManagedUser; onClose: () => void; onDone: () => void | Promise<void>;
+}) {
+  const [name, setName] = useState(target.name);
+  const [username, setUsername] = useState(target.username);
+  const [email, setEmail] = useState(target.email);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    setBusy(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/auth/users/${target.id}/profile`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name, username, email }),
+      });
+      if (!res.ok) { setError(await readError(res, 'Couldn’t save those details.')); return; }
+      await onDone();
+    } catch {
+      setError('Couldn’t reach the server.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  return (
+    <div className="users-dialog__scrim" role="presentation" onMouseDown={onClose}>
+      <div className="users-dialog" role="dialog" aria-modal="true" aria-labelledby="edit-user-title"
+        onMouseDown={e => e.stopPropagation()}>
+        <h2 id="edit-user-title" className="users-dialog__title">Edit {target.username}</h2>
+        <form className="users-dialog__form" onSubmit={submit}>
+          {error && <p className="users-dialog__error" role="alert">{error}</p>}
+          <label className="users-dialog__field">Name
+            <input value={name} maxLength={100} onChange={e => setName(e.target.value)} autoFocus {...NO_AUTOFILL} />
+          </label>
+          <label className="users-dialog__field">Username
+            <input value={username} maxLength={64} onChange={e => setUsername(e.target.value)} {...NO_AUTOFILL} />
+          </label>
+          <label className="users-dialog__field">Email
+            <input type="email" value={email} onChange={e => setEmail(e.target.value)} {...NO_AUTOFILL} />
+          </label>
+          {target.email && <p className="users-dialog__note">{target.email} gets an email listing what changed.</p>}
+          <div className="users-dialog__actions">
+            <button type="button" className="users-dialog__btn" onClick={onClose}>Cancel</button>
+            <button type="submit" className="users-dialog__btn users-dialog__btn--primary" disabled={busy || !username.trim()}>
+              {busy ? 'Saving…' : 'Save'}
             </button>
           </div>
         </form>
