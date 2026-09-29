@@ -1,0 +1,87 @@
+.setting-group {
+  margin: 0 0 var(--space-6, 2rem);
+}
+
+/* Rows sit in one bordered card, divided by hairlines. */
+.setting-group__rows {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  overflow: hidden;
+}
+
+.setting-group__footer {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin-top: var(--space-3);
+}
+
+.setting-row + .setting-row {
+  border-top: 1px solid var(--border);
+}
+
+.setting-row__line {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  min-height: 3.5rem;
+  padding: var(--space-3) var(--space-4, 1rem);
+}
+
+.setting-row__text {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  gap: 0.15rem;
+  min-width: 0;
+}
+
+.setting-row__label {
+  color: var(--text);
+  font-family: var(--sans);
+  font-size: 0.8rem;
+}
+
+.setting-row__value {
+  overflow: hidden;
+  color: var(--text-h);
+  font-family: var(--sans);
+  font-size: 0.95rem;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.setting-row__value.is-empty {
+  color: var(--text);
+  font-style: italic;
+}
+
+.setting-row__hint {
+  color: var(--text);
+  font-size: 0.8rem;
+}
+
+/* The row's one action: a quiet text button, not a form control. */
+.setting-row__action {
+  flex: none;
+  padding: 0.4rem 0.8rem;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-h);
+  font-family: var(--sans);
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: border-color var(--dur-fast) var(--ease), background-color var(--dur-fast) var(--ease);
+}
+.setting-row__action:hover:not(:disabled) { border-color: var(--border-hover); background: var(--bg); }
+.setting-row__action:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.setting-row__action:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.setting-row__editor {
+  padding: 0 var(--space-4, 1rem) var(--space-4, 1rem);
+}
+.setting-row.is-open { background: color-mix(in srgb, var(--bg) 40%, var(--surface)); }
+.setting-row__editor .settings__form { margin: 0; }
+.setting-row__editor--solo { padding-top: var(--space-4, 1rem); }

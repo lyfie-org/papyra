@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { Check, CheckCircle2, Copy, XCircle } from 'lucide-react';
+import SettingRow, { SettingGroup } from './SettingRow';
 import LoadingBar from './LoadingBar';
 import { useOidcConfig, useSaveOidcConfig } from '../hooks/useInstanceConfig';
 import { MASKED_SECRET } from '../lib/autofill';
@@ -86,7 +87,7 @@ function CopyValue({ label, value }: { label: string; value: string }) {
  * app: pick your provider, do three things there (with the values to paste
  * right beside them), paste three things back, test, turn on.
  */
-export default function SsoGuide() {
+export function SsoGuide({ onDone }: { onDone?: () => void }) {
   const { data, isLoading, isError } = useOidcConfig();
   const save = useSaveOidcConfig();
 
@@ -125,7 +126,7 @@ export default function SsoGuide() {
     setSaved(null);
     save.mutate(
       { enabled, authority: authority.trim(), clientId: clientId.trim(), displayName: displayName.trim(), clientSecret: secret.trim() === '' ? undefined : secret.trim() },
-      { onSuccess: () => { setSecret(''); setSaved(enabled ? 'On — the sign-in page shows the button.' : 'Saved. SSO is off.'); } },
+      { onSuccess: () => { setSecret(''); setSaved(enabled ? 'On — the sign-in page shows the button.' : 'Saved. SSO is off.'); onDone?.(); } },
     );
   }
 
@@ -195,6 +196,7 @@ export default function SsoGuide() {
               {data.enabled && (
                 <button type="button" className="settings__btn settings__btn--quiet" disabled={save.isPending} onClick={() => store(false)}>Turn off</button>
               )}
+              {onDone && <button type="button" className="settings__btn settings__btn--quiet" onClick={onDone}>Cancel</button>}
             </div>
             {test && (test.ok
               ? <p className="settings__msg"><CheckCircle2 size={15} /> Found {test.issuer}</p>
@@ -216,4 +218,36 @@ function guess(authority: string): ProviderId {
   if (a.includes('accounts.google.com')) return 'google';
   if (a.includes('login.microsoftonline.com')) return 'entra';
   return authority ? 'other' : 'authentik';
+}
+
+/**
+ * Settings → SSO. Configured: what's set, and Edit. Not yet: one button that
+ * opens the guide.
+ */
+export default function SsoSettings() {
+  const { data, isLoading, isError } = useOidcConfig();
+  const [editing, setEditing] = useState(false);
+  if (isLoading) return <LoadingBar label="Loading settings" />;
+  if (isError || !data) return <p className="settings__error">Couldn’t load the SSO settings.</p>;
+  if (editing) return <SsoGuide onDone={() => setEditing(false)} />;
+
+  const configured = !!(data.authority || data.clientId);
+  if (!configured) {
+    return (
+      <SettingGroup title="Single sign-on" id="oidc"
+        footer={<button type="button" className="settings__btn" onClick={() => setEditing(true)}>Set up single sign-on</button>}>
+        <SettingRow label="Status" value={null} empty="Not set up" hint="Authentik, Keycloak, Google, Microsoft Entra…" />
+      </SettingGroup>
+    );
+  }
+  return (
+    <SettingGroup title="Single sign-on" id="oidc"
+      footer={<button type="button" className="settings__btn settings__btn--quiet" onClick={() => setEditing(true)}>Edit</button>}>
+      <SettingRow label="Status" value={data.enabled && data.ready ? 'On' : 'Off'} />
+      <SettingRow label="Sign-in button" value={`Continue with ${data.displayName || 'SSO'}`} />
+      <SettingRow label="Issuer" value={data.authority} />
+      <SettingRow label="Client ID" value={data.clientId} hint={data.hasClientSecret ? 'Client secret saved' : 'No client secret'} />
+      <SettingRow label="Redirect URI" value={data.redirectUri} />
+    </SettingGroup>
+  );
 }

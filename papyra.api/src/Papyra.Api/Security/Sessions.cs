@@ -62,10 +62,15 @@ public static class Sessions
     {
         var sid = Convert.ToHexString(RandomNumberGenerator.GetBytes(32)).ToLowerInvariant();
         var now = DateTime.UtcNow;
+        var device = SignInNotices.EnsureDevice(http);
+        // One row per browser: signing in again here replaces its old session
+        // (a closed browser drops a session cookie, but not the row behind it).
+        db.UserSessions.RemoveRange(db.UserSessions.Where(s => s.UserId == user.Id && (s.DeviceHash == device || s.ExpiresUtc < now)));
         db.UserSessions.Add(new UserSession
         {
             UserId = user.Id,
             SessionHash = Hash(sid),
+            DeviceHash = device,
             Label = SignInNotices.Describe(http.Request.Headers.UserAgent.ToString()),
             LastIp = http.Connection.RemoteIpAddress?.ToString(),
             Method = method,
@@ -74,8 +79,6 @@ public static class Sessions
             LastSeenUtc = now,
             ExpiresUtc = now + (remember ? RememberFor : DefaultFor),
         });
-        // Expired rows go whenever anyone signs in; there is no need for a job.
-        db.UserSessions.RemoveRange(db.UserSessions.Where(s => s.UserId == user.Id && s.ExpiresUtc < now));
         await db.SaveChangesAsync(ct);
         return sid;
     }

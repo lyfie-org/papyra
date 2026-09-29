@@ -133,28 +133,51 @@ public sealed class TotpTests
     });
 
     [Fact]
-    public Task SettingsCanReplaceIt_WithThePassword_ButNotRemoveIt() => WithFreshAppAsync(async (_, client) =>
+    public Task SeveralAuthenticators_AnyCanAnswer_AndTheLastCantBeRemoved() => WithFreshAppAsync(async (_, client) =>
     {
         Assert.Equal(HttpStatusCode.OK, (await client.PostSetupAsync(new SetupRequest(
             Username: "admin", Name: null, Email: "a@b.c", Password: "hunter2!"))).StatusCode);
-        // Setup enrolled one; replace it with a new app.
-        Assert.True((await client.GetFromJsonAsync<JsonElement>("/api/auth/totp")).GetProperty("enabled").GetBoolean());
+        var list = await client.GetFromJsonAsync<JsonElement>("/api/auth/totp");
+        Assert.Single(list.GetProperty("authenticators").EnumerateArray());
 
+        // A second app needs the password AND a code from the first.
         var secret = (await (await client.PostAsync("/api/auth/totp/begin", null)).Content.ReadFromJsonAsync<JsonElement>())
             .GetProperty("secret").GetString()!;
         Assert.Equal(HttpStatusCode.Unauthorized,
-            (await client.PostAsJsonAsync("/api/auth/totp", new { secret, code = Now(secret), password = "wrong" })).StatusCode);
+            (await client.PostAsJsonAsync("/api/auth/totp", new { secret, code = Now(secret), password = "wrong", name = "Laptop" })).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest,
+            (await client.PostAsJsonAsync("/api/auth/totp", new { secret, code = Now(secret), password = "hunter2!", name = "Laptop" })).StatusCode);
         Assert.Equal(HttpStatusCode.OK,
-            (await client.PostAsJsonAsync("/api/auth/totp", new { secret, code = Now(secret), password = "hunter2!" })).StatusCode);
-        Assert.True((await client.GetFromJsonAsync<JsonElement>("/api/auth/totp")).GetProperty("enabled").GetBoolean());
+            (await client.PostAsJsonAsync("/api/auth/totp", new { secret, code = Now(secret), password = "hunter2!", name = "Laptop", confirmCode = TestAuth.TotpCode(client) })).StatusCode);
 
-        // Every account keeps one: there is no way to remove it, only replace it.
-        Assert.Equal(HttpStatusCode.NotFound,
-            (await client.PostAsJsonAsync("/api/auth/totp/remove", new { password = "hunter2!" })).StatusCode);
+        var both = (await client.GetFromJsonAsync<JsonElement>("/api/auth/totp")).GetProperty("authenticators").EnumerateArray().ToList();
+        Assert.Equal(2, both.Count);
+        Assert.Contains(both, a => a.GetProperty("name").GetString() == "Laptop");
+        var laptop = both.Single(a => a.GetProperty("name").GetString() == "Laptop").GetProperty("id").GetInt32();
+        var first = both.Single(a => a.GetProperty("name").GetString() != "Laptop").GetProperty("id").GetInt32();
+
+        // The new app's own code confirms removing the first; then it's the last one and stays.
+        Assert.Equal(HttpStatusCode.NoContent,
+            (await client.PostAsJsonAsync($"/api/auth/totp/{first}/remove", new { code = Now(secret, 1) })).StatusCode);
+        Assert.Equal(HttpStatusCode.BadRequest,
+            (await client.PostAsJsonAsync($"/api/auth/totp/{laptop}/remove", new { code = "000000" })).StatusCode);
+        Assert.Single((await client.GetFromJsonAsync<JsonElement>("/api/auth/totp")).GetProperty("authenticators").EnumerateArray());
 
         // And an admin always signs in with a code.
         Assert.Equal(HttpStatusCode.BadRequest,
             (await client.PutAsJsonAsync("/api/auth/totp/login", new { enabled = false })).StatusCode);
+    });
+
+    [Fact]
+    public Task SignedInDevices_OneRowPerBrowser() => WithFreshAppAsync(async (factory, admin) =>
+    {
+        Assert.Equal(HttpStatusCode.OK, (await admin.PostSetupAsync(new SetupRequest(
+            Username: "admin", Name: null, Email: "a@b.c", Password: "hunter2!"))).StatusCode);
+        // The same browser signing in again (say, after closing it) replaces its row.
+        await admin.PostAsync("/api/auth/logout", null);
+        Assert.Equal(HttpStatusCode.OK, (await admin.LoginAsync("admin", "hunter2!", remember: true)).StatusCode);
+        await admin.PostAsJsonAsync("/api/auth/login", new { username = "admin", password = "hunter2!" });
+        Assert.Single((await admin.GetFromJsonAsync<JsonElement>("/api/auth/sessions")).EnumerateArray());
     });
 
     [Fact]

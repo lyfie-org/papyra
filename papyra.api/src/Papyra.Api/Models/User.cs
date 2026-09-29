@@ -59,14 +59,8 @@ public class User
     public int VaultPinFailures { get; set; }
     public DateTime? VaultPinLockedUntilUtc { get; set; }
 
-    // ── Authenticator app (TOTP) ──────────────────────────────────────────────
-    // The first way to confirm a sensitive action (an emailed code is the second),
-    // and the only one on an instance with no outgoing mail. See Security/TotpService.
-    /// <summary>The shared Base32 secret, encrypted with the data-protection keys. Null = not set up.</summary>
-    public string? TotpSecret { get; set; }
-    /// <summary>The last time step a code was accepted for, so a code can't be replayed.</summary>
-    public long? TotpLastStep { get; set; }
-    public DateTime? TotpEnabledUtc { get; set; }
+    // ── Authenticator apps (TOTP) ─────────────────────────────────────────────
+    // Held in UserAuthenticator rows (one or more per account); see Security/TotpService.
     /// <summary>
     /// Ask for the authenticator code at sign-in (two-step sign-in). Always on for
     /// administrators whatever this says; people can switch it off for themselves.
@@ -132,6 +126,12 @@ public class UserSession
     /// <summary>"Chrome on Windows".</summary>
     public string Label { get; set; } = string.Empty;
     public string? LastIp { get; set; }
+    /// <summary>
+    /// The browser it belongs to (hash of the long-lived device cookie). A new
+    /// sign-in from the same browser replaces the old session, so the list shows
+    /// each browser once however often it signs in.
+    /// </summary>
+    public string? DeviceHash { get; set; }
     /// <summary>How it signed in: Password, Passkey, Single sign-on…</summary>
     public string Method { get; set; } = string.Empty;
     /// <summary>Signed in with "Remember this device": a long-lived cookie.</summary>
@@ -158,4 +158,20 @@ public class AuthToken
     public string Role { get; set; } = "User";
     public DateTime ExpiresUtc { get; set; }
     public DateTime? UsedUtc { get; set; }
+}
+
+// One authenticator app on an account. Its code confirms sensitive steps (and,
+// with two-step sign-in, signing in); any of the account's apps will do.
+public class UserAuthenticator
+{
+    public int Id { get; set; }
+    public int UserId { get; set; }
+    /// <summary>What the person called it: "Phone", "1Password".</summary>
+    public string Name { get; set; } = string.Empty;
+    /// <summary>The shared Base32 secret, encrypted with the data-protection keys.</summary>
+    public string Secret { get; set; } = string.Empty;
+    /// <summary>The last time step a code was accepted for, so a code can't be replayed.</summary>
+    public long? LastStep { get; set; }
+    public DateTime CreatedUtc { get; set; }
+    public DateTime? LastUsedUtc { get; set; }
 }

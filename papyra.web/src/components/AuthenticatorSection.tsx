@@ -1,13 +1,16 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { CheckCircle2 } from 'lucide-react';
+import { Plus } from 'lucide-react';
 import TotpQr from './TotpQr';
 import LoadingBar from './LoadingBar';
 import CodeField from './CodeField';
+import SettingRow, { SettingGroup } from './SettingRow';
 import { requestEmailCode } from '../lib/emailCode';
 import { useAuth } from '../hooks/useAuth';
+import { parseUtc } from '../lib/vault';
 
-interface TotpStatus { enabled: boolean; enabledUtc: string | null }
+interface Authenticator { id: number; name: string; createdUtc: string; lastUsedUtc: string | null }
+interface TotpStatus { enabled: boolean; authenticators: Authenticator[] }
 
 async function send(url: string, body: unknown, method = 'POST') {
   const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
@@ -16,10 +19,9 @@ async function send(url: string, body: unknown, method = 'POST') {
 }
 
 /**
- * Settings → Security → Two-step sign-in. One authenticator app per account (it
- * can be replaced, never removed — its code is what every sensitive step asks
- * for), and one switch: whether signing in asks for the code too. Always on for
- * administrators.
+ * Settings → Security → Two-step sign-in: the authenticator apps on the
+ * account (any of them answers a code; the last can't be removed) and whether
+ * signing in asks for a code too — always, for administrators.
  */
 export default function AuthenticatorSection() {
   const queryClient = useQueryClient();
@@ -32,27 +34,15 @@ export default function AuthenticatorSection() {
       return res.json() as Promise<TotpStatus>;
     },
   });
-  const [enrol, setEnrol] = useState<{ secret: string; uri: string } | null>(null);
-  const [code, setCode] = useState('');
-  const [password, setPassword] = useState('');
-  // Turning two-step sign-in off asks for a code first.
-  const [confirmOff, setConfirmOff] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [done, setDone] = useState<string | null>(null);
-  const [busy, setBusy] = useState(false);
+  const [adding, setAdding] = useState(false);
+  const [signInError, setSignInError] = useState<string | null>(null);
 
   const isAdmin = user?.role === 'Admin';
-  const hasPassword = user?.hasPassword !== false;
   const signInOn = !!user?.twoFactorLogin;
   const emailCode = user?.canEmailCode ? () => requestEmailCode('/api/auth/step-up/email') : undefined;
+  const list = status.data?.authenticators ?? [];
 
-  function reset() {
-    setEnrol(null); setConfirmOff(false); setCode(''); setPassword(''); setError(null);
-  }
-
-  async function refresh(message: string) {
-    reset();
-    setDone(message);
+  async function refresh() {
     await Promise.all([
       queryClient.invalidateQueries({ queryKey: ['totp'] }),
       queryClient.invalidateQueries({ queryKey: ['auth'] }),
@@ -60,98 +50,176 @@ export default function AuthenticatorSection() {
     ]);
   }
 
-  async function begin() {
-    reset();
-    setDone(null);
-    const res = await fetch('/api/auth/totp/begin', { method: 'POST' });
-    const data = await res.json().catch(() => null);
-    if (!res.ok || !data?.secret) { setError(data?.error ?? 'Couldn’t start setup.'); return; }
-    setEnrol({ secret: data.secret, uri: data.uri });
-  }
-
-  async function replace(e: React.FormEvent) {
-    e.preventDefault();
-    if (!enrol) return;
-    setBusy(true);
-    setError(null);
-    try {
-      const { res, data } = await send('/api/auth/totp', { secret: enrol.secret, code, password: hasPassword ? password : undefined });
-      if (!res.ok) { setError((data?.error as string) ?? 'That didn’t work.'); return; }
-      await refresh('New authenticator saved.');
-    } finally {
-      setBusy(false);
-    }
-  }
-
-  async function setSignIn(enabled: boolean, withCode?: string) {
-    setBusy(true);
-    setError(null);
-    try {
-      const { res, data } = await send('/api/auth/totp/login', { enabled, code: withCode }, 'PUT');
-      if (!res.ok) { setError((data?.error as string) ?? 'Couldn’t change that.'); setCode(''); return; }
-      await refresh(enabled ? 'Sign-in asks for a code.' : 'Sign-in no longer asks for a code.');
-    } finally {
-      setBusy(false);
-    }
+  async function setSignIn(enabled: boolean, code?: string): Promise<boolean> {
+    setSignInError(null);
+    const { res, data } = await send('/api/auth/totp/login', { enabled, code }, 'PUT');
+    if (!res.ok) { setSignInError((data?.error as string) ?? 'Couldn’t change that.'); return false; }
+    await refresh();
+    return true;
   }
 
   return (
-    <>
-      <h2 id="authenticator" className="settings__subhead">Two-step sign-in</h2>
-      {status.isLoading && <LoadingBar label="Loading" />}
-
-      {status.data?.enabled && !enrol && (
-        <p className="settings__msg">
-          <CheckCircle2 size={14} /> Authenticator app on{status.data.enabledUtc ? ` since ${new Date(status.data.enabledUtc).toLocaleDateString()}` : ''}.
-          <button type="button" className="settings__link" onClick={() => void begin()}>Replace</button>
-        </p>
+    <SettingGroup
+      title="Two-step sign-in"
+      id="authenticator"
+      footer={!adding && (
+        <button type="button" className="settings__btn settings__btn--quiet" onClick={() => setAdding(true)}>
+          <Plus size={15} /> Add authenticator
+        </button>
       )}
+    >
+      {status.isLoading && <div className="setting-row"><div className="setting-row__line"><LoadingBar label="Loading" /></div></div>}
 
-      {enrol && (
-        <form className="settings__form" onSubmit={replace}>
-          <TotpQr secret={enrol.secret} uri={enrol.uri} />
-          <CodeField value={code} onChange={c => { setCode(c); setError(null); }} label="Code from the new app" />
-          {hasPassword && (
-            <label className="settings__field">Your password
-              <input type="password" value={password} autoComplete="current-password" required
-                onChange={e => { setPassword(e.target.value); setError(null); }} />
-            </label>
-          )}
-          <div className="settings__form-actions">
-            <button type="submit" className="settings__btn" disabled={busy || code.length !== 6 || (hasPassword && !password)}>
-              {busy ? 'Checking…' : 'Save'}
-            </button>
-            <button type="button" className="settings__btn settings__btn--quiet" onClick={reset}>Cancel</button>
+      {list.map(a => (
+        <SettingRow
+          key={a.id}
+          label="Authenticator"
+          value={a.name}
+          hint={`Added ${parseUtc(a.createdUtc).toLocaleDateString()}${a.lastUsedUtc ? ` · last used ${parseUtc(a.lastUsedUtc).toLocaleDateString()}` : ''}`}
+          action="Remove"
+          actionDisabled={list.length === 1}
+        >
+          {close => <RemoveAuthenticator id={a.id} onEmail={emailCode} onDone={async () => { await refresh(); close(); }} onCancel={close} />}
+        </SettingRow>
+      ))}
+
+      {adding && (
+        <div className="setting-row is-open">
+          <div className="setting-row__editor setting-row__editor--solo">
+            <AddAuthenticator
+              hasOne={list.length > 0}
+              hasPassword={user?.hasPassword !== false}
+              onEmail={emailCode}
+              onDone={async () => { await refresh(); setAdding(false); }}
+              onCancel={() => setAdding(false)}
+            />
           </div>
-        </form>
+        </div>
       )}
 
-      {status.data?.enabled && !enrol && (
-        <label className="settings__field settings__field--inline">
-          <span>Ask for a code when I sign in{isAdmin && <span className="settings__hint"> · always on for admins</span>}</span>
-          <input
-            type="checkbox"
-            role="switch"
-            className="switch"
-            checked={signInOn}
-            disabled={isAdmin || busy || confirmOff}
-            onChange={e => { if (e.target.checked) void setSignIn(true); else { setDone(null); setConfirmOff(true); } }}
-          />
+      {status.data?.enabled && (
+        <SettingRow
+          label="Ask for a code when I sign in"
+          value={isAdmin ? 'Always on for administrators' : signInOn ? 'On' : 'Off'}
+          action={signInOn ? 'Turn off' : 'Turn on'}
+          actionDisabled={isAdmin}
+        >
+          {close => signInOn ? (
+            <TurnOff onEmail={emailCode} error={signInError}
+              onSubmit={async code => { if (await setSignIn(false, code)) close(); }} onCancel={close} />
+          ) : (
+            <form className="settings__form" onSubmit={async e => { e.preventDefault(); if (await setSignIn(true)) close(); }}>
+              <p className="settings__hint">Signing in will ask for a code from your authenticator.</p>
+              {signInError && <p className="settings__error" role="alert">{signInError}</p>}
+              <div className="settings__form-actions">
+                <button type="submit" className="settings__btn">Turn on</button>
+                <button type="button" className="settings__btn settings__btn--quiet" onClick={close}>Cancel</button>
+              </div>
+            </form>
+          )}
+        </SettingRow>
+      )}
+    </SettingGroup>
+  );
+}
+
+function TurnOff({ onEmail, error, onSubmit, onCancel }: {
+  onEmail?: () => Promise<string>; error: string | null; onSubmit: (code: string) => void; onCancel: () => void;
+}) {
+  const [code, setCode] = useState('');
+  return (
+    <form className="settings__form" onSubmit={e => { e.preventDefault(); onSubmit(code); }}>
+      <CodeField value={code} onChange={setCode} autoFocus onEmail={onEmail} />
+      {error && <p className="settings__error" role="alert">{error}</p>}
+      <div className="settings__form-actions">
+        <button type="submit" className="settings__btn" disabled={code.length !== 6}>Turn off</button>
+        <button type="button" className="settings__btn settings__btn--quiet" onClick={onCancel}>Cancel</button>
+      </div>
+    </form>
+  );
+}
+
+function RemoveAuthenticator({ id, onEmail, onDone, onCancel }: {
+  id: number; onEmail?: () => Promise<string>; onDone: () => void; onCancel: () => void;
+}) {
+  const [code, setCode] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+  return (
+    <form className="settings__form" onSubmit={async e => {
+      e.preventDefault();
+      setBusy(true);
+      const { res, data } = await send(`/api/auth/totp/${id}/remove`, { code });
+      setBusy(false);
+      if (res.ok) onDone(); else { setError((data?.error as string) ?? 'Couldn’t remove it.'); setCode(''); }
+    }}>
+      <CodeField value={code} onChange={setCode} autoFocus label="Code from any of your authenticators" onEmail={onEmail} />
+      {error && <p className="settings__error" role="alert">{error}</p>}
+      <div className="settings__form-actions">
+        <button type="submit" className="settings__btn" disabled={busy || code.length !== 6}>Remove</button>
+        <button type="button" className="settings__btn settings__btn--quiet" onClick={onCancel}>Cancel</button>
+      </div>
+    </form>
+  );
+}
+
+function AddAuthenticator({ hasOne, hasPassword, onEmail, onDone, onCancel }: {
+  hasOne: boolean; hasPassword: boolean; onEmail?: () => Promise<string>; onDone: () => void; onCancel: () => void;
+}) {
+  const [enrol, setEnrol] = useState<{ secret: string; uri: string } | null>(null);
+  const [name, setName] = useState('');
+  const [code, setCode] = useState('');
+  const [confirmCode, setConfirmCode] = useState('');
+  const [password, setPassword] = useState('');
+  const [error, setError] = useState<string | null>(null);
+  const [busy, setBusy] = useState(false);
+
+  // A fresh secret when the form opens.
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      const res = await fetch('/api/auth/totp/begin', { method: 'POST' });
+      const data = await res.json().catch(() => null);
+      if (cancelled) return;
+      if (!res.ok || !data?.secret) setError(data?.error ?? 'Couldn’t start setup.');
+      else setEnrol({ secret: data.secret, uri: data.uri });
+    })();
+    return () => { cancelled = true; };
+  }, []);
+
+  return (
+    <form className="settings__form" onSubmit={async e => {
+      e.preventDefault();
+      if (!enrol) return;
+      setBusy(true);
+      const { res, data } = await send('/api/auth/totp', {
+        secret: enrol.secret, code, name, password: hasPassword ? password : undefined, confirmCode: hasOne ? confirmCode : undefined,
+      });
+      setBusy(false);
+      if (res.ok) onDone(); else setError((data?.error as string) ?? 'That didn’t work.');
+    }}>
+      <label className="settings__field">Name
+        <input value={name} maxLength={60} placeholder="e.g. Phone, 1Password" autoFocus onChange={e => setName(e.target.value)} />
+      </label>
+      {enrol ? <TotpQr secret={enrol.secret} uri={enrol.uri} /> : <LoadingBar label="Preparing" />}
+      <CodeField value={code} onChange={c => { setCode(c); setError(null); }} label="Code from the new app" />
+      {hasOne && (
+        <CodeField value={confirmCode} onChange={c => { setConfirmCode(c); setError(null); }}
+          label="Code from an authenticator you already have" onEmail={onEmail} />
+      )}
+      {hasPassword && (
+        <label className="settings__field">Your password
+          <input type="password" value={password} autoComplete="current-password" onChange={e => { setPassword(e.target.value); setError(null); }} />
         </label>
       )}
-
-      {confirmOff && (
-        <form className="settings__form" onSubmit={e => { e.preventDefault(); void setSignIn(false, code); }}>
-          <CodeField value={code} onChange={c => { setCode(c); setError(null); }} autoFocus onEmail={emailCode} />
-          <div className="settings__form-actions">
-            <button type="submit" className="settings__btn" disabled={busy || code.length !== 6}>Turn off</button>
-            <button type="button" className="settings__btn settings__btn--quiet" onClick={reset}>Cancel</button>
-          </div>
-        </form>
-      )}
-
       {error && <p className="settings__error" role="alert">{error}</p>}
-      {done && <p className="settings__msg"><CheckCircle2 size={14} /> {done}</p>}
-    </>
+      <div className="settings__form-actions">
+        <button type="submit" className="settings__btn"
+          disabled={busy || !enrol || code.length !== 6 || (hasOne && confirmCode.length !== 6) || (hasPassword && !password)}>
+          {busy ? 'Checking…' : 'Add'}
+        </button>
+        <button type="button" className="settings__btn settings__btn--quiet" onClick={onCancel}>Cancel</button>
+      </div>
+    </form>
   );
 }

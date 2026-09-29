@@ -44,7 +44,6 @@ import KnowledgeHeatmap from '../components/KnowledgeHeatmap';
 import DayNotesOverlay from '../components/DayNotesOverlay';
 import Avatar from '../components/Avatar';
 import { bumpAvatarVersion, useAvatarVersion } from '../lib/avatarVersion';
-import { usernameRule } from '../lib/profileRules';
 import { useSettings, useUpdateSettings, RETENTION_OPTIONS } from '../hooks/useSettings';
 import { useImportStatus, importSummary, IMPORT_STATUS_KEY, type ImportStatus } from '../hooks/useImportStatus';
 import './SettingsPage.css';
@@ -54,12 +53,13 @@ import ExportDialog from '../components/ExportDialog';
 import DeleteAccountSection from '../components/DeleteAccountSection';
 import CodeField from '../components/CodeField';
 import { requestEmailCode } from '../lib/emailCode';
-import SsoGuide from '../components/SsoGuide';
+import SsoSettings from '../components/SsoGuide';
+import AccountDetails from '../components/AccountDetails';
+import SettingRow, { SettingGroup } from '../components/SettingRow';
 import SessionsSection from '../components/SessionsSection';
 import AuthenticatorSection from '../components/AuthenticatorSection';
 import { fetchWithProgress } from '../lib/progress';
 import { MASKED_SECRET, NO_AUTOFILL } from '../lib/autofill';
-import TimeZonePicker from '../components/TimeZonePicker';
 
 type Tab = 'profile' | 'appearance' | 'notifications' | 'security' | 'data' | 'keys' | 'sync'
   | 'users' | 'sso' | 'email' | 'ai' | 'jobs' | 'about';
@@ -233,15 +233,6 @@ function ProfileTab({ user }: { user: AuthUser | null }) {
   const queryClient = useQueryClient();
   const fileRef = useRef<HTMLInputElement | null>(null);
 
-  const [username, setUsername] = useState(user?.username ?? '');
-  const [name, setName] = useState(user?.name ?? '');
-  const [email, setEmail] = useState(user?.email ?? '');
-  // '' = follow the server's zone.
-  const [timeZone, setTimeZone] = useState(user?.timeZone ?? '');
-  const [savedMsg, setSavedMsg] = useState<string | null>(null);
-  const [saving, setSaving] = useState(false);
-  // A server refusal names the field it is about, so it is shown under that field.
-  const [fieldError, setFieldError] = useState<{ field: string; error: string } | null>(null);
   const [photoMsg, setPhotoMsg] = useState<string | null>(null);
   const avatarVersion = useAvatarVersion();
   // Whether there is a picture to remove. Probed rather than stored: the avatar
@@ -263,111 +254,9 @@ function ProfileTab({ user }: { user: AuthUser | null }) {
   // looking at what you wrote on a Tuesday should not move you anywhere.
   const [openDay, setOpenDay] = useState<string | null>(null);
 
-  const [cur, setCur] = useState('');
-  const [next, setNext] = useState('');
-  const [pwMsg, setPwMsg] = useState<string | null>(null);
 
   const noteCount = notes?.filter(n => !n.trashed).length ?? 0;
   const tagCount = new Set((notes ?? []).flatMap(n => n.tags ?? [])).size;
-
-  const usernameProblem = usernameRule(username.trim());
-  // Whether the name is free on this Papyra, asked while typing (debounced).
-  // Usernames are unique per installation, case-insensitively.
-  const [availability, setAvailability] = useState<{ name: string; available: boolean; problem?: string | null } | null>(null);
-  const wantedName = username.trim();
-  const checkName = !!wantedName && !usernameProblem && wantedName.toLowerCase() !== (user?.username ?? '').toLowerCase();
-  const current = checkName && availability?.name === wantedName ? availability : null;
-  const nameTaken = current && !current.available ? (current.problem ?? 'That username is taken.') : null;
-  const nameFree = !!current?.available;
-  useEffect(() => {
-    if (!checkName) return;
-    const ctrl = new AbortController();
-    const t = setTimeout(async () => {
-      try {
-        const res = await fetch(`/api/auth/username-available?name=${encodeURIComponent(wantedName)}`, { signal: ctrl.signal });
-        if (!res.ok) return;
-        const data = await res.json() as { available: boolean; problem?: string | null };
-        setAvailability({ name: wantedName, ...data });
-      } catch { /* aborted or offline: the server checks again on save */ }
-    }, 350);
-    return () => { clearTimeout(t); ctrl.abort(); };
-  }, [checkName, wantedName]);
-
-  // Moving the email needs proof: the authenticator app's code first, else a
-  // code sent to the address it is leaving (or, with neither, the password).
-  const [emailProof, setEmailProof] = useState<
-    null | { kind: 'totp'; canEmail: boolean } | { kind: 'code'; sentTo: string } | { kind: 'password' }
-  >(null);
-  const [emailCode, setEmailCode] = useState('');
-  const [proofPassword, setProofPassword] = useState('');
-  const emailChanged = email.trim().toLowerCase() !== (user?.email ?? '').toLowerCase();
-
-  const dirty = username.trim() !== (user?.username ?? '')
-    || name.trim() !== (user?.name ?? '')
-    || email.trim() !== (user?.email ?? '')
-    || timeZone !== (user?.timeZone ?? '');
-
-  async function requestEmailProof(viaEmail = false): Promise<boolean> {
-    const res = await fetch('/api/auth/email/code', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: email.trim(), viaEmail }),
-    });
-    const data = (await res.json().catch(() => null)) as
-      { required?: boolean; passwordRequired?: boolean; method?: string; canEmail?: boolean; sentTo?: string; error?: string; field?: string } | null;
-    if (!res.ok) {
-      setFieldError({ field: data?.field ?? 'email', error: data?.error ?? 'Couldn’t send the code.' });
-      return false;
-    }
-    setEmailCode('');
-    if (data?.passwordRequired) { setEmailProof({ kind: 'password' }); return false; }
-    if (data?.method === 'totp') { setEmailProof({ kind: 'totp', canEmail: !!data.canEmail }); return false; }
-    if (data?.required) { setEmailProof({ kind: 'code', sentTo: data.sentTo ?? 'your current address' }); return false; }
-    return true; // no current address: nothing to prove
-  }
-
-  async function saveProfile(e: React.FormEvent) {
-    e.preventDefault();
-    if (usernameProblem) { setFieldError({ field: 'username', error: usernameProblem }); return; }
-    if (nameTaken) { setFieldError({ field: 'username', error: nameTaken }); return; }
-    setSavedMsg(null);
-    setFieldError(null);
-    setSaving(true);
-    try {
-      // First press with a new email: send the code, then wait for it.
-      if (emailChanged && user?.email && !emailProof && !(await requestEmailProof())) return;
-      const res = await fetch('/api/auth/profile', {
-        method: 'PUT',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          username: username.trim(), name: name.trim(), email: email.trim(), timeZone,
-          emailCode: emailProof?.kind === 'code' ? emailCode.trim() : undefined,
-          totpCode: emailProof?.kind === 'totp' ? emailCode.trim() : undefined,
-          currentPassword: emailProof?.kind === 'password' ? proofPassword : undefined,
-        }),
-      });
-      if (res.ok) {
-        const saved = (await res.json()) as AuthUser;
-        setUsername(saved.username);
-        setName(saved.name);
-        setEmail(saved.email);
-        setTimeZone(saved.timeZone ?? '');
-        setEmailProof(null);
-        await queryClient.invalidateQueries({ queryKey: ['auth'] });
-        setSavedMsg('Saved.');
-      } else {
-        const data = (await res.json().catch(() => null)) as { error?: string; field?: string; code?: string } | null;
-        if ((data?.code === 'email_code_required' || data?.code === 'totp_required') && !emailProof) await requestEmailProof();
-        else if (data?.code === 'password_required' && !emailProof) setEmailProof({ kind: 'password' });
-        if (data?.field && data.error) setFieldError({ field: data.field, error: data.error });
-        else setSavedMsg('Couldn’t save your profile.');
-      }
-    } catch {
-      setSavedMsg('Couldn’t reach the server.');
-    } finally {
-      setSaving(false);
-    }
-  }
 
   async function removePhoto() {
     setPhotoMsg(null);
@@ -392,20 +281,6 @@ function ProfileTab({ user }: { user: AuthUser | null }) {
     bumpAvatarVersion();
   }
 
-  async function changePassword(e: React.FormEvent) {
-    e.preventDefault();
-    setPwMsg(null);
-    const res = await fetch('/api/auth/password', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ current: cur, next }),
-    });
-    if (res.ok) { setCur(''); setNext(''); setPwMsg('Password changed.'); }
-    else {
-      const data = await res.json().catch(() => null);
-      setPwMsg(data?.error ?? 'Couldn’t change password.');
-    }
-  }
 
   async function logout() {
     await fetch('/api/auth/logout', { method: 'POST' });
@@ -500,159 +375,7 @@ function ProfileTab({ user }: { user: AuthUser | null }) {
         />
       )}
 
-      <form className="settings__form" onSubmit={saveProfile}>
-        <h2 id="account" className="settings__subhead">Account</h2>
-        <label className="settings__field">Username
-          <span className="settings__affix">
-            <span className="settings__affix-pre" aria-hidden="true">@</span>
-            <input
-              value={username}
-              {...NO_AUTOFILL}
-              spellCheck={false}
-              autoCapitalize="none"
-              maxLength={64}
-              aria-invalid={fieldError?.field === 'username' || (!!usernameProblem && username !== user?.username)}
-              aria-describedby="username-help"
-              onChange={e => { setUsername(e.target.value); setFieldError(null); setSavedMsg(null); }}
-            />
-          </span>
-          <span id="username-help" className={
-            fieldError?.field === 'username' || nameTaken || (usernameProblem && username !== user?.username)
-              ? 'settings__field-error' : 'settings__hint'} aria-live="polite">
-            {fieldError?.field === 'username'
-              ? fieldError.error
-              : usernameProblem && username !== user?.username
-                ? usernameProblem
-                : nameTaken
-                  ? nameTaken
-                  : nameFree
-                    ? `@${username.trim()} is available.`
-                    : 'For sign-in and @mentions.'}
-          </span>
-        </label>
-        <label className="settings__field">Display name
-          <input
-            value={name}
-            maxLength={100}
-            autoComplete="name"
-            aria-invalid={fieldError?.field === 'name'}
-            onChange={e => { setName(e.target.value); setFieldError(null); setSavedMsg(null); }}
-          />
-          {fieldError?.field === 'name' && <span className="settings__field-error">{fieldError.error}</span>}
-        </label>
-        <label className="settings__field">Email
-          <input
-            type="email"
-            value={email}
-            autoComplete="email"
-            aria-invalid={fieldError?.field === 'email'}
-            onChange={e => {
-              setEmail(e.target.value); setFieldError(null); setSavedMsg(null);
-              // A different address needs its own code.
-              setEmailProof(null); setEmailCode(''); setProofPassword('');
-            }}
-          />
-          <span className={fieldError?.field === 'email' ? 'settings__field-error' : 'settings__hint'}>
-            {fieldError?.field === 'email'
-              ? fieldError.error
-              : emailChanged && user?.email && !emailProof
-                ? (user.totpEnabled ? 'Needs your authenticator code.' : 'Needs a code from your current address.')
-                : null}
-          </span>
-        </label>
-        {emailProof?.kind === 'totp' && (
-          <label className="settings__field">Authenticator code
-            <input
-              value={emailCode}
-              inputMode="numeric"
-              autoComplete="one-time-code"
-              maxLength={6}
-              autoFocus
-              aria-invalid={fieldError?.field === 'totpCode'}
-              onChange={e => { setEmailCode(e.target.value.replace(/\D/g, '')); setFieldError(null); }}
-            />
-            <span className={fieldError?.field === 'totpCode' ? 'settings__field-error' : 'settings__hint'}>
-              {fieldError?.field === 'totpCode'
-                ? fieldError.error
-                : <>Enter it, then Save.{emailProof.canEmail && <> <button type="button" className="settings__link-btn" onClick={() => void requestEmailProof(true)}>Email me a code instead</button></>}</>}
-            </span>
-          </label>
-        )}
-        {emailProof?.kind === 'code' && (
-          <label className="settings__field">Code sent to {emailProof.sentTo}
-            <input
-              value={emailCode}
-              inputMode="numeric"
-              autoComplete="one-time-code"
-              maxLength={6}
-              autoFocus
-              aria-invalid={fieldError?.field === 'emailCode'}
-              onChange={e => { setEmailCode(e.target.value.replace(/\D/g, '')); setFieldError(null); }}
-            />
-            <span className={fieldError?.field === 'emailCode' ? 'settings__field-error' : 'settings__hint'}>
-              {fieldError?.field === 'emailCode'
-                ? fieldError.error
-                : <>Enter it, then Save. <button type="button" className="settings__link-btn" onClick={() => void requestEmailProof(true)}>Send a new code</button></>}
-            </span>
-          </label>
-        )}
-        {emailProof?.kind === 'password' && (
-          <label className="settings__field">Account password
-            <input
-              type="password"
-              value={proofPassword}
-              autoComplete="current-password"
-              autoFocus
-              aria-invalid={fieldError?.field === 'currentPassword'}
-              onChange={e => { setProofPassword(e.target.value); setFieldError(null); }}
-            />
-            <span className={fieldError?.field === 'currentPassword' ? 'settings__field-error' : 'settings__hint'}>
-              {fieldError?.field === 'currentPassword'
-                ? fieldError.error
-                : 'Confirm with your password.'}
-            </span>
-          </label>
-        )}
-        <div className="settings__field">
-          <span id="tz-label">Time zone</span>
-          <TimeZonePicker
-            value={timeZone}
-            serverZone={user?.serverTimeZone}
-            invalid={fieldError?.field === 'timeZone'}
-            onChange={z => { setTimeZone(z); setFieldError(null); setSavedMsg(null); }}
-          />
-          {fieldError?.field === 'timeZone' && <span className="settings__field-error">{fieldError.error}</span>}
-        </div>
-        <div className="settings__form-actions">
-          <button type="submit" className="settings__btn" disabled={!dirty || saving}>
-            {saving ? 'Saving…' : 'Save changes'}
-          </button>
-          {dirty && !saving && (
-            <button
-              type="button"
-              className="settings__btn settings__btn--quiet"
-              onClick={() => { setUsername(user?.username ?? ''); setName(user?.name ?? ''); setEmail(user?.email ?? ''); setTimeZone(user?.timeZone ?? ''); setFieldError(null); }}
-            >
-              Discard
-            </button>
-          )}
-          {savedMsg && <span className="settings__msg" role="status">{savedMsg}</span>}
-        </div>
-      </form>
-
-      <form className="settings__form" onSubmit={changePassword}>
-        <h2 id="change-password" className="settings__subhead">Change password</h2>
-        <label className="settings__field">Current password
-          <input type="password" value={cur} onChange={e => setCur(e.target.value)} required />
-        </label>
-        <label className="settings__field">New password
-          <input type="password" value={next} onChange={e => setNext(e.target.value)} required />
-        </label>
-        <div className="settings__form-actions">
-          <button type="submit" className="settings__btn">Update password</button>
-          {pwMsg && <span className="settings__msg">{pwMsg}</span>}
-        </div>
-      </form>
+      <AccountDetails user={user} />
 
     </div>
   );
@@ -710,7 +433,7 @@ function SecurityTab() {
   const { status, open, lock } = useVault();
   const { devices, enroll, revoke, enrolling, error, setError } = useWebAuthnDevices();
   const [name, setName] = useState('');
-  const [justEnrolled, setJustEnrolled] = useState(false);
+  const [addingDevice, setAddingDevice] = useState(false);
   // Whether this machine actually offers Touch ID / Windows Hello, so we can
   // explain an unavailable button instead of just disabling it.
   const [platformAvailable, setPlatformAvailable] = useState<boolean | null>(null);
@@ -728,18 +451,18 @@ function SecurityTab() {
   // the browser only knows whether it has the API.
   const problem = bio?.problem?.message
     ?? (!isWebAuthnAvailable() ? 'This browser can’t use biometric keys here. It needs HTTPS (or localhost).' : null);
+  const canAddDevice = pinSet && !problem;
 
   async function submit(e: React.FormEvent) {
     e.preventDefault();
-    setJustEnrolled(false);
     const ok = await enroll(name);
-    if (ok) { setName(''); setJustEnrolled(true); }
+    if (ok) { setName(''); setAddingDevice(false); }
   }
 
   async function remove(device: { id: number; name: string }) {
     if (!(await confirm({
-      title: 'Remove this device?',
-      body: `“${device.name}” will no longer be able to unlock your vault. Your PIN still works, and you can register the device again later.`,
+      title: 'Remove this passkey?',
+      body: `“${device.name}” will no longer sign you in or unlock your vault. You can add it again later.`,
       confirmLabel: 'Remove',
       destructive: true,
     }))) return;
@@ -758,110 +481,103 @@ function SecurityTab() {
 
       <AuthenticatorSection />
 
-      <h2 id="biometric-unlock" className="settings__subhead">Passkeys (optional)</h2>
-      <p className="settings__hint">Unlock your vault or sign in with Touch ID, Face ID or Windows Hello.</p>
-
-      {!pinSet && s && (
-        <p className="settings__hint settings__hint--warn">
-          <ShieldAlert size={15} /> Set a vault PIN first — biometrics are an extra way in, not the only one.
-        </p>
-      )}
-      {pinSet && problem && (
-        <p className="settings__hint settings__hint--warn">
-          <ShieldAlert size={15} /> {problem}
-        </p>
-      )}
-      {pinSet && !problem && platformAvailable === false && (
-        <p className="settings__hint settings__hint--warn">
-          <ShieldAlert size={15} />
-          No built-in biometric sensor was detected on this device. You can still register a security key
-          if your browser offers one.
-        </p>
-      )}
-
-      {pinSet && !problem && !open && (
-        <div className="settings__vault-unlock">
-          <p className="settings__hint">Unlock your vault to add or remove a device.</p>
-          <VaultUnlock onUnlocked={() => setError(null)} />
-        </div>
-      )}
-
-      {pinSet && !problem && open && (
-        <form className="settings__row" onSubmit={submit}>
-          <input
-            className="settings__select"
-            placeholder="Device name (e.g. Work laptop)"
-            value={name}
-            maxLength={60}
-            onChange={e => { setName(e.target.value); setError(null); }}
-            disabled={enrolling}
-          />
-          <button type="submit" className="settings__btn" disabled={enrolling}>
-            <Fingerprint size={16} /> {enrolling ? 'Waiting for your device…' : 'Register this device'}
+      <SettingGroup
+        title="Passkeys"
+        id="biometric-unlock"
+        footer={canAddDevice && !addingDevice && (
+          <button type="button" className="settings__btn settings__btn--quiet" onClick={() => { setError(null); setAddingDevice(true); }}>
+            <Fingerprint size={15} /> Add this device
           </button>
-        </form>
-      )}
-
-      {error && <p className="settings__error" role="alert">{error}</p>}
-      {justEnrolled && (
-        <p className="settings__msg"><CheckCircle2 size={14} /> Device registered — you can now unlock with it here.</p>
-      )}
-
-      {devices.isLoading && <LoadingBar label="Loading devices" />}
-      {devices.data && devices.data.length > 0 && (
-        <table className="settings__users">
-          <thead>
-            <tr><th>Device</th><th>Works at</th><th>Registered</th><th>Last used</th><th /></tr>
-          </thead>
-          <tbody>
-            {devices.data.map(d => (
-              <tr key={d.id}>
-                <td>{d.name}</td>
-                <td>
-                  {d.rpId || 'any address'}
-                  {bio?.rpId && (d.rpId === bio.rpId || !d.rpId) && <span className="settings__tag"> · here</span>}
-                </td>
-                <td>{parseUtc(d.createdUtc).toLocaleDateString()}</td>
-                <td>{d.lastUsedUtc ? parseUtc(d.lastUsedUtc).toLocaleString() : 'Never'}</td>
-                <td>
-                  <button
-                    type="button"
-                    className="settings__link settings__link--danger"
-                    disabled={!open}
-                    title={open ? undefined : 'Unlock your vault to remove a device'}
-                    onClick={() => void remove(d)}
-                  >
-                    <Trash2 size={13} /> Remove
+        )}
+      >
+        {devices.isLoading && <div className="setting-row"><div className="setting-row__line"><LoadingBar label="Loading devices" /></div></div>}
+        {(devices.data ?? []).map(d => (
+          <div key={d.id} className="setting-row">
+            <div className="setting-row__line">
+              <div className="setting-row__text">
+                <span className="setting-row__value">
+                  {d.name}{bio?.rpId && (d.rpId === bio.rpId || !d.rpId) && <span className="sessions__here"> · this address</span>}
+                </span>
+                <span className="setting-row__hint">
+                  {d.rpId || 'any address'} · added {parseUtc(d.createdUtc).toLocaleDateString()}
+                  {d.lastUsedUtc ? ` · last used ${parseUtc(d.lastUsedUtc).toLocaleDateString()}` : ''}
+                </span>
+              </div>
+              <button type="button" className="setting-row__action" disabled={!open}
+                title={open ? undefined : 'Unlock your vault to remove a passkey'} onClick={() => void remove(d)}>
+                Remove
+              </button>
+            </div>
+          </div>
+        ))}
+        {devices.data && devices.data.length === 0 && !addingDevice && (
+          <div className="setting-row"><div className="setting-row__line"><div className="setting-row__text">
+            <span className="setting-row__value is-empty">No passkeys</span>
+            <span className="setting-row__hint">
+              {!pinSet ? 'Set a locked-notes PIN first.' : problem ?? 'Sign in and unlock with Touch ID, Face ID or Windows Hello.'}
+            </span>
+          </div></div></div>
+        )}
+        {addingDevice && (
+          <div className="setting-row is-open"><div className="setting-row__editor setting-row__editor--solo">
+            {!open ? (
+              <div className="settings__vault-unlock">
+                <p className="settings__hint">Unlock your vault first.</p>
+                <VaultUnlock onUnlocked={() => setError(null)} />
+              </div>
+            ) : (
+              <form className="settings__form" onSubmit={submit}>
+                {platformAvailable === false && (
+                  <p className="settings__hint settings__hint--warn">
+                    <ShieldAlert size={15} /><span>No built-in sensor found — a security key works too.</span>
+                  </p>
+                )}
+                <label className="settings__field">Name
+                  <input placeholder="e.g. Work laptop" value={name} maxLength={60} autoFocus disabled={enrolling}
+                    onChange={e => { setName(e.target.value); setError(null); }} />
+                </label>
+                <div className="settings__form-actions">
+                  <button type="submit" className="settings__btn" disabled={enrolling}>
+                    <Fingerprint size={16} /> {enrolling ? 'Waiting for your device…' : 'Add'}
                   </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-      {devices.data && devices.data.length === 0 && pinSet && (
-        <p className="settings__hint">No devices yet.</p>
-      )}
+                  <button type="button" className="settings__btn settings__btn--quiet" onClick={() => setAddingDevice(false)}>Cancel</button>
+                </div>
+              </form>
+            )}
+            {error && <p className="settings__error" role="alert">{error}</p>}
+          </div></div>
+        )}
+      </SettingGroup>
 
-      <h2 id="vault-pin" className="settings__subhead">Locked-notes PIN</h2>
-      <p className="settings__hint">Opens locked notes. Separate from your account password.</p>
-      {status.isLoading && <LoadingBar label="Loading" />}
-      {s && (
-        <>
-          {s.pinDisabled && (
-            <p className="settings__error" role="alert">
-              Your PIN is switched off after too many wrong tries. Set a new one below to turn it back on.
-            </p>
-          )}
-          <VaultPinForm />
-          {pinSet && open && (
-            <p className="settings__msg">
-              <LockOpen size={14} /> Your vault is open on this device.
-              <button type="button" className="settings__link" onClick={() => void lock()}>Lock it now</button>
-            </p>
-          )}
-        </>
-      )}
+      <SettingGroup title="Locked notes" id="vault-pin">
+        {status.isLoading && <div className="setting-row"><div className="setting-row__line"><LoadingBar label="Loading" /></div></div>}
+        {s && (
+          <SettingRow
+            label="PIN"
+            value={s.pinDisabled ? 'Switched off after too many wrong tries' : pinSet ? '••••••' : null}
+            empty="Not set"
+            hint={pinSet ? 'Opens locked notes. Separate from your password.' : undefined}
+            action={pinSet && !s.pinDisabled ? 'Change' : 'Set up'}
+          >
+            {close => (
+              <>
+                <VaultPinForm onDone={close} />
+                <div className="settings__form-actions">
+                  <button type="button" className="settings__btn settings__btn--quiet" onClick={close}>Cancel</button>
+                </div>
+              </>
+            )}
+          </SettingRow>
+        )}
+        {pinSet && open && (
+          <div className="setting-row"><div className="setting-row__line">
+            <div className="setting-row__text">
+              <span className="setting-row__value"><LockOpen size={14} /> Vault open on this device</span>
+            </div>
+            <button type="button" className="setting-row__action" onClick={() => void lock()}>Lock now</button>
+          </div></div>
+        )}
+      </SettingGroup>
 
       <SessionsSection />
 
@@ -1050,44 +766,50 @@ function EncryptedBackupSection() {
   }
 
   return (
-    <>
-      <h2 id="encrypted-backup" className="settings__subhead">Encrypted backup</h2>
-      <p className="settings__hint">Encrypted with your account password. Lose it and the backup can’t be opened.</p>
-      <form className="settings__row" onSubmit={generate}>
-        <input
-          className="settings__select" type="password" autoComplete="current-password"
-          placeholder="Account password" value={exportPw} onChange={e => setExportPw(e.target.value)} required
-        />
-        <button type="submit" className="settings__btn" disabled={exportBusy || !exportPw}>
-          <Lock size={16} /> {exportBusy ? 'Encrypting…' : 'Download encrypted backup'}
-        </button>
-      </form>
-      {exportMsg && <p className="settings__msg">{exportMsg}</p>}
-
-      <h2 id="restore-backup" className="settings__subhead">Restore from encrypted backup</h2>
-      <p className="settings__hint settings__hint--warn">
-        <ShieldAlert size={15} />
-        {/* One text run: the row is flex, so bare text and <strong> would split into columns. */}
-        <span>Replaces <strong>all</strong> your notes and attachments. Use the password the backup was made with.</span>
-      </p>
-      <div className="settings__row">
-        <input
-          className="settings__select" {...MASKED_SECRET}
-          placeholder="Backup password" value={restorePw} onChange={e => setRestorePw(e.target.value)}
-        />
-        <button
-          type="button" className="settings__btn" disabled={restoreBusy || !restorePw}
-          onClick={() => restoreRef.current?.click()}
-        >
-          <Upload size={16} /> Choose vault file
-        </button>
-        <input
-          ref={restoreRef} type="file" accept=".papyra-vault" hidden
-          onChange={e => { const f = e.target.files?.[0]; if (f) void restore(f); e.target.value = ''; }}
-        />
-      </div>
-      {restoreMsg && <p className="settings__msg">{restoreMsg}</p>}
-    </>
+    <SettingGroup title="Encrypted backup" id="encrypted-backup">
+      <SettingRow label="Download" value="A sealed copy of every note and file" hint="Locked with your account password" action="Download">
+        {close => (
+          <form className="settings__form" onSubmit={async e => { await generate(e); }}>
+            <label className="settings__field">Your password
+              <input type="password" autoComplete="current-password" autoFocus value={exportPw}
+                onChange={e => setExportPw(e.target.value)} required />
+            </label>
+            <p className="settings__hint">Lose the password and the backup can’t be opened.</p>
+            {exportMsg && <p className="settings__msg">{exportMsg}</p>}
+            <div className="settings__form-actions">
+              <button type="submit" className="settings__btn" disabled={exportBusy || !exportPw}>
+                <Lock size={16} /> {exportBusy ? 'Encrypting…' : 'Download'}
+              </button>
+              <button type="button" className="settings__btn settings__btn--quiet" onClick={() => { setExportMsg(null); close(); }}>Done</button>
+            </div>
+          </form>
+        )}
+      </SettingRow>
+      <SettingRow label="Restore" value="Replace everything with a backup" action="Restore…" id="restore-backup">
+        {close => (
+          <div className="settings__form">
+            <p className="settings__hint settings__hint--warn">
+              <ShieldAlert size={15} />
+              {/* One text run: the row is flex, so bare text and <strong> would split into columns. */}
+              <span>Replaces <strong>all</strong> your notes and attachments.</span>
+            </p>
+            <label className="settings__field">The backup’s password
+              <input {...MASKED_SECRET} autoFocus value={restorePw} onChange={e => setRestorePw(e.target.value)} />
+            </label>
+            {restoreMsg && <p className="settings__msg">{restoreMsg}</p>}
+            <div className="settings__form-actions">
+              <button type="button" className="settings__btn" disabled={restoreBusy || !restorePw}
+                onClick={() => restoreRef.current?.click()}>
+                <Upload size={16} /> Choose backup file
+              </button>
+              <button type="button" className="settings__btn settings__btn--quiet" onClick={() => { setRestoreMsg(null); close(); }}>Done</button>
+            </div>
+            <input ref={restoreRef} type="file" accept=".papyra-vault" hidden
+              onChange={e => { const f = e.target.files?.[0]; if (f) void restore(f); e.target.value = ''; }} />
+          </div>
+        )}
+      </SettingRow>
+    </SettingGroup>
   );
 }
 
@@ -1117,7 +839,6 @@ function KeysTab() {
 
   async function create(e: React.FormEvent) {
     e.preventDefault();
-    if (!askCode) { setAskCode(true); setKeyError(null); return; }
     const res = await fetch('/api/keys', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -1150,8 +871,7 @@ function KeysTab() {
 
   return (
     <div className="settings__panel">
-      <h2 id="access-tokens" className="settings__subhead">Personal access tokens</h2>
-      <p className="settings__hint">Send as <code>X-API-Key</code> or <code>Authorization: Bearer</code>. Shown once.</p>
+      <p className="settings__hint">For scripts and integrations. Send as <code>X-API-Key</code> or <code>Authorization: Bearer</code>.</p>
 
       {created && (
         <div className="settings__token">
@@ -1159,58 +879,56 @@ function KeysTab() {
           <button type="button" className="settings__btn" onClick={() => void copy()}>
             <Copy size={15} /> {copied ? 'Copied' : 'Copy'}
           </button>
+          <span className="settings__hint">Shown once — store it now.</span>
         </div>
       )}
 
-      <form className="settings__row" onSubmit={create}>
-        <input
-          className="settings__select"
-          placeholder="Key name (e.g. CLI, backup script)"
-          value={name}
-          onChange={e => setName(e.target.value)}
-        />
-        {!askCode && <button type="submit" className="settings__btn"><KeyRound size={15} /> Generate key</button>}
-      </form>
-      {askCode && (
-        <form className="settings__form" onSubmit={create}>
-          <CodeField
-            value={code}
-            onChange={c => { setCode(c); setKeyError(null); }}
-            autoFocus
-            onEmail={user?.canEmailCode ? () => requestEmailCode('/api/auth/step-up/email') : undefined}
-          />
-          <div className="settings__form-actions">
-            <button type="submit" className="settings__btn" disabled={code.length !== 6}><KeyRound size={15} /> Generate key</button>
-            <button type="button" className="settings__btn settings__btn--quiet" onClick={() => { setAskCode(false); setCode(''); setKeyError(null); }}>Cancel</button>
-          </div>
-        </form>
-      )}
-      {keyError && <p className="settings__error" role="alert">{keyError}</p>}
-
-      {isLoading && <LoadingBar label="Loading API keys" />}
-      {keys && keys.length > 0 && (
-        <table className="settings__users">
-          <thead>
-            <tr><th>Name</th><th>Prefix</th><th>Created</th><th>Last used</th><th /></tr>
-          </thead>
-          <tbody>
-            {keys.map(k => (
-              <tr key={k.id}>
-                <td>{k.name}</td>
-                <td><code>{k.prefix}…</code></td>
-                <td>{new Date(k.createdUtc).toLocaleDateString()}</td>
-                <td>{k.lastUsedUtc ? new Date(k.lastUsedUtc).toLocaleDateString() : '—'}</td>
-                <td>
-                  <button type="button" className="settings__link" onClick={() => void revoke(k.id)}>
-                    <Trash2 size={13} /> Revoke
-                  </button>
-                </td>
-              </tr>
-            ))}
-          </tbody>
-        </table>
-      )}
-      {keys && keys.length === 0 && <p className="settings__hint">No keys yet.</p>}
+      <SettingGroup
+        title="Personal access tokens"
+        id="access-tokens"
+        footer={!askCode && (
+          <button type="button" className="settings__btn settings__btn--quiet" onClick={() => { setAskCode(true); setKeyError(null); setCreated(null); }}>
+            <KeyRound size={15} /> New key
+          </button>
+        )}
+      >
+        {isLoading && <div className="setting-row"><div className="setting-row__line"><LoadingBar label="Loading API keys" /></div></div>}
+        {(keys ?? []).map(k => (
+          <div key={k.id} className="setting-row"><div className="setting-row__line">
+            <div className="setting-row__text">
+              <span className="setting-row__value">{k.name} <code className="settings__key-prefix">{k.prefix}…</code></span>
+              <span className="setting-row__hint">
+                Created {new Date(k.createdUtc).toLocaleDateString()} · {k.lastUsedUtc ? `last used ${new Date(k.lastUsedUtc).toLocaleDateString()}` : 'never used'}
+              </span>
+            </div>
+            <button type="button" className="setting-row__action" onClick={() => void revoke(k.id)}>Revoke</button>
+          </div></div>
+        ))}
+        {keys && keys.length === 0 && !askCode && (
+          <div className="setting-row"><div className="setting-row__line"><div className="setting-row__text">
+            <span className="setting-row__value is-empty">No keys</span>
+          </div></div></div>
+        )}
+        {askCode && (
+          <div className="setting-row is-open"><div className="setting-row__editor setting-row__editor--solo">
+            <form className="settings__form" onSubmit={create}>
+              <label className="settings__field">Name
+                <input placeholder="e.g. CLI, backup script" value={name} autoFocus onChange={e => setName(e.target.value)} />
+              </label>
+              <CodeField
+                value={code}
+                onChange={c => { setCode(c); setKeyError(null); }}
+                onEmail={user?.canEmailCode ? () => requestEmailCode('/api/auth/step-up/email') : undefined}
+              />
+              {keyError && <p className="settings__error" role="alert">{keyError}</p>}
+              <div className="settings__form-actions">
+                <button type="submit" className="settings__btn" disabled={code.length !== 6}><KeyRound size={15} /> Create key</button>
+                <button type="button" className="settings__btn settings__btn--quiet" onClick={() => { setAskCode(false); setCode(''); setKeyError(null); }}>Cancel</button>
+              </div>
+            </form>
+          </div></div>
+        )}
+      </SettingGroup>
     </div>
   );
 }
@@ -1468,9 +1186,7 @@ function NotificationsTab() {
 function SsoTab() {
   return (
     <div className="settings__panel">
-      <h2 id="oidc" className="settings__subhead">Single sign-on</h2>
-      <p className="settings__hint">Let people sign in with your identity provider.</p>
-      <SsoGuide />
+      <SsoSettings />
     </div>
   );
 }
@@ -1490,6 +1206,8 @@ function EmailTab() {
   const [inviteEmail, setInviteEmail] = useState('');
   const [inviteRole, setInviteRole] = useState('User');
   const [inviteMsg, setInviteMsg] = useState<string | null>(null);
+  // Shown as a summary until someone chooses to change it.
+  const [editing, setEditing] = useState(false);
 
   const v = <K extends keyof SmtpForm>(key: K): SmtpForm[K] =>
     (edits[key] ?? (data as SmtpForm | undefined)?.[key] ?? SMTP_DEFAULTS[key]) as SmtpForm[K];
@@ -1506,7 +1224,7 @@ function EmailTab() {
         publicUrl: v('publicUrl'),
         password: password.trim() === '' ? undefined : password,
       },
-      { onSuccess: () => { setPassword(''); setSaved(true); } },
+      { onSuccess: () => { setPassword(''); setSaved(true); setEdits({}); setEditing(false); } },
     );
   }
 
@@ -1525,101 +1243,128 @@ function EmailTab() {
   if (isLoading) return <div className="settings__panel"><LoadingBar label="Loading settings" /></div>;
   if (isError) return <div className="settings__panel"><p className="settings__error">Couldn’t load the email configuration.</p></div>;
 
+  const configured = !!data?.host;
   return (
     <div className="settings__panel">
-      <h2 id="smtp" className="settings__subhead">Outbound email (SMTP)</h2>
-      <p className="settings__hint">For password resets, invites and notifications.</p>
+      {editing ? (
+        <>
+          <h2 id="smtp" className="settings__subhead">Outbound email</h2>
+          <form className="settings__form" onSubmit={submit}>
+            <label className="settings__field settings__field--inline">
+              <input type="checkbox" role="switch" className="switch" checked={v('enabled')} onChange={e => set('enabled', e.target.checked)} />
+              Enable outbound email
+            </label>
 
-      <form className="settings__form" onSubmit={submit}>
-        <label className="settings__field settings__field--inline">
-          <input type="checkbox" role="switch" className="switch" checked={v('enabled')} onChange={e => set('enabled', e.target.checked)} />
-          Enable outbound email
-        </label>
+            <label className="settings__field">SMTP host
+              <input type="text" value={v('host')} placeholder="smtp.example.com"
+                onChange={e => set('host', e.target.value)} />
+            </label>
+            <label className="settings__field">Port
+              <input type="number" min={1} max={65535} value={v('port')}
+                onChange={e => set('port', Number(e.target.value))} />
+            </label>
+            <label className="settings__field settings__field--inline">
+              <input type="checkbox" role="switch" className="switch" checked={v('useSsl')} onChange={e => set('useSsl', e.target.checked)} />
+              Use TLS/SSL
+            </label>
+            <label className="settings__field">Username
+              <input type="text" {...NO_AUTOFILL} value={v('username')} placeholder="Blank for a relay without sign-in" onChange={e => set('username', e.target.value)} />
+            </label>
+            <label className="settings__field">
+              Password
+              <input {...MASKED_SECRET} value={password}
+                placeholder={data?.hasPassword ? 'Saved — leave blank to keep' : 'SMTP password'}
+                onChange={e => setPassword(e.target.value)} />
+            </label>
+            <label className="settings__field">From address
+              <input type="email" value={v('fromAddress')} placeholder="papyra@example.com"
+                onChange={e => set('fromAddress', e.target.value)} />
+            </label>
+            <label className="settings__field">From name
+              <input type="text" value={v('fromName')} placeholder="Papyra"
+                onChange={e => set('fromName', e.target.value)} />
+            </label>
+            <label className="settings__field">Address for links in emails
+              <input type="url" value={v('publicUrl')} placeholder="https://notes.example.com"
+                onChange={e => set('publicUrl', e.target.value)} />
+            </label>
 
-        <label className="settings__field">SMTP host
-          <input type="text" value={v('host')} placeholder="smtp.example.com"
-            onChange={e => set('host', e.target.value)} />
-        </label>
-        <label className="settings__field">Port
-          <input type="number" min={1} max={65535} value={v('port')}
-            onChange={e => set('port', Number(e.target.value))} />
-        </label>
-        <label className="settings__field settings__field--inline">
-          <input type="checkbox" role="switch" className="switch" checked={v('useSsl')} onChange={e => set('useSsl', e.target.checked)} />
-          Use TLS/SSL
-        </label>
-        <label className="settings__field">Username <span className="settings__hint">(blank for an unauthenticated relay)</span>
-          <input type="text" {...NO_AUTOFILL} value={v('username')} onChange={e => set('username', e.target.value)} />
-        </label>
-        <label className="settings__field">
-          Password {data?.hasPassword && <span className="settings__hint">(stored — leave blank to keep it)</span>}
-          <input {...MASKED_SECRET} value={password}
-            placeholder={data?.hasPassword ? '••••••••' : 'SMTP password'}
-            onChange={e => setPassword(e.target.value)} />
-        </label>
-        <label className="settings__field">From address
-          <input type="email" value={v('fromAddress')} placeholder="papyra@example.com"
-            onChange={e => set('fromAddress', e.target.value)} />
-        </label>
-        <label className="settings__field">From name
-          <input type="text" value={v('fromName')} placeholder="Papyra"
-            onChange={e => set('fromName', e.target.value)} />
-        </label>
-        <label className="settings__field">Public URL <span className="settings__hint">(used for links in emails)</span>
-          <input type="url" value={v('publicUrl')} placeholder="https://notes.example.com"
-            onChange={e => set('publicUrl', e.target.value)} />
-        </label>
-
-        <div className="settings__form-actions">
-          <button type="submit" className="settings__btn" disabled={save.isPending}>
-            {save.isPending ? 'Saving…' : 'Save email settings'}
-          </button>
-          {saved && <span className="settings__msg"><CheckCircle2 size={15} /> Saved</span>}
-          {save.isError && <span className="settings__error">{(save.error as Error).message}</span>}
-        </div>
-      </form>
-
-      <h2 id="send-a-test" className="settings__subhead">Send a test</h2>
-      <p className="settings__hint">Save first — the test uses stored settings.</p>
-      <div className="settings__row">
-        <input
-          type="email" className="settings__test-input" value={testTo}
-          placeholder="Leave blank to use your own address"
-          onChange={e => setTestTo(e.target.value)}
-        />
-        <button
-          type="button" className="settings__btn"
-          disabled={test.isPending}
-          onClick={() => test.mutate(testTo)}
+            <div className="settings__form-actions">
+              <button type="submit" className="settings__btn" disabled={save.isPending}>
+                {save.isPending ? 'Saving…' : 'Save email settings'}
+              </button>
+              <button type="button" className="settings__btn settings__btn--quiet" onClick={() => { setEdits({}); setPassword(''); setEditing(false); }}>Cancel</button>
+              {save.isError && <span className="settings__error">{(save.error as Error).message}</span>}
+            </div>
+          </form>
+        </>
+      ) : (
+        <SettingGroup
+          title="Outbound email"
+          id="smtp"
+          footer={
+            <button type="button" className={`settings__btn${configured ? ' settings__btn--quiet' : ''}`} onClick={() => { setSaved(false); setEditing(true); }}>
+              {configured ? 'Edit' : 'Set up email'}
+            </button>
+          }
         >
-          <Send size={16} /> {test.isPending ? 'Sending…' : 'Send test email'}
-        </button>
-        {test.isSuccess && <span className="settings__msg"><CheckCircle2 size={15} /> Sent to {test.data}</span>}
-        {test.isError && <span className="settings__error">{(test.error as Error).message}</span>}
-      </div>
-
-      <h2 id="invite" className="settings__subhead">Invite someone</h2>
-      <p className="settings__hint">Sends a sign-up link. Expires in 7 days.</p>
-      <form className="settings__form" onSubmit={sendInvite}>
-        <label className="settings__field">Username
-          <input type="text" value={inviteUser} onChange={e => setInviteUser(e.target.value)} />
-        </label>
-        <label className="settings__field">Email address
-          <input type="email" value={inviteEmail} onChange={e => setInviteEmail(e.target.value)} />
-        </label>
-        <label className="settings__field">Role
-          <select className="settings__select" value={inviteRole} onChange={e => setInviteRole(e.target.value)}>
-            <option value="User">User</option>
-            <option value="Admin">Admin</option>
-          </select>
-        </label>
-        <div className="settings__form-actions">
-          <button type="submit" className="settings__btn" disabled={invite.isPending}>
-            <UserPlus size={16} /> {invite.isPending ? 'Sending…' : 'Send invitation'}
-          </button>
-          {inviteMsg && <span className="settings__msg">{inviteMsg}</span>}
-        </div>
-      </form>
+          {!configured ? (
+            <SettingRow label="Status" value={null} empty="Not set up" hint="For password resets, invites and notifications." />
+          ) : (
+            <>
+              <SettingRow label="Status" value={data?.enabled ? 'On' : 'Off'} hint={saved ? 'Saved' : undefined} />
+              <SettingRow label="Server" value={`${data?.host}:${data?.port}${data?.useSsl ? ' · TLS' : ''}`} />
+              <SettingRow label="Signs in as" value={data?.username || 'No sign-in (relay)'}
+                hint={data?.username ? (data?.hasPassword ? 'Password saved' : 'No password saved') : undefined} />
+              <SettingRow label="Sends as" value={data?.fromAddress ? `${data?.fromName || 'Papyra'} <${data.fromAddress}>` : null} />
+              <SettingRow label="Links in emails" value={data?.publicUrl || null} empty="This address" />
+              <SettingRow label="Test" value="Send a test email" action="Send…" id="send-a-test">
+                {close => (
+                  <div className="settings__form">
+                    <label className="settings__field">To
+                      <input type="email" value={testTo} autoFocus placeholder="Blank = your own address"
+                        onChange={e => setTestTo(e.target.value)} />
+                    </label>
+                    {test.isSuccess && <p className="settings__msg"><CheckCircle2 size={15} /> Sent to {test.data}</p>}
+                    {test.isError && <p className="settings__error">{(test.error as Error).message}</p>}
+                    <div className="settings__form-actions">
+                      <button type="button" className="settings__btn" disabled={test.isPending} onClick={() => test.mutate(testTo)}>
+                        <Send size={16} /> {test.isPending ? 'Sending…' : 'Send'}
+                      </button>
+                      <button type="button" className="settings__btn settings__btn--quiet" onClick={close}>Done</button>
+                    </div>
+                  </div>
+                )}
+              </SettingRow>
+              <SettingRow label="Invite" value="Email someone a sign-up link" hint="Expires in 7 days" action="Invite…" id="invite">
+                {close => (
+                  <form className="settings__form" onSubmit={sendInvite}>
+                    <label className="settings__field">Username
+                      <input type="text" value={inviteUser} autoFocus onChange={e => setInviteUser(e.target.value)} />
+                    </label>
+                    <label className="settings__field">Email address
+                      <input type="email" value={inviteEmail} onChange={e => setInviteEmail(e.target.value)} />
+                    </label>
+                    <label className="settings__field">Role
+                      <select className="settings__select" value={inviteRole} onChange={e => setInviteRole(e.target.value)}>
+                        <option value="User">User</option>
+                        <option value="Admin">Admin</option>
+                      </select>
+                    </label>
+                    {inviteMsg && <p className="settings__msg">{inviteMsg}</p>}
+                    <div className="settings__form-actions">
+                      <button type="submit" className="settings__btn" disabled={invite.isPending}>
+                        <UserPlus size={16} /> {invite.isPending ? 'Sending…' : 'Send invitation'}
+                      </button>
+                      <button type="button" className="settings__btn settings__btn--quiet" onClick={() => { setInviteMsg(null); close(); }}>Done</button>
+                    </div>
+                  </form>
+                )}
+              </SettingRow>
+            </>
+          )}
+        </SettingGroup>
+      )}
     </div>
   );
 }

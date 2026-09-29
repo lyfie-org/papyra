@@ -7,6 +7,8 @@ import deleteAccount from '../components/DeleteAccountSection.tsx?raw';
 import authenticator from '../components/AuthenticatorSection.tsx?raw';
 import sessions from '../components/SessionsSection.tsx?raw';
 import usersPanel from '../pages/ManageUsersPage.tsx?raw';
+import account from '../components/AccountDetails.tsx?raw';
+import sso from '../components/SsoGuide.tsx?raw';
 import { SETTINGS_INDEX, searchSettings, settingsHref } from './settingsIndex';
 
 describe('settingsIndex', () => {
@@ -37,8 +39,13 @@ describe('settingsIndex', () => {
   });
 
   it('points every section at a heading id that exists', () => {
+    // A heading, or a SettingGroup / SettingRow carrying the section's id.
+    const anchors = (src: string) => [
+      ...[...src.matchAll(/id="([a-z-]+)" className="settings__subhead"/g)].map(m => m[1]),
+      ...[...src.matchAll(/<Setting(?:Group|Row)[^>]*?id="([a-z-]+)"/gs)].map(m => m[1]),
+    ];
     const ids = new Set([
-      ...[...settingsPage.matchAll(/id="([a-z-]+)" className="settings__subhead"/g)].map(m => m[1]),
+      ...anchors(settingsPage), ...anchors(account), ...anchors(sso), ...anchors(authenticator), ...anchors(sessions),
       // The About tab is its own component.
       ...[...aboutPanel.matchAll(/<h2 id="([a-z-]+)"/g)].map(m => m[1]),
       ...[...deleteAccount.matchAll(/<h2 id="([a-z-]+)"/g)].map(m => m[1]),
