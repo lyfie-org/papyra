@@ -1,4 +1,4 @@
-import { ArrowDown, ArrowUp, Download, Replace } from 'lucide-react';
+import { ArrowDown, ArrowUp, Download, Link2, Replace } from 'lucide-react';
 import { $getSelection, $isNodeSelection, type LexicalEditor, type LexicalNode } from 'lexical';
 import type { MediaToolbarContext, MediaToolbarItem } from '@lyfie/luthor-headless';
 import { pickFile } from './pickFile';
@@ -19,9 +19,11 @@ interface Deps {
   readOnly?: boolean;
   /** The live editor, for moving the selected attachment. */
   getEditor?: () => LexicalEditor | null;
+  /** A short confirmation (a toast). */
+  notify?: (message: string) => void;
 }
 
-export function createMediaToolbarItems({ upload, readOnly, getEditor }: Deps) {
+export function createMediaToolbarItems({ upload, readOnly, getEditor, notify }: Deps) {
   return (ctx: MediaToolbarContext): MediaToolbarItem[] => {
     const items: MediaToolbarItem[] = [];
     if (!readOnly) {
@@ -42,6 +44,14 @@ export function createMediaToolbarItems({ upload, readOnly, getEditor }: Deps) {
         { id: 'papyra.move-up', label: 'Move up', icon: <ArrowUp {...ICON} />, disabled: !up, onSelect: () => move(editor, 'up') },
         { id: 'papyra.move-down', label: 'Move down', icon: <ArrowDown {...ICON} />, disabled: !down, onSelect: () => move(editor, 'down') },
       );
+    }
+    if (ctx.url && typeof navigator !== 'undefined' && navigator.clipboard) {
+      items.push({
+        id: 'papyra.copy-link',
+        label: 'Copy link',
+        icon: <Link2 {...ICON} />,
+        onSelect: () => { void copyLink(ctx.url, notify); },
+      });
     }
     if (ctx.url) {
       items.push({
@@ -87,6 +97,17 @@ function move(editor: LexicalEditor, direction: 'up' | 'down') {
     if (direction === 'up') block.getPreviousSibling()?.insertBefore(block);
     else block.getNextSibling()?.insertAfter(block);
   });
+}
+
+// The file's own address — it opens for anyone signed in to this account (and
+// nobody else: media is private; share the note to share it).
+async function copyLink(url: string, notify?: (message: string) => void) {
+  try {
+    await navigator.clipboard.writeText(new URL(url, window.location.origin).href);
+    notify?.('Link copied');
+  } catch {
+    notify?.('Couldn’t copy the link.');
+  }
 }
 
 function download(url: string, name: string) {

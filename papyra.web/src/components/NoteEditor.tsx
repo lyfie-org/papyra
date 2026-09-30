@@ -39,6 +39,7 @@ import { editedLabel, fullStamp, useMinuteTick, useTimeZone } from '../lib/timeZ
 import LinkCards from './LinkCards';
 import LinkHoverCard from './LinkHoverCard';
 import MediaDropZone from './MediaDropZone';
+import { pauseOffscreenVideos } from '../lib/videoVisibility';
 import CollabPresence from './CollabPresence';
 import CollabJoining from './CollabJoining';
 import { useShareSummary } from '../hooks/useShares';
@@ -172,11 +173,14 @@ export default function NoteEditor({ note, isDraft = false }: { note: Note; isDr
   const adapter = useMemo(() => createPapyraEditorAdapter({
     noteId: note.id, navigate, queryClient, onUnresolvedLink,
     onUploadError: (message) => toast(message),
+    notify: (message) => toast(message),
     getEditor: getLiveEditor,
   }), [note.id, navigate, queryClient, onUnresolvedLink, toast, getLiveEditor]);
   // A [[link]] replaces the open note in place — never a second browser tab.
   const openLinkedNote = useCallback((target: string) => adapter.openNote({ title: target }), [adapter]);
   useInPlaceWikilinks(sheetRef, openLinkedNote);
+  // A video scrolled out of view stops playing.
+  useEffect(() => (sheetRef.current ? pauseOffscreenVideos(sheetRef.current) : undefined), []);
   const [title, setTitle] = useState(note.title);
   // Mirror the title in a ref so the debounced save reads the live value, not a
   // value captured in the closure of the render that scheduled it.

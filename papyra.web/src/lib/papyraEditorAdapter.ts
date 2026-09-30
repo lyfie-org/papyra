@@ -7,6 +7,8 @@ import type { Note } from '../types/note';
 import { fetchWithProgress } from './progress';
 import { mediaMetaStore, mediaUrl, toMediaMeta } from './mediaMeta';
 import { createMediaToolbarItems } from './mediaToolbar';
+import { checkMediaFile, loadMediaLimits } from './mediaLimits';
+import { prepareUpload, uploadForm } from './uploadPrep';
 
 /** The owner's own attachments. */
 export const OWN_MEDIA = '/api/media';
@@ -28,6 +30,8 @@ interface AdapterDeps {
   onUploadError?: (message: string) => void;
   /** The live editor, for toolbar actions that move an attachment. */
   getEditor?: () => LexicalEditor | null;
+  /** A short confirmation (a toast): "Link copied". */
+  notify?: (message: string) => void;
 }
 
 function uploadMessage(error: unknown): string {
@@ -45,19 +49,21 @@ function isAbort(error: unknown): boolean {
 // server at save time, because the notes PUT is also reachable from API keys,
 // sharee edits and the public edit-link route, none of which run the editor.
 export function createPapyraEditorAdapter(
-  { noteId, navigate, queryClient, onUnresolvedLink, onUploadError, getEditor }: AdapterDeps,
+  { noteId, navigate, queryClient, onUnresolvedLink, onUploadError, getEditor, notify }: AdapterDeps,
 ): PapyraEditorAdapter {
   const meta = mediaMetaStore(OWN_MEDIA);
+  // The size limits, so an oversized file is refused before it is sent.
+  void loadMediaLimits();
 
   // Dropped/pasted/picked file → stored attachment, referenced back as
-  // ![[filename]]. The response carries the file's metadata, primed into the
-  // cache so the new embed has its size before its first frame.
+  // ![[filename]]. A HEIC photo is converted and a video brings its poster
+  // frame first (see uploadPrep). The response carries the file's metadata,
+  // primed into the cache so the new embed has its size before its first frame.
   const uploadMedia = async (file: File, options?: UploadFileOptions) => {
-    const form = new FormData();
-    form.append('file', file);
+    const prepared = await prepareUpload(file, options?.signal);
     const res = await fetchWithProgress(`${OWN_MEDIA}/upload?noteId=${encodeURIComponent(noteId)}`, {
       method: 'POST',
-      body: form,
+      body: uploadForm(prepared),
       signal: options?.signal,
       onProgress: options?.onProgress,
     });
@@ -80,16 +86,25 @@ export function createPapyraEditorAdapter(
     subscribeMediaMeta: (listener) => meta.subscribe(listener),
 
     uploadMedia,
+    validateMedia: (file) => checkMediaFile(file),
     onUploadError: (error) => { if (!isAbort(error)) onUploadError?.(uploadMessage(error)); },
 
-    // Replace / Download on a selected attachment. Replace uploads outside the
-    // drop pipeline, so it reports its own failure.
+    // Replace / Move / Copy link / Download on a selected attachment. Replace
+    // uploads outside the drop pipeline, so it checks and reports on its own.
     mediaToolbarItems: createMediaToolbarItems({
       getEditor,
-      upload: (file) => uploadMedia(file).catch((error: unknown) => {
-        onUploadError?.(uploadMessage(error));
-        throw error;
-      }),
+      notify,
+      upload: async (file) => {
+        const refused = checkMediaFile(file);
+        const error = refused ? new Error(refused) : null;
+        try {
+          if (error) throw error;
+          return await uploadMedia(file);
+        } catch (err) {
+          if (!isAbort(err)) onUploadError?.(uploadMessage(err));
+          throw err;
+        }
+      },
     }),
 
     // [[Note]] activation → router push.

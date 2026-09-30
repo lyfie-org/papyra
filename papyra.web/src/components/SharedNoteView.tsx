@@ -18,6 +18,7 @@ import CollabPresence from './CollabPresence';
 import CollabJoining from './CollabJoining';
 import { mediaMetaStore, mediaUrl } from '../lib/mediaMeta';
 import { createMediaToolbarItems } from '../lib/mediaToolbar';
+import { pauseOffscreenVideos } from '../lib/videoVisibility';
 import { useToast } from '../lib/toastContext';
 import './SharedNoteView.css';
 
@@ -114,6 +115,7 @@ export default function SharedNoteView({
   }, [mediaBase, toast]);
   // Inert here too — without this Lexical would open the `#` href in a new tab.
   useInPlaceWikilinks(articleRef, noop);
+  useEffect(() => (articleRef.current ? pauseOffscreenVideos(articleRef.current) : undefined), []);
 
   const colored = !!note.color;
   const canEdit = !live && note.access === 'edit' && !!onSave;

@@ -44,6 +44,25 @@ public sealed class MediaPipelineTests
     }
 
     [Fact]
+    public async Task Limits_AreServedFromTheSameTable_TheUploadEnforces()
+    {
+        await using var app = await App.StartAsync();
+        var res = await app.Owner.GetAsync("/api/media/limits");
+        Assert.Equal(HttpStatusCode.OK, res.StatusCode);
+        var body = await app.ReadAsync(res);
+        var limits = body.GetProperty("limits");
+        Assert.Equal(Papyra.Api.Storage.MediaLimits.Image, limits.GetProperty("image").GetInt64());
+        Assert.Equal(Papyra.Api.Storage.MediaLimits.Video, limits.GetProperty("video").GetInt64());
+        Assert.Equal(Papyra.Api.Storage.MediaLimits.Other, limits.GetProperty("other").GetInt64());
+        var images = body.GetProperty("extensions").GetProperty("image").EnumerateArray().Select(e => e.GetString()).ToList();
+        Assert.Contains(".heic", images);
+        Assert.DoesNotContain(".mp4", images);
+
+        using var anonymous = app.Factory.CreateClient();
+        Assert.Equal(HttpStatusCode.Unauthorized, (await anonymous.GetAsync("/api/media/limits")).StatusCode);
+    }
+
+    [Fact]
     public async Task Upload_OverItsKindsLimit_IsRefusedMidStream_AndLeavesNothing()
     {
         await using var app = await App.StartAsync();

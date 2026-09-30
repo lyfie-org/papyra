@@ -54,6 +54,14 @@ public static class MediaEndpoints
             .WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(MediaLimits.Largest + 4 * 1024 * 1024))
             .DisableAntiforgery(); // same-origin SPA; SameSite cookies
 
+        // What the upload will accept, so the web app can say no before sending
+        // 600 MB. A literal segment: it outranks `/api/media/{filename}`.
+        app.MapGet("/api/media/limits", (HttpResponse response) =>
+        {
+            response.Headers.CacheControl = "private, max-age=3600";
+            return Results.Ok(MediaLimits.Describe());
+        }).RequireAuthorization();
+
         app.MapGet("/api/media/{filename}", (string filename, HttpContext http, MediaReferences refs,
             UnlockTokenStore unlock, IConfiguration config, IHostEnvironment env, ILoggerFactory lf) =>
         {

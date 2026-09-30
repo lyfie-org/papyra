@@ -53,6 +53,23 @@ public static class MediaLimits
         _ => ("file", Other),
     };
 
+    /// <summary>
+    /// The limits and the extension → kind table, for the web app to refuse an
+    /// oversized file before uploading it (same numbers, one source). The server
+    /// still decides by the sniffed bytes; this is only the early, friendly no.
+    /// </summary>
+    public static object Describe() => new
+    {
+        limits = new { image = Image, gif = Gif, audio = Audio, video = Video, document = Document, other = Other },
+        extensions = new
+        {
+            image = ImageExt.Order(StringComparer.Ordinal).ToArray(),
+            audio = AudioExt.Order(StringComparer.Ordinal).ToArray(),
+            video = VideoExt.Order(StringComparer.Ordinal).ToArray(),
+            document = DocExt.Order(StringComparer.Ordinal).ToArray(),
+        },
+    };
+
     public static string Human(long bytes) =>
         bytes >= MB ? $"{bytes / (double)MB:0.#} MB" : $"{Math.Max(1, bytes / 1024)} KB";
 }
