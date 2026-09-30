@@ -38,6 +38,21 @@ public static class MediaLimits
         return ("file", Other);
     }
 
+    /// <summary>
+    /// The label and limit for a kind <see cref="MediaSniffer"/> decided from the
+    /// bytes — what the upload path enforces, so renaming a file to .mp4 can't
+    /// borrow the video allowance.
+    /// </summary>
+    public static (string Kind, long Limit) ForKind(string kind) => kind switch
+    {
+        "gif" => ("GIF", Gif),
+        "image" => ("image", Image),
+        "video" => ("video", Video),
+        "audio" => ("audio file", Audio),
+        "document" => ("document", Document),
+        _ => ("file", Other),
+    };
+
     public static string Human(long bytes) =>
         bytes >= MB ? $"{bytes / (double)MB:0.#} MB" : $"{Math.Max(1, bytes / 1024)} KB";
 }

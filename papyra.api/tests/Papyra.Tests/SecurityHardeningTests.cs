@@ -166,7 +166,7 @@ public sealed class SecurityHeadersTests
         Assert.Contains("https://fonts.gstatic.com", csp);
         Assert.Contains("blob:", csp);                          // local media before upload
         Assert.Contains("ws:", csp);                            // SignalR — not covered by 'self'
-        Assert.Contains("frame-src https:", csp);               // ![[youtube:…]] / ![[iframe:…]]
+        Assert.Contains("frame-src 'self' https:", csp);      // ![[youtube:…]] / ![[iframe:…]] + inline PDFs
     }
 
     [Fact]

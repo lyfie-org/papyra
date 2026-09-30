@@ -3,12 +3,13 @@
 Black-box HTTP checks against a **running** Papyra instance. `dotnet test` proves
 the code; these prove the deployed surface — routing, auth policies, cookies,
 per-tenant isolation, and the status codes a real client actually receives.
-Two suites, 239 checks.
+Three suites, 262 checks.
 
 | Suite | What it covers | Checks |
 |---|---|---|
 | `edge.sh` | The core surface: health, sign-in, notes, to-dos, trash, categories, smart collections, API keys, webhooks, search, settings, inbox, snapshots, backup, export, media, the directory, and the admin screens as an admin | 99 |
 | `edge2.sh` | The promises: anonymous access, per-tenant isolation, admin gating, the sharing rules, locked notes, the forced-password-change wall, avatar format sniffing, the path jail, conversation scoping | 140 |
+| `media.sh` | Attachments: stored by what the bytes are (not the name), served inline/sandboxed/as downloads with the right headers, byte ranges, and share links that reach only their own note's files | 23 |
 
 ## The assistant's feature flag
 
@@ -54,11 +55,17 @@ dotnet run --project papyra.api/src/Papyra.Api -- --Papyra:DataDir=.edgedata --u
 On a brand-new vault, create the first admin once:
 
 ```bash
-# An authenticator is compulsory for the first admin: get a secret, then send
-# it back with its current code (oathtool, or any authenticator app).
-SECRET=$(curl -s -X POST -H 'Content-Type: application/json' -d '{"account":"admin"}' http://localhost:5221/api/auth/setup/totp | python -c 'import json,sys; print(json.load(sys.stdin)["secret"])')
-curl -X POST -H 'Content-Type: application/json' -d "{\"username\":\"admin\",\"name\":\"Admin\",\"password\":\"AdminPass123!\",\"totpSecret\":\"$SECRET\",\"totpCode\":\"$(oathtool --totp -b "$SECRET")\"}" http://localhost:5221/api/auth/setup
+# An authenticator is compulsory. The harness derives every account's secret
+# from its username (totp.py / totp.js, the rule Papyra.Tests uses), so enrol
+# the admin with that secret and the harness can answer its sign-in codes.
+SECRET=$(python papyra.api/tests/edge/totp.py secret admin)
+CODE=$(python papyra.api/tests/edge/totp.py code admin $(( $(date +%s) / 30 )))
+curl -X POST -H 'Content-Type: application/json' -d "{\"username\":\"admin\",\"name\":\"Admin\",\"password\":\"AdminPass123!\",\"totpSecret\":\"$SECRET\",\"totpCode\":\"$CODE\"}" http://localhost:5221/api/auth/setup
 ```
+
+The harness accounts (`qa`, `newbie`, `edgetmp`) enrol themselves the same way
+on first use, and every sign-in answers the two-step prompt with the next unused
+code.
 
 Then:
 

@@ -8,6 +8,7 @@ namespace Papyra.Api.Storage;
 public sealed class OrphanPruneService : PeriodicJob
 {
     private static readonly TimeSpan PruneInterval = TimeSpan.FromHours(24);
+    private static readonly TimeSpan StaleUpload = TimeSpan.FromHours(1);
 
     private readonly VaultState _state;
     private readonly IConfiguration _config;
@@ -69,6 +70,15 @@ public sealed class OrphanPruneService : PeriodicJob
         foreach (var path in Directory.EnumerateFiles(mediaDir))
         {
             var name = Path.GetFileName(path);
+            // An upload in flight streams into a .tmp before its atomic move —
+            // never touch a fresh one. A stale one is the leftover of a crash
+            // mid-upload: it is nobody's file, so it is simply removed.
+            if (name.EndsWith(".tmp", StringComparison.OrdinalIgnoreCase))
+            {
+                if (File.GetLastWriteTimeUtc(path) < DateTime.UtcNow - StaleUpload)
+                    try { File.Delete(path); } catch (IOException) { }
+                continue;
+            }
             if (bodies.Any(b => b.Contains(name, StringComparison.Ordinal))) continue;
 
             Directory.CreateDirectory(trashDir);

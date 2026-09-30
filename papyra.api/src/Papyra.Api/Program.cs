@@ -91,6 +91,9 @@ builder.Services.AddSingleton<CategoryStore>();
 // ── Reactive observer: keep the in-memory vault in sync with the .md files ────
 builder.Services.AddMemoryCache();
 builder.Services.AddSingleton<VaultState>();
+// Which notes embed which attachment — parsed once per body, shared by share
+// scoping, the vault gate on media and (later) orphan pruning.
+builder.Services.AddSingleton<MediaReferences>();
 builder.Services.AddSingleton<WriteRing>();
 builder.Services.AddSingleton(sp => new VaultObserverOptions
 {
@@ -438,6 +441,7 @@ builder.Services.AddSingleton<EmailSender>();
 const string UserSearchRateLimit = "user-search";
 const string AuthRateLimit = "auth";
 const string PreviewRateLimit = "previews";
+const string MediaUploadRateLimit = "media-upload";
 
 // The mention typeahead is the one endpoint on which any tenant can ask about
 // accounts other than their own, so it gets a per-account budget: comfortably
@@ -491,6 +495,20 @@ builder.Services.AddRateLimiter(options =>
                 PermitLimit = 120,
                 Window = TimeSpan.FromMinutes(1),
                 QueueLimit = 0,
+            }));
+
+    // Attachment uploads, per account. Roomy enough to drop a whole camera roll
+    // (a burst queues rather than failing), firm enough that a runaway client
+    // can't write to disk as fast as the network allows.
+    options.AddPolicy(MediaUploadRateLimit, ctx =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            ctx.User.FindFirstValue(ClaimTypes.NameIdentifier) ?? ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 300,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 200,
+                QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
             }));
 
     // Live-editing tickets: one per (re)connect of each open note/tab, so a healthy
@@ -552,6 +570,13 @@ if (enableCors)
 }
 
 var app = builder.Build();
+
+// Whole-vault uploads — a backup restore, a Takeout/Obsidian import — are far
+// bigger than Kestrel's ~28.6 MB default body limit, which used to refuse any
+// real vault with pictures in it. They get their own ceiling (4 GB unless the
+// operator sets Papyra:Limits:ImportMaxBytes).
+var importMaxBytes = Math.Max(1_048_576L,
+    app.Configuration.GetValue<long?>("Papyra:Limits:ImportMaxBytes") ?? 4L * 1024 * 1024 * 1024);
 
 // Say it out loud. This weakens a real defence, and the person who set it six
 // months ago should be able to find out why their cookies are not Secure by
@@ -1275,7 +1300,9 @@ auth.MapPost("/setup/restore", async (
         // A failed attempt leaves nothing staged.
         if (!File.Exists(Path.Combine(dir, "meta.json")) && Directory.Exists(dir)) DeleteDirectoryForce(dir);
     }
-}).DisableAntiforgery().RequireRateLimiting(AuthRateLimit);
+}).DisableAntiforgery().RequireRateLimiting(AuthRateLimit)
+    .WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(importMaxBytes))
+    .WithFormOptions(multipartBodyLengthLimit: importMaxBytes);
 
 auth.MapPost("/setup", async (
     SetupRequest body, HttpContext http, AppDbContext db, VaultObserver observer, EmailSender email,
@@ -1553,6 +1580,7 @@ auth.MapPost("/logout", async (HttpContext http, AppDbContext db, UnlockTokenSto
 {
     // An open vault closes with the session.
     if (http.User.FindFirstValue(ClaimTypes.NameIdentifier) is { } uid) unlockTokens.RevokeUser(uid);
+    UnlockCookie.Clear(http);
     if (Sessions.CurrentSid(http.User) is { } sid)
     {
         var hash = Sessions.Hash(sid);
@@ -1824,7 +1852,7 @@ vault.MapGet("/", async (
 // live unlock (e.g. a biometric one). The single exception is an account with no
 // local password (SSO) setting its first PIN while it has nothing locked yet.
 vault.MapPost("/pin", async (
-    VaultPinSetRequest body, ClaimsPrincipal principal, HttpRequest request, AppDbContext db,
+    VaultPinSetRequest body, ClaimsPrincipal principal, HttpContext http, HttpRequest request, AppDbContext db,
     VaultState state, VaultPinService pins, UnlockTokenStore unlockTokens, LoginThrottle throttle,
     CancellationToken ct) =>
 {
@@ -1871,18 +1899,22 @@ vault.MapPost("/pin", async (
 
     await pins.SetAsync(user, body.Pin!, ct);
     // Setting the PIN proves possession, so hand back an unlock for this session.
-    return Results.Ok(new { unlockToken = unlockTokens.Issue(uid.ToString()) });
+    var issued = unlockTokens.Issue(uid.ToString());
+    UnlockCookie.Set(http, issued);
+    return Results.Ok(new { unlockToken = issued });
 }).RequireRateLimiting(AuthRateLimit);
 
 vault.MapPost("/unlock", async (
-    VaultUnlockRequest body, ClaimsPrincipal principal, VaultPinService pins, UnlockTokenStore unlockTokens,
-    CancellationToken ct) =>
+    VaultUnlockRequest body, ClaimsPrincipal principal, HttpContext http, VaultPinService pins,
+    UnlockTokenStore unlockTokens, CancellationToken ct) =>
 {
     var uid = Uid(principal);
     var verdict = await pins.CheckAsync(int.Parse(uid), body.Pin, ct);
-    return verdict.Result == PinCheck.Ok
-        ? Results.Ok(new { unlockToken = unlockTokens.Issue(uid) })
-        : PinFailure(verdict);
+    if (verdict.Result != PinCheck.Ok) return PinFailure(verdict);
+    var issued = unlockTokens.Issue(uid);
+    // Locked notes' pictures load through <img>, which can't send the header.
+    UnlockCookie.Set(http, issued);
+    return Results.Ok(new { unlockToken = issued });
 }).RequireRateLimiting(AuthRateLimit);
 
 // Close the vault on this session now (the lock button), rather than waiting for
@@ -1891,15 +1923,22 @@ vault.MapPost("/unlock", async (
 // editing locked notes, so the vault doesn't shut mid-read. An idle vault still
 // closes five minutes after the last touch. Needs the live token itself — a
 // session alone can never re-open or extend anything.
-vault.MapPost("/keepalive", (ClaimsPrincipal principal, HttpRequest request, UnlockTokenStore unlockTokens) =>
-    unlockTokens.Touch(request.Headers["X-Unlock-Token"].ToString(), Uid(principal))
-        ? Results.NoContent()
-        : Results.Json(new { error = "Unlock the vault first.", code = "locked" },
-            statusCode: StatusCodes.Status401Unauthorized));
+vault.MapPost("/keepalive", (ClaimsPrincipal principal, HttpContext http, UnlockTokenStore unlockTokens) =>
+{
+    var token = http.Request.Headers["X-Unlock-Token"].ToString();
+    if (!unlockTokens.Touch(token, Uid(principal)))
+        return Results.Json(new { error = "Unlock the vault first.", code = "locked" },
+            statusCode: StatusCodes.Status401Unauthorized);
+    // Re-assert the media cookie too, so an unlock made before it existed (or a
+    // cleared cookie) still lets the open note's pictures load.
+    UnlockCookie.Set(http, token);
+    return Results.NoContent();
+});
 
-vault.MapPost("/lock", (ClaimsPrincipal principal, UnlockTokenStore unlockTokens) =>
+vault.MapPost("/lock", (ClaimsPrincipal principal, HttpContext http, UnlockTokenStore unlockTokens) =>
 {
     unlockTokens.RevokeUser(Uid(principal));
+    UnlockCookie.Clear(http);
     return Results.NoContent();
 });
 
@@ -1978,7 +2017,7 @@ webauthn.MapPost("/challenge", async (
 }).RequireRateLimiting(AuthRateLimit);
 
 webauthn.MapPost("/verify", async (
-    WebAuthnAssertRequest body, ClaimsPrincipal principal, HttpRequest request, IConfiguration config,
+    WebAuthnAssertRequest body, ClaimsPrincipal principal, HttpContext http, HttpRequest request, IConfiguration config,
     BiometricAuthService bio, CancellationToken ct) =>
 {
     if (body.Response is null) return Results.BadRequest(new { error = "Missing assertion response." });
@@ -1986,9 +2025,10 @@ webauthn.MapPost("/verify", async (
     if (party is null) return Results.BadRequest(new { error = problem!.Message, code = problem.Code });
     var token = await bio.AssertVerifyAsync(int.Parse(Uid(principal)), body.Response, party, ct);
     // A failed assertion never explains why — don't help an attacker probe.
-    return token is null
-        ? Results.Json(new { error = "Verification failed." }, statusCode: StatusCodes.Status401Unauthorized)
-        : Results.Ok(new { unlockToken = token });
+    if (token is null)
+        return Results.Json(new { error = "Verification failed." }, statusCode: StatusCodes.Status401Unauthorized);
+    UnlockCookie.Set(http, token);
+    return Results.Ok(new { unlockToken = token });
 }).RequireRateLimiting(AuthRateLimit);
 
 webauthn.MapDelete("/credentials/{id:int}", async (
@@ -4960,13 +5000,15 @@ shares.MapGet("/incoming/{shareId:int}", async (
 
 // Grantee: media embedded in an incoming shared note (resolved in owner's vault).
 shares.MapGet("/incoming/{shareId:int}/media/{filename}", async (
-    int shareId, string filename, ClaimsPrincipal user, AppDbContext db,
+    int shareId, string filename, ClaimsPrincipal user, HttpResponse response, AppDbContext db,
+    VaultState state, MarkdownStorageService storage, VaultObserverOptions vault, MediaReferences refs,
     IConfiguration config, IHostEnvironment env, ILoggerFactory lf, CancellationToken ct) =>
 {
     var uid = int.Parse(Uid(user));
     var share = await db.Shares.FirstOrDefaultAsync(s => s.Id == shareId && s.GranteeUserId == uid, ct);
     if (share is null) return Results.NotFound();
-    return ServeOwnerMedia(share.OwnerId.ToString(), filename, config, env, lf);
+    return await ServeOwnerMedia(share.OwnerId.ToString(), share.NoteId, filename, response,
+        state, storage, vault, refs, config, env, lf, ct);
 });
 
 // Grantee: edit an incoming shared note (only when access == edit).
@@ -5372,16 +5414,35 @@ app.MapGet("/api/shared/{token}", async (
 });
 
 // Public: media embedded in a link-shared note. No session needed; the token is
-// the authorisation. Validity (expiry) is enforced; media GETs don't count a view.
+// the authorisation, and it covers only the files that note embeds. Media GETs
+// don't count a view — but once a limited link has used its views, only a page
+// load that was itself counted (it holds the signed view cookie, scoped to this
+// link's path) may still fetch the note's pictures. A spent link serves nothing
+// to anyone else.
 app.MapGet("/api/shared/{token}/media/{filename}", async (
-    string token, string filename, AppDbContext db,
+    string token, string filename, HttpRequest request, HttpResponse response,
+    IDataProtectionProvider dataProtection, AppDbContext db,
+    VaultState state, MarkdownStorageService storage, VaultObserverOptions vault, MediaReferences refs,
     IConfiguration config, IHostEnvironment env, ILoggerFactory lf, CancellationToken ct) =>
 {
     var share = await db.Shares.FirstOrDefaultAsync(s => s.Token == token && s.Kind == "link", ct);
     if (share is null) return Results.NotFound();
     if (share.ExpiresUtc is { } exp && exp < DateTime.UtcNow)
         return Results.Json(new { error = "This link has expired." }, statusCode: StatusCodes.Status410Gone);
-    return ServeOwnerMedia(share.OwnerId.ToString(), filename, config, env, lf);
+    if (share.MaxViews is { } mv && share.ViewCount >= mv)
+    {
+        var viewer = dataProtection.CreateProtector("Papyra.SharedLinkView.v2").ToTimeLimitedDataProtector();
+        var counted = false;
+        if (request.Cookies.TryGetValue($"papyra_view_{share.Id}", out var cookie))
+        {
+            try { counted = viewer.Unprotect(cookie).StartsWith($"{share.Id}:{token}:", StringComparison.Ordinal); }
+            catch (System.Security.Cryptography.CryptographicException) { }
+        }
+        if (!counted)
+            return Results.Json(new { error = "This link has reached its view limit." }, statusCode: StatusCodes.Status410Gone);
+    }
+    return await ServeOwnerMedia(share.OwnerId.ToString(), share.NoteId, filename, response,
+        state, storage, vault, refs, config, env, lf, ct);
 });
 
 // Public: edit a link-shared note (only when access == edit; doesn't count a view).
@@ -5875,9 +5936,18 @@ app.MapPost("/api/media/upload", async (
 {
     if (file is null || file.Length == 0) return Results.BadRequest(new { error = "No file." });
 
+    // What the bytes are — not what the name claims — decides the kind, the
+    // size limit and the stored extension. A page renamed photo.png is stored
+    // (and later served) as inert text, never as something a browser runs.
+    var head = new byte[MediaSniffer.HeaderBytes];
+    int headLength;
+    await using (var probe = file.OpenReadStream())
+        headLength = await probe.ReadAtLeastAsync(head, head.Length, throwOnEndOfStream: false, ct);
+    var sniffed = MediaSniffer.Sniff(head.AsSpan(0, headLength), file.FileName);
+
     // Generous, per kind: a phone photo or a big GIF always fits; video and
     // documents get a ceiling so one upload can't fill the disk.
-    var (kindLabel, limit) = MediaLimits.For(file.FileName);
+    var (kindLabel, limit) = MediaLimits.ForKind(sniffed.Kind);
     if (file.Length > limit)
         return Results.Json(new
         {
@@ -5891,27 +5961,35 @@ app.MapPost("/api/media/upload", async (
 
     // A readable name — the original's, slugged — plus a short suffix so two
     // pasted "image.png"s never clobber each other: `airway-bill-3f9a2c.jpg`,
-    // not a 32-character id.
-    var ext = Path.GetExtension(file.FileName).ToLowerInvariant();
-    if (ext.Length > 10 || ext.Any(c => !char.IsLetterOrDigit(c) && c != '.')) ext = "";
+    // not a 32-character id. The extension is the sniffed one.
     var slug = NoteFileNamer.Slug(Path.GetFileNameWithoutExtension(file.FileName));
     if (slug.Length == 0) slug = "file";
     if (slug.Length > 48) slug = slug[..48].TrimEnd('-');
-    var filename = $"{slug}-{Guid.NewGuid().ToString("N")[..6]}{ext}";
+    var filename = $"{slug}-{Guid.NewGuid().ToString("N")[..6]}{sniffed.Extension}";
 
     // Defensive: the slugified name can't escape, but verify before writing.
     var dest = PathGuard.ResolveAndVerify(mediaDir, filename, loggerFactory.CreateLogger("PathGuard"));
     var tmp = Path.Combine(mediaDir, $"{Guid.NewGuid():N}.tmp");
-    await using (var fs = new FileStream(tmp, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+    try
     {
-        await file.CopyToAsync(fs, ct);
-        await fs.FlushAsync(ct);
+        await using (var fs = new FileStream(tmp, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+        {
+            await file.CopyToAsync(fs, ct);
+            await fs.FlushAsync(ct);
+        }
+        File.Move(tmp, dest);
     }
-    File.Move(tmp, dest);
+    finally
+    {
+        // A cancelled or failed copy must not leave a half-written .tmp behind
+        // for export and backups to pick up.
+        try { if (File.Exists(tmp)) File.Delete(tmp); } catch (IOException) { }
+    }
 
-    return Results.Ok(new { filename });
+    return Results.Ok(new { filename, kind = sniffed.Kind });
 })
 .RequireAuthorization()
+.RequireRateLimiting(MediaUploadRateLimit)
 // The per-kind limits above do the real policing; these just let the largest
 // allowed upload (a video) through Kestrel's and the form reader's defaults.
 .WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(MediaLimits.Largest + 1_048_576))
@@ -5921,14 +5999,25 @@ app.MapPost("/api/media/upload", async (
 // Serve an attachment back to the editor. The PapyraEditor adapter's
 // resolveMediaUrl points ![[file]] embeds here. PathGuard jails the filename to
 // the caller's own media dir, so one tenant can never read another's files.
+//
+// An attachment that only locked notes reference is part of the vault: it needs
+// a live unlock (the X-Unlock-Token header, or the HttpOnly cookie the unlock
+// sets for <img>/<video> requests, which can't carry headers). Anything a normal
+// note also references — or that nothing references yet, like a fresh upload —
+// is the owner's to read with their session.
 app.MapGet("/api/media/{filename}", (
     string filename,
     ClaimsPrincipal user,
+    HttpRequest request,
+    HttpResponse response,
+    MediaReferences refs,
+    UnlockTokenStore unlockTokens,
     IConfiguration config,
     IHostEnvironment env,
     ILoggerFactory loggerFactory) =>
 {
-    var mediaDir = PapyraPaths.UserMediaDir(config, env.ContentRootPath, Uid(user));
+    var uid = Uid(user);
+    var mediaDir = PapyraPaths.UserMediaDir(config, env.ContentRootPath, uid);
     string dest;
     try
     {
@@ -5940,9 +6029,18 @@ app.MapGet("/api/media/{filename}", (
     }
     if (!File.Exists(dest)) return Results.NotFound();
 
-    if (!new FileExtensionContentTypeProvider().TryGetContentType(dest, out var contentType))
-        contentType = "application/octet-stream";
-    return Results.File(dest, contentType, enableRangeProcessing: true);
+    var referrers = refs.Referrers(uid, filename).ToList();
+    var vaultOnly = referrers.Count > 0 && referrers.All(n => n.Secure);
+    if (vaultOnly)
+    {
+        var token = request.Headers["X-Unlock-Token"].ToString();
+        if (token.Length == 0) token = request.Cookies[UnlockCookie.Name] ?? string.Empty;
+        if (IsApiKey(user) || !unlockTokens.IsValid(token, uid))
+            return Results.Json(new { error = "Unlock required.", code = "locked" },
+                statusCode: StatusCodes.Status401Unauthorized);
+    }
+    return MediaResponder.Serve(response, dest,
+        vaultOnly ? "private, no-cache" : "private, max-age=3600, must-revalidate");
 })
 .RequireAuthorization();
 
@@ -5980,6 +6078,8 @@ app.MapPost("/api/import/{provider}", async (
     return Results.Accepted(value: status);
 })
 .RequireAuthorization()
+.WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(importMaxBytes))
+.WithFormOptions(multipartBodyLengthLimit: importMaxBytes)
 .DisableAntiforgery();
 
 // The caller's running import (or the last one's summary) — lets the Settings page
@@ -6541,6 +6641,8 @@ backups.MapPost("/restore", async (
     }
 })
     .DisableAntiforgery()
+    .WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(importMaxBytes))
+    .WithFormOptions(multipartBodyLengthLimit: importMaxBytes)
     .WithSummary("Restore from encrypted backup")
     .WithDescription("Decrypts an uploaded .papyra-vault (multipart: password + file) and replaces the caller's notes + media, then rebuilds the cache.");
 
@@ -6907,19 +7009,27 @@ static IResult AvatarFile(string uid, IConfiguration config, IHostEnvironment en
 }
 
 // Serve a media file from an arbitrary owner's vault (for shared notes). The
-// caller's authorisation is established before this is reached (a valid link token
-// or an incoming share row); PathGuard still jails the filename to that owner.
-static IResult ServeOwnerMedia(
-    string ownerUid, string filename, IConfiguration config, IHostEnvironment env, ILoggerFactory lf)
+// caller's authorisation to read the NOTE is established before this is reached
+// (a valid link token or an incoming share row); this narrows it to the files
+// that note actually embeds. A share grants one note, not the owner's whole
+// media folder — an unreferenced file (another note's photo, a locked note's
+// scan, a web archive) is reported missing. PathGuard still jails the name.
+static async Task<IResult> ServeOwnerMedia(
+    string ownerUid, string noteId, string filename, HttpResponse response,
+    VaultState state, MarkdownStorageService storage, VaultObserverOptions vault, MediaReferences refs,
+    IConfiguration config, IHostEnvironment env, ILoggerFactory lf, CancellationToken ct)
 {
+    var note = await storage.ReadAsync(OwnerNotePath(state, vault, lf, ownerUid, noteId), ct);
+    // Locked since it was shared: its attachments stay in the vault with its body.
+    if (note is null || note.Secure || !refs.References(note, filename)) return Results.NotFound();
+
     var mediaDir = PapyraPaths.UserMediaDir(config, env.ContentRootPath, ownerUid);
     string dest;
     try { dest = PathGuard.ResolveAndVerify(mediaDir, filename, lf.CreateLogger("PathGuard")); }
-    catch (SecurityException) { return Results.Forbid(); }
+    catch (SecurityException) { return Results.NotFound(); }
     if (!File.Exists(dest)) return Results.NotFound();
-    if (!new FileExtensionContentTypeProvider().TryGetContentType(dest, out var contentType))
-        contentType = "application/octet-stream";
-    return Results.File(dest, contentType, enableRangeProcessing: true);
+    // Revalidated every time: a revoked or expired share must stop serving.
+    return MediaResponder.Serve(response, dest, "private, no-cache");
 }
 
 // Apply a body-only edit to a note in the owner's vault on behalf of a sharee,
