@@ -6,6 +6,15 @@ a Docker Hub tag and a GitHub Release.
 
 <!-- new releases are inserted directly below this line -->
 
+## [0.2.6] - 2026-09-30
+
+- feat: inline PDF preview on file cards (28bcd50)
+- feat(: upload UX — limits pre-check, video posters, HEIC, offscreen pause (19b96ce)
+- feat: adopt luthor 2.11.1 — thumbnails, batched metadata, no theme remounts (4cf0cef)
+- feat: S1 backend foundation — streaming uploads, thumbnails, metadata (f5beed9)
+- test: bring edge harness up to date with step-up, vault PIN and SSO routes (9d59160)
+- feat: security hardening for attachments (3946670)
+
 ## [0.2.5] - 2026-09-29
 
 - test: end-to-end coverage for SSO, share views, error pages, comments (bf31db7)
