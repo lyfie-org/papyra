@@ -94,6 +94,10 @@ builder.Services.AddSingleton<VaultState>();
 // Which notes embed which attachment — parsed once per body, shared by share
 // scoping, the vault gate on media and (later) orphan pruning.
 builder.Services.AddSingleton<MediaReferences>();
+// Derived attachment state (meta, posters, thumbnails) under users/{uid}/.papyra/media.
+builder.Services.AddSingleton<MediaMetaStore>();
+// Per-request resolver for media reached through a share.
+builder.Services.AddScoped<SharedMedia>();
 builder.Services.AddSingleton<WriteRing>();
 builder.Services.AddSingleton(sp => new VaultObserverOptions
 {
@@ -441,7 +445,6 @@ builder.Services.AddSingleton<EmailSender>();
 const string UserSearchRateLimit = "user-search";
 const string AuthRateLimit = "auth";
 const string PreviewRateLimit = "previews";
-const string MediaUploadRateLimit = "media-upload";
 
 // The mention typeahead is the one endpoint on which any tenant can ask about
 // accounts other than their own, so it gets a per-account budget: comfortably
@@ -500,7 +503,7 @@ builder.Services.AddRateLimiter(options =>
     // Attachment uploads, per account. Roomy enough to drop a whole camera roll
     // (a burst queues rather than failing), firm enough that a runaway client
     // can't write to disk as fast as the network allows.
-    options.AddPolicy(MediaUploadRateLimit, ctx =>
+    options.AddPolicy(MediaEndpoints.UploadRateLimit, ctx =>
         RateLimitPartition.GetFixedWindowLimiter(
             ctx.User.FindFirstValue(ClaimTypes.NameIdentifier) ?? ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown",
             _ => new FixedWindowRateLimiterOptions
@@ -1123,6 +1126,9 @@ app.MapGet("/health", (ICollabEngine collab) => Results.Ok(new
         // ok | starting | degraded | disabled — degraded never makes the app
         // unhealthy: notes just use the classic editor.
         collab = collab.Status.ToString().ToLowerInvariant(),
+        // ok | unavailable — the native image library didn't load on this
+        // platform: attachments still serve, thumbnails fall back to originals.
+        thumbnails = ImageProcessor.Available ? "ok" : "unavailable",
     }))
     .ExcludeFromDescription();
 
@@ -4998,19 +5004,6 @@ shares.MapGet("/incoming/{shareId:int}", async (
     });
 });
 
-// Grantee: media embedded in an incoming shared note (resolved in owner's vault).
-shares.MapGet("/incoming/{shareId:int}/media/{filename}", async (
-    int shareId, string filename, ClaimsPrincipal user, HttpResponse response, AppDbContext db,
-    VaultState state, MarkdownStorageService storage, VaultObserverOptions vault, MediaReferences refs,
-    IConfiguration config, IHostEnvironment env, ILoggerFactory lf, CancellationToken ct) =>
-{
-    var uid = int.Parse(Uid(user));
-    var share = await db.Shares.FirstOrDefaultAsync(s => s.Id == shareId && s.GranteeUserId == uid, ct);
-    if (share is null) return Results.NotFound();
-    return await ServeOwnerMedia(share.OwnerId.ToString(), share.NoteId, filename, response,
-        state, storage, vault, refs, config, env, lf, ct);
-});
-
 // Grantee: edit an incoming shared note (only when access == edit).
 shares.MapPut("/incoming/{shareId:int}", async (
     int shareId, SharedBodyWrite body, ClaimsPrincipal user, AppDbContext db, VaultState state,
@@ -5411,38 +5404,6 @@ app.MapGet("/api/shared/{token}", async (
         views = share.ViewCount,
         maxViews = share.MaxViews,
     });
-});
-
-// Public: media embedded in a link-shared note. No session needed; the token is
-// the authorisation, and it covers only the files that note embeds. Media GETs
-// don't count a view — but once a limited link has used its views, only a page
-// load that was itself counted (it holds the signed view cookie, scoped to this
-// link's path) may still fetch the note's pictures. A spent link serves nothing
-// to anyone else.
-app.MapGet("/api/shared/{token}/media/{filename}", async (
-    string token, string filename, HttpRequest request, HttpResponse response,
-    IDataProtectionProvider dataProtection, AppDbContext db,
-    VaultState state, MarkdownStorageService storage, VaultObserverOptions vault, MediaReferences refs,
-    IConfiguration config, IHostEnvironment env, ILoggerFactory lf, CancellationToken ct) =>
-{
-    var share = await db.Shares.FirstOrDefaultAsync(s => s.Token == token && s.Kind == "link", ct);
-    if (share is null) return Results.NotFound();
-    if (share.ExpiresUtc is { } exp && exp < DateTime.UtcNow)
-        return Results.Json(new { error = "This link has expired." }, statusCode: StatusCodes.Status410Gone);
-    if (share.MaxViews is { } mv && share.ViewCount >= mv)
-    {
-        var viewer = dataProtection.CreateProtector("Papyra.SharedLinkView.v2").ToTimeLimitedDataProtector();
-        var counted = false;
-        if (request.Cookies.TryGetValue($"papyra_view_{share.Id}", out var cookie))
-        {
-            try { counted = viewer.Unprotect(cookie).StartsWith($"{share.Id}:{token}:", StringComparison.Ordinal); }
-            catch (System.Security.Cryptography.CryptographicException) { }
-        }
-        if (!counted)
-            return Results.Json(new { error = "This link has reached its view limit." }, statusCode: StatusCodes.Status410Gone);
-    }
-    return await ServeOwnerMedia(share.OwnerId.ToString(), share.NoteId, filename, response,
-        state, storage, vault, refs, config, env, lf, ct);
 });
 
 // Public: edit a link-shared note (only when access == edit; doesn't count a view).
@@ -5921,128 +5882,10 @@ app.MapPost("/api/system/rebuild-index", async (
     return Results.Ok(new { rebuilt = await rebuilder.RebuildUserAsync(Uid(user), ct) });
 }).RequireAuthorization();
 
-// ── Media uploads ───────────────────────────────────────────────────────────
-// Attachments land flat in the media dir and are referenced from note bodies via
-// ![[filename]]. Written atomically (tmp → flush → move) like notes; the nightly
-// orphan-prune sweep reclaims anything no live note ends up referencing.
-app.MapPost("/api/media/upload", async (
-    string? noteId,
-    IFormFile file,
-    ClaimsPrincipal user,
-    IConfiguration config,
-    IHostEnvironment env,
-    ILoggerFactory loggerFactory,
-    CancellationToken ct) =>
-{
-    if (file is null || file.Length == 0) return Results.BadRequest(new { error = "No file." });
-
-    // What the bytes are — not what the name claims — decides the kind, the
-    // size limit and the stored extension. A page renamed photo.png is stored
-    // (and later served) as inert text, never as something a browser runs.
-    var head = new byte[MediaSniffer.HeaderBytes];
-    int headLength;
-    await using (var probe = file.OpenReadStream())
-        headLength = await probe.ReadAtLeastAsync(head, head.Length, throwOnEndOfStream: false, ct);
-    var sniffed = MediaSniffer.Sniff(head.AsSpan(0, headLength), file.FileName);
-
-    // Generous, per kind: a phone photo or a big GIF always fits; video and
-    // documents get a ceiling so one upload can't fill the disk.
-    var (kindLabel, limit) = MediaLimits.ForKind(sniffed.Kind);
-    if (file.Length > limit)
-        return Results.Json(new
-        {
-            error = $"That {kindLabel} is {MediaLimits.Human(file.Length)} — the limit for {kindLabel}s is {MediaLimits.Human(limit)}.",
-            code = "too_large",
-            limit,
-        }, statusCode: StatusCodes.Status413PayloadTooLarge);
-
-    var mediaDir = PapyraPaths.UserMediaDir(config, env.ContentRootPath, Uid(user));
-    Directory.CreateDirectory(mediaDir);
-
-    // A readable name — the original's, slugged — plus a short suffix so two
-    // pasted "image.png"s never clobber each other: `airway-bill-3f9a2c.jpg`,
-    // not a 32-character id. The extension is the sniffed one.
-    var slug = NoteFileNamer.Slug(Path.GetFileNameWithoutExtension(file.FileName));
-    if (slug.Length == 0) slug = "file";
-    if (slug.Length > 48) slug = slug[..48].TrimEnd('-');
-    var filename = $"{slug}-{Guid.NewGuid().ToString("N")[..6]}{sniffed.Extension}";
-
-    // Defensive: the slugified name can't escape, but verify before writing.
-    var dest = PathGuard.ResolveAndVerify(mediaDir, filename, loggerFactory.CreateLogger("PathGuard"));
-    var tmp = Path.Combine(mediaDir, $"{Guid.NewGuid():N}.tmp");
-    try
-    {
-        await using (var fs = new FileStream(tmp, FileMode.CreateNew, FileAccess.Write, FileShare.None))
-        {
-            await file.CopyToAsync(fs, ct);
-            await fs.FlushAsync(ct);
-        }
-        File.Move(tmp, dest);
-    }
-    finally
-    {
-        // A cancelled or failed copy must not leave a half-written .tmp behind
-        // for export and backups to pick up.
-        try { if (File.Exists(tmp)) File.Delete(tmp); } catch (IOException) { }
-    }
-
-    return Results.Ok(new { filename, kind = sniffed.Kind });
-})
-.RequireAuthorization()
-.RequireRateLimiting(MediaUploadRateLimit)
-// The per-kind limits above do the real policing; these just let the largest
-// allowed upload (a video) through Kestrel's and the form reader's defaults.
-.WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(MediaLimits.Largest + 1_048_576))
-.WithFormOptions(multipartBodyLengthLimit: MediaLimits.Largest + 1_048_576)
-.DisableAntiforgery(); // no antiforgery middleware in this skeleton; same-origin SPA
-
-// Serve an attachment back to the editor. The PapyraEditor adapter's
-// resolveMediaUrl points ![[file]] embeds here. PathGuard jails the filename to
-// the caller's own media dir, so one tenant can never read another's files.
-//
-// An attachment that only locked notes reference is part of the vault: it needs
-// a live unlock (the X-Unlock-Token header, or the HttpOnly cookie the unlock
-// sets for <img>/<video> requests, which can't carry headers). Anything a normal
-// note also references — or that nothing references yet, like a fresh upload —
-// is the owner's to read with their session.
-app.MapGet("/api/media/{filename}", (
-    string filename,
-    ClaimsPrincipal user,
-    HttpRequest request,
-    HttpResponse response,
-    MediaReferences refs,
-    UnlockTokenStore unlockTokens,
-    IConfiguration config,
-    IHostEnvironment env,
-    ILoggerFactory loggerFactory) =>
-{
-    var uid = Uid(user);
-    var mediaDir = PapyraPaths.UserMediaDir(config, env.ContentRootPath, uid);
-    string dest;
-    try
-    {
-        dest = PathGuard.ResolveAndVerify(mediaDir, filename, loggerFactory.CreateLogger("PathGuard"));
-    }
-    catch (SecurityException)
-    {
-        return Results.Forbid();
-    }
-    if (!File.Exists(dest)) return Results.NotFound();
-
-    var referrers = refs.Referrers(uid, filename).ToList();
-    var vaultOnly = referrers.Count > 0 && referrers.All(n => n.Secure);
-    if (vaultOnly)
-    {
-        var token = request.Headers["X-Unlock-Token"].ToString();
-        if (token.Length == 0) token = request.Cookies[UnlockCookie.Name] ?? string.Empty;
-        if (IsApiKey(user) || !unlockTokens.IsValid(token, uid))
-            return Results.Json(new { error = "Unlock required.", code = "locked" },
-                statusCode: StatusCodes.Status401Unauthorized);
-    }
-    return MediaResponder.Serve(response, dest,
-        vaultOnly ? "private, no-cache" : "private, max-age=3600, must-revalidate");
-})
-.RequireAuthorization();
+// ── Media ────────────────────────────────────────────────────────────────────
+// Upload, originals, thumbnails and metadata — for the owner, for sharees and
+// for share links — live in Features/MediaEndpoints.cs.
+app.MapMedia();
 
 // ── Import / Export ───────────────────────────────────────────────────────────
 // Import parks the uploaded archive on disk and hands it to the background queue,
@@ -7006,30 +6849,6 @@ static IResult AvatarFile(string uid, IConfiguration config, IHostEnvironment en
     return Results.File(file, contentType,
         lastModified: modified,
         entityTag: new Microsoft.Net.Http.Headers.EntityTagHeaderValue($"\"{modified.Ticks:x}\""));
-}
-
-// Serve a media file from an arbitrary owner's vault (for shared notes). The
-// caller's authorisation to read the NOTE is established before this is reached
-// (a valid link token or an incoming share row); this narrows it to the files
-// that note actually embeds. A share grants one note, not the owner's whole
-// media folder — an unreferenced file (another note's photo, a locked note's
-// scan, a web archive) is reported missing. PathGuard still jails the name.
-static async Task<IResult> ServeOwnerMedia(
-    string ownerUid, string noteId, string filename, HttpResponse response,
-    VaultState state, MarkdownStorageService storage, VaultObserverOptions vault, MediaReferences refs,
-    IConfiguration config, IHostEnvironment env, ILoggerFactory lf, CancellationToken ct)
-{
-    var note = await storage.ReadAsync(OwnerNotePath(state, vault, lf, ownerUid, noteId), ct);
-    // Locked since it was shared: its attachments stay in the vault with its body.
-    if (note is null || note.Secure || !refs.References(note, filename)) return Results.NotFound();
-
-    var mediaDir = PapyraPaths.UserMediaDir(config, env.ContentRootPath, ownerUid);
-    string dest;
-    try { dest = PathGuard.ResolveAndVerify(mediaDir, filename, lf.CreateLogger("PathGuard")); }
-    catch (SecurityException) { return Results.NotFound(); }
-    if (!File.Exists(dest)) return Results.NotFound();
-    // Revalidated every time: a revoked or expired share must stop serving.
-    return MediaResponder.Serve(response, dest, "private, no-cache");
 }
 
 // Apply a body-only edit to a note in the owner's vault on behalf of a sharee,

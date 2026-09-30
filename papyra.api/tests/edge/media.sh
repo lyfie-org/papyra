@@ -91,6 +91,28 @@ header_has "under a sandboxed, script-free policy" "content-security-policy: san
 STATUS="$(curl -sS -o /dev/null -w '%{http_code}' -b "$JAR_QA" -H 'Range: bytes=0-7' "$BASE/api/media/$PIC")"
 eq "byte ranges work (video seeking)" "$STATUS" "206"
 
+# ── Streaming, thumbnails, metadata ─────────────────────────────────────────
+section "Uploads stream; pictures get thumbnails and metadata"
+
+fetch "$JAR_QA" "/api/media/$PIC/meta"
+eq "metadata for the picture" "$STATUS" "200"
+body_has "…with its shape" '"width":1'
+fetch "$JAR_QA" "/api/media/$PIC/thumb?w=320"
+eq "a thumbnail for the picture" "$STATUS" "200"
+header_has "…as WebP" "content-type: image/webp"
+fetch "$JAR_QA" "/api/media/$PAGE/thumb"
+eq "no thumbnail for a text file" "$STATUS" "404"
+header_has "…and says why" "x-papyra-reason: unsupported"
+
+# Opaque bytes are a generic file: 50 MB allowed, refused as they stream past it.
+head -c $((40 * 1024 * 1024)) /dev/zero > "$WORK/40mb.bin"
+upload "$JAR_QA" "$WORK/40mb.bin" "big.bin"
+eq "a 40 MB file uploads (above Kestrel's 28.6 MB default)" "$STATUS" "200"
+head -c $((60 * 1024 * 1024)) /dev/zero > "$WORK/60mb.bin"
+upload "$JAR_QA" "$WORK/60mb.bin" "bigger.mp4"
+eq "a 60 MB file named .mp4 is refused (it isn't a video)" "$STATUS" "413"
+rm -f "$WORK/40mb.bin" "$WORK/60mb.bin"
+
 # ── Share links ──────────────────────────────────────────────────────────────
 section "A share link reaches only its own note's files"
 

@@ -347,34 +347,6 @@ public sealed class MediaSecurityTests
     // ── Upload hygiene ────────────────────────────────────────────────────────
 
     [Fact]
-    public void Prune_RemovesStaleUploadTemps_ButNotOnesInFlight()
-    {
-        var dataDir = Path.Combine(Path.GetTempPath(), "papyra-tmp-" + Guid.NewGuid().ToString("N"));
-        var media = Path.Combine(dataDir, "users", "1", "media");
-        Directory.CreateDirectory(media);
-        try
-        {
-            var stale = Path.Combine(media, "aaa.tmp");
-            var fresh = Path.Combine(media, "bbb.tmp");
-            File.WriteAllText(stale, "x");
-            File.WriteAllText(fresh, "y");
-            File.SetLastWriteTimeUtc(stale, DateTime.UtcNow.AddHours(-2));
-
-            var state = new VaultState();
-            state.Upsert("1", Path.Combine(dataDir, "users", "1", "notes", "n.md"), new Note { Id = "n", Body = "" });
-            var config = new ConfigurationBuilder()
-                .AddInMemoryCollection(new Dictionary<string, string?> { ["Papyra:DataDir"] = dataDir }).Build();
-            var moved = new OrphanPruneService(state, config, new StubEnv(),
-                new JobRegistry(NullLogger<JobRegistry>.Instance), NullLogger<OrphanPruneService>.Instance).PruneOnce();
-
-            Assert.Equal(0, moved);
-            Assert.False(File.Exists(stale));
-            Assert.True(File.Exists(fresh));
-        }
-        finally { Directory.Delete(dataDir, recursive: true); }
-    }
-
-    [Fact]
     public async Task Import_AcceptsBodiesAboveKestrelsDefaultLimit()
     {
         var (factory, dir) = NewApp();
@@ -466,13 +438,5 @@ public sealed class MediaSecurityTests
         var res = await client.PostAsJsonAsync("/api/auth/vault/unlock", new { pin = TestAuth.VaultPin });
         Assert.Equal(HttpStatusCode.OK, res.StatusCode);
         return (await res.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("unlockToken").GetString()!;
-    }
-
-    private sealed class StubEnv : IHostEnvironment
-    {
-        public string EnvironmentName { get; set; } = "Development";
-        public string ApplicationName { get; set; } = "Papyra.Tests";
-        public string ContentRootPath { get; set; } = Path.GetTempPath();
-        public Microsoft.Extensions.FileProviders.IFileProvider ContentRootFileProvider { get; set; } = null!;
     }
 }

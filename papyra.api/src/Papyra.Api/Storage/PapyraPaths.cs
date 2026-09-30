@@ -34,6 +34,14 @@ public static class PapyraPaths
     public static string UserMediaDir(IConfiguration config, string contentRoot, string userId)
         => Path.Combine(UsersDir(config, contentRoot), userId, "media");
 
+    // What Papyra derives from a user's attachments — per-file metadata, video
+    // posters, thumbnails. Hidden state, never the media dir itself: the files
+    // there stay exactly what the user uploaded. Metadata and thumbnails can be
+    // rebuilt; a poster (captured by the browser at upload) cannot, so this
+    // directory travels with backups.
+    public static string UserMediaDerivedDir(IConfiguration config, string contentRoot, string userId)
+        => Path.Combine(UsersDir(config, contentRoot), userId, ".papyra", "media");
+
     // Soft-delete bin: a user's orphaned media is moved here, never hard-deleted.
     public static string UserTrashDir(IConfiguration config, string contentRoot, string userId)
         => Path.Combine(UsersDir(config, contentRoot), userId, ".trash");

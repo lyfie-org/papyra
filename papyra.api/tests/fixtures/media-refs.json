@@ -1,0 +1,31 @@
+{
+  "_comment": "Which attachment names a note body references. Shared by the API (MediaRefParser, xUnit) and the web app (mediaRefs.ts, vitest) so both sides agree on what a note embeds. Names compare case-insensitively.",
+  "cases": [
+    { "name": "plain embed", "body": "![[photo-1a2b3c.png]]", "refs": ["photo-1a2b3c.png"] },
+    { "name": "sized embed", "body": "![[photo.png|480]]", "refs": ["photo.png"] },
+    { "name": "sized WxH embed", "body": "![[clip.mp4|640x360]]", "refs": ["clip.mp4"] },
+    { "name": "alt and size", "body": "![[photo.png|A sunset|300]]", "refs": ["photo.png"] },
+    { "name": "trailing directives", "body": "![[photo.png|300]] <!-- align:center --> <!-- caption:Hi -->", "refs": ["photo.png"] },
+    { "name": "pdf page fragment", "body": "![[report.pdf#page=3]]", "refs": ["report.pdf"] },
+    { "name": "plain wikilink to a file", "body": "see [[manual.pdf]]", "refs": ["manual.pdf"] },
+    { "name": "block ref", "body": "![[scan.png^abc123]]", "refs": ["scan.png"] },
+    { "name": "mid-paragraph embed", "body": "before ![[inline.gif]] after", "refs": ["inline.gif"] },
+    { "name": "two on a line", "body": "![[a.png]] ![[b.png]]", "refs": ["a.png", "b.png"] },
+    { "name": "folder path flattened", "body": "![[attachments/sub/deep.png]]", "refs": ["deep.png"] },
+    { "name": "api media url", "body": "![alt](/api/media/linked.jpg)", "refs": ["linked.jpg"] },
+    { "name": "api media url encoded", "body": "![alt](/api/media/my%20photo.jpg)", "refs": ["my photo.jpg"] },
+    { "name": "relative markdown image", "body": "![](attachments/rel.gif \"title\")", "refs": ["rel.gif"] },
+    { "name": "angle-bracket url", "body": "![](<spaced name.png>)", "refs": ["spaced name.png"] },
+    { "name": "obsidian external sized", "body": "![alt|300](local.png)", "refs": ["local.png"] },
+    { "name": "html img", "body": "<img src=\"/api/media/html.webp\" width=\"300\">", "refs": ["html.webp"] },
+    { "name": "html video poster", "body": "<video src='v.mp4' poster='poster.jpg'></video>", "refs": ["v.mp4", "poster.jpg"] },
+    { "name": "bare api url", "body": "download it at /api/media/bare.mp3 please", "refs": ["bare.mp3"] },
+    { "name": "shared api url", "body": "![](/api/shared/tok123/media/viashare.png)", "refs": ["viashare.png"] },
+    { "name": "remote image is not an attachment", "body": "![](https://example.com/remote.png)", "refs": [], "not": ["remote.png"] },
+    { "name": "youtube embed is not an attachment", "body": "![[youtube:https://youtu.be/abc|cap]]", "refs": [], "not": ["abc"] },
+    { "name": "iframe embed is not an attachment", "body": "![[iframe:https://example.com/page]]", "refs": [], "not": ["page"] },
+    { "name": "app route link is not an attachment", "body": "[a note](/notes/abc)", "refs": [], "not": ["abc"] },
+    { "name": "mailto is not an attachment", "body": "[mail](mailto:me@example.com)", "refs": [] },
+    { "name": "case is preserved but compared loosely", "body": "![[Photo.PNG]]", "refs": ["photo.png"] }
+  ]
+}

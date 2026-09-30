@@ -46,6 +46,7 @@ public sealed record BackupSummary(int Version, bool Legacy, BackupCounts Counts
 /// todos/                    to-do lists
 /// vault/                    locked (secure) notes
 /// media/images|documents|videos|audio|other/
+/// media-derived/            video posters + attachment metadata (not rebuildable)
 /// settings/account.json     profile + preferences (no password, no PIN)
 /// settings/collections.json saved searches
 /// settings/order.json, categories.json, avatar.*
@@ -66,6 +67,18 @@ public sealed class BackupLayout
 
     private static readonly string[] NoteFolders = ["notes", "todos", "vault"];
     public static readonly string[] MediaFolders = ["images", "documents", "videos", "audio", "other"];
+    public const string DerivedFolder = "media-derived";
+
+    // Per-attachment metadata and video posters — what a backup keeps of the
+    // derived media state. Names only: a restore never takes a path from here.
+    private static bool IsDerivedKeepsake(string path)
+    {
+        var name = Path.GetFileName(path);
+        return name.EndsWith(".meta.json", StringComparison.Ordinal)
+            || name.EndsWith(".poster.webp", StringComparison.Ordinal)
+            || name.EndsWith(".poster.jpg", StringComparison.Ordinal)
+            || name.EndsWith(".poster.png", StringComparison.Ordinal);
+    }
 
     private readonly MarkdownStorageService _storage;
     private readonly IConfiguration _config;
@@ -126,6 +139,14 @@ public sealed class BackupLayout
                 media++;
             }
         }
+
+        // A video's poster was captured by the browser at upload and can't be
+        // made again server-side, so derived media state travels with the backup
+        // (thumbnails don't: they rebuild on demand).
+        var derivedDir = PapyraPaths.UserMediaDerivedDir(_config, root, uid);
+        if (Directory.Exists(derivedDir))
+            foreach (var file in Directory.EnumerateFiles(derivedDir).Where(IsDerivedKeepsake))
+                CopyInto(file, Path.Combine(dest, DerivedFolder, Path.GetFileName(file)));
 
         var settings = Path.Combine(dest, "settings");
         Directory.CreateDirectory(settings);
@@ -268,6 +289,18 @@ public sealed class BackupLayout
 
             ReplaceDirContents(notesOut, PapyraPaths.UserNotesDir(_config, contentRoot, uid));
             ReplaceDirContents(mediaOut, PapyraPaths.UserMediaDir(_config, contentRoot, uid));
+
+            // The media was replaced wholesale, so its derived state is too.
+            var derivedDir = PapyraPaths.UserMediaDerivedDir(_config, contentRoot, uid);
+            if (Directory.Exists(derivedDir))
+                foreach (var stale in Directory.EnumerateFiles(derivedDir).Where(IsDerivedKeepsake)) File.Delete(stale);
+            var derivedIn = Path.Combine(root, DerivedFolder);
+            if (Directory.Exists(derivedIn))
+            {
+                Directory.CreateDirectory(derivedDir);
+                foreach (var file in Directory.EnumerateFiles(derivedIn).Where(IsDerivedKeepsake))
+                    AtomicCopy(file, Path.Combine(derivedDir, Path.GetFileName(file)));
+            }
         }
         finally
         {

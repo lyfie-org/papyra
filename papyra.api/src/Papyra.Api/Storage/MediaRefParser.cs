@@ -98,8 +98,13 @@ public static partial class MediaRefParser
 /// are parsed once per body (keyed on the note instance and its body string), so
 /// answering "who references photo.png?" costs a hash lookup per note rather
 /// than a regex pass over the whole vault on every image request.
+///
+/// For pruning it also answers "is this file referenced anywhere at all?",
+/// counting history: a note's saved versions (snapshots) and the conflict copies
+/// kept in the trash. Restoring an old version must bring its pictures back
+/// with it, so a file only an old version mentions is not an orphan.
 /// </summary>
-public sealed class MediaReferences(VaultState state)
+public sealed class MediaReferences(VaultState state, IConfiguration config, IHostEnvironment env)
 {
     private sealed class Entry(string body, HashSet<string> names)
     {
@@ -108,6 +113,11 @@ public sealed class MediaReferences(VaultState state)
     }
 
     private readonly ConditionalWeakTable<Note, Entry> _cache = new();
+
+    // Snapshot files never change once written: parse each one once. Keyed by
+    // path + length so a rewritten file (a restore) is parsed again.
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<string, (long Length, HashSet<string> Names)> _history =
+        new(StringComparer.Ordinal);
 
     /// <summary>The attachment names this note references.</summary>
     public IReadOnlySet<string> Of(Note note)
@@ -125,4 +135,42 @@ public sealed class MediaReferences(VaultState state)
     /// <summary>The user's live notes that reference the attachment.</summary>
     public IEnumerable<Note> Referrers(string userId, string filename) =>
         state.Snapshot(userId).Where(n => References(n, filename));
+
+    /// <summary>
+    /// Every attachment name the user references anywhere: live notes (trashed
+    /// ones included — they can be restored), saved versions, and conflict
+    /// copies in the trash. Case-insensitive.
+    /// </summary>
+    public HashSet<string> AllReferenced(string userId)
+    {
+        var all = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var note in state.Snapshot(userId)) all.UnionWith(Of(note));
+
+        var snapshots = PapyraPaths.UserSnapshotsDir(config, env.ContentRootPath, userId);
+        if (Directory.Exists(snapshots))
+            foreach (var file in Directory.EnumerateFiles(snapshots, "*.md", SearchOption.AllDirectories))
+                all.UnionWith(HistoryRefs(file));
+
+        var trash = PapyraPaths.UserTrashDir(config, env.ContentRootPath, userId);
+        if (Directory.Exists(trash))
+            foreach (var file in Directory.EnumerateFiles(trash, "*.md", SearchOption.TopDirectoryOnly))
+                all.UnionWith(HistoryRefs(file));
+        return all;
+    }
+
+    private HashSet<string> HistoryRefs(string path)
+    {
+        try
+        {
+            var length = new FileInfo(path).Length;
+            if (_history.TryGetValue(path, out var hit) && hit.Length == length) return hit.Names;
+            var names = MediaRefParser.Extract(File.ReadAllText(path));
+            _history[path] = (length, names);
+            return names;
+        }
+        catch (IOException)
+        {
+            return [];
+        }
+    }
 }
