@@ -38,6 +38,12 @@
   justify-content: center;
   overflow: visible;
 }
+/* A card (document, PDF, audio) is too short to host the bar on top of it —
+   it would cover the file's name — so the bar sits just above it instead. */
+.note-editor__canvas .luthor-media:not([data-luthor-media-kind="image"]):not([data-luthor-media-kind="video"]) .luthor-media__toolbar:not(.is-compact) {
+  top: auto;
+  bottom: calc(100% + 6px);
+}
 /* A caption written the old way — an italic line right under the picture —
    set small and centred beneath it. */
 .note-editor__canvas .luthor-file-embed-shell + p:has(> .luthor-text-italic:only-child) {

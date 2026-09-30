@@ -361,8 +361,38 @@ async function checkMedia(page) {
     await page.waitForTimeout(600);
   }
 
+  // A PDF card previews in place at its page (S7), or — with no inline viewer
+  // (headless browsers) — offers the framable route in a new tab.
+  console.log('· media: PDF preview');
+  const pdfUp = await page.request.post(`${ORIGIN}/api/media/upload?noteId=${MEDIA_NOTE}`, {
+    multipart: { file: { name: 'report.pdf', mimeType: 'application/pdf', buffer: PDF } },
+  });
+  const pdfName = (await pdfUp.json()).filename;
+  await page.request.put(`${ORIGIN}/api/notes/${MEDIA_NOTE}`, {
+    data: { title: 'Media', tags: [], color: null, pinned: false, archived: false, kind: 'note', body: `Read:\n\n![[${pdfName}#page=2]]` },
+  });
+  await openNote(page, MEDIA_NOTE);
+  const viewer = await page.evaluate(() => navigator.pdfViewerEnabled);
+  const viewUrl = `/api/media/view/${pdfName}#page=2`;
+  if (viewer) {
+    await page.getByRole('button', { name: 'Preview PDF' }).click();
+    const frame = page.locator('.pdf-preview__frame iframe');
+    await frame.waitFor({ timeout: 5000 });
+    check(await frame.getAttribute('src') === viewUrl, `media: PDF frame src ${await frame.getAttribute('src')}`);
+  } else {
+    check(await page.getByRole('link', { name: /Open in new tab/ }).getAttribute('href') === viewUrl, 'media: no-viewer PDF card has no new-tab link to the view route');
+  }
+  const viewRes = await page.request.get(`${ORIGIN}/api/media/view/${pdfName}`);
+  check(viewRes.headers()['x-frame-options'] === 'SAMEORIGIN' && /frame-ancestors 'self'/.test(viewRes.headers()['content-security-policy'] ?? ''),
+    'media: the PDF view route is not framable by Papyra itself');
+  const cardScan = await new AxeBuilder({ page }).include('.luthor-media').withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa']).analyze();
+  for (const v of cardScan.violations) check(false, `media a11y (PDF card): ${v.id} — ${v.help}`);
+
   // Cards on the desk load thumbnails, never the originals.
   console.log('· media: cards');
+  await page.request.put(`${ORIGIN}/api/notes/${MEDIA_NOTE}`, {
+    data: { title: 'Media', tags: [], color: null, pinned: false, archived: false, kind: 'note', body: start },
+  });
   await page.goto(`${ORIGIN}/`);
   await page.locator('.card-media__cover img').first().waitFor({ timeout: 15_000 });
   const cardSrcs = await page.locator('.card-media__cover img, .card-media__thumb img').evaluateAll((els) => els.map((e) => e.currentSrc || e.src));
@@ -630,4 +660,4 @@ if (failures.length) {
   for (const f of failures) console.error(`  ✗ ${f}`);
   process.exit(1);
 }
-console.log('check-editor: every insert path round-trips (upload, GIF, attach, drag & drop, paste, image link, YouTube, web page, link, /image, hand-written markdown); attachments select, resize, upload in order, cancel, refuse, keep posters, survive theme switches, and cards use thumbnails ✓');
+console.log('check-editor: every insert path round-trips (upload, GIF, attach, drag & drop, paste, image link, YouTube, web page, link, /image, hand-written markdown); attachments select, resize, upload in order, cancel, refuse, keep posters, survive theme switches, PDFs preview in place, and cards use thumbnails ✓');

@@ -226,6 +226,79 @@ public sealed class MediaSecurityTests
         finally { Cleanup(factory, dir); }
     }
 
+    // ── PDF viewer frame (S7) ─────────────────────────────────────────────────
+
+    [Fact]
+    public async Task PdfView_IsFramableBySameOriginOnly_AndOnlyForPdfs()
+    {
+        var (factory, dir) = NewApp();
+        try
+        {
+            var owner = await OwnerAsync(factory);
+            var pdf = await UploadAsync(owner, Encoding.ASCII.GetBytes("%PDF-1.7\n%%EOF"), "report.pdf");
+            var png = await UploadAsync(owner, Png, "photo.png");
+            await WriteNoteAsync(owner, "n1", $"![[{pdf}#page=2]] ![[{png}]]");
+
+            var view = await owner.GetAsync($"/api/media/view/{pdf}");
+            Assert.Equal(HttpStatusCode.OK, view.StatusCode);
+            Assert.Equal("application/pdf", view.Content.Headers.ContentType?.MediaType);
+            Assert.Equal("inline", view.Content.Headers.ContentDisposition?.DispositionType);
+            Assert.Equal("SAMEORIGIN", Assert.Single(view.Headers.GetValues("X-Frame-Options")));
+            var csp = Assert.Single(view.Headers.GetValues("Content-Security-Policy"));
+            Assert.Contains("frame-ancestors 'self'", csp);
+            Assert.Contains("default-src 'none'", csp);
+            Assert.DoesNotContain("sandbox", csp); // the browser's viewer won't run sandboxed
+            Assert.Equal("nosniff", Assert.Single(view.Headers.GetValues("X-Content-Type-Options")));
+
+            // Not a PDF: never framable content.
+            Assert.Equal(HttpStatusCode.UnsupportedMediaType, (await owner.GetAsync($"/api/media/view/{png}")).StatusCode);
+
+            // The plain file route still refuses every frame.
+            var plain = await owner.GetAsync($"/api/media/{pdf}");
+            Assert.Equal("DENY", Assert.Single(plain.Headers.GetValues("X-Frame-Options")));
+            Assert.Contains("frame-ancestors 'none'", Assert.Single(plain.Headers.GetValues("Content-Security-Policy")));
+
+            // HEAD answers like GET, without the body.
+            var head = await owner.SendAsync(new HttpRequestMessage(HttpMethod.Head, $"/api/media/{pdf}"));
+            Assert.Equal(HttpStatusCode.OK, head.StatusCode);
+            Assert.Empty(await head.Content.ReadAsByteArrayAsync());
+
+            // Anonymous: no.
+            Assert.Equal(HttpStatusCode.Unauthorized, (await factory.CreateClient().GetAsync($"/api/media/view/{pdf}")).StatusCode);
+        }
+        finally { Cleanup(factory, dir); }
+    }
+
+    [Fact]
+    public async Task PdfView_ThroughShares_IsScopedLikeTheFile()
+    {
+        var (factory, dir) = NewApp();
+        try
+        {
+            var owner = await OwnerAsync(factory);
+            var shared = await UploadAsync(owner, Encoding.ASCII.GetBytes("%PDF-1.7\n%%EOF"), "shared.pdf");
+            var other = await UploadAsync(owner, Encoding.ASCII.GetBytes("%PDF-1.7\n%%EOF"), "private.pdf");
+            await WriteNoteAsync(owner, "n1", $"read ![[{shared}]]");
+            await WriteNoteAsync(owner, "n2", $"mine ![[{other}]]");
+            var token = await LinkAsync(owner, "n1", maxViews: null);
+
+            var anon = factory.CreateClient();
+            var ok = await anon.GetAsync($"/api/shared/{token}/media/view/{shared}");
+            Assert.Equal(HttpStatusCode.OK, ok.StatusCode);
+            Assert.Equal("SAMEORIGIN", Assert.Single(ok.Headers.GetValues("X-Frame-Options")));
+            Assert.True(ok.Headers.CacheControl?.NoCache);
+            Assert.Equal(HttpStatusCode.NotFound, (await anon.GetAsync($"/api/shared/{token}/media/view/{other}")).StatusCode);
+
+            var member = await MemberAsync(factory, owner, "bea");
+            var grant = await owner.PostAsJsonAsync("/api/notes/n1/shares", new ShareWrite(
+                Kind: "user", Access: "view", ExpiresUtc: null, MaxViews: null, GranteeUsername: "bea"));
+            var shareId = (await grant.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetInt32();
+            Assert.Equal(HttpStatusCode.OK, (await member.GetAsync($"/api/shares/incoming/{shareId}/media/view/{shared}")).StatusCode);
+            Assert.Equal(HttpStatusCode.NotFound, (await member.GetAsync($"/api/shares/incoming/{shareId}/media/view/{other}")).StatusCode);
+        }
+        finally { Cleanup(factory, dir); }
+    }
+
     // ── Share scoping ─────────────────────────────────────────────────────────
 
     [Fact]

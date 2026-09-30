@@ -42,6 +42,7 @@ public static class MediaEndpoints
     private const int MaxBatch = 200;
     private const string Immutable = "private, max-age=31536000, immutable";
     private const string Revalidate = "private, no-cache";
+    private static readonly string[] GetOrHead = ["GET", "HEAD"];
 
     public static void MapMedia(this WebApplication app)
     {
@@ -62,11 +63,21 @@ public static class MediaEndpoints
             return Results.Ok(MediaLimits.Describe());
         }).RequireAuthorization();
 
-        app.MapGet("/api/media/{filename}", (string filename, HttpContext http, MediaReferences refs,
+        app.MapMethods("/api/media/{filename}", GetOrHead, (string filename, HttpContext http, MediaReferences refs,
             UnlockTokenStore unlock, IConfiguration config, IHostEnvironment env, ILoggerFactory lf) =>
         {
             var own = ResolveOwn(http, filename, refs, unlock, config, env, lf);
             return own.Error ?? MediaResponder.Serve(http.Response, own.Path!,
+                own.VaultOnly ? Revalidate : "private, max-age=3600, must-revalidate");
+        }).RequireAuthorization();
+
+        // A PDF inside Papyra's own page (the file card's "Expand"): the only
+        // media response that may be framed, and only by this origin.
+        app.MapMethods("/api/media/view/{filename}", GetOrHead, (string filename, HttpContext http, MediaReferences refs,
+            UnlockTokenStore unlock, IConfiguration config, IHostEnvironment env, ILoggerFactory lf) =>
+        {
+            var own = ResolveOwn(http, filename, refs, unlock, config, env, lf);
+            return own.Error ?? MediaResponder.ServePdfView(http.Response, own.Path!,
                 own.VaultOnly ? Revalidate : "private, max-age=3600, must-revalidate");
         }).RequireAuthorization();
 
@@ -110,6 +121,12 @@ public static class MediaEndpoints
             var hit = await shared.ByLinkAsync(token, filename, http, ct);
             return hit.Error ?? MediaResponder.Serve(http.Response, hit.Path!, Revalidate);
         });
+        app.MapMethods("/api/shared/{token}/media/view/{filename}", GetOrHead, async (string token, string filename, HttpContext http,
+            SharedMedia shared, CancellationToken ct) =>
+        {
+            var hit = await shared.ByLinkAsync(token, filename, http, ct);
+            return hit.Error ?? MediaResponder.ServePdfView(http.Response, hit.Path!, Revalidate);
+        });
         app.MapGet("/api/shared/{token}/media/{filename}/thumb", async (string token, string filename, int? w,
             HttpContext http, SharedMedia shared, MediaMetaStore store, CancellationToken ct) =>
         {
@@ -144,6 +161,12 @@ public static class MediaEndpoints
         {
             var hit = await shared.ByGrantAsync(shareId, filename, http, ct);
             return hit.Error ?? MediaResponder.Serve(http.Response, hit.Path!, Revalidate);
+        }).RequireAuthorization();
+        app.MapMethods("/api/shares/incoming/{shareId:int}/media/view/{filename}", GetOrHead, async (int shareId, string filename,
+            HttpContext http, SharedMedia shared, CancellationToken ct) =>
+        {
+            var hit = await shared.ByGrantAsync(shareId, filename, http, ct);
+            return hit.Error ?? MediaResponder.ServePdfView(http.Response, hit.Path!, Revalidate);
         }).RequireAuthorization();
         app.MapGet("/api/shares/incoming/{shareId:int}/media/{filename}/thumb", async (int shareId, string filename,
             int? w, HttpContext http, SharedMedia shared, MediaMetaStore store, CancellationToken ct) =>

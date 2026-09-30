@@ -125,11 +125,44 @@ public static class MediaResponder
             }.ToString();
         }
 
+        return FileResult(info, spec.ContentType);
+    }
+
+    /// <summary>
+    /// The one framing carve-out: the browser's PDF viewer inside Papyra's own
+    /// page. Everything else keeps <c>frame-ancestors 'none'</c>. A sandbox CSP
+    /// would stop the viewer from running, so the isolation here is the type
+    /// (PDF only — the server chose the extension from the bytes), nosniff, and
+    /// a policy that lets the document load nothing beyond itself.
+    /// </summary>
+    public const string PdfViewPolicy =
+        "default-src 'none'; img-src 'self' data: blob:; style-src 'unsafe-inline'; frame-ancestors 'self'";
+
+    public static bool IsPdf(string path) =>
+        string.Equals(Path.GetExtension(path), ".pdf", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>Serve a PDF for an in-app viewer frame; anything else is 415.</summary>
+    public static IResult ServePdfView(HttpResponse response, string path, string cacheControl)
+    {
+        if (!IsPdf(path))
+            return Results.Json(new { error = "Only PDFs open in the viewer." }, statusCode: StatusCodes.Status415UnsupportedMediaType);
+        var info = new FileInfo(path);
+        var headers = response.Headers;
+        headers.XContentTypeOptions = "nosniff";
+        headers.CacheControl = cacheControl;
+        headers.XFrameOptions = "SAMEORIGIN";
+        headers.ContentSecurityPolicy = PdfViewPolicy;
+        headers.ContentDisposition = new ContentDispositionHeaderValue("inline") { FileNameStar = info.Name }.ToString();
+        return FileResult(info, "application/pdf");
+    }
+
+    private static IResult FileResult(FileInfo info, string contentType)
+    {
         // Stored names never change content (every upload gets a fresh name), so
         // size + mtime is a sound validator until content hashes arrive.
         var modified = info.LastWriteTimeUtc;
         var etag = new EntityTagHeaderValue($"\"{info.Length:x}-{modified.Ticks:x}\"");
-        return Results.File(path, spec.ContentType,
+        return Results.File(info.FullName, contentType,
             lastModified: modified, entityTag: etag, enableRangeProcessing: true);
     }
 }

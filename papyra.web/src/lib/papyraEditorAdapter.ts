@@ -9,6 +9,7 @@ import { mediaMetaStore, mediaUrl, toMediaMeta } from './mediaMeta';
 import { createMediaToolbarItems } from './mediaToolbar';
 import { checkMediaFile, loadMediaLimits } from './mediaLimits';
 import { prepareUpload, uploadForm } from './uploadPrep';
+import { renderPdfExpansion } from './pdfPreview';
 
 /** The owner's own attachments. */
 export const OWN_MEDIA = '/api/media';
@@ -84,6 +85,8 @@ export function createPapyraEditorAdapter(
     resolveMediaUrl: (filename, options) => mediaUrl(OWN_MEDIA, filename, options, meta.get(filename)),
     getMediaMeta: (filename) => meta.get(filename),
     subscribeMediaMeta: (listener) => meta.subscribe(listener),
+    // A PDF card previews in place (the browser's viewer, framed from /view).
+    renderFileExpansion: renderPdfExpansion,
 
     uploadMedia,
     validateMedia: (file) => checkMediaFile(file),
