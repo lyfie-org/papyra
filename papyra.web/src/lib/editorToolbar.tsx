@@ -3,6 +3,7 @@ import {
 } from 'lucide-react';
 import type { ToolbarLayout } from '@lyfie/luthor';
 import type { ExtensiveToolbarItem } from '@lyfie/luthor/presets/extensive';
+import { pickFile } from './pickFile';
 
 // Papyra's formatting toolbar: luthor supplies the controls and the seams
 // (layout groups, host items, themed input dialogs); what goes where, the icons
@@ -35,27 +36,6 @@ export const PAPYRA_TOOLBAR_LAYOUT: ToolbarLayout = {
   ],
 };
 
-/** A one-shot file picker; resolves to null when dismissed. */
-function pickFile(accept?: string): Promise<File | null> {
-  return new Promise((resolve) => {
-    const input = document.createElement('input');
-    input.type = 'file';
-    if (accept) input.accept = accept;
-    input.style.display = 'none';
-    let settled = false;
-    const settle = (file: File | null) => {
-      if (settled) return;
-      settled = true;
-      input.remove();
-      resolve(file);
-    };
-    input.addEventListener('change', () => settle(input.files?.[0] ?? null));
-    input.addEventListener('cancel', () => settle(null));
-    document.body.appendChild(input);
-    input.click();
-  });
-}
-
 function today(): string {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
@@ -66,15 +46,13 @@ function today(): string {
  * drop (`uploadAndEmbedFile` → the vault's media folder → `![[file]]`), so a
  * picked image and a dropped one land identically in the markdown.
  */
-export function createToolbarItems(report: (message: string) => void): ExtensiveToolbarItem[] {
+export function createToolbarItems(): ExtensiveToolbarItem[] {
   const upload = async (run: (name: string, ...args: unknown[]) => unknown, accept?: string) => {
     const file = await pickFile(accept);
     if (!file) return;
-    try {
-      await run('uploadAndEmbedFile', file);
-    } catch {
-      report(`Couldn’t upload “${file.name}”.`);
-    }
+    // A failed or refused upload is reported once, through the adapter's
+    // onUploadError (a toast), and a cancel is no failure: nothing to add here.
+    await Promise.resolve(run('uploadAndEmbedFile', file)).catch(() => {});
   };
 
   return [

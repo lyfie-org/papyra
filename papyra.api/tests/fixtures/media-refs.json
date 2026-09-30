@@ -9,6 +9,7 @@
     { "name": "pdf page fragment", "body": "![[report.pdf#page=3]]", "refs": ["report.pdf"] },
     { "name": "plain wikilink to a file", "body": "see [[manual.pdf]]", "refs": ["manual.pdf"] },
     { "name": "block ref", "body": "![[scan.png^abc123]]", "refs": ["scan.png"] },
+    { "name": "table-escaped pipe", "body": "| ![[table.png\\|200]] | x |", "refs": ["table.png"] },
     { "name": "mid-paragraph embed", "body": "before ![[inline.gif]] after", "refs": ["inline.gif"] },
     { "name": "two on a line", "body": "![[a.png]] ![[b.png]]", "refs": ["a.png", "b.png"] },
     { "name": "folder path flattened", "body": "![[attachments/sub/deep.png]]", "refs": ["deep.png"] },

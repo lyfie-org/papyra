@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseBlocks, parseInline, previewCapEm, type ListBlock } from './markdownPreview';
+import { parseBlocks, parseInline, previewCapEm, stripComments, type ListBlock } from './markdownPreview';
 
 describe('parseBlocks', () => {
   it('nests an editor-written numbered list and drops block anchors', () => {
@@ -136,5 +136,18 @@ describe('previewCapEm', () => {
 
   it('ignores block anchors and list markers', () => {
     expect(previewCapEm('- [ ] buy milk ^abc12345')).toBeNull();
+  });
+});
+
+describe('editor metadata comments', () => {
+  it('never shows an attachment directive as text', () => {
+    const { blocks } = parseBlocks('Click the picture:\n\n![[a.png|300]] <!-- align:right -->\n<!-- caption:Hi -->\n\nAfter');
+    expect(JSON.stringify(blocks)).not.toContain('align');
+    expect(JSON.stringify(blocks)).not.toContain('caption');
+    expect(JSON.stringify(blocks)).toContain('After');
+  });
+
+  it('keeps comments written inside code', () => {
+    expect(stripComments('```html\n<!-- keep -->\n```\nx <!-- drop -->')).toBe('```html\n<!-- keep -->\n```\nx');
   });
 });

@@ -1,8 +1,15 @@
 import type { QueryClient } from '@tanstack/react-query';
 import type { NavigateFunction } from 'react-router-dom';
 import type { PapyraEditorAdapter } from '@lyfie/luthor/presets/papyra';
+import type { UploadFileOptions } from '@lyfie/luthor-headless';
+import type { LexicalEditor } from 'lexical';
 import type { Note } from '../types/note';
 import { fetchWithProgress } from './progress';
+import { mediaMetaStore, mediaUrl, toMediaMeta } from './mediaMeta';
+import { createMediaToolbarItems } from './mediaToolbar';
+
+/** The owner's own attachments. */
+export const OWN_MEDIA = '/api/media';
 
 // Inputs the adapter closes over: the open note (uploads tag against it), the
 // router push, and the query client (the notes cache is the search/navigation
@@ -17,6 +24,18 @@ interface AdapterDeps {
    * click on a dead one does nothing at all and explains nothing.
    */
   onUnresolvedLink?: (target: string) => void;
+  /** Say why an upload failed or was refused (a toast). Called once per failure. */
+  onUploadError?: (message: string) => void;
+  /** The live editor, for toolbar actions that move an attachment. */
+  getEditor?: () => LexicalEditor | null;
+}
+
+function uploadMessage(error: unknown): string {
+  return error instanceof Error && error.message ? error.message : 'Couldn’t attach that file.';
+}
+
+function isAbort(error: unknown): boolean {
+  return error instanceof DOMException && error.name === 'AbortError';
 }
 
 // Build the host seam PapyraEditor reads its embeds through. This is the only
@@ -26,28 +45,52 @@ interface AdapterDeps {
 // server at save time, because the notes PUT is also reachable from API keys,
 // sharee edits and the public edit-link route, none of which run the editor.
 export function createPapyraEditorAdapter(
-  { noteId, navigate, queryClient, onUnresolvedLink }: AdapterDeps,
+  { noteId, navigate, queryClient, onUnresolvedLink, onUploadError, getEditor }: AdapterDeps,
 ): PapyraEditorAdapter {
-  return {
-    // ![[file.ext]] → a URL the browser can GET. Media is flat per-user, so the
-    // bare filename is enough; PathGuard jails it server-side.
-    resolveMediaUrl: (filename) => `/api/media/${encodeURIComponent(filename)}`,
+  const meta = mediaMetaStore(OWN_MEDIA);
 
-    // Dropped/pasted blob → stored attachment, referenced back as ![[filename]].
-    uploadMedia: async (file) => {
-      const form = new FormData();
-      form.append('file', file);
-      const res = await fetchWithProgress(`/api/media/upload?noteId=${encodeURIComponent(noteId)}`, {
-        method: 'POST',
-        body: form,
-      });
-      if (!res.ok) {
-        // The server says why (too big for its kind, …) — pass that on.
-        const data = await res.json().catch(() => null) as { error?: string } | null;
-        throw new Error(data?.error ?? (res.status === 413 ? 'That file is too large to attach.' : 'Couldn’t attach that file.'));
-      }
-      return res.json() as Promise<{ filename: string }>;
-    },
+  // Dropped/pasted/picked file → stored attachment, referenced back as
+  // ![[filename]]. The response carries the file's metadata, primed into the
+  // cache so the new embed has its size before its first frame.
+  const uploadMedia = async (file: File, options?: UploadFileOptions) => {
+    const form = new FormData();
+    form.append('file', file);
+    const res = await fetchWithProgress(`${OWN_MEDIA}/upload?noteId=${encodeURIComponent(noteId)}`, {
+      method: 'POST',
+      body: form,
+      signal: options?.signal,
+      onProgress: options?.onProgress,
+    });
+    if (!res.ok) {
+      // The server says why (too big for its kind, …) — pass that on.
+      const data = await res.json().catch(() => null) as { error?: string } | null;
+      throw new Error(data?.error ?? (res.status === 413 ? 'That file is too large to attach.' : 'Couldn’t attach that file.'));
+    }
+    const data = await res.json() as { filename: string } & Record<string, unknown>;
+    meta.prime(data.filename, toMediaMeta(data));
+    return { filename: data.filename };
+  };
+
+  return {
+    // ![[file.ext]] → a URL the browser can GET: the original, or a
+    // thumbnail/poster rendition (versioned, so cached for good). Media is flat
+    // per user, so the bare filename is enough; PathGuard jails it server-side.
+    resolveMediaUrl: (filename, options) => mediaUrl(OWN_MEDIA, filename, options, meta.get(filename)),
+    getMediaMeta: (filename) => meta.get(filename),
+    subscribeMediaMeta: (listener) => meta.subscribe(listener),
+
+    uploadMedia,
+    onUploadError: (error) => { if (!isAbort(error)) onUploadError?.(uploadMessage(error)); },
+
+    // Replace / Download on a selected attachment. Replace uploads outside the
+    // drop pipeline, so it reports its own failure.
+    mediaToolbarItems: createMediaToolbarItems({
+      getEditor,
+      upload: (file) => uploadMedia(file).catch((error: unknown) => {
+        onUploadError?.(uploadMessage(error));
+        throw error;
+      }),
+    }),
 
     // [[Note]] activation → router push.
     //

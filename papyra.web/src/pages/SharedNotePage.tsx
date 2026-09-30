@@ -82,7 +82,7 @@ export default function SharedNotePage() {
           <SharedNoteView
             note={note}
             onSave={save}
-            mediaUrl={(f) => `/api/shared/${token}/media/${encodeURIComponent(f)}`}
+            mediaBase={`/api/shared/${encodeURIComponent(token ?? '')}/media`}
           />
         )}
       </main>

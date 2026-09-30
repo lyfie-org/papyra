@@ -1,5 +1,6 @@
 import { stripBlockAnchors } from './plainText';
 import { finishCode, finishText, protectEscapes } from './markdownText';
+import { embedTarget } from './mediaRefs';
 
 // A code span's content, minus the one space of padding CommonMark strips from
 // each side when both are present (how a span holding backticks is written).
@@ -49,7 +50,7 @@ export type Block =
 const INLINE: { re: RegExp; make: (m: RegExpExecArray) => Inline }[] = [
   // A span of N backticks closes at the next run of exactly N.
   { re: /(`+)(?!`)([\s\S]+?)(?<!`)\1(?!`)/, make: (m) => ({ t: 'code', v: finishCode(unpad(m[2])) }) },
-  { re: /!\[\[([^\]]+)\]\]/, make: (m) => ({ t: 'embed', v: finishText(m[1].split('|')[0].split('#')[0]) }) },
+  { re: /!\[\[([^\]]+)\]\]/, make: (m) => ({ t: 'embed', v: finishText(embedTarget(m[1])) }) },
   { re: /!\[([^\]]*)\]\([^)]*\)/, make: (m) => ({ t: 'embed', v: finishText(m[1]) || 'image' }) },
   { re: /\[\[([^\]|]+)(?:\|([^\]]+))?\]\]/, make: (m) => ({ t: 'link', c: [{ t: 'text', v: finishText(m[2] ?? m[1]) }] }) },
   { re: /\[([^\]]+)\]\(([^)]*)\)/, make: (m) => ({ t: 'link', c: parseInline(m[1]) }) },
@@ -97,13 +98,38 @@ function indentOf(s: string): number {
 }
 
 /**
+ * Drop HTML comments outside fenced code — the editor's own metadata
+ * (`<!-- align:center -->`, `<!-- caption:… -->` after an attachment) is never
+ * text a reader wrote. A line left empty by it goes too.
+ */
+export function stripComments(md: string): string {
+  if (!md.includes('<!--')) return md;
+  let fence: string | null = null;
+  const out: string[] = [];
+  for (const line of md.split('\n')) {
+    const f = /^\s{0,3}(```|~~~)/.exec(line);
+    if (f) {
+      if (fence === null) fence = f[1];
+      else if (f[1] === fence) fence = null;
+      out.push(line);
+      continue;
+    }
+    if (fence !== null) { out.push(line); continue; }
+    const kept = line.replace(/<!--.*?-->/g, '');
+    if (kept === line) out.push(line);
+    else if (kept.trim()) out.push(kept.replace(/[ \t]+$/, ''));
+  }
+  return out.join('\n');
+}
+
+/**
  * Parse a note body into preview blocks. Stops once `maxLines` source lines have
  * produced output, so a card never pays for the parts of a long note it would
  * clip anyway. Returns whether it stopped early (the card fades its bottom edge).
  */
 export function parseBlocks(md: string, maxLines = 14): { blocks: Block[]; truncated: boolean } {
   // Escapes become stand-ins before any pattern runs, so \# or \* is never markup.
-  const lines = protectEscapes(stripBlockAnchors(md).replace(/\r\n?/g, '\n')).split('\n');
+  const lines = protectEscapes(stripComments(stripBlockAnchors(md).replace(/\r\n?/g, '\n'))).split('\n');
   const blocks: Block[] = [];
   let used = 0;
   let i = 0;
@@ -127,7 +153,7 @@ export function parseBlocks(md: string, maxLines = 14): { blocks: Block[]; trunc
     if (h) { blocks.push({ t: 'h', level: h[1].length, c: parseInline(h[2] ?? '') }); i++; used++; continue; }
     if (HR.test(line) && !LIST.test(line)) { blocks.push({ t: 'hr' }); i++; continue; }
     const e = EMBED_LINE.exec(line);
-    if (e) { blocks.push({ t: 'embed', v: e[1].split('|')[0].split('#')[0] }); i++; used++; continue; }
+    if (e) { blocks.push({ t: 'embed', v: embedTarget(e[1]) }); i++; used++; continue; }
 
     if (QUOTE.test(line)) {
       const q: Inline[][] = [];
@@ -262,7 +288,7 @@ export const PREVIEW_MAX_LINES = Math.ceil(MAX_EM / LINE_EM) + 4;
 export function previewCapEm(md: string): number | null {
   let em = 0;
   let blocks = 0;
-  for (const raw of stripBlockAnchors(md).replace(/\r\n?/g, '\n').split('\n')) {
+  for (const raw of stripComments(stripBlockAnchors(md).replace(/\r\n?/g, '\n')).split('\n')) {
     const line = raw.trim();
     if (!line) continue;
     blocks++;

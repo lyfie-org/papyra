@@ -188,3 +188,40 @@ describe('applyMarkdownMinimal', () => {
     expect(after[1]).not.toBe(before[1])
   })
 })
+
+// The room serializes to markdown server-side, so the engine and the editor
+// must agree on every way an attachment is written: opening a note in a live
+// room must never rewrite a single byte of it.
+describe('media round-trip through a room', () => {
+  const corpus = [
+    '![[photo.png]]',
+    '![[photo.png|480]]',
+    '![[clip.mp4|640x360]]',
+    '![[photo.png|A sunset|300]]',
+    '![[photo.png|300]] <!-- align:center --> <!-- caption:Hello -->',
+    '![[report.pdf#page=3]]',
+    'before ![[inline.gif]] after',
+    '![[a.png]] ![[b.png]]',
+    '![alt|300](https://example.com/x.png)',
+    // Canonical form. A hand-written watch?v= URL is still normalized to this
+    // on the first save (luthor follow-up, see MEDIA_IMPLEMENTATION_PLAN S9).
+    '![[youtube:https://www.youtube-nocookie.com/embed/dQw4w9WgXcQ|A talk|640x360]]',
+    '| a | b |\n| --- | --- |\n| ![[t.png\\|200]] | x |',
+  ]
+
+  it.each(corpus)('%s', async (body) => {
+    const { api, rooms, doc, peer } = setup(`Intro\n\n${body}\n\nOutro`)
+    await rooms.load(ROOM, doc)
+    expect(peer().getMarkdown()).toBe(`Intro\n\n${body}\n\nOutro`)
+    await rooms.store(ROOM)
+    expect(api.saves).toHaveLength(0)
+  })
+
+  it('a peer resizing an embed saves exactly that change', async () => {
+    const { api, rooms, doc } = setup('Intro\n\n![[photo.png]]\n\nOutro')
+    await rooms.load(ROOM, doc)
+    edit(doc, 'Intro\n\n![[photo.png|320]]\n\nOutro')
+    await rooms.store(ROOM)
+    expect(api.saves.at(-1)?.body).toBe('Intro\n\n![[photo.png|320]]\n\nOutro')
+  })
+})

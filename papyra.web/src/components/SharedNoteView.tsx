@@ -16,6 +16,9 @@ import { useCollabCursorLabels } from '../hooks/useCollabCursorLabels';
 import type { LexicalEditor } from 'lexical';
 import CollabPresence from './CollabPresence';
 import CollabJoining from './CollabJoining';
+import { mediaMetaStore, mediaUrl } from '../lib/mediaMeta';
+import { createMediaToolbarItems } from '../lib/mediaToolbar';
+import { useToast } from '../lib/toastContext';
 import './SharedNoteView.css';
 
 export interface SharedNote {
@@ -50,20 +53,21 @@ type Status = 'idle' | 'saving' | 'saved' | 'error';
 // Renders a shared note (public link or incoming user share). An editor saves
 // as they type, like the owner's own editor — no Save button to forget. A
 // viewer sees a "Request edit access" button when `onRequestEdit` is given.
-// `mediaUrl` maps an embedded ![[file]] to a share-scoped media endpoint so
-// images load without the viewer needing access to the owner's vault.
+// `mediaBase` is the share-scoped media endpoint an embedded ![[file]] loads
+// from (originals, thumbnails, metadata), so images load without the viewer
+// needing access to the owner's vault.
 //
 // `collab`: a signed-in grantee's share — the note opens in its live room
 // (everyone's carets, the room saves), viewers read-only but still seeing
 // carets. Falls back to the save-as-you-type path above when the embedded
 // collab engine is off. Public links never pass it.
 export default function SharedNoteView({
-  note, onSave, onRequestEdit, mediaUrl, collab,
+  note, onSave, onRequestEdit, mediaBase, collab,
 }: {
   note: SharedNote;
   onSave?: (body: string) => Promise<void>;
   onRequestEdit?: () => Promise<void>;
-  mediaUrl: (filename: string) => string;
+  mediaBase: string;
   collab?: { shareId: number };
 }) {
   const theme = useResolvedTheme();
@@ -91,13 +95,23 @@ export default function SharedNoteView({
   const closeComments = useCallback(() => setCommentsPanel(false), []);
 
   // Minimal host seam: media resolves through the share endpoint; uploads and
-  // note navigation are inert on a shared surface.
-  const adapter = useMemo<PapyraEditorAdapter>(() => ({
-    resolveMediaUrl: (filename) => mediaUrl(filename),
-    uploadMedia: async () => { throw new Error('Uploads are disabled on shared notes.'); },
-    openNote: () => {},
-    searchNotes: async () => [],
-  }), [mediaUrl]);
+  // note navigation are inert on a shared surface. Built once per share —
+  // a new adapter would re-render every embed.
+  const { toast } = useToast();
+  const adapter = useMemo<PapyraEditorAdapter>(() => {
+    const meta = mediaMetaStore(mediaBase);
+    return {
+      resolveMediaUrl: (filename, options) => mediaUrl(mediaBase, filename, options, meta.get(filename)),
+      getMediaMeta: (filename) => meta.get(filename),
+      subscribeMediaMeta: (listener) => meta.subscribe(listener),
+      validateMedia: () => 'Attachments can’t be added to a shared note.',
+      onUploadError: (error) => toast(error instanceof Error ? error.message : 'Couldn’t attach that file.'),
+      uploadMedia: async () => { throw new Error('Attachments can’t be added to a shared note.'); },
+      mediaToolbarItems: createMediaToolbarItems({ upload: () => Promise.reject(new Error('read-only')), readOnly: true }),
+      openNote: () => {},
+      searchNotes: async () => [],
+    };
+  }, [mediaBase, toast]);
   // Inert here too — without this Lexical would open the `#` href in a new tab.
   useInPlaceWikilinks(articleRef, noop);
 
@@ -234,7 +248,7 @@ export default function SharedNoteView({
               <LexicalCollaboration>
                 <PapyraEditor
                   // A new session (reconnect, access change) is a new Yjs doc.
-                  key={`live-${room.generation}-${editorTheme}-${colored ? 'tint' : 'plain'}`}
+                  key={`live-${room.generation}`}
                   initialTheme={editorTheme}
                   colored={colored}
                   readOnly={!liveEdit}
@@ -256,7 +270,7 @@ export default function SharedNoteView({
           ) : room.status === 'offline' ? (
             // Never reached the room: the last text we have, read-only.
             <PapyraEditor
-              key={`offline-${editorTheme}-${colored ? 'tint' : 'plain'}`}
+              key="offline"
               initialTheme={editorTheme}
               colored={colored}
               readOnly
@@ -272,8 +286,8 @@ export default function SharedNoteView({
       {!live && (
       <PapyraEditor
         // Re-mounted when access changes, so an approval turns the page
-        // editable in place.
-        key={`${editorTheme}-${colored ? 'tint' : 'plain'}-${canEdit ? 'edit' : 'view'}`}
+        // editable in place. Theme and tint apply without a remount.
+        key={canEdit ? 'edit' : 'view'}
         initialTheme={editorTheme}
         colored={colored}
         readOnly={!canEdit}

@@ -109,3 +109,43 @@ describe('openNote', () => {
     expect(onUnresolvedLink).toHaveBeenCalledWith('Chai, properly');
   });
 });
+
+describe('media', () => {
+  const ctx = (over: Record<string, unknown> = {}) => ({
+    target: 'a.png', fragment: '', kind: 'image', url: '/api/media/a.png', meta: undefined,
+    update: vi.fn(), remove: vi.fn(), ...over,
+  });
+
+  it('resolves originals, and thumbnails/posters through the thumb route', () => {
+    const a = adapter();
+    expect(a.resolveMediaUrl('my photo.png')).toBe('/api/media/my%20photo.png');
+    expect(a.resolveMediaUrl('a.png', { variant: 'thumb', width: 300 })).toMatch(/^\/api\/media\/a\.png\/thumb\?w=320/);
+    expect(a.resolveMediaUrl('v.mp4', { variant: 'poster', width: 1280 })).toMatch(/^\/api\/media\/v\.mp4\/thumb\?w=1280/);
+  });
+
+  it('reports a failed upload once, and a cancel not at all', () => {
+    const onUploadError = vi.fn();
+    const a = createPapyraEditorAdapter({ noteId: 'n', navigate, queryClient: new QueryClient(), onUploadError });
+    a.onUploadError?.(new Error('That file is too large to attach.'), new File(['x'], 'x.png'));
+    a.onUploadError?.(new DOMException('Upload cancelled', 'AbortError'), new File(['x'], 'x.png'));
+    expect(onUploadError).toHaveBeenCalledTimes(1);
+    expect(onUploadError).toHaveBeenCalledWith('That file is too large to attach.');
+  });
+
+  it('adds Replace and Download to a selected attachment', () => {
+    const items = adapter().mediaToolbarItems!(ctx()).map((i) => i.id);
+    expect(items).toEqual(['papyra.replace', 'papyra.download']);
+  });
+
+  it('offers Move up/down when it can reach the editor', () => {
+    const editor = { getEditorState: () => ({ read: () => [false, true] }) };
+    const a = createPapyraEditorAdapter({
+      noteId: 'n', navigate, queryClient: new QueryClient(),
+      getEditor: () => editor as never,
+    });
+    const items = a.mediaToolbarItems!(ctx());
+    expect(items.map((i) => i.id)).toEqual(['papyra.replace', 'papyra.move-up', 'papyra.move-down', 'papyra.download']);
+    expect(items.find((i) => i.id === 'papyra.move-up')!.disabled).toBe(true);
+    expect(items.find((i) => i.id === 'papyra.move-down')!.disabled).toBe(false);
+  });
+});

@@ -42,7 +42,8 @@ public static partial class MediaRefParser
         {
             var target = m.Groups[1].Value;
             var cut = target.IndexOfAny(['|', '#', '^']);
-            if (cut >= 0) target = target[..cut];
+            // A pipe escaped for a table (`![[a.png\|200]]`) ends the name too.
+            if (cut >= 0) target = target[..cut].TrimEnd('\\');
             // `youtube:` / `iframe:` / `card:` embeds carry URLs, not attachments.
             if (target.Contains(':')) continue;
             Add(names, target);
