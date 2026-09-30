@@ -10,7 +10,7 @@
  * durable and conflict-aware. This file only ever touches GETs.
  */
 
-const VERSION = 'papyra-v2';
+const VERSION = 'papyra-v3';
 const SHELL_CACHE = `${VERSION}-shell`;
 const DATA_CACHE = `${VERSION}-data`;
 const FONT_CACHE = `${VERSION}-fonts`;
@@ -79,6 +79,16 @@ async function networkFirst(request, cacheName) {
   }
 }
 
+// Only the SPA's own index.html may become the offline shell: a successful,
+// inline HTML page. An error page, a download or anything else served on a
+// navigation would otherwise replace the app for every offline start.
+function isShellResponse(response) {
+  if (!response.ok || response.redirected) return false;
+  if (response.headers.get('content-disposition')) return false;
+  const type = response.headers.get('content-type') || '';
+  return type.toLowerCase().startsWith('text/html');
+}
+
 async function cacheFirst(request, cacheName) {
   const cache = await caches.open(cacheName);
   const cached = await cache.match(request);
@@ -98,14 +108,19 @@ self.addEventListener('fetch', (event) => {
   // SPA navigations: try the network so a new deploy lands, fall back to the
   // cached shell (MapFallbackToFile serves index.html for every route).
   if (request.mode === 'navigate') {
+    // Opening an attachment, an export or any other API URL in a tab is not
+    // the app: leave it to the browser, and never let it near the shell cache.
+    if (url.pathname.startsWith('/api/')) return;
     event.respondWith(
       // `no-store` so the shell is always revalidated against the server: a
       // deploy has to reach an open tab, and an HTTP-cached index.html would
       // keep pinning it to the previous asset hashes.
       fetch(request, { cache: 'no-store' })
         .then((response) => {
-          const copy = response.clone();
-          caches.open(SHELL_CACHE).then((cache) => cache.put('/', copy));
+          if (isShellResponse(response)) {
+            const copy = response.clone();
+            caches.open(SHELL_CACHE).then((cache) => cache.put('/', copy));
+          }
           return response;
         })
         .catch(() => caches.open(SHELL_CACHE).then((cache) => cache.match('/'))),

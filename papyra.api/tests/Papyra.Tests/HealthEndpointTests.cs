@@ -20,7 +20,9 @@ public sealed class HealthEndpointTests : IClassFixture<WebApplicationFactory<Pr
         Assert.Equal(HttpStatusCode.OK, response.StatusCode);
         var body = await response.Content.ReadFromJsonAsync<HealthResponse>();
         Assert.Equal("Healthy", body?.Status);
+        // The native image library loaded: thumbnails are offered.
+        Assert.Equal("ok", body?.Thumbnails);
     }
 
-    private sealed record HealthResponse(string Status, string App);
+    private sealed record HealthResponse(string Status, string App, string? Thumbnails);
 }

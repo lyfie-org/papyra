@@ -47,6 +47,7 @@ public sealed class BackupLayoutTests
     // An admin with a PIN (so notes can be locked), a zone and a theme, holding a
     // note, a to-do, a locked note and a picture.
     private static string LastMedia = string.Empty;
+    private static string LastVideo = string.Empty;
 
     private static async Task<HttpClient> SeededAdminAsync(WebApplicationFactory<Program> factory)
     {
@@ -64,6 +65,18 @@ public sealed class BackupLayoutTests
         var upload = await client.PostAsync("/api/media/upload", form);
         Assert.True(upload.IsSuccessStatusCode);
         LastMedia = (await upload.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("filename").GetString()!;
+
+        // A video with the poster the browser grabbed: the one piece of derived
+        // media state that can't be rebuilt, so backups must carry it.
+        var mp4 = Convert.FromHexString("000000186674797069736F6D0000020069736F6D00000008667265650000000C6D64617400000000");
+        using var video = new MultipartFormDataContent
+        {
+            { new ByteArrayContent(mp4), "file", "clip.mp4" },
+            { new ByteArrayContent(png), "poster", "poster.png" },
+        };
+        var videoUpload = await client.PostAsync("/api/media/upload", video);
+        Assert.True(videoUpload.IsSuccessStatusCode);
+        LastVideo = (await videoUpload.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("filename").GetString()!;
         return client;
     }
 
@@ -207,6 +220,8 @@ public sealed class BackupLayoutTests
             Assert.Single(Directory.EnumerateFiles(Path.Combine(clone, "todos"), "*.md"));
             Assert.Single(Directory.EnumerateFiles(Path.Combine(clone, "vault"), "*.md"));
             Assert.Single(Directory.EnumerateFiles(Path.Combine(clone, "media", "images")));
+            Assert.Single(Directory.EnumerateFiles(Path.Combine(clone, "media", "videos")));
+            Assert.Single(Directory.EnumerateFiles(Path.Combine(clone, BackupLayout.DerivedFolder), "*.poster.*"));
             Assert.True(File.Exists(Path.Combine(clone, "settings", "account.json")));
             Assert.False(BackupLayout.ReadManifest(clone)!.Encrypted);
             // Never the password hash or the PIN.
@@ -228,6 +243,7 @@ public sealed class BackupLayoutTests
         {
             var client = await SeededAdminAsync(source);
             var picture = LastMedia;
+            var clip = LastVideo;
             var res = await client.PostAsJsonAsync("/api/backups/generate", new BackupRequest(Pw));
             Assert.Equal(HttpStatusCode.OK, res.StatusCode);
             var vaultFile = await res.Content.ReadAsByteArrayAsync();
@@ -269,6 +285,10 @@ public sealed class BackupLayoutTests
             Assert.Contains(notes!, n => n.Id == "t1" && n.Kind == "todo");
             Assert.Contains(notes!, n => n.Id == "s1" && n.Secure);
             Assert.Equal(HttpStatusCode.OK, (await newcomer.GetAsync($"/api/media/{picture}")).StatusCode);
+            // The video's poster came back with it.
+            var clipMeta = await newcomer.GetFromJsonAsync<JsonElement>($"/api/media/{clip}/meta");
+            Assert.True(clipMeta.GetProperty("poster").GetBoolean());
+            Assert.Equal(HttpStatusCode.OK, (await newcomer.GetAsync($"/api/media/{clip}/thumb")).StatusCode);
 
             // Setup is over: every setup route is closed.
             Assert.Equal(HttpStatusCode.Conflict, (await newcomer.PostAsync("/api/auth/setup/restore", Form(Pw))).StatusCode);

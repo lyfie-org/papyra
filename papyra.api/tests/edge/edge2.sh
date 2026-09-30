@@ -23,6 +23,7 @@ preflight
 ensure_account "$QA_USER"     User "$JAR_QA"
 ensure_account "$NEWBIE_USER" User "$JAR_NEWBIE"
 ensure_account "$TMP_USER"    User "$JAR_TMP"
+ensure_vault_pin "$JAR_QA" "$QA_PASS"   # locking a note needs a PIN
 
 QA_ID="$(me_id "$JAR_QA")"
 NEWBIE_ID="$(me_id "$JAR_NEWBIE")"
@@ -100,7 +101,10 @@ check "reading AI configuration" 403 "$JAR_NEWBIE" GET /api/ai/config
 check "writing AI configuration" 403 "$JAR_NEWBIE" PUT /api/ai/config '{}'
 check "downloading a model" 403 "$JAR_NEWBIE" POST /api/ai/pull '{"model":"x"}'
 check "reading SSO configuration" 403 "$JAR_NEWBIE" GET /api/auth/oidc
-check "writing SSO configuration" 403 "$JAR_NEWBIE" PUT /api/auth/oidc '{}'
+check "writing the SSO button text" 403 "$JAR_NEWBIE" PUT /api/auth/oidc/display '{}'
+check "adding an SSO provider" 403 "$JAR_NEWBIE" POST /api/auth/oidc/providers '{}'
+# The probe fetches whatever URL it is handed, so it must stay admin-only.
+check "probing an SSO authority" 403 "$JAR_NEWBIE" POST /api/auth/oidc/test '{"authority":"http://localhost:9"}'
 check "reading email configuration" 403 "$JAR_NEWBIE" GET /api/auth/smtp
 check "sending a test email" 403 "$JAR_NEWBIE" POST /api/auth/smtp/test '{}'
 check "sending an invite" 403 "$JAR_NEWBIE" POST /api/auth/smtp/invite '{"email":"x@example.com"}'
@@ -169,6 +173,11 @@ body_has "and names who it is shared with, not just a count" "$NEWBIE_USER"
 # ── A locked note is nobody's to read ────────────────────────────────────────
 section "Locking a note takes it back"
 
+# Locking needs only the PIN to exist; taking a lock off needs the vault open
+# right now, so every unlock below carries a live token.
+UNLOCK="$(vault_unlock "$JAR_QA")"
+[ -n "$UNLOCK" ] && pass "qa opens its vault with the PIN" || fail "qa opens its vault with the PIN" "no unlock token"
+
 check "qa locks the shared note" 200 "$JAR_QA" PUT "/api/notes/$SHARED" \
   '{"title":"Shared","tags":[],"pinned":false,"archived":false,"body":"the shared body","secure":true}'
 eq "the lock is recorded" "$(jget secure)" "true"
@@ -188,8 +197,12 @@ check "an omitted secure flag never silently unlocks" 200 "$JAR_QA" PUT "/api/no
   '{"title":"Shared","tags":[],"pinned":false,"archived":false,"body":"the shared body"}'
 eq "it is still locked" "$(jget secure)" "true"
 
-check "unlocking is explicit" 200 "$JAR_QA" PUT "/api/notes/$SHARED" \
+check "a session alone cannot take the lock off" 401 "$JAR_QA" PUT "/api/notes/$SHARED" \
   '{"title":"Shared","tags":[],"pinned":false,"archived":false,"body":"the shared body","secure":false}'
+body_has "it is told the vault is locked" '"code":"locked"'
+check "unlocking is explicit, with the vault open" 200 "$JAR_QA" PUT "/api/notes/$SHARED" \
+  '{"title":"Shared","tags":[],"pinned":false,"archived":false,"body":"the shared body","secure":false}' \
+  -H "X-Unlock-Token: $UNLOCK"
 eq "and now it is open" "$(jget secure)" "false"
 
 # ── Public links ─────────────────────────────────────────────────────────────
@@ -213,7 +226,8 @@ check "lock the note again" 200 "$JAR_QA" PUT "/api/notes/$SHARED" \
 check "the public link now answers 410" 410 "$JAR_NONE" GET "/api/shared/$TOKEN"
 body_lacks "and hands over nothing" "the shared body"
 check "unlock it again" 200 "$JAR_QA" PUT "/api/notes/$SHARED" \
-  '{"title":"Shared","tags":[],"pinned":false,"archived":false,"body":"the shared body","secure":false}'
+  '{"title":"Shared","tags":[],"pinned":false,"archived":false,"body":"the shared body","secure":false}' \
+  -H "X-Unlock-Token: $UNLOCK"
 
 section "A limited link counts only the reads it served"
 
@@ -227,7 +241,8 @@ check "lock the note before anyone reads it" 200 "$JAR_QA" PUT "/api/notes/$SHAR
   '{"title":"Shared","tags":[],"pinned":false,"archived":false,"body":"the shared body","secure":true}'
 check "a refused read is 410" 410 "$JAR_NONE" GET "/api/shared/$ONCE"
 check "unlock it" 200 "$JAR_QA" PUT "/api/notes/$SHARED" \
-  '{"title":"Shared","tags":[],"pinned":false,"archived":false,"body":"the shared body","secure":false}'
+  '{"title":"Shared","tags":[],"pinned":false,"archived":false,"body":"the shared body","secure":false}' \
+  -H "X-Unlock-Token: $UNLOCK"
 check "the refusal did not burn the one view" 200 "$JAR_NONE" GET "/api/shared/$ONCE"
 check "the second real read is 410" 410 "$JAR_NONE" GET "/api/shared/$ONCE"
 
@@ -249,19 +264,33 @@ check "the reveal route refuses without a token" 401 "$JAR_QA" GET "/api/notes/$
 check "a forged unlock token is refused" 401 "$JAR_QA" GET "/api/notes/$LOCKED/secure" "" \
   -H "X-Unlock-Token: forged-$EDGE_PREFIX"
 check "and the other tenant cannot reveal it either" 401 "$JAR_NEWBIE" GET "/api/notes/$LOCKED/secure"
+check "with the vault open, its owner can" 200 "$JAR_QA" GET "/api/notes/$LOCKED/secure" "" \
+  -H "X-Unlock-Token: $UNLOCK"
+body_has "and gets the body back" "$SECRET_PHRASE-locked"
+check "somebody else's unlock token opens nothing" 401 "$JAR_NEWBIE" GET "/api/notes/$LOCKED/secure" "" \
+  -H "X-Unlock-Token: $UNLOCK"
+check "closing the vault" 204 "$JAR_QA" POST /api/auth/vault/lock
+check "…revokes the token it was opened with" 401 "$JAR_QA" GET "/api/notes/$LOCKED/secure" "" \
+  -H "X-Unlock-Token: $UNLOCK"
 
 # ── Forced password change ───────────────────────────────────────────────────
 section "An account that has not chosen its own password"
 
 # edgetmp is a permanent harness account. The admin resets it (which re-arms the
-# flag), the harness proves the wall, then it sets the password back. No account
-# is created or deleted here.
+# flag and ends every session it had open), the harness signs in again and
+# proves the wall, then it sets the password back. No account is created or
+# deleted here.
 check "the account works before the reset" 200 "$JAR_TMP" GET /api/notes
 
 check "an admin resets its password" 200 "$JAR_ADMIN" POST "/api/auth/users/$TMP_ID/reset" \
   '{"password":"'"$QA_PASS"'"}'
 
-check "the flag bites the session that is already open" 403 "$JAR_TMP" GET /api/notes
+check "the reset ends the session that was already open" 401 "$JAR_TMP" GET /api/notes
+body_has "and says so, in a code the client can branch on" '"code":"session_ended"'
+
+[ "$(login "$JAR_TMP" "$TMP_USER" "$QA_PASS")" = "200" ] \
+  && pass "the reset password signs in" || fail "the reset password signs in" "login refused it"
+check "the flag walls off the new session" 403 "$JAR_TMP" GET /api/notes
 body_has "with a code the client can branch on" '"code":"password_change_required"'
 check "…on every route" 403 "$JAR_TMP" GET /api/categories
 check "…including writes" 403 "$JAR_TMP" PUT "/api/notes/$EDGE_PREFIX-blocked" \

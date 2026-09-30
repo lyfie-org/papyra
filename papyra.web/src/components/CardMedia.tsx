@@ -1,6 +1,7 @@
-import { memo, useMemo, useState } from 'react';
+import { memo, useCallback, useMemo, useState, useSyncExternalStore } from 'react';
 import { FileText, Film, Music, Paperclip, ImageOff } from 'lucide-react';
 import { extractMedia, mediaLabel, type NoteMedia } from '../lib/noteMedia';
+import { mediaMetaStore, mediaUrl } from '../lib/mediaMeta';
 import './CardMedia.css';
 
 const ICON = { video: Film, audio: Music, pdf: FileText, file: Paperclip, image: ImageOff } as const;
@@ -10,6 +11,11 @@ const ICON = { video: Film, audio: Music, pdf: FileText, file: Paperclip, image:
  * cover across the top of the card (like a photo pinned to the page), a few
  * more as a strip of thumbnails, and anything else as a small labelled chip.
  * Replaces the stored filenames the preview used to print.
+ *
+ * A vault attachment is drawn from its server thumbnail (320/640 px WebP,
+ * cached for good), never the original: a grid of photo notes used to pull
+ * every full-size camera image. The box is fixed, so nothing shifts while
+ * they load.
  */
 const CardMedia = memo(function CardMedia({ body, part }: {
   body: string;
@@ -57,21 +63,57 @@ const CardMedia = memo(function CardMedia({ body, part }: {
   );
 });
 
+const own = mediaMetaStore('/api/media');
+
+/**
+ * What to put in `src`/`srcSet` for a card picture: a thumbnail when the
+ * server has one, else the original (SVG, an animated GIF, a web image, or no
+ * metadata). `null` while the metadata is still on its way — the box stays
+ * empty for that moment rather than starting the original's download.
+ */
+function useCardSource(media: NoteMedia, widths: [number, number]) {
+  const read = useCallback(() => (media.file ? own.get(media.file) : null), [media.file]);
+  const meta = useSyncExternalStore(own.subscribe, read, read);
+  if (!media.file) return { src: media.url };
+  if (meta === undefined) return null;
+  if (!meta?.thumb || meta.animated) return { src: media.url };
+  const [small, large] = widths;
+  const at = (w: number) => mediaUrl('/api/media', media.file!, { variant: 'thumb', width: w }, meta);
+  return { src: at(large), srcSet: `${at(small)} ${small}w, ${at(large)} ${large}w` };
+}
+
+/** A thumbnail that fails falls back to the original once; then the picture is given up on. */
+function useFallback(media: NoteMedia, widths: [number, number]) {
+  const [stage, setStage] = useState<'best' | 'original' | 'failed'>('best');
+  const best = useCardSource(media, widths);
+  const source = stage === 'original' ? { src: media.url } : best;
+  const onError = () => setStage(stage === 'best' && best?.srcSet ? 'original' : 'failed');
+  return { source, failed: stage === 'failed', onError };
+}
+
 function Cover({ media }: { media: NoteMedia }) {
-  const [failed, setFailed] = useState(false);
+  const { source, failed, onError } = useFallback(media, [320, 640]);
   if (failed) return null;
   return (
     <div className="card-media__cover">
-      <img src={media.url} alt="" loading="lazy" decoding="async" draggable={false} onError={() => setFailed(true)} />
+      {source && (
+        <img
+          {...source}
+          sizes={source.srcSet ? '(max-width: 600px) 100vw, 320px' : undefined}
+          alt="" loading="lazy" decoding="async" draggable={false}
+          onError={onError}
+        />
+      )}
     </div>
   );
 }
 
 function Thumb({ media }: { media: NoteMedia }) {
-  const [failed, setFailed] = useState(false);
-  return failed
-    ? <span className="card-media__thumb-missing"><ImageOff size={14} aria-hidden="true" /></span>
-    : <img src={media.url} alt="" loading="lazy" decoding="async" draggable={false} onError={() => setFailed(true)} />;
+  const { source, failed, onError } = useFallback(media, [160, 320]);
+  if (failed) return <span className="card-media__thumb-missing"><ImageOff size={14} aria-hidden="true" /></span>;
+  return source
+    ? <img {...source} sizes={source.srcSet ? '120px' : undefined} alt="" loading="lazy" decoding="async" draggable={false} onError={onError} />
+    : null;
 }
 
 export default CardMedia;

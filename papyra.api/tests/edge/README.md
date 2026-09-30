@@ -3,12 +3,13 @@
 Black-box HTTP checks against a **running** Papyra instance. `dotnet test` proves
 the code; these prove the deployed surface — routing, auth policies, cookies,
 per-tenant isolation, and the status codes a real client actually receives.
-Two suites, 239 checks.
+Three suites, 285 checks.
 
 | Suite | What it covers | Checks |
 |---|---|---|
-| `edge.sh` | The core surface: health, sign-in, notes, to-dos, trash, categories, smart collections, API keys, webhooks, search, settings, inbox, snapshots, backup, export, media, the directory, and the admin screens as an admin | 99 |
-| `edge2.sh` | The promises: anonymous access, per-tenant isolation, admin gating, the sharing rules, locked notes, the forced-password-change wall, avatar format sniffing, the path jail, conversation scoping | 140 |
+| `edge.sh` | The core surface: health, sign-in, notes, to-dos, trash, categories, smart collections, API keys (minted only with a fresh authenticator code), webhooks, search, settings, inbox, snapshots, backup, export (a one-time ticket that needs a code and an open vault), media, the directory, and the admin screens as an admin | 109 |
+| `edge2.sh` | The promises: anonymous access, per-tenant isolation, admin gating (SSO included), the sharing rules, locked notes (a PIN to lock, a live unlock to reveal or unlock), the forced-password-change wall (a reset ends open sessions), avatar format sniffing, the path jail, conversation scoping | 153 |
+| `media.sh` | Attachments: stored by what the bytes are (not the name), served inline/sandboxed/as downloads with the right headers, byte ranges, and share links that reach only their own note's files | 23 |
 
 ## The assistant's feature flag
 
@@ -54,11 +55,17 @@ dotnet run --project papyra.api/src/Papyra.Api -- --Papyra:DataDir=.edgedata --u
 On a brand-new vault, create the first admin once:
 
 ```bash
-# An authenticator is compulsory for the first admin: get a secret, then send
-# it back with its current code (oathtool, or any authenticator app).
-SECRET=$(curl -s -X POST -H 'Content-Type: application/json' -d '{"account":"admin"}' http://localhost:5221/api/auth/setup/totp | python -c 'import json,sys; print(json.load(sys.stdin)["secret"])')
-curl -X POST -H 'Content-Type: application/json' -d "{\"username\":\"admin\",\"name\":\"Admin\",\"password\":\"AdminPass123!\",\"totpSecret\":\"$SECRET\",\"totpCode\":\"$(oathtool --totp -b "$SECRET")\"}" http://localhost:5221/api/auth/setup
+# An authenticator is compulsory. The harness derives every account's secret
+# from its username (totp.py / totp.js, the rule Papyra.Tests uses), so enrol
+# the admin with that secret and the harness can answer its sign-in codes.
+SECRET=$(python papyra.api/tests/edge/totp.py secret admin)
+CODE=$(python papyra.api/tests/edge/totp.py code admin $(( $(date +%s) / 30 )))
+curl -X POST -H 'Content-Type: application/json' -d "{\"username\":\"admin\",\"name\":\"Admin\",\"password\":\"AdminPass123!\",\"totpSecret\":\"$SECRET\",\"totpCode\":\"$CODE\"}" http://localhost:5221/api/auth/setup
 ```
+
+The harness accounts (`qa`, `newbie`, `edgetmp`) enrol themselves the same way
+on first use, and every sign-in answers the two-step prompt with the next unused
+code.
 
 Then:
 
@@ -82,6 +89,14 @@ rather, fail loudly, which is the harness telling you the target is wrong.
 
 The harness accounts share the password `PapyraQA!2026`. They are created on the
 first run and reused after that; every run is idempotent.
+
+`qa` also gets the vault PIN `582931` on first run (set with its own password,
+`ensure_vault_pin`), because locking a note needs one. The suites open the vault
+with `vault_unlock` only where a check needs it and close it again after.
+
+Minting an API key and earning an export ticket are step-ups, so each spends a
+fresh authenticator code. A code works once per account, so a full run waits on
+the clock a few times — about two and a half minutes end to end.
 
 ## Safety
 
@@ -112,6 +127,11 @@ eq         "name" "$(jget some.field)" "expected"              # a value from th
 ne         "name" "$actual" "not-this"
 body_has   "name" "pattern"                                    # grep the last body
 body_lacks "name" "pattern"                                    # the one that catches leaks
+
+# Extra curl arguments follow the body ("" when there is none):
+UNLOCK="$(vault_unlock "$JAR_QA")"
+check "reveal" 200 "$JAR_QA" GET "/api/notes/$ID/secure" "" -H "X-Unlock-Token: $UNLOCK"
+code="$(totp_code "$QA_USER")"                                 # a step-up code, spent once
 ```
 
 Jars: `$JAR_ADMIN`, `$JAR_QA`, `$JAR_NEWBIE`, `$JAR_TMP`, and `$JAR_NONE` for the

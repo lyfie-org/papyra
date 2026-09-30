@@ -73,7 +73,7 @@ export default function SharedNoteModal({ shareId, onClose }: { shareId: number;
             note={note}
             onSave={save}
             onRequestEdit={requestEdit}
-            mediaUrl={(f) => `/api/shares/incoming/${shareId}/media/${encodeURIComponent(f)}`}
+            mediaBase={`/api/shares/incoming/${shareId}/media`}
             // Signed in: join the note's live room (classic saves if the
             // collab engine is off).
             collab={{ shareId }}

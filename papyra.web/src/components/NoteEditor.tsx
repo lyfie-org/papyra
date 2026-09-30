@@ -38,7 +38,8 @@ import './NoteEditor.css';
 import { editedLabel, fullStamp, useMinuteTick, useTimeZone } from '../lib/timeZone';
 import LinkCards from './LinkCards';
 import LinkHoverCard from './LinkHoverCard';
-import MediaTools from './MediaTools';
+import MediaDropZone from './MediaDropZone';
+import { pauseOffscreenVideos } from '../lib/videoVisibility';
 import CollabPresence from './CollabPresence';
 import CollabJoining from './CollabJoining';
 import { useShareSummary } from '../hooks/useShares';
@@ -154,37 +155,32 @@ export default function NoteEditor({ note, isDraft = false }: { note: Note; isDr
     });
   }, [toast, queryClient, navigate]);
 
-  // The host seam: media GET/upload → /api/media, [[ search → notes cache,
-  // wikilink activation → router push. Rebuilt only when the open note or the
-  // injected services change. The editor owns the drop/paste upload pipeline
-  // through adapter.uploadMedia, so Papyra no longer hand-splices ![[…]].
+  // The host seam: media GET/upload/metadata → /api/media, [[ search → notes
+  // cache, wikilink activation → router push. Rebuilt only when the open note
+  // or the injected services change. The editor owns the drop/paste upload
+  // pipeline (placeholders, progress, order) through adapter.uploadMedia; an
+  // attachment that can't be stored (too big for its kind, offline) says so
+  // once, as a toast.
   // Papyra's own toolbar items (icons, grouping and inserts are ours; luthor
-  // supplies the controls). Upload failures surface as a toast.
-  const toolbarItems = useMemo(() => createToolbarItems((message) => toast(message)), [toast]);
-  const adapter = useMemo(() => {
-    const base = createPapyraEditorAdapter({ noteId: note.id, navigate, queryClient, onUnresolvedLink });
-    return {
-      ...base,
-      // An attachment that can't be stored (too big for its kind, offline)
-      // says so, instead of the drop silently doing nothing.
-      uploadMedia: async (file: File) => {
-        try { return await base.uploadMedia(file); }
-        catch (err) { toast(err instanceof Error ? err.message : 'Couldn’t attach that file.'); throw err; }
-      },
-    };
-  }, [note.id, navigate, queryClient, onUnresolvedLink, toast]);
+  // supplies the controls).
+  const toolbarItems = useMemo(() => createToolbarItems(), []);
+  // The live Lexical editor, for tools that work on it from outside luthor.
+  const [lexicalEditor, setLexicalEditor] = useState<LexicalEditor | null>(null);
+  // For the attachment toolbar's Move up/down. Read through a stable getter,
+  // not a dependency: a new adapter would rebuild the editor's extensions.
+  const getLiveEditor = useCallback(() => editorRef.current?.getLexicalEditor() ?? null, []);
+  // eslint-disable-next-line react-hooks/refs -- called only from the mounted editor's toolbar, never while NoteEditor renders
+  const adapter = useMemo(() => createPapyraEditorAdapter({
+    noteId: note.id, navigate, queryClient, onUnresolvedLink,
+    onUploadError: (message) => toast(message),
+    notify: (message) => toast(message),
+    getEditor: getLiveEditor,
+  }), [note.id, navigate, queryClient, onUnresolvedLink, toast, getLiveEditor]);
   // A [[link]] replaces the open note in place — never a second browser tab.
   const openLinkedNote = useCallback((target: string) => adapter.openNote({ title: target }), [adapter]);
   useInPlaceWikilinks(sheetRef, openLinkedNote);
-  // The live Lexical editor, for tools that work on it from outside luthor.
-  const [lexicalEditor, setLexicalEditor] = useState<LexicalEditor | null>(null);
-  // luthor's own image paths (the /image slash command) otherwise fall back to
-  // a blob: URL, which dies on reload. Store the file like any other upload and
-  // point the image at the media route.
-  const imageUploadHandler = useCallback(async (file: File) => {
-    const { filename } = await adapter.uploadMedia(file);
-    return adapter.resolveMediaUrl(filename);
-  }, [adapter]);
+  // A video scrolled out of view stops playing.
+  useEffect(() => (sheetRef.current ? pauseOffscreenVideos(sheetRef.current) : undefined), []);
   const [title, setTitle] = useState(note.title);
   // Mirror the title in a ref so the debounced save reads the live value, not a
   // value captured in the closure of the render that scheduled it.
@@ -741,12 +737,11 @@ export default function NoteEditor({ note, isDraft = false }: { note: Note; isDr
   // YAML `color` tints the canvas; fonts come from the design tokens. The palette
   // tints are always light, so a coloured note forces a light editor (dark ink)
   // in both app themes — matching the card convention. Uncoloured notes follow
-  // the live app theme. The luthor theme (and the `colored` light-lock) only
-  // apply on mount, so those two go into the editor key. The tint itself does
-  // not: it is the sheet's background, so picking another colour on an already
-  // coloured note repaints without rebuilding the editor (and losing the caret).
+  // the live app theme. Theme, light-lock and tint all apply in place (luthor
+  // syncs `initialTheme`/`colored` as props; the tint is the sheet's
+  // background), so none is in the editor key: switching theme or colour never
+  // rebuilds the editor — no lost caret, no images reloading, no video stopping.
   const colored = !!note.color;
-  const editorTheme = colored ? 'light' : theme;
   // `--note-tint` paints the sheet (CSS mixes it by --tint-strength, exactly as
   // the card does) and lets chrome inside it (the floating toolbar) derive a
   // solid colour — the editor surface itself is transparent on a coloured note
@@ -879,15 +874,14 @@ export default function NoteEditor({ note, isDraft = false }: { note: Note; isDr
             <LexicalCollaboration>
               <PapyraEditor
                 // A new session (reconnect, access change) is a new Yjs doc: a
-                // fresh editor. Theme/tint remounts rebind the same session.
-                key={`${note.id}-live-${room.generation}-${editorTheme}-${colored ? 'tint' : 'plain'}`}
+                // fresh editor.
+                key={`${note.id}-live-${room.generation}`}
                 initialTheme={theme}
                 colored={colored}
                 toolbar={toolbarShown && !focus}
                 toolbarAlignment="center"
                 toolbarLayout={PAPYRA_TOOLBAR_LAYOUT}
                 toolbarItems={toolbarItems}
-                imageUploadHandler={imageUploadHandler}
                 defaultEditorView="visual"
                 blockAnchors="off"
                 placeholder="Start writing…"
@@ -919,7 +913,7 @@ export default function NoteEditor({ note, isDraft = false }: { note: Note; isDr
             (read-only: its edits belong to the room). */}
         {(!collabLive || history || (room.status === 'offline' && !room.collaboration)) && (
         <PapyraEditor
-          key={`${note.id}-${editorKey}-${editorTheme}-${colored ? 'tint' : 'plain'}${collabLive ? '-ro' : ''}`}
+          key={`${note.id}-${editorKey}${collabLive ? '-ro' : ''}`}
           readOnly={collabLive}
           initialTheme={theme}
           colored={colored}
@@ -929,7 +923,6 @@ export default function NoteEditor({ note, isDraft = false }: { note: Note; isDr
           toolbarAlignment="center"
           toolbarLayout={PAPYRA_TOOLBAR_LAYOUT}
           toolbarItems={toolbarItems}
-          imageUploadHandler={imageUploadHandler}
           defaultEditorView="visual"
           // Existing anchors round-trip; none are created (see getSaveDraft).
           blockAnchors="off"
@@ -1027,9 +1020,7 @@ export default function NoteEditor({ note, isDraft = false }: { note: Note; isDr
       </div>
 
       {/* Outside the scroll area, so "Drop to attach" covers the whole sheet. */}
-      {!isLocked && !history && (
-        <MediaTools editor={lexicalEditor} sheetRef={sheetRef} upload={adapter.uploadMedia} onError={(m) => toast(m)} />
-      )}
+      {!isLocked && !history && <MediaDropZone editor={lexicalEditor} sheetRef={sheetRef} />}
 
       {/* Actions and save state sit under the note body, outside the scroll
           area, so a long note keeps them in reach at the bottom of the sheet. */}

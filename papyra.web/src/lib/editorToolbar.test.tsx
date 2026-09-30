@@ -15,14 +15,14 @@ describe('Papyra toolbar', () => {
   });
 
   it('places every Papyra item the layout names', () => {
-    const ids = createToolbarItems(() => {}).map((i) => i.id);
+    const ids = createToolbarItems().map((i) => i.id);
     const placed = PAPYRA_TOOLBAR_LAYOUT.sections.flatMap((s) => s.items)
       .filter((i) => i.startsWith('custom:')).map((i) => i.slice('custom:'.length));
     expect(placed.every((id) => ids.includes(id))).toBe(true);
   });
 
   it('routes inserts to the editor commands', async () => {
-    const insert = createToolbarItems(() => {}).find((i) => i.id === 'papyra.insert')!;
+    const insert = createToolbarItems().find((i) => i.id === 'papyra.insert')!;
     const byId = (id: string) => insert.items!.find((i) => i.id === id)!;
     const ctx = { insertText: vi.fn(), hasCommand: vi.fn(() => true), runCommand: vi.fn() };
 

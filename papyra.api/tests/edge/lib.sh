@@ -107,6 +107,8 @@ _pick_json_runtime() {
   exit 2
 }
 _pick_json_runtime
+# The TOTP helper ships in the same two runtimes; use the one that just worked.
+TOTP_CMD="$(printf '%s' "$JSON_CMD" | sed 's/json_get\.py/totp.py/; s/json_get\.js/totp.js/')"
 
 # winpath <path> — a path a native Windows binary can open.
 #
@@ -240,12 +242,82 @@ check_ai() {
   check "$name" "$want" "$@"
 }
 
-# ── Sign-in ──────────────────────────────────────────────────────────────────
-login() {
+# ── Two-step codes ───────────────────────────────────────────────────────────
+# Every account has an authenticator. The harness accounts' secrets derive from
+# the username (totp.py / totp.js — the same rule Papyra.Tests uses), so codes
+# never have to be stored. A time step's code can be spent only once per
+# account, so each step is handed out once, and a burst of sign-ins that has
+# used this step and the next waits for the clock.
+# The ledger outlives one suite: run.sh starts the next suite seconds after the
+# last one signed in, inside the same time step.
+TOTP_STEPS="${TMPDIR:-/tmp}/papyra-edge-totp-$(printf '%s' "$BASE" | tr -c 'A-Za-z0-9' '_')"
+touch "$TOTP_STEPS" 2>/dev/null || { TOTP_STEPS="$WORK/totp-steps"; : > "$TOTP_STEPS"; }
+
+totp_code() {
+  local user="$1" now last step
+  while :; do
+    now=$(( $(date +%s) / 30 ))
+    last="$(grep "^$user " "$TOTP_STEPS" | tail -1 | cut -d' ' -f2)"
+    step=$now
+    [ -n "$last" ] && [ "$last" -ge "$step" ] && step=$((last + 1))
+    [ "$step" -le $((now + 1)) ] && break
+    sleep $(( 30 - $(date +%s) % 30 + 1 ))
+  done
+  printf '%s %s\n' "$user" "$step" >> "$TOTP_STEPS"
+  $TOTP_CMD code "$user" "$step"
+}
+
+# ensure_totp <jar> <user> <password> — enrol the account's derived secret if it
+# has no authenticator yet (until it does, the account is walled off with 403).
+ensure_totp() {
   local jar="$1" user="$2" pass="$3"
+  req "$jar" GET /api/auth/me
+  [ "$(jget totpEnabled)" = "true" ] && return 0
+  req "$jar" POST /api/auth/totp "$(printf '{"secret":"%s","code":"%s","password":"%s","name":"edge harness"}' \
+    "$($TOTP_CMD secret "$user")" "$(totp_code "$user")" "$pass")"
+  [ "$STATUS" = "200" ] || abort "Could not enrol an authenticator for '$user' (POST /api/auth/totp → $STATUS)."
+}
+
+# ── Sign-in ──────────────────────────────────────────────────────────────────
+# Answers two-step sign-in with the account's derived code when asked.
+login() {
+  local jar="$1" user="$2" pass="$3" ticket
   rm -f "$jar"
   req "$jar" POST /api/auth/login "$(printf '{"username":"%s","password":"%s"}' "$user" "$pass")"
+  if [ "$STATUS" = "200" ] && [ "$(jget twoFactorRequired)" = "true" ]; then
+    ticket="$(jget ticket)"
+    req "$jar" POST /api/auth/login/2fa "$(printf '{"ticket":"%s","code":"%s"}' "$ticket" "$(totp_code "$user")")"
+    # Something outside this ledger (the web app, another run) spent the step:
+    # the next step's code is still good.
+    [ "$STATUS" = "401" ] && req "$jar" POST /api/auth/login/2fa       "$(printf '{"ticket":"%s","code":"%s"}' "$ticket" "$(totp_code "$user")")"
+  fi
   echo "$STATUS"
+}
+
+# ── The vault ────────────────────────────────────────────────────────────────
+# Locking a note needs a vault PIN, and taking a lock off, revealing a locked
+# body or exporting needs the vault open right now (an X-Unlock-Token). The
+# harness accounts' PIN is fixed like their password. Setting it proves the
+# owner with the account password — ours to give, as with the password itself.
+VAULT_PIN='582931'
+
+# ensure_vault_pin <jar> <password> — give the account the harness PIN if it has
+# none yet. Setting a PIN opens the vault; it is closed again straight away so
+# every suite starts from a shut vault and opens it on purpose.
+ensure_vault_pin() {
+  local jar="$1" pass="$2"
+  req "$jar" GET /api/auth/vault
+  [ "$(jget pinSet)" = "true" ] && return 0
+  req "$jar" POST /api/auth/vault/pin "$(printf '{"pin":"%s","password":"%s"}' "$VAULT_PIN" "$pass")"
+  [ "$STATUS" = "200" ] || abort "Could not set a vault PIN (POST /api/auth/vault/pin → $STATUS)."
+  req "$jar" POST /api/auth/vault/lock
+}
+
+# vault_unlock <jar> — open the vault with the harness PIN; prints the unlock
+# token, or nothing if the PIN was refused. Close it with POST /api/auth/vault/lock.
+vault_unlock() {
+  req "$1" POST /api/auth/vault/unlock "$(printf '{"pin":"%s"}' "$VAULT_PIN")"
+  [ "$STATUS" = "200" ] && jget unlockToken
 }
 
 # me_id <jar> — the caller's own id, from the server. Never hardcode one.
@@ -284,6 +356,7 @@ preflight() {
 
   [ "$(me_role "$JAR_ADMIN")" = "Admin" ] \
     || abort "'$ADMIN_USER' is not an admin; the harness needs one to provision its accounts."
+  ensure_totp "$JAR_ADMIN" "$ADMIN_USER" "$ADMIN_PASS"
 }
 
 # ensure_account <username> <role> <jar> — sign in, provisioning on first run.
@@ -304,6 +377,7 @@ ensure_account() {
       req "$jar" POST /api/auth/password \
         "$(printf '{"current":"%s","next":"%s"}' "$QA_PASS" "$QA_PASS")"
     fi
+    ensure_totp "$jar" "$user" "$QA_PASS"
     return 0
   fi
 
@@ -327,6 +401,7 @@ ensure_account() {
   req "$jar" POST /api/auth/password \
     "$(printf '{"current":"%s","next":"%s"}' "$QA_PASS" "$QA_PASS")"
   [ "$STATUS" = "204" ] || abort "Could not clear the forced password change on '$user' ($STATUS)."
+  ensure_totp "$jar" "$user" "$QA_PASS"
 }
 
 # ── Cleanup ──────────────────────────────────────────────────────────────────

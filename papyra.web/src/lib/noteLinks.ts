@@ -12,7 +12,10 @@ export function extractLinks(body: string, max = 3): string[] {
   const text = body
     .replace(/(^|\n)\s{0,3}(```|~~~)[\s\S]*?\n\s{0,3}\2[^\n]*/g, '\n') // fenced code
     .replace(/`[^`\n]*`/g, ' ')                                        // inline code
-    .replace(/!\[[^\]]*\]\([^)]*\)/g, ' ');                              // images
+    .replace(/!\[[^\]]*\]\([^)]*\)/g, ' ')                               // images
+    // Embeds draw themselves (a YouTube player, a saved web card): a link card
+    // for their URL would show the same page twice.
+    .replace(/!?\[\[[^\]\n]*\]\]/g, ' ');
   const found: string[] = [];
   const add = (raw: string) => {
     const url = raw.replace(/[.,;:!?)'"]+$/, '');

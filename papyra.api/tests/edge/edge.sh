@@ -19,6 +19,7 @@ SUITE_NAME="edge.sh — core surface"
 preflight
 ensure_account "$QA_USER"     User  "$JAR_QA"
 ensure_account "$NEWBIE_USER" User  "$JAR_NEWBIE"
+ensure_vault_pin "$JAR_QA" "$QA_PASS"   # exporting needs the vault open
 
 ADMIN_ID="$(me_id "$JAR_ADMIN")"
 QA_ID="$(me_id "$JAR_QA")"
@@ -117,7 +118,13 @@ check "the notes it matches" 200 "$JAR_QA" GET "/api/collections/$COLL/notes"
 # ── API keys ─────────────────────────────────────────────────────────────────
 section "API keys"
 
-check "mint a key" 200 "$JAR_QA" POST /api/keys '{"name":"'"$EDGE_PREFIX"'-key"}'
+# A key reads and writes everything, so minting one is a step-up: a fresh
+# authenticator code, not just the session.
+check "minting a key on the session alone is refused" 401 "$JAR_QA" POST /api/keys \
+  '{"name":"'"$EDGE_PREFIX"'-key-nocode"}'
+body_has "and asks for the code" '"field":"code"'
+check "mint a key with a fresh code" 200 "$JAR_QA" POST /api/keys \
+  '{"name":"'"$EDGE_PREFIX"'-key","code":"'"$(totp_code "$QA_USER")"'"}'
 KEY="$(jget token)"
 KEY_ID="$(jget id)"
 [ -n "$KEY_ID" ] && track qa keys "$KEY_ID"
@@ -190,7 +197,22 @@ section "Backup, export, media"
 check "git backup settings" 200 "$JAR_QA" GET /api/git
 body_lacks "the stored token is never echoed" '"token"'
 body_has "only whether one is stored" '"hasToken"'
-check "export the vault" 200 "$JAR_QA" GET /api/export
+
+# Exporting hands over everything, locked notes included, so the download needs
+# a one-time ticket earned with a fresh code AND an open vault.
+check "an export without a ticket is refused" 403 "$JAR_QA" GET /api/export
+body_has "and says a ticket is needed" '"code":"ticket"'
+# The vault is checked before the code, so this spends no real code.
+check "a ticket needs the vault open" 401 "$JAR_QA" POST /api/export/authorize '{"code":"000000"}'
+body_has "and says the vault is locked" '"code":"locked"'
+UNLOCK="$(vault_unlock "$JAR_QA")"
+[ -n "$UNLOCK" ] && pass "the vault opens with the PIN" || fail "the vault opens with the PIN" "no unlock token"
+check "a fresh code and an open vault earn a ticket" 200 "$JAR_QA" POST /api/export/authorize \
+  '{"code":"'"$(totp_code "$QA_USER")"'"}' -H "X-Unlock-Token: $UNLOCK"
+TICKET="$(jget ticket)"
+check "export the vault with it" 200 "$JAR_QA" GET "/api/export?ticket=$TICKET"
+check "a ticket is spent by one download" 403 "$JAR_QA" GET "/api/export?ticket=$TICKET"
+check "close the vault again" 204 "$JAR_QA" POST /api/auth/vault/lock
 check "a missing media file is 404" 404 "$JAR_QA" GET "/api/media/$EDGE_PREFIX-nothing.png"
 check_in "a traversing media path does not escape" "400 404" "$JAR_QA" GET "/api/media/..%2F..%2Fappsettings.json"
 

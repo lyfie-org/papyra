@@ -38,6 +38,38 @@ public static class MediaLimits
         return ("file", Other);
     }
 
+    /// <summary>
+    /// The label and limit for a kind <see cref="MediaSniffer"/> decided from the
+    /// bytes — what the upload path enforces, so renaming a file to .mp4 can't
+    /// borrow the video allowance.
+    /// </summary>
+    public static (string Kind, long Limit) ForKind(string kind) => kind switch
+    {
+        "gif" => ("GIF", Gif),
+        "image" => ("image", Image),
+        "video" => ("video", Video),
+        "audio" => ("audio file", Audio),
+        "document" => ("document", Document),
+        _ => ("file", Other),
+    };
+
+    /// <summary>
+    /// The limits and the extension → kind table, for the web app to refuse an
+    /// oversized file before uploading it (same numbers, one source). The server
+    /// still decides by the sniffed bytes; this is only the early, friendly no.
+    /// </summary>
+    public static object Describe() => new
+    {
+        limits = new { image = Image, gif = Gif, audio = Audio, video = Video, document = Document, other = Other },
+        extensions = new
+        {
+            image = ImageExt.Order(StringComparer.Ordinal).ToArray(),
+            audio = AudioExt.Order(StringComparer.Ordinal).ToArray(),
+            video = VideoExt.Order(StringComparer.Ordinal).ToArray(),
+            document = DocExt.Order(StringComparer.Ordinal).ToArray(),
+        },
+    };
+
     public static string Human(long bytes) =>
         bytes >= MB ? $"{bytes / (double)MB:0.#} MB" : $"{Math.Max(1, bytes / 1024)} KB";
 }

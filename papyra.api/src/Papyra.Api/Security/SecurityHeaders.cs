@@ -64,8 +64,9 @@ public static partial class SecurityHeaders
             // Same-origin API plus the SignalR socket; ws:/wss: are separate
             // schemes to CSP and are not covered by 'self'.
             "connect-src 'self' ws: wss:",
-            // ![[youtube:…]] and ![[iframe:…]] embeds are a documented feature.
-            "frame-src https:",
+            // ![[youtube:…]] and ![[iframe:…]] embeds are a documented feature,
+            // and a note's own PDFs preview inline from /api/media.
+            "frame-src 'self' https:",
             "object-src 'none'",
             "base-uri 'self'",
             "form-action 'self'",
