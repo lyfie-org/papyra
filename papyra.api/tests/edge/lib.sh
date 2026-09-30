@@ -294,6 +294,32 @@ login() {
   echo "$STATUS"
 }
 
+# ── The vault ────────────────────────────────────────────────────────────────
+# Locking a note needs a vault PIN, and taking a lock off, revealing a locked
+# body or exporting needs the vault open right now (an X-Unlock-Token). The
+# harness accounts' PIN is fixed like their password. Setting it proves the
+# owner with the account password — ours to give, as with the password itself.
+VAULT_PIN='582931'
+
+# ensure_vault_pin <jar> <password> — give the account the harness PIN if it has
+# none yet. Setting a PIN opens the vault; it is closed again straight away so
+# every suite starts from a shut vault and opens it on purpose.
+ensure_vault_pin() {
+  local jar="$1" pass="$2"
+  req "$jar" GET /api/auth/vault
+  [ "$(jget pinSet)" = "true" ] && return 0
+  req "$jar" POST /api/auth/vault/pin "$(printf '{"pin":"%s","password":"%s"}' "$VAULT_PIN" "$pass")"
+  [ "$STATUS" = "200" ] || abort "Could not set a vault PIN (POST /api/auth/vault/pin → $STATUS)."
+  req "$jar" POST /api/auth/vault/lock
+}
+
+# vault_unlock <jar> — open the vault with the harness PIN; prints the unlock
+# token, or nothing if the PIN was refused. Close it with POST /api/auth/vault/lock.
+vault_unlock() {
+  req "$1" POST /api/auth/vault/unlock "$(printf '{"pin":"%s"}' "$VAULT_PIN")"
+  [ "$STATUS" = "200" ] && jget unlockToken
+}
+
 # me_id <jar> — the caller's own id, from the server. Never hardcode one.
 me_id() {
   req "$1" GET /api/auth/me
