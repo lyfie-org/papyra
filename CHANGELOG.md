@@ -6,6 +6,12 @@ a Docker Hub tag and a GitHub Release.
 
 <!-- new releases are inserted directly below this line -->
 
+## [0.3.1] - 2026-10-01
+
+- fix(web): extract [[…]] embeds in one pass (was quadratic on unclosed runs) (2cd30c3)
+- feat: tidier media bar, shared-note rename + personal pin, mobile drawer (d033635)
+- ci: run only the jobs a push touches; faster installs and caches (6a3bd07)
+
 ## [0.3.0] - 2026-10-01
 
 - feat: performance budgets, fuzzing, HEIC thumbnails, docs (d92c043)
