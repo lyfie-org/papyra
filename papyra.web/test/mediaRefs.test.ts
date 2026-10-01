@@ -45,3 +45,38 @@ describe('embedTarget', () => {
     expect(embedTarget(inner)).toBe(want);
   });
 });
+
+describe('extractMediaRefs on hostile input', () => {
+  // Same pieces the API's MediaFuzzTests uses: every save and card render runs this.
+  const pieces = ['![[', '[[', ']]', '|', '\\|', '#', '^', '#page=3', '|300', '![', '](', ')', '<', '>', '/api/media/',
+    '/api/shared/tok/media/', 'photo.png', 'a b.jpg', 'sub/', '..', '../', '%20', '%', '%zz', 'youtube:', 'https://',
+    '<img src="', '"', "'", ' ', '\n', '\t', '\u0000', 'é', '😀', '\u202e', '[', ']', '(', '!'];
+  let seed = 20261001;
+  const random = () => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed / 2147483648; };
+
+  it('never throws, and yields only bare, bounded names (20 000 random bodies)', () => {
+    const started = performance.now();
+    for (let i = 0; i < 20_000; i++) {
+      let body = '';
+      const n = Math.floor(random() * 40);
+      for (let k = 0; k < n; k++) {
+        body += random() < 0.25 ? String.fromCharCode(Math.floor(random() * 0x3000)) : pieces[Math.floor(random() * pieces.length)];
+      }
+      for (const name of extractMediaRefs(body)) {
+        expect(name.length).toBeGreaterThan(0);
+        expect(name.length).toBeLessThanOrEqual(255);
+        expect(name).not.toMatch(/[/\\]/);
+        expect(['.', '..']).not.toContain(name);
+      }
+    }
+    // No pathological backtracking: a card desk runs this per note.
+    expect(performance.now() - started).toBeLessThan(5000);
+  });
+
+  it('stays linear on a huge body', () => {
+    const body = '![[a.png|300]] text '.repeat(20_000) + '[['.repeat(20_000) + '](' .repeat(20_000);
+    const started = performance.now();
+    expect(extractMediaRefs(body)).toEqual(['a.png']);
+    expect(performance.now() - started).toBeLessThan(2000);
+  });
+});

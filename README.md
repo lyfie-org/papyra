@@ -108,16 +108,55 @@ data/
 ├── users/{userId}/
 │   ├── notes/               # ← the source of truth: your .md files
 │   ├── media/               # attachments referenced as ![[filename]]
-│   ├── .trash/              # soft-deleted items, kept until retention expires
+│   ├── .trash/              # soft-deleted items (and media/{day}/ for unused attachments)
 │   └── .papyra/             # UI state: snapshots/, order.json, categories.json, avatar
+│       ├── media/           # per-attachment metadata, video posters, OCR/transcript text, thumbs/
+│       └── archived-urls.txt  # pages the web archiver has saved (each URL once)
 └── .papyra/
     ├── papyra.db            # SQLite cache — rebuildable
     ├── lucene-index/        # full-text index — rebuildable
+    ├── media-jobs.json      # OCR / transcription work still to do (or given up on)
     └── keys/                # Data Protection key ring — NOT disposable
 ```
 
 Papyra-owned state is always in a hidden `.papyra/` directory, never inside the
 notes folder, so a sync client or file watcher never sees it churn.
+
+#### Attachments
+
+Attachments live flat in `media/` and are written into notes the way Obsidian
+writes them, so a vault opens unchanged in either app:
+
+| You write | You get |
+|---|---|
+| `![[photo.png]]` | the picture at its natural size (up to the column) |
+| `![[photo.png\|480]]`, `![[photo.png\|480x320]]` | 480 px wide (and that tall) — what dragging a handle saves |
+| `![[photo.png\|A sunset\|480]]` | with alt text |
+| `![[photo.png]] <!-- align:center --> <!-- caption:Our first night -->` | centred, captioned (the editor's toolbar writes these) |
+| `![[report.pdf#page=3]]` | a file card; **Preview PDF** opens it in place at page 3 |
+| `![alt\|300](https://…)` | a web image, 300 px wide |
+| `![[youtube:https://…\|Talk\|640x360]]` | an embedded video with a caption |
+
+In a table, escape the pipe: `![[photo.png\|200]]`. A note is never rewritten
+just because it was opened — only what you change is saved.
+
+Uploads are checked by their bytes, not their names (a web page renamed `.png`
+is stored as inert text), limited per kind (pictures 30 MB, GIFs 50 MB, audio and
+documents 100 MB, video 500 MB) and named so two `image.png`s never collide.
+Pictures get small WebP thumbnails (cards and narrow columns never download
+camera originals); videos get a poster frame captured by the browser. Optional
+extras, all off unless configured:
+
+| Setting | Turns on |
+|---|---|
+| `Ocr:TessDataPath` | the words in pictures become searchable (Tesseract `eng.traineddata`) |
+| `Whisper:ModelPath` | WAV recordings are transcribed into their note (a Whisper model) |
+| `Media:HeifConvert` | thumbnails for iPhone HEIC photos via libheif's `heif-convert` (most browsers already send JPEG) |
+
+Text read out of attachments is kept beside them (`.papyra/media/*.ocr.txt`,
+`*.transcript.txt`), so rebuilding search never re-runs OCR, and a locked note's
+pictures are never searchable. Unused attachments move to the trash after a week
+and are purged with it; anything an old version of a note shows is kept.
 
 ---
 
@@ -136,6 +175,10 @@ pnpm run build            # type-check + production bundle
 
 # Docker, from source
 docker compose up --build # → :8080
+
+# Editor + media end to end in real Chromium (own throwaway API; after `pnpm run build`
+# it also checks the performance budgets: 200-picture note, 300-card desk)
+pnpm --filter papyra-web run check:editor
 ```
 
 #### Tests

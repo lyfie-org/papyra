@@ -1,4 +1,6 @@
+import { useCallback, useEffect, useState, useSyncExternalStore } from 'react';
 import type { MediaMeta, MediaUrlOptions } from '@lyfie/luthor-headless';
+import { extractMediaRefs } from './mediaRefs';
 
 // Attachment metadata (kind, size, intrinsic width/height, content version,
 // whether a thumbnail/poster exists) for embeds and cards, so a picture's box
@@ -136,6 +138,35 @@ export function mediaMetaStore(base: string): MediaMetaStore {
     stores.set(base, s);
   }
   return s;
+}
+
+// A name that looks like a file (`photo.png`), not a `[[Note title]]` link.
+const FILE_NAME = /\.[a-z0-9]{2,5}$/i;
+const PREFETCH_LIMIT_MS = 1000;
+
+/**
+ * True once the metadata of every attachment `body` embeds is known (or after
+ * a second, whichever is first). Mount the editor behind it: an embed rendered
+ * before its metadata starts downloading the full-size original (its `src`)
+ * before the thumbnail `srcset` exists — opening a note of 200 photos pulled 60
+ * camera originals. One batched request, usually a few milliseconds.
+ *
+ * Only the body the editor *opens* with counts (later edits never unmount it).
+ */
+export function useMediaMetaReady(body: string, base: string): boolean {
+  const [names] = useState(() => extractMediaRefs(body).filter((n) => FILE_NAME.test(n)));
+  const store = mediaMetaStore(base);
+  // Ask for every name before testing any: `every` alone would stop at the
+  // first unknown one, and the batch would hold one name per round trip.
+  const read = useCallback(() => names.map((n) => store.get(n)).every((m) => m !== undefined), [names, store]);
+  const known = useSyncExternalStore(store.subscribe, read, read);
+  const [gaveUp, setGaveUp] = useState(false);
+  useEffect(() => {
+    if (known) return;
+    const t = setTimeout(() => setGaveUp(true), PREFETCH_LIMIT_MS);
+    return () => clearTimeout(t);
+  }, [known]);
+  return known || gaveUp;
 }
 
 const THUMB_WIDTHS = [160, 320, 640, 1280];

@@ -55,4 +55,9 @@
 
 @media (prefers-reduced-motion: reduce) {
   .media-drop { animation: none; }
+  /* luthor gates its own entrances; these are the leftover small motions
+     (handle hover growth, the upload bar sliding to its width). */
+  .note-editor__canvas .luthor-media__handle,
+  .note-editor__canvas .luthor-media__toolbar,
+  .note-editor__canvas .luthor-upload__bar { transition: none; animation: none; }
 }

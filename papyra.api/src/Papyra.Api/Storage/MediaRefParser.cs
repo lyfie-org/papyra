@@ -66,12 +66,19 @@ public static partial class MediaRefParser
     public static string Rename(string body, IReadOnlyDictionary<string, string> renames)
     {
         if (string.IsNullOrEmpty(body) || renames.Count == 0) return body;
+        // The same normalization Extract applies (as written, or URL-unescaped
+        // first), so whatever Extract reports as a reference, Rename moves.
         string? Renamed(string target)
         {
-            var bare = target.Trim().Replace('\\', '/');
-            var slash = bare.LastIndexOf('/');
-            if (slash >= 0) bare = bare[(slash + 1)..];
-            return renames.FirstOrDefault(r => string.Equals(r.Key, Unescape(bare), StringComparison.OrdinalIgnoreCase)).Value;
+            foreach (var form in (string[])[target, Unescape(target)])
+            {
+                var bare = form.Trim().Replace('\\', '/');
+                var slash = bare.LastIndexOf('/');
+                if (slash >= 0) bare = bare[(slash + 1)..];
+                var hit = renames.FirstOrDefault(r => string.Equals(r.Key, bare, StringComparison.OrdinalIgnoreCase)).Value;
+                if (hit is not null) return hit;
+            }
+            return null;
         }
 
         body = WikiEmbed().Replace(body, m =>
@@ -82,30 +89,44 @@ public static partial class MediaRefParser
             if (target.Contains(':') || Renamed(target) is not { } to) return m.Value;
             return m.Value.Replace("[[" + target, "[[" + to, StringComparison.Ordinal);
         });
+        // A link or attribute URL: an /api/media address keeps its prefix; a
+        // relative path becomes the bare new name (imports flatten folders).
+        string? RenameUrl(string url, bool angled)
+        {
+            var api = ApiMediaUrl().Match(url);
+            if (api.Success)
+            {
+                var to = Renamed(api.Groups[1].Value);
+                return to is null ? null
+                    : url[..api.Groups[1].Index] + Uri.EscapeDataString(to) + url[(api.Groups[1].Index + api.Groups[1].Length)..];
+            }
+            if (url.StartsWith('/') || url.StartsWith('#') || url.Contains("://") || HasScheme(url)) return null;
+            var end = url.IndexOfAny(['?', '#']);
+            var renamed = Renamed(end >= 0 ? url[..end] : url);
+            if (renamed is null) return null;
+            return (angled ? renamed : renamed.Replace(" ", "%20", StringComparison.Ordinal)) + (end >= 0 ? url[end..] : string.Empty);
+        }
+
         body = MarkdownLink().Replace(body, m =>
         {
             var raw = m.Groups[1].Value;
-            var url = raw.Trim('<', '>');
-            var api = ApiMediaUrl().Match(url);
-            string? to;
-            string replaced;
-            if (api.Success)
-            {
-                to = Renamed(api.Groups[1].Value);
-                if (to is null) return m.Value;
-                replaced = url[..api.Groups[1].Index] + Uri.EscapeDataString(to) + url[(api.Groups[1].Index + api.Groups[1].Length)..];
-            }
-            else
-            {
-                if (url.StartsWith('/') || url.StartsWith('#') || url.Contains("://") || HasScheme(url)) return m.Value;
-                var end = url.IndexOfAny(['?', '#']);
-                var path = end >= 0 ? url[..end] : url;
-                to = Renamed(path);
-                if (to is null) return m.Value;
-                var encoded = raw.StartsWith('<') ? to : to.Replace(" ", "%20", StringComparison.Ordinal);
-                replaced = encoded + (end >= 0 ? url[end..] : string.Empty);
-            }
-            return m.Value.Replace(raw, raw.StartsWith('<') ? $"<{replaced}>" : replaced, StringComparison.Ordinal);
+            var angled = raw.StartsWith('<');
+            var replaced = RenameUrl(raw.Trim('<', '>'), angled);
+            return replaced is null ? m.Value : m.Value.Replace(raw, angled ? $"<{replaced}>" : replaced, StringComparison.Ordinal);
+        });
+        body = HtmlAttr().Replace(body, m =>
+        {
+            var group = m.Groups[1].Success ? m.Groups[1] : m.Groups[2];
+            var replaced = RenameUrl(group.Value, angled: false);
+            return replaced is null ? m.Value
+                : m.Value[..(group.Index - m.Index)] + replaced + m.Value[(group.Index - m.Index + group.Length)..];
+        });
+        // Bare /api/media addresses anywhere else in the text (Extract counts them too).
+        body = ApiMediaUrl().Replace(body, m =>
+        {
+            var to = Renamed(m.Groups[1].Value);
+            return to is null ? m.Value
+                : m.Value[..(m.Groups[1].Index - m.Index)] + Uri.EscapeDataString(to) + m.Value[(m.Groups[1].Index - m.Index + m.Groups[1].Length)..];
         });
         return body;
     }

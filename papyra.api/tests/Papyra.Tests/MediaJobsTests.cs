@@ -227,6 +227,10 @@ public sealed class MediaJobsTests
     [InlineData("| ![[photo.png\\|200]] |", "| ![[photo-2.png\\|200]] |")]
     [InlineData("![alt](sub/photo.png \"t\")", "![alt](photo-2.png \"t\")")]
     [InlineData("![](/api/media/photo.png)", "![](/api/media/photo-2.png)")]
+    // Found by MediaFuzzTests: forms Extract counts but Rename used to skip.
+    [InlineData("download it at /api/media/photo.png please", "download it at /api/media/photo-2.png please")]
+    [InlineData("<img src=\"sub/photo.png\" width=\"300\"> <video poster='photo.png'>", "<img src=\"photo-2.png\" width=\"300\"> <video poster='photo-2.png'>")]
+    [InlineData("![](/api/media/photo.png%20)", "![](/api/media/photo-2.png)")]
     [InlineData("![[photo.png.bak]] ![[youtube:https://x.y/photo.png]] [l](https://e.com/photo.png)",
         "![[photo.png.bak]] ![[youtube:https://x.y/photo.png]] [l](https://e.com/photo.png)")]
     public void Rename_PointsReferencesAtTheNewName_AndNothingElse(string body, string expected)
@@ -277,6 +281,43 @@ public sealed class MediaJobsTests
             // Nothing left behind in temp: the archive was never a file.
             Assert.DoesNotContain(Directory.EnumerateFiles(Path.GetTempPath(), "papyra-export-*.zip"),
                 f => File.GetCreationTimeUtc(f) > DateTime.UtcNow.AddMinutes(-1));
+        }
+        finally { Cleanup(factory, dir); }
+    }
+
+    [Fact]
+    public async Task Export_OfALargeVault_StartsAtOnce()
+    {
+        var (factory, dir) = NewApp(null, pin: false);
+        try
+        {
+            var owner = await OwnerAsync(factory, pin: false);
+            await WriteNoteAsync(owner, "n1", "hello");
+            // 1 GB of attachments written straight to disk (a filled-in vault).
+            var mediaDir = Path.Combine(dir, "users", "1", "media");
+            Directory.CreateDirectory(mediaDir);
+            for (var i = 0; i < 4; i++)
+            {
+                await using var fs = new FileStream(Path.Combine(mediaDir, $"video-{i}.mp4"), FileMode.CreateNew);
+                fs.SetLength(256L * 1024 * 1024);
+            }
+
+            var ticket = (await (await owner.PostAsJsonAsync("/api/export/authorize", new { code = await TestAuth.CodeAsync(owner) }))
+                .Content.ReadFromJsonAsync<JsonElement>()).GetProperty("ticket").GetString();
+            var clock = System.Diagnostics.Stopwatch.StartNew();
+            using var res = await owner.GetAsync($"/api/export?ticket={ticket}", HttpCompletionOption.ResponseHeadersRead);
+            await using var body = await res.Content.ReadAsStreamAsync();
+            var first = new byte[64 * 1024];
+            var read = await body.ReadAsync(first);
+            var firstByte = clock.Elapsed;
+            Assert.True(read > 0);
+            // The old export zipped everything to a temp file first: on 1 GB that
+            // is seconds of silence, on 5 GB a minute.
+            Assert.True(firstByte < TimeSpan.FromSeconds(2), $"first byte after {firstByte.TotalMilliseconds:0} ms");
+            long total = read;
+            var buffer = new byte[1024 * 1024];
+            while ((read = await body.ReadAsync(buffer)) > 0) total += read;
+            Assert.True(total > 1024L * 1024 * 1024);
         }
         finally { Cleanup(factory, dir); }
     }

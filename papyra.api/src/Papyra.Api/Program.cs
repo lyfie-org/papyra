@@ -96,6 +96,8 @@ builder.Services.AddSingleton<VaultState>();
 builder.Services.AddSingleton<MediaReferences>();
 // Derived attachment state (meta, posters, thumbnails) under users/{uid}/.papyra/media.
 builder.Services.AddSingleton<MediaMetaStore>();
+// Optional HEIC thumbnails through libheif's heif-convert (Media:HeifConvert; off by default).
+builder.Services.AddSingleton<HeicConverter>();
 // Per-request resolver for media reached through a share.
 builder.Services.AddScoped<SharedMedia>();
 builder.Services.AddSingleton<WriteRing>();
