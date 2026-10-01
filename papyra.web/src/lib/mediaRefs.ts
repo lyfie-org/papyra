@@ -9,7 +9,6 @@
 // Names compare case-insensitively (Obsidian's do) and are reduced to their last
 // path segment (imports flatten folders into the media dir).
 
-const WIKI_EMBED = /!?\[\[([^\]\r\n]+)\]\]/g;
 const MARKDOWN_LINK = /\]\(\s*(<[^>\r\n]+>|[^)\s]+)/g;
 const HTML_ATTR = /\b(?:src|href|poster)\s*=\s*(?:"([^"]*)"|'([^']*)')/gi;
 const API_MEDIA_URL = /\/api\/(?:media|shared\/[^/\s]+\/media|shares\/incoming\/\d+\/media)\/([^\s)"'<>\]|#?]+)/g;
@@ -52,6 +51,29 @@ export function attachmentFromUrl(url: string): string | null {
 }
 
 /**
+ * The inside of every `[[…]]` (an embed's `!` is optional): exactly what
+ * `/!?\[\[([^\]\r\n]+)\]\]/g` matches, in one pass. As that regex, a run of
+ * `[[` with no closing `]]` (a pasted log, a hostile note) was rescanned from
+ * every opening to the end of the run — quadratic. Every opening inside one
+ * run stops at the same `]` or line break, so a failed run is skipped whole.
+ */
+function* wikiTargets(body: string): Generator<string> {
+  let at = body.indexOf('[[');
+  while (at >= 0) {
+    const start = at + 2;
+    let stop = start;
+    while (stop < body.length) {
+      const c = body.charCodeAt(stop);
+      if (c === 93 /* ] */ || c === 13 || c === 10) break;
+      stop++;
+    }
+    const closed = stop > start && body.charCodeAt(stop) === 93 && body.charCodeAt(stop + 1) === 93;
+    if (closed) yield body.slice(start, stop);
+    at = body.indexOf('[[', closed ? stop + 2 : Math.max(stop, at + 1));
+  }
+}
+
+/**
  * Every attachment name the body references, first spelling kept, unique
  * case-insensitively, in order of appearance.
  */
@@ -73,8 +95,8 @@ export function extractMediaRefs(body: string | null | undefined): string[] {
     if (name) add(name);
   };
 
-  for (const m of body.matchAll(WIKI_EMBED)) {
-    const target = embedTarget(m[1]);
+  for (const inner of wikiTargets(body)) {
+    const target = embedTarget(inner);
     if (!isUrlEmbed(target)) add(target);
   }
   for (const m of body.matchAll(MARKDOWN_LINK)) addUrl(m[1].replace(/^<|>$/g, ''));
