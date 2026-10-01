@@ -6,6 +6,11 @@ a Docker Hub tag and a GitHub Release.
 
 <!-- new releases are inserted directly below this line -->
 
+## [0.3.0] - 2026-10-01
+
+- feat: performance budgets, fuzzing, HEIC thumbnails, docs (d92c043)
+- feat: attachment text queue, safe body writes, safe imports, streamed export (880680b)
+
 ## [0.2.6] - 2026-09-30
 
 - feat: inline PDF preview on file cards (28bcd50)
