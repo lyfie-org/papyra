@@ -5,9 +5,20 @@ name: CI
 # development → main would re-run the exact commits the push already checked,
 # and the merge into main is itself a push, so main is still gated. This is what
 # catches integration/regression/syntax breakage before a release is ever cut.
+#
+# Each job runs only when a push touches what it checks (see `changes`), so a
+# web-only commit no longer builds .NET or the Docker image, and a docs/blog
+# commit runs nothing but the gate. Filtering is per job, not with `on.paths`:
+# a workflow that never starts never reports "CI passed", which would leave a
+# required status check pending forever. Run it by hand (Actions → CI → Run
+# workflow) to force every job regardless of what changed.
 on:
   push:
     branches: [main, development]
+  workflow_dispatch:
+
+permissions:
+  contents: read
 
 # Cancel an in-flight run when new commits land on the same ref — no point
 # burning minutes on stale code.
@@ -16,8 +27,63 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # Which areas did this push touch? Compared against the commit before the
+  # push (or the default branch, for a brand-new branch). A change to this
+  # workflow or the shared setup action counts as touching everything.
+  changes:
+    name: Detect changed areas
+    runs-on: ubuntu-latest
+    outputs:
+      api: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.api == 'true' }}
+      web: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.web == 'true' }}
+      collab: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.collab == 'true' }}
+      image: ${{ github.event_name == 'workflow_dispatch' || steps.filter.outputs.image == 'true' }}
+    steps:
+      - name: Checkout
+        if: github.event_name != 'workflow_dispatch'
+        uses: actions/checkout@v7
+
+      - name: Filter paths
+        id: filter
+        if: github.event_name != 'workflow_dispatch'
+        uses: dorny/paths-filter@v4
+        with:
+          filters: |
+            ci: &ci
+              - '.github/workflows/ci.yml'
+              - '.github/actions/**'
+            node: &node
+              - *ci
+              - 'package.json'
+              - 'pnpm-workspace.yaml'
+              - 'pnpm-lock.yaml'
+            api:
+              - *ci
+              - 'Papyra.slnx'
+              - 'papyra.api/**'
+            # VERSION is read by vite.config at build time.
+            web:
+              - *node
+              - 'VERSION'
+              - 'papyra.web/**'
+            collab:
+              - *node
+              - 'papyra.collab/**'
+            # Everything that goes into the image's API ↔ engine path. The SPA
+            # is in the image too, but the web job already builds it, and the
+            # release workflow smoke-tests the full image before publishing.
+            image:
+              - *node
+              - 'Dockerfile'
+              - '.dockerignore'
+              - 'entrypoint.sh'
+              - 'papyra.api/src/**'
+              - 'papyra.collab/**'
+
   backend:
     name: API — build & test (.NET 10)
+    needs: changes
+    if: needs.changes.outputs.api == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
@@ -27,6 +93,15 @@ jobs:
         uses: actions/setup-dotnet@v6
         with:
           dotnet-version: '10.0.x'
+
+      # No packages.lock.json, so setup-dotnet's own cache can't key on it —
+      # the project files carry every PackageReference version instead.
+      - name: Cache NuGet packages
+        uses: actions/cache@v6
+        with:
+          path: ~/.nuget/packages
+          key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj', 'Papyra.slnx') }}
+          restore-keys: nuget-${{ runner.os }}-
 
       - name: Restore
         run: dotnet restore Papyra.slnx
@@ -40,81 +115,68 @@ jobs:
           --configuration Release --no-build --verbosity normal
 
   frontend:
-    name: Web — type-check, lint & build
+    name: Web — type-check, lint, test & build
+    needs: changes
+    if: needs.changes.outputs.web == 'true'
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: papyra.web
     steps:
       - name: Checkout
         uses: actions/checkout@v7
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v6
+      - name: Setup pnpm workspace
+        uses: ./.github/actions/setup-pnpm
         with:
-          version: 11.5.1
-
-      - name: Setup Node 22
-        uses: actions/setup-node@v7
-        with:
-          node-version: '22'
-          cache: 'pnpm'
-
-      - name: Install
-        run: pnpm install --frozen-lockfile
-
-      - name: Type-check (syntax + types)
-        working-directory: papyra.web
-        run: pnpm exec tsc --noEmit
+          install-args: --filter papyra-web...
 
       - name: Lint
-        working-directory: papyra.web
         run: pnpm run lint
 
-      - name: Production build
-        working-directory: papyra.web
+      - name: Unit tests
+        run: pnpm run test
+
+      # `tsc -b && vite build`: the type-check runs here, across both project
+      # references. (A bare `tsc --noEmit` checks nothing — tsconfig.json is a
+      # solution file with `files: []`.)
+      - name: Type-check & production build
         run: pnpm run build
 
   collab:
     name: Collab server — type-check, lint, test & bundle
+    needs: changes
+    if: needs.changes.outputs.collab == 'true'
     runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: papyra.collab
     steps:
       - name: Checkout
         uses: actions/checkout@v7
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v6
+      - name: Setup pnpm workspace
+        uses: ./.github/actions/setup-pnpm
         with:
-          version: 11.5.1
-
-      - name: Setup Node 22
-        uses: actions/setup-node@v7
-        with:
-          node-version: '22'
-          cache: 'pnpm'
-
-      - name: Install
-        run: pnpm install --frozen-lockfile
+          install-args: --filter papyra-collab...
 
       - name: Type-check
-        working-directory: papyra.collab
         run: pnpm run typecheck
 
       - name: Lint
-        working-directory: papyra.collab
         run: pnpm run lint
 
       # Ticket auth, block-level 3-way merge (incl. randomized no-loss check),
       # room lifecycle, and real-WebSocket multi-client convergence.
       - name: Test
-        working-directory: papyra.collab
         run: pnpm run test
 
       - name: Bundle
-        working-directory: papyra.collab
         run: pnpm run build
 
       # Boot the *built* single-file bundle (what the Docker image ships) and
       # run two collaborators through it end to end.
       - name: Selftest the bundle
-        working-directory: papyra.collab
         run: pnpm run selftest
 
   # The real thing: build the image, boot it, and have two editors collaborate
@@ -122,27 +184,22 @@ jobs:
   # edits converge and land in the .md, a stale classic write is refused, and a
   # revoked grantee is kicked. Catches packaging breakage (Node missing, bundle
   # not copied, proxy miswired) that no unit test can.
+  #
+  # Runs alongside the collab job rather than after it: the image build already
+  # bundles and selftests the engine, so a broken engine still fails here early.
   e2e-collab:
     name: Live collaboration — end to end in the Docker image
-    needs: [collab]
+    needs: changes
+    if: needs.changes.outputs.image == 'true'
     runs-on: ubuntu-latest
     steps:
       - name: Checkout
         uses: actions/checkout@v7
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v6
+      - name: Setup pnpm workspace
+        uses: ./.github/actions/setup-pnpm
         with:
-          version: 11.5.1
-
-      - name: Setup Node 22
-        uses: actions/setup-node@v7
-        with:
-          node-version: '22'
-          cache: 'pnpm'
-
-      - name: Install
-        run: pnpm install --frozen-lockfile
+          install-args: --filter papyra-collab...
 
       - name: Set up Docker Buildx
         uses: docker/setup-buildx-action@v3
@@ -176,11 +233,22 @@ jobs:
         if: always()
         run: docker logs e2e || true
 
-  # A green light only when ALL jobs pass — handy as the single required
-  # status check on a branch-protection rule.
+  # A green light only when every job that ran passed — handy as the single
+  # required status check on a branch-protection rule. Always runs, so a push
+  # that skipped jobs still reports; skipped counts as passing, a failed or
+  # cancelled job does not.
   ci-ok:
     name: CI passed
-    needs: [backend, frontend, collab, e2e-collab]
+    needs: [changes, backend, frontend, collab, e2e-collab]
+    if: always()
     runs-on: ubuntu-latest
     steps:
-      - run: echo "All checks green."
+      - name: Check job results
+        env:
+          RESULTS: ${{ join(needs.*.result, ' ') }}
+        run: |
+          echo "Job results: $RESULTS"
+          case " $RESULTS " in
+            *" failure "*|*" cancelled "*) echo "::error::A CI job failed or was cancelled."; exit 1 ;;
+          esac
+          echo "All checks green."

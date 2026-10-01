@@ -21,9 +21,14 @@ on:
     paths:
       - 'papyra.app/**'
       - 'papyra.web/**'
+      # The changelog page reads these from the repo root (src/lib/changelog.mjs).
+      - 'CHANGELOG.md'
+      - 'VERSION'
+      - 'package.json'
       - 'pnpm-workspace.yaml'
       - 'pnpm-lock.yaml'
       - '.github/workflows/site.yml'
+      - '.github/actions/**'
   # So a deploy can be re-run without an empty commit.
   workflow_dispatch:
 
@@ -36,22 +41,14 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: read
-      # The Pages action comments the preview URL on pull requests.
-      deployments: write
     steps:
       - uses: actions/checkout@v7
 
-      - uses: pnpm/action-setup@v6
+      # The site plus the web app it embeds as /demo — not the collab engine.
+      - name: Setup pnpm workspace
+        uses: ./.github/actions/setup-pnpm
         with:
-          version: 11.5.1
-
-      - uses: actions/setup-node@v7
-        with:
-          node-version: 22
-          cache: pnpm
-
-      - name: Install
-        run: pnpm install --frozen-lockfile
+          install-args: --filter papyra-app... --filter papyra-web...
 
       - name: Check design tokens have not drifted from the app
         run: pnpm --filter papyra-app run check:tokens
@@ -91,6 +88,36 @@ jobs:
           fi
           echo "No third-party font origin in the shipped pages."
 
+      # Sideways scroll is invisible until somebody opens the site on a phone,
+      # and it is caused by ordinary things: a wide table, a long URL, a grid
+      # track that will not shrink. Checking it in a real browser is the only
+      # way to know. Chromium is ~115 MB, which is worth it for a class of bug
+      # that otherwise ships.
+      #
+      # The browser download is cached per Playwright version; on a hit only the
+      # system libraries (apt) still need installing.
+      - name: Resolve Playwright version
+        id: playwright
+        run: echo "version=$(pnpm --filter papyra-app exec playwright --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}-chromium
+
+      - name: Install Chromium for the layout check
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: pnpm --filter papyra-app exec playwright install --with-deps chromium
+
+      - name: Install Chromium system dependencies
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: pnpm --filter papyra-app exec playwright install-deps chromium
+
+      - name: Check no page scrolls horizontally
+        run: pnpm --filter papyra-app run check:layout
+
       # Wrangler is run straight from papyra.app's own devDependencies rather than
       # through cloudflare/wrangler-action. The action installs its own copy, and
       # in a pnpm workspace that install fails outright — pnpm refuses to add a
@@ -99,17 +126,6 @@ jobs:
       # deploy to the same wrangler version the lockfile already resolves.
       #
       # Secrets come in as environment variables, which wrangler reads natively.
-      # Sideways scroll is invisible until somebody opens the site on a phone,
-      # and it is caused by ordinary things: a wide table, a long URL, a grid
-      # track that will not shrink. Checking it in a real browser is the only
-      # way to know. Chromium is ~115 MB, which is worth it for a class of bug
-      # that otherwise ships.
-      - name: Install Chromium for the layout check
-        run: pnpm --filter papyra-app exec playwright install --with-deps chromium
-
-      - name: Check no page scrolls horizontally
-        run: pnpm --filter papyra-app run check:layout
-
       - name: Deploy to Cloudflare Pages
         working-directory: papyra.app
         env:

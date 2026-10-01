@@ -6,7 +6,8 @@ name: Release
 #   3. commits + tags vX.Y.Z on main and pushes,
 #   4. pushes a multi-arch image to Docker Hub (vX.Y.Z + latest),
 #   5. publishes a GitHub Release with the same notes,
-#   6. fast-forwards development back to main so both branches stay in lockstep.
+#   6. fast-forwards development back to main so both branches stay in lockstep,
+#   7. redeploys the site so papyra.app's changelog shows the new release.
 #
 # Fresh start: VERSION begins at 0.0.0, so the first "patch" release is v0.0.1.
 on:
@@ -21,6 +22,9 @@ on:
 
 permissions:
   contents: write
+  # Step 7 dispatches site.yml. Pushes made with GITHUB_TOKEN never trigger
+  # other workflows, so the release commit alone would not redeploy the site.
+  actions: write
 
 jobs:
   release:
@@ -71,19 +75,10 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
-      - name: Setup pnpm
-        uses: pnpm/action-setup@v6
+      - name: Setup pnpm workspace (collab e2e script)
+        uses: ./.github/actions/setup-pnpm
         with:
-          version: 11.5.1
-
-      - name: Setup Node 22
-        uses: actions/setup-node@v7
-        with:
-          node-version: '22'
-          cache: 'pnpm'
-
-      - name: Install (collab e2e script)
-        run: pnpm install --frozen-lockfile --filter papyra-collab...
+          install-args: --filter papyra-collab...
 
       - name: Smoke test
         run: |
@@ -196,3 +191,9 @@ jobs:
           git merge --ff-only origin/main || git merge --no-edit origin/main
           git push origin development
           echo "✅ development synced to main @ ${{ steps.ver.outputs.tag }}"
+
+      # ── 6. Redeploy the site with the new VERSION + CHANGELOG ───────────────────
+      - name: Redeploy site
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run site.yml --ref main
