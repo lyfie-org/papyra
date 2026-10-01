@@ -16,7 +16,7 @@ import { useCollabCursorLabels } from '../hooks/useCollabCursorLabels';
 import type { LexicalEditor } from 'lexical';
 import CollabPresence from './CollabPresence';
 import CollabJoining from './CollabJoining';
-import { mediaMetaStore, mediaUrl } from '../lib/mediaMeta';
+import { mediaMetaStore, mediaUrl, useMediaMetaReady } from '../lib/mediaMeta';
 import { createMediaToolbarItems } from '../lib/mediaToolbar';
 import { pauseOffscreenVideos } from '../lib/videoVisibility';
 import { renderPdfExpansion } from '../lib/pdfPreview';
@@ -100,6 +100,8 @@ export default function SharedNoteView({
   // note navigation are inert on a shared surface. Built once per share —
   // a new adapter would re-render every embed.
   const { toast } = useToast();
+  // Attachments' sizes and thumbnails known before the editor draws them.
+  const mediaReady = useMediaMetaReady(note.body, mediaBase);
   const adapter = useMemo<PapyraEditorAdapter>(() => {
     const meta = mediaMetaStore(mediaBase);
     return {
@@ -235,7 +237,7 @@ export default function SharedNoteView({
         </div>
       )}
 
-      {live && (
+      {live && mediaReady && (
         <div className="shared-note__canvas">
           {room.status === 'revoked' || room.status === 'gone' ? (
             <p className="shared-note__gone" role="status">
@@ -287,7 +289,7 @@ export default function SharedNoteView({
         </div>
       )}
 
-      {!live && (
+      {!live && mediaReady && (
       <PapyraEditor
         // Re-mounted when access changes, so an approval turns the page
         // editable in place. Theme and tint apply without a remount.

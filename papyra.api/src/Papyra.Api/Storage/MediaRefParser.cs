@@ -57,6 +57,80 @@ public static partial class MediaRefParser
         return names;
     }
 
+    /// <summary>
+    /// Point a body's references at renamed attachments (old name → new name,
+    /// compared case-insensitively on the last path segment): <c>![[old|300]]</c> →
+    /// <c>![[new|300]]</c>, <c>![](sub/old)</c> → <c>![](new)</c>, <c>/api/media/old</c> →
+    /// <c>/api/media/new</c>. Sizes, alt text, fragments and everything else stay.
+    /// </summary>
+    public static string Rename(string body, IReadOnlyDictionary<string, string> renames)
+    {
+        if (string.IsNullOrEmpty(body) || renames.Count == 0) return body;
+        // The same normalization Extract applies (as written, or URL-unescaped
+        // first), so whatever Extract reports as a reference, Rename moves.
+        string? Renamed(string target)
+        {
+            foreach (var form in (string[])[target, Unescape(target)])
+            {
+                var bare = form.Trim().Replace('\\', '/');
+                var slash = bare.LastIndexOf('/');
+                if (slash >= 0) bare = bare[(slash + 1)..];
+                var hit = renames.FirstOrDefault(r => string.Equals(r.Key, bare, StringComparison.OrdinalIgnoreCase)).Value;
+                if (hit is not null) return hit;
+            }
+            return null;
+        }
+
+        body = WikiEmbed().Replace(body, m =>
+        {
+            var inner = m.Groups[1].Value;
+            var cut = inner.IndexOfAny(['|', '#', '^']);
+            var target = cut >= 0 ? inner[..cut].TrimEnd('\\') : inner;
+            if (target.Contains(':') || Renamed(target) is not { } to) return m.Value;
+            return m.Value.Replace("[[" + target, "[[" + to, StringComparison.Ordinal);
+        });
+        // A link or attribute URL: an /api/media address keeps its prefix; a
+        // relative path becomes the bare new name (imports flatten folders).
+        string? RenameUrl(string url, bool angled)
+        {
+            var api = ApiMediaUrl().Match(url);
+            if (api.Success)
+            {
+                var to = Renamed(api.Groups[1].Value);
+                return to is null ? null
+                    : url[..api.Groups[1].Index] + Uri.EscapeDataString(to) + url[(api.Groups[1].Index + api.Groups[1].Length)..];
+            }
+            if (url.StartsWith('/') || url.StartsWith('#') || url.Contains("://") || HasScheme(url)) return null;
+            var end = url.IndexOfAny(['?', '#']);
+            var renamed = Renamed(end >= 0 ? url[..end] : url);
+            if (renamed is null) return null;
+            return (angled ? renamed : renamed.Replace(" ", "%20", StringComparison.Ordinal)) + (end >= 0 ? url[end..] : string.Empty);
+        }
+
+        body = MarkdownLink().Replace(body, m =>
+        {
+            var raw = m.Groups[1].Value;
+            var angled = raw.StartsWith('<');
+            var replaced = RenameUrl(raw.Trim('<', '>'), angled);
+            return replaced is null ? m.Value : m.Value.Replace(raw, angled ? $"<{replaced}>" : replaced, StringComparison.Ordinal);
+        });
+        body = HtmlAttr().Replace(body, m =>
+        {
+            var group = m.Groups[1].Success ? m.Groups[1] : m.Groups[2];
+            var replaced = RenameUrl(group.Value, angled: false);
+            return replaced is null ? m.Value
+                : m.Value[..(group.Index - m.Index)] + replaced + m.Value[(group.Index - m.Index + group.Length)..];
+        });
+        // Bare /api/media addresses anywhere else in the text (Extract counts them too).
+        body = ApiMediaUrl().Replace(body, m =>
+        {
+            var to = Renamed(m.Groups[1].Value);
+            return to is null ? m.Value
+                : m.Value[..(m.Groups[1].Index - m.Index)] + Uri.EscapeDataString(to) + m.Value[(m.Groups[1].Index - m.Index + m.Groups[1].Length)..];
+        });
+        return body;
+    }
+
     private static void AddUrl(HashSet<string> names, string url)
     {
         if (url.Length == 0) return;

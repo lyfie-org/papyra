@@ -11,8 +11,17 @@ namespace Papyra.Api.Storage;
 // Read-it-later web archiver. When a note is saved with a URL in its body, this
 // background-fetches the page, extracts the readable article (SmartReader), saves it
 // as a Markdown sub-note in the user's media dir, and appends a "Saved" card to the
-// note. Idempotent per URL (keyed by a hash filename) so re-saving a note doesn't
-// re-fetch.
+// note.
+//
+// Once per URL, ever: a per-user ledger (`.papyra/archived-urls.txt`) records every
+// URL archived, and the card links its archive file (`/api/media/archived-….md`),
+// so the file counts as referenced and orphan pruning keeps it. Before, the card
+// didn't reference the file: pruning trashed it after a week, the next save of
+// the note archived the page again, and the note grew a second "Saved article"
+// card. Deleting a card is final — the URL is in the ledger.
+//
+// The card is appended through NoteBodyWriter: under the note's lock, snapshotted,
+// merged into a live room instead of written over it, and shown in open editors.
 //
 // SSRF-guarded: only http/https, every resolved IP must be publicly routable (no
 // loopback/private/link-local/ULA/CGNAT/metadata), redirects are followed manually
@@ -29,33 +38,28 @@ public sealed partial class WebArchiverService : BackgroundService
 
     private readonly IConfiguration _config;
     private readonly IHostEnvironment _env;
-    private readonly VaultState _state;
-    private readonly MarkdownStorageService _storage;
-    private readonly WriteRing _writeRing;
-    private readonly SearchIndexService _search;
+    private readonly NoteBodyWriter _writer;
     private readonly ILoggerFactory _loggerFactory;
     private readonly ILogger<WebArchiverService> _logger;
+    private readonly Lock _ledgerGate = new();
+
+    /// <summary>The page fetch; tests replace it (no network).</summary>
+    internal Func<string, CancellationToken, Task<string?>>? Fetcher { get; set; }
 
     public WebArchiverService(
         IConfiguration config,
         IHostEnvironment env,
-        VaultState state,
-        MarkdownStorageService storage,
-        WriteRing writeRing,
-        SearchIndexService search,
+        NoteBodyWriter writer,
         ILoggerFactory loggerFactory)
     {
         _config = config;
         _env = env;
-        _state = state;
-        _storage = storage;
-        _writeRing = writeRing;
-        _search = search;
+        _writer = writer;
         _loggerFactory = loggerFactory;
         _logger = loggerFactory.CreateLogger<WebArchiverService>();
     }
 
-    private readonly record struct Job(string UserId, string NoteId, string Body);
+    internal readonly record struct Job(string UserId, string NoteId, string Body);
 
     // Called from the note-write path; scans the body for URLs to archive.
     public void Enqueue(string userId, string noteId, string? body)
@@ -73,7 +77,7 @@ public sealed partial class WebArchiverService : BackgroundService
         }
     }
 
-    private async Task ProcessJobAsync(Job job, CancellationToken ct)
+    internal async Task ProcessJobAsync(Job job, CancellationToken ct)
     {
         var mediaDir = PapyraPaths.UserMediaDir(_config, _env.ContentRootPath, job.UserId);
         var guard = _loggerFactory.CreateLogger("PathGuard");
@@ -82,13 +86,15 @@ public sealed partial class WebArchiverService : BackgroundService
         {
             var fileName = ArchiveFileName(url);
             var archivePath = PathGuard.ResolveAndVerify(mediaDir, fileName, guard);
-            if (File.Exists(archivePath)) continue; // already archived → idempotent
+            // Archived before (even if its card or file has since gone): never again.
+            if (File.Exists(archivePath) || job.Body.Contains(fileName, StringComparison.OrdinalIgnoreCase)
+                || InLedger(job.UserId, fileName)) continue;
 
             var dedupeKey = $"{job.UserId}:{url}";
             if (!_inFlight.TryAdd(dedupeKey, 0)) continue;
             try
             {
-                var html = await FetchAsync(url, ct);
+                var html = await (Fetcher ?? FetchAsync)(url, ct);
                 if (html is null) continue;
 
                 var article = new SmartReader.Reader(url, html).GetArticle();
@@ -100,7 +106,8 @@ public sealed partial class WebArchiverService : BackgroundService
 
                 Directory.CreateDirectory(mediaDir);
                 await WriteAtomicAsync(archivePath, BuildArchiveMarkdown(url, article), ct);
-                AppendSavedCard(job.UserId, job.NoteId, BuildSavedCard(url, article), ct);
+                AddToLedger(job.UserId, fileName);
+                await AppendSavedCardAsync(job.UserId, job.NoteId, BuildSavedCard(url, article, fileName), ct);
                 _logger.LogInformation("Archived {Url} → {File}", url, fileName);
             }
             finally
@@ -168,19 +175,36 @@ public sealed partial class WebArchiverService : BackgroundService
         return ms.Length == 0 ? null : Encoding.UTF8.GetString(ms.ToArray());
     }
 
-    // Append a "Saved" card to whichever note this job targets (mirrors the note
-    // write path so caches stay consistent).
-    private void AppendSavedCard(string userId, string noteId, string card, CancellationToken ct)
+    // Append a "Saved" card to the note this job came from.
+    private async Task AppendSavedCardAsync(string userId, string noteId, string card, CancellationToken ct)
     {
-        var path = _state.PathFor(userId, noteId);
-        if (path is null || !_state.TryGet(userId, path, out var note) || note is null) return;
+        await _writer.ChangeAsync(userId, noteId, note =>
+            note.Trashed ? NoteEdit.Keep : new NoteEdit(note.Body.TrimEnd() + "\n\n" + card + "\n"),
+            LiveRoomPolicy.Merge, ct);
+    }
 
-        note.Body = note.Body.TrimEnd() + "\n\n" + card + "\n";
-        note.Updated = DateTime.UtcNow;
-        _writeRing.Mark(path);
-        _storage.WriteAsync(path, note, ct).GetAwaiter().GetResult();
-        _state.Upsert(userId, path, note);
-        _search.IndexNote(userId, note);
+    // ── The per-user ledger of archived URLs (by archive file name) ──────────
+
+    private string LedgerPath(string userId) =>
+        Path.Combine(PapyraPaths.UserDotPapyra(_config, _env.ContentRootPath, userId), "archived-urls.txt");
+
+    private bool InLedger(string userId, string fileName)
+    {
+        lock (_ledgerGate)
+        {
+            var path = LedgerPath(userId);
+            return File.Exists(path) && File.ReadLines(path).Any(l => string.Equals(l.Trim(), fileName, StringComparison.OrdinalIgnoreCase));
+        }
+    }
+
+    private void AddToLedger(string userId, string fileName)
+    {
+        lock (_ledgerGate)
+        {
+            var path = LedgerPath(userId);
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            File.AppendAllText(path, fileName + "\n");
+        }
     }
 
     private static async Task WriteAtomicAsync(string destPath, string content, CancellationToken ct)
@@ -259,7 +283,7 @@ public sealed partial class WebArchiverService : BackgroundService
         return $"# {title}\n\n> Source: {url}{author}{date}\n\n{(article.TextContent ?? string.Empty).Trim()}\n";
     }
 
-    internal static string BuildSavedCard(string url, SmartReader.Article article)
+    internal static string BuildSavedCard(string url, SmartReader.Article article, string archiveFile)
     {
         var title = string.IsNullOrWhiteSpace(article.Title) ? url : article.Title.Trim();
         var sb = new StringBuilder();
@@ -269,6 +293,8 @@ public sealed partial class WebArchiverService : BackgroundService
         if (article.PublicationDate is { } d) meta.Add(d.ToString("yyyy-MM-dd"));
         if (meta.Count > 0) sb.Append("> ").Append(string.Join(" · ", meta)).Append('\n');
         if (!string.IsNullOrWhiteSpace(article.Excerpt)) sb.Append("> ").Append(article.Excerpt.Trim()).Append('\n');
+        // The saved copy, linked: also what keeps the file from being pruned as unused.
+        sb.Append("> [Saved copy](/api/media/").Append(archiveFile).Append(")\n");
         return sb.ToString().TrimEnd();
     }
 }

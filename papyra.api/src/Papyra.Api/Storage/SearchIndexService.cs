@@ -24,6 +24,15 @@ public sealed class SearchIndexService : IDisposable
     private readonly StandardAnalyzer _analyzer;
     private readonly IndexWriter _writer;
 
+    /// <summary>
+    /// The text inside a note's attachments (OCR, transcripts — see
+    /// <see cref="MediaTextStore"/>), folded into the note's own document so a
+    /// picture's words find the note, survive every rebuild, and — like the body —
+    /// are left out of a Secure note. Set once at startup; null in tests that
+    /// don't need it.
+    /// </summary>
+    public Func<string, Note, string>? AttachmentText { get; set; }
+
     public SearchIndexService(IConfiguration config, IHostEnvironment env)
         : this(PapyraPaths.LuceneIndexDir(config, env.ContentRootPath)) { }
 
@@ -54,6 +63,17 @@ public sealed class SearchIndexService : IDisposable
         _writer.Commit();
     }
 
+    /// <summary>Re-index these notes (their attachment text changed).</summary>
+    public void IndexNotes(string userId, IEnumerable<Note> notes)
+    {
+        foreach (var note in notes)
+        {
+            if (string.IsNullOrEmpty(note.Id)) continue;
+            _writer.UpdateDocument(new Term("key", DocKey(userId, note.Id)), ToDocument(userId, note));
+        }
+        _writer.Commit();
+    }
+
     // Per-tenant nuclear rebuild: drop just this user's docs, then re-add them.
     // Deletes by the userId term (not DeleteAll) so one tenant's rebuild never
     // wipes another's index.
@@ -80,7 +100,7 @@ public sealed class SearchIndexService : IDisposable
     // Title is boosted; body is indexed but not stored (the .md file holds the
     // body — the index only needs it searchable). userId fences tenant results;
     // `key` is what identifies the document for update/delete.
-    private static Document ToDocument(string userId, Note note) => new()
+    private Document ToDocument(string userId, Note note) => new()
     {
         new StringField("key", DocKey(userId, note.Id), Field.Store.NO),
         new StringField("id", note.Id, Field.Store.YES),
@@ -91,7 +111,14 @@ public sealed class SearchIndexService : IDisposable
         // turn search into an oracle for the locked text: a hit on a word answers
         // "does the secret note contain this?" without ever unlocking it.
         new TextField("body", note.Secure ? string.Empty : note.Body ?? string.Empty, Field.Store.NO),
+        new TextField("extractedText", note.Secure ? string.Empty : SafeAttachmentText(userId, note), Field.Store.NO),
     };
+
+    private string SafeAttachmentText(string userId, Note note)
+    {
+        try { return AttachmentText?.Invoke(userId, note) ?? string.Empty; }
+        catch (IOException) { return string.Empty; } // derived state: never fail an index write over it
+    }
 
     // Scoped to the owning tenant: deleting by the bare id would also drop every
     // other tenant's note that happens to share it (e.g. "Inbox").
@@ -99,23 +126,6 @@ public sealed class SearchIndexService : IDisposable
     {
         if (string.IsNullOrEmpty(id)) return;
         _writer.DeleteDocuments(new Term("key", DocKey(userId, id)));
-        _writer.Commit();
-    }
-
-    // Index OCR text extracted from an image as its own document, tied to the parent
-    // note via a stored `noteId`. Kept separate so re-indexing the note (which
-    // rebuilds the note doc) never wipes the extracted text. The OCR text lives ONLY
-    // here — if the index is dropped, re-scanning the media recreates it (zero-DB).
-    public void IndexOcr(string userId, string ocrId, string noteId, string text)
-    {
-        if (string.IsNullOrEmpty(ocrId) || string.IsNullOrEmpty(noteId)) return;
-        _writer.UpdateDocument(new Term("id", ocrId), new Document
-        {
-            new StringField("id", ocrId, Field.Store.YES),
-            new StringField("userId", userId, Field.Store.YES),
-            new StringField("noteId", noteId, Field.Store.YES),
-            new TextField("extractedText", text ?? string.Empty, Field.Store.NO),
-        });
         _writer.Commit();
     }
 
@@ -138,9 +148,9 @@ public sealed class SearchIndexService : IDisposable
         };
 
         var hits = searcher.Search(query, max).ScoreDocs;
-        // A doc is either a note (its own id) or an OCR fragment (carries the parent
-        // noteId). Resolve both to the note and collapse duplicates — an image match
-        // and a body match for the same note surface once, at the best score.
+        // One document per note (attachment text lives in the note's own doc). The
+        // noteId fallback still reads documents an older build wrote per OCR file
+        // until the next rebuild drops them.
         var byNote = new Dictionary<string, SearchHit>(StringComparer.Ordinal);
         foreach (var h in hits)
         {

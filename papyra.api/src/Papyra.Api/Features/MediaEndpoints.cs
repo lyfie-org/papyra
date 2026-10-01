@@ -91,27 +91,50 @@ public static class MediaEndpoints
         }).RequireAuthorization();
 
         app.MapGet("/api/media/{filename}/meta", (string filename, HttpContext http, MediaReferences refs,
-            MediaMetaStore store, UnlockTokenStore unlock, IConfiguration config, IHostEnvironment env, ILoggerFactory lf) =>
+            MediaMetaStore store, MediaTextStore texts, UnlockTokenStore unlock, IConfiguration config,
+            IHostEnvironment env, ILoggerFactory lf) =>
         {
             var own = ResolveOwn(http, filename, refs, unlock, config, env, lf);
             if (own.Error is not null) return own.Error;
-            var meta = store.Get(Uid(http.User), own.Path!);
-            return meta is null ? Results.NotFound() : Results.Ok(Client(meta));
+            var uid = Uid(http.User);
+            var meta = store.Get(uid, own.Path!);
+            return meta is null ? Results.NotFound() : Results.Ok(Client(meta, TextKind(texts, uid, meta.Name)));
         }).RequireAuthorization();
 
         // Batch: the editor asks for every embed's shape at once, before any loads.
         app.MapPost("/api/media/meta", (MediaMetaBatch body, HttpContext http, MediaReferences refs,
-            MediaMetaStore store, UnlockTokenStore unlock, IConfiguration config, IHostEnvironment env, ILoggerFactory lf) =>
+            MediaMetaStore store, MediaTextStore texts, UnlockTokenStore unlock, IConfiguration config,
+            IHostEnvironment env, ILoggerFactory lf) =>
         {
             var names = Distinct(body.Names);
             if (names is null) return TooMany();
+            var uid = Uid(http.User);
             var result = new Dictionary<string, object?>(StringComparer.Ordinal);
             foreach (var name in names)
             {
                 var own = ResolveOwn(http, name, refs, unlock, config, env, lf);
-                result[name] = own.Error is null && store.Get(Uid(http.User), own.Path!) is { } meta ? Client(meta) : null;
+                result[name] = own.Error is null && store.Get(uid, own.Path!) is { } meta
+                    ? Client(meta, TextKind(texts, uid, meta.Name))
+                    : null;
             }
             return Results.Ok(result);
+        }).RequireAuthorization();
+
+        // The words read out of an attachment (OCR of a picture, a recording's
+        // transcript), for the attachment toolbar's "Copy text". Same gate as the
+        // file itself (vault included); 404 until something has been read.
+        app.MapGet("/api/media/{filename}/text", (string filename, HttpContext http, MediaReferences refs,
+            MediaTextStore texts, UnlockTokenStore unlock, IConfiguration config, IHostEnvironment env,
+            ILoggerFactory lf) =>
+        {
+            var own = ResolveOwn(http, filename, refs, unlock, config, env, lf);
+            if (own.Error is not null) return own.Error;
+            var uid = Uid(http.User);
+            var name = Path.GetFileName(own.Path!);
+            var kind = TextKind(texts, uid, name);
+            var text = kind is null ? null : texts.Read(uid, name, kind);
+            http.Response.Headers.CacheControl = Revalidate;
+            return string.IsNullOrWhiteSpace(text) ? Results.NotFound() : Results.Ok(new { kind, text });
         }).RequireAuthorization();
 
         // ── Share link (anonymous; the token is the authorisation) ──
@@ -459,8 +482,18 @@ public static class MediaEndpoints
             entityTag: new EntityTagHeaderValue($"\"{meta.Version}-{width}\""));
     }
 
-    private static object Client(MediaMeta m) => new
+    // Which read-out text an attachment has (a transcript wins: a recording has
+    // no OCR), or null. Empty sidecars ("looked, found nothing") don't count.
+    private static string? TextKind(MediaTextStore texts, string uid, string name)
     {
+        foreach (var kind in (string[])[MediaTextStore.Transcript, MediaTextStore.Ocr])
+            if (texts.Read(uid, name, kind) is { Length: > 0 } t && !string.IsNullOrWhiteSpace(t)) return kind;
+        return null;
+    }
+
+    private static object Client(MediaMeta m, string? text = null) => new
+    {
+        text,
         m.Name, m.Kind, m.Mime, m.Size, m.Version,
         m.Width, m.Height, m.DurationMs, m.Animated, m.Poster, m.Thumb,
     };

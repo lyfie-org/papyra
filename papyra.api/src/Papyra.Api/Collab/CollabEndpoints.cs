@@ -152,7 +152,7 @@ public static class CollabEndpoints
     private static async Task<IResult> SaveNote(
         int owner, string noteId, CollabSaveRequest body, HttpContext http, VaultState state,
         MarkdownStorageService storage, VaultObserverOptions vault, CollabStateStore states, WriteRing writeRing,
-        SearchIndexService search, SnapshotService snapshots, WebArchiverService archiver,
+        SearchIndexService search, SnapshotService snapshots, WebArchiverService archiver, MediaJobQueue mediaJobs,
         EmbeddingService embeddings, MentionDeliveryService mentions, AppDbContext db, IHubContext<NotesHub> hub,
         NoteWriteLocks writeLocks, IConfiguration config, IHostEnvironment env, ILoggerFactory lf, CancellationToken ct)
     {
@@ -191,6 +191,7 @@ public static class CollabEndpoints
         state.Upsert(ownerUid, path, note);
         search.IndexNote(ownerUid, note);
         archiver.Enqueue(ownerUid, noteId, note.Body);
+        mediaJobs.EnqueueNewRefs(ownerUid, prior, note.Body);
         embeddings.Enqueue(ownerUid, noteId, note.Body);
 
         var newHash = CollabHash.Of(note.Body);

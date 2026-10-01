@@ -92,19 +92,24 @@ public sealed class SearchIndexServiceTests
         }
     }
 
+    // Attachment text (OCR, transcripts) is folded into each referencing note's
+    // own document — see MediaTextStore.
+    private static Func<string, Note, string> Texts(Dictionary<string, string> byFile) =>
+        (_, note) => string.Join('\n', byFile.Where(kv => (note.Body ?? "").Contains(kv.Key)).Select(kv => kv.Value));
+
     [Fact]
-    public void OcrText_IsSearchable_AndResolvesToParentNote()
+    public void OcrText_IsSearchable_AndResolvesToEveryNoteThatShowsThePicture()
     {
         var dir = NewTempDir();
-        var svc = new SearchIndexService(dir);
+        var svc = new SearchIndexService(dir) { AttachmentText = Texts(new() { ["scan.png"] = "TOTAL DUE 42.00 invoicexyz" }) };
         try
         {
             svc.IndexNote(Uid, new Note { Id = "n1", Title = "Receipt", Body = "see ![[scan.png]]" });
-            svc.IndexOcr(Uid, "ocr:u1:scan.png", "n1", "TOTAL DUE 42.00 invoicexyz");
+            svc.IndexNote(Uid, new Note { Id = "n2", Title = "Taxes", Body = "also ![[scan.png|300]]" });
+            svc.IndexNote(Uid, new Note { Id = "n3", Title = "Other", Body = "nothing" });
 
-            // A term that only appears in the image resolves to the parent note.
-            var hit = Assert.Single(svc.Search(Uid, "invoicexyz"));
-            Assert.Equal("n1", hit.Id);
+            var hits = svc.Search(Uid, "invoicexyz").Select(h => h.Id).OrderBy(x => x).ToList();
+            Assert.Equal(["n1", "n2"], hits);
         }
         finally
         {
@@ -114,17 +119,44 @@ public sealed class SearchIndexServiceTests
     }
 
     [Fact]
-    public void ReindexingNote_DoesNotWipeItsOcrText()
+    public void OcrText_SurvivesReindexAndRebuild_AndLeavesWithTheEmbed()
     {
         var dir = NewTempDir();
-        var svc = new SearchIndexService(dir);
+        var svc = new SearchIndexService(dir) { AttachmentText = Texts(new() { ["scan.png"] = "ocronlytoken" }) };
         try
         {
-            svc.IndexNote(Uid, new Note { Id = "n1", Title = "First", Body = "hello" });
-            svc.IndexOcr(Uid, "ocr:u1:scan.png", "n1", "ocronlytoken");
-            svc.IndexNote(Uid, new Note { Id = "n1", Title = "Edited", Body = "hello world" }); // note re-index
+            var note = new Note { Id = "n1", Title = "First", Body = "hello ![[scan.png]]" };
+            svc.IndexNote(Uid, note);
+            svc.IndexNote(Uid, new Note { Id = "n1", Title = "Edited", Body = "hello world ![[scan.png]]" });
+            Assert.Equal("n1", Assert.Single(svc.Search(Uid, "ocronlytoken")).Id);
 
-            Assert.Equal("n1", Assert.Single(svc.Search(Uid, "ocronlytoken")).Id); // OCR survived
+            // The nightly rebuild used to delete OCR documents for good.
+            svc.RebuildUser(Uid, [note]);
+            Assert.Equal("n1", Assert.Single(svc.Search(Uid, "ocronlytoken")).Id);
+
+            svc.IndexNote(Uid, new Note { Id = "n1", Title = "Edited", Body = "picture removed" });
+            Assert.Empty(svc.Search(Uid, "ocronlytoken"));
+        }
+        finally
+        {
+            svc.Dispose();
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void OcrText_OfASecureNote_IsNeverSearchable()
+    {
+        var dir = NewTempDir();
+        var svc = new SearchIndexService(dir) { AttachmentText = Texts(new() { ["passport.png"] = "passportnumberzz" }) };
+        try
+        {
+            svc.IndexNote(Uid, new Note { Id = "s1", Title = "Documents", Body = "![[passport.png]]", Secure = true });
+            Assert.Empty(svc.Search(Uid, "passportnumberzz"));
+
+            // The same picture in an ordinary note is that note's to find.
+            svc.IndexNote(Uid, new Note { Id = "n1", Title = "Trip", Body = "![[passport.png]]" });
+            Assert.Equal("n1", Assert.Single(svc.Search(Uid, "passportnumberzz")).Id);
         }
         finally
         {

@@ -50,7 +50,8 @@ public sealed record MediaHints(int? Width, int? Height, long? DurationMs);
 /// </list>
 /// The media files themselves are never touched.
 /// </summary>
-public sealed class MediaMetaStore(IConfiguration config, IHostEnvironment env, IMemoryCache cache, ILogger<MediaMetaStore> logger)
+public sealed class MediaMetaStore(IConfiguration config, IHostEnvironment env, IMemoryCache cache, ILogger<MediaMetaStore> logger,
+    HeicConverter? heic = null)
 {
     /// <summary>Thumbnail widths. A request is snapped up to one of these so a caller can't mint endless variants.</summary>
     public static readonly int[] ThumbWidths = [160, 320, 640, 1280];
@@ -71,6 +72,11 @@ public sealed class MediaMetaStore(IConfiguration config, IHostEnvironment env, 
     public string DerivedDir(string uid) => PapyraPaths.UserMediaDerivedDir(config, _contentRoot, uid);
 
     private string MetaPath(string uid, string name) => Path.Combine(DerivedDir(uid), name + ".meta.json");
+
+    /// <summary>A JPEG rendition of a HEIC photo (optional, see <see cref="HeicConverter"/>); thumbnails come from it.</summary>
+    private string PreviewPath(string uid, string name) => Path.Combine(DerivedDir(uid), name + ".preview.jpg");
+
+    private bool HeicThumbs(string path) => heic?.Enabled == true && HeicConverter.IsHeif(path);
 
     /// <summary>The poster file for a video, if one was captured.</summary>
     public string? PosterPath(string uid, string name)
@@ -170,13 +176,13 @@ public sealed class MediaMetaStore(IConfiguration config, IHostEnvironment env, 
     {
         var source = meta.Kind switch
         {
-            "image" or "gif" => mediaPath,
+            "image" or "gif" => HeicThumbs(mediaPath) ? await HeicPreviewAsync(uid, mediaPath, ct) : mediaPath,
             "video" => PosterPath(uid, meta.Name),
             _ => null,
         };
         if (source is null || !ImageProcessor.CanDecode(source)) return null;
 
-        var sourceVersion = source == mediaPath ? meta.Version : meta.Version + "p";
+        var sourceVersion = meta.Kind == "video" ? meta.Version + "p" : meta.Version;
         var dest = Path.Combine(DerivedDir(uid), "thumbs", $"{sourceVersion}-{width}.webp");
         if (File.Exists(dest)) return dest;
 
@@ -203,9 +209,43 @@ public sealed class MediaMetaStore(IConfiguration config, IHostEnvironment env, 
         }
     }
 
+    // Convert a HEIC photo once (per user and file, serialized), then let its
+    // metadata be derived again — now with the photo's real size.
+    private async Task<string?> HeicPreviewAsync(string uid, string mediaPath, CancellationToken ct)
+    {
+        var name = Path.GetFileName(mediaPath);
+        var preview = PreviewPath(uid, name);
+        if (File.Exists(preview)) return preview;
+        var gateKey = $"{uid}/heic/{name}";
+        SemaphoreSlim gate;
+        lock (Gates)
+        {
+            if (!Gates.TryGetValue(gateKey, out gate!)) Gates[gateKey] = gate = new SemaphoreSlim(1, 1);
+        }
+        await gate.WaitAsync(ct);
+        try
+        {
+            if (File.Exists(preview)) return preview;
+            Directory.CreateDirectory(DerivedDir(uid));
+            if (!await heic!.ToJpegAsync(mediaPath, preview, ct)) return null;
+            cache.Remove(CacheKey(uid, name));
+            try { File.Delete(MetaPath(uid, name)); } catch (IOException) { }
+            return preview;
+        }
+        finally
+        {
+            gate.Release();
+            lock (Gates)
+            {
+                if (gate.CurrentCount == 1) Gates.Remove(gateKey);
+            }
+        }
+    }
+
     /// <summary>
-    /// Forget an attachment's derived state (it was pruned). Its meta and poster
-    /// travel with it to the trash; thumbnails are rebuilt on demand anyway.
+    /// Forget an attachment's derived state (it was pruned). Its meta, poster and
+    /// read-out text (OCR, transcript) travel with it to the trash; thumbnails are
+    /// rebuilt on demand anyway.
     /// </summary>
     public void MoveDerivedTo(string uid, string name, string destinationDir)
     {
@@ -215,11 +255,16 @@ public sealed class MediaMetaStore(IConfiguration config, IHostEnvironment env, 
         foreach (var file in Directory.EnumerateFiles(dir, name + ".*"))
         {
             var suffix = Path.GetFileName(file)[name.Length..];
-            if (suffix is not (".meta.json" or ".poster.webp" or ".poster.jpg" or ".poster.png")) continue;
+            if (!IsSidecarSuffix(suffix)) continue;
             Directory.CreateDirectory(destinationDir);
             File.Move(file, Path.Combine(destinationDir, Path.GetFileName(file)), overwrite: true);
         }
     }
+
+    /// <summary>The per-file derived files that belong to one attachment (not thumbnails, which are shared by content).</summary>
+    public static bool IsSidecarSuffix(string suffix) =>
+        suffix is ".meta.json" or ".poster.webp" or ".poster.jpg" or ".poster.png" or ".ocr.txt" or ".transcript.txt"
+            or ".preview.jpg";
 
     /// <summary>Delete thumbnails no remaining attachment uses. Returns how many went.</summary>
     public int SweepThumbnails(string uid, IReadOnlySet<string> liveVersions)
@@ -242,7 +287,11 @@ public sealed class MediaMetaStore(IConfiguration config, IHostEnvironment env, 
     private MediaMeta Derive(string uid, FileInfo info, string? hash, MediaHints? hints)
     {
         var kind = KindOf(info.Extension);
-        var probe = kind is "image" or "gif" ? ImageProcessor.Probe(info.FullName) : null;
+        // A HEIC photo is measured through its JPEG rendition, once there is one.
+        var preview = HeicThumbs(info.FullName) ? PreviewPath(uid, info.Name) : null;
+        var probe = kind is "image" or "gif"
+            ? ImageProcessor.Probe(preview is not null && File.Exists(preview) ? preview : info.FullName)
+            : null;
         var poster = PosterPath(uid, info.Name);
         // A video's shape: the browser measured it at upload; failing that, its poster.
         var posterProbe = kind == "video" && poster is not null && (hints?.Width is null || hints.Height is null)
@@ -260,7 +309,7 @@ public sealed class MediaMetaStore(IConfiguration config, IHostEnvironment env, 
             DurationMs = kind is "video" or "audio" && hints?.DurationMs is > 0 and <= 86_400_000 ? hints.DurationMs : null,
             Animated = probe?.Animated ?? false,
             Poster = poster is not null,
-            Thumb = kind is "image" or "gif" ? probe is not null : kind == "video" && poster is not null,
+            Thumb = kind is "image" or "gif" ? probe is not null || preview is not null : kind == "video" && poster is not null,
             SourceTicks = info.LastWriteTimeUtc.Ticks ^ info.Length,
         };
     }

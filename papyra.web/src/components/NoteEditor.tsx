@@ -9,7 +9,8 @@ import { hasBridgePlaceholder } from '../lib/bridgePlaceholder';
 import type { Note } from '../types/note';
 import { useAutoSave, type Draft } from '../hooks/useAutoSave';
 import { useTheme } from '../hooks/useTheme';
-import { createPapyraEditorAdapter } from '../lib/papyraEditorAdapter';
+import { createPapyraEditorAdapter, OWN_MEDIA } from '../lib/papyraEditorAdapter';
+import { useMediaMetaReady } from '../lib/mediaMeta';
 import { tintInkClass } from '../lib/noteColors';
 import { PAPYRA_TOOLBAR_LAYOUT, createToolbarItems } from '../lib/editorToolbar';
 import { putNote } from '../lib/notesApi';
@@ -168,6 +169,8 @@ export default function NoteEditor({ note, isDraft = false }: { note: Note; isDr
   const [lexicalEditor, setLexicalEditor] = useState<LexicalEditor | null>(null);
   // For the attachment toolbar's Move up/down. Read through a stable getter,
   // not a dependency: a new adapter would rebuild the editor's extensions.
+  // Attachments' sizes and thumbnails known before the editor draws them.
+  const mediaReady = useMediaMetaReady(note.body, OWN_MEDIA);
   const getLiveEditor = useCallback(() => editorRef.current?.getLexicalEditor() ?? null, []);
   // eslint-disable-next-line react-hooks/refs -- called only from the mounted editor's toolbar, never while NoteEditor renders
   const adapter = useMemo(() => createPapyraEditorAdapter({
@@ -857,7 +860,7 @@ export default function NoteEditor({ note, isDraft = false }: { note: Note; isDr
 
       {/* Edits are detected natively (see the observer effect) — Lexical swallows
           the bubbling `input` event, so a React onInput here would never fire. */}
-      {!isLocked && (
+      {!isLocked && mediaReady && (
       <div className="note-editor__canvas">
         {collabLive && !history && (room.status === 'gone' ? (
           <p className="note-editor__live-note" role="status">
