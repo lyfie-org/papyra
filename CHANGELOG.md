@@ -6,6 +6,11 @@ a Docker Hub tag and a GitHub Release.
 
 <!-- new releases are inserted directly below this line -->
 
+## [0.3.2] - 2026-10-01
+
+- feat: focus-mode bottom bar, shared notes sort in with yours (4ab06df)
+- feat: encrypt locked notes at rest (fa092d9)
+
 ## [0.3.1] - 2026-10-01
 
 - fix(web): extract [[…]] embeds in one pass (was quadratic on unclosed runs) (2cd30c3)
