@@ -147,7 +147,8 @@ public sealed class OrphanPruneService : PeriodicJob
                     DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out var date)) continue;
             if (date.AddDays(retentionDays + 1) > now) continue;
             purged += Directory.EnumerateFiles(day).Count(f => !f.EndsWith(".meta.json", StringComparison.Ordinal)
-                && !f.Contains(".poster.", StringComparison.Ordinal));
+                && !f.Contains(".poster.", StringComparison.Ordinal)
+                && !f.EndsWith(".ocr.txt", StringComparison.Ordinal) && !f.EndsWith(".transcript.txt", StringComparison.Ordinal));
             Directory.Delete(day, recursive: true);
         }
         return purged;
@@ -175,6 +176,16 @@ public sealed class OrphanPruneService : PeriodicJob
                 if (doc.RootElement.TryGetProperty("version", out var v) && v.GetString() is { } version) live.Add(version);
             }
             catch (Exception ex) when (ex is IOException or JsonException) { }
+        }
+        // Read-out text whose attachment is gone (removed outside the app).
+        foreach (var pattern in (string[])["*.ocr.txt", "*.transcript.txt"])
+        {
+            foreach (var textFile in Directory.EnumerateFiles(derived, pattern))
+            {
+                var name = Path.GetFileName(textFile)[..^(pattern.Length - 1)];
+                if (File.Exists(Path.Combine(mediaDir, name))) continue;
+                try { File.Delete(textFile); } catch (IOException) { }
+            }
         }
         _meta.SweepThumbnails(userId, live);
     }

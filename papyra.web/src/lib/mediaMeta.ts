@@ -21,6 +21,9 @@ const MAX_ENTRIES = 4000;
 // it readable. Until then it renders from its original, like before metadata.
 const NULL_TTL_MS = 30_000;
 
+/** Papyra's addition to luthor's MediaMeta: which read-out text exists (OCR of a picture, a transcript). */
+export type PapyraMediaMeta = MediaMeta & { text?: 'ocr' | 'transcript' };
+
 export interface MediaMetaStore {
   /** Cached metadata: `undefined` while unknown (a lookup is queued), `null` when there is none. Same object until it changes. */
   get(name: string): MediaMeta | null | undefined;
@@ -35,7 +38,7 @@ interface Entry { meta: MediaMeta | null; at: number }
 type Fetcher = typeof fetch;
 
 /** The server's JSON (camelCase, nulls) → the editor's MediaMeta. */
-export function toMediaMeta(raw: unknown): MediaMeta | null {
+export function toMediaMeta(raw: unknown): PapyraMediaMeta | null {
   if (!raw || typeof raw !== 'object') return null;
   const r = raw as Record<string, unknown>;
   const num = (v: unknown) => (typeof v === 'number' && Number.isFinite(v) ? v : undefined);
@@ -51,6 +54,7 @@ export function toMediaMeta(raw: unknown): MediaMeta | null {
     animated: r.animated === true,
     poster: r.poster === true,
     thumb: r.thumb === true,
+    text: r.text === 'ocr' || r.text === 'transcript' ? r.text : undefined,
   };
 }
 

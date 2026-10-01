@@ -57,6 +57,59 @@ public static partial class MediaRefParser
         return names;
     }
 
+    /// <summary>
+    /// Point a body's references at renamed attachments (old name → new name,
+    /// compared case-insensitively on the last path segment): <c>![[old|300]]</c> →
+    /// <c>![[new|300]]</c>, <c>![](sub/old)</c> → <c>![](new)</c>, <c>/api/media/old</c> →
+    /// <c>/api/media/new</c>. Sizes, alt text, fragments and everything else stay.
+    /// </summary>
+    public static string Rename(string body, IReadOnlyDictionary<string, string> renames)
+    {
+        if (string.IsNullOrEmpty(body) || renames.Count == 0) return body;
+        string? Renamed(string target)
+        {
+            var bare = target.Trim().Replace('\\', '/');
+            var slash = bare.LastIndexOf('/');
+            if (slash >= 0) bare = bare[(slash + 1)..];
+            return renames.FirstOrDefault(r => string.Equals(r.Key, Unescape(bare), StringComparison.OrdinalIgnoreCase)).Value;
+        }
+
+        body = WikiEmbed().Replace(body, m =>
+        {
+            var inner = m.Groups[1].Value;
+            var cut = inner.IndexOfAny(['|', '#', '^']);
+            var target = cut >= 0 ? inner[..cut].TrimEnd('\\') : inner;
+            if (target.Contains(':') || Renamed(target) is not { } to) return m.Value;
+            return m.Value.Replace("[[" + target, "[[" + to, StringComparison.Ordinal);
+        });
+        body = MarkdownLink().Replace(body, m =>
+        {
+            var raw = m.Groups[1].Value;
+            var url = raw.Trim('<', '>');
+            var api = ApiMediaUrl().Match(url);
+            string? to;
+            string replaced;
+            if (api.Success)
+            {
+                to = Renamed(api.Groups[1].Value);
+                if (to is null) return m.Value;
+                replaced = url[..api.Groups[1].Index] + Uri.EscapeDataString(to) + url[(api.Groups[1].Index + api.Groups[1].Length)..];
+            }
+            else
+            {
+                if (url.StartsWith('/') || url.StartsWith('#') || url.Contains("://") || HasScheme(url)) return m.Value;
+                var end = url.IndexOfAny(['?', '#']);
+                var path = end >= 0 ? url[..end] : url;
+                to = Renamed(path);
+                if (to is null) return m.Value;
+                var encoded = raw.StartsWith('<') ? to : to.Replace(" ", "%20", StringComparison.Ordinal);
+                replaced = encoded + (end >= 0 ? url[end..] : string.Empty);
+            }
+            return m.Value.Replace(raw, raw.StartsWith('<') ? $"<{replaced}>" : replaced, StringComparison.Ordinal);
+        });
+        return body;
+    }
+
     private static void AddUrl(HashSet<string> names, string url)
     {
         if (url.Length == 0) return;

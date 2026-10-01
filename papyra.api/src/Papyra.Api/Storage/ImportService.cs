@@ -2,6 +2,7 @@ using System.Collections;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.IO.Compression;
+using System.Security.Cryptography;
 using System.Text.Json;
 using System.Threading.Channels;
 using Microsoft.AspNetCore.SignalR;
@@ -59,6 +60,7 @@ public sealed class ImportService : BackgroundService
     private readonly VaultState _state;
     private readonly SearchIndexService _search;
     private readonly SearchRebuilder _rebuilder;
+    private readonly MediaJobQueue? _mediaJobs;
     private readonly WriteRing _writeRing;
     private readonly SnapshotService _snapshots;
     private readonly OrderStore _order;
@@ -82,8 +84,10 @@ public sealed class ImportService : BackgroundService
         IHostEnvironment env,
         ILogger<ImportService> logger,
         IServiceScopeFactory? scopes = null,
-        EmailSender? email = null)
+        EmailSender? email = null,
+        MediaJobQueue? mediaJobs = null)
     {
+        _mediaJobs = mediaJobs;
         _scopes = scopes;
         _email = email;
         _storage = storage;
@@ -192,6 +196,8 @@ public sealed class ImportService : BackgroundService
         Directory.CreateDirectory(mediaDir);
 
         using var zip = ZipFile.OpenRead(job.ZipPath);
+        var budget = new ImportBudget();
+        budget.CheckArchive(zip);
 
         var keep = job.Provider == "keep";
         var vaultRoot = keep ? string.Empty : ObsidianVaultRoot(zip);
@@ -213,6 +219,27 @@ public sealed class ImportService : BackgroundService
         var byName = MediaLookup(zip);
         var clock = Stopwatch.StartNew();
 
+        // Obsidian vaults ship attachments alongside the .md files. They land
+        // first, so a name that is already taken here by a *different* file can
+        // be given a fresh one and the notes pointed at it — an import never
+        // overwrites an attachment (see LandMediaAsync).
+        var renames = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
+        if (!keep)
+        {
+            var landed = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var entry in zip.Entries)
+            {
+                if (string.IsNullOrEmpty(entry.Name)) continue; // directory entry
+                if (entry.Name.EndsWith(".md", StringComparison.OrdinalIgnoreCase)) continue;
+                if (IsHiddenPath(RelativePath(entry.FullName, vaultRoot))) continue;
+                // Notes link attachments by bare name: the first file with a name is the one they mean.
+                if (!landed.Add(entry.Name)) continue;
+                var stored = await LandMediaAsync(entry, mediaDir, budget, ct);
+                if (stored is not null && !string.Equals(stored, entry.Name, StringComparison.Ordinal))
+                    renames[entry.Name] = stored;
+            }
+        }
+
         foreach (var entry in noteEntries)
         {
             ct.ThrowIfCancellationRequested();
@@ -233,7 +260,7 @@ public sealed class ImportService : BackgroundService
             if (incoming is null) status.Skipped++;
             else
             {
-                var outcome = await LandAsync(job, incoming, vault, notesDir, mediaDir, ct);
+                var outcome = await LandAsync(job, incoming, vault, notesDir, mediaDir, renames, budget, ct);
                 switch (outcome)
                 {
                     case Outcome.Unchanged: status.Unchanged++; break;
@@ -256,17 +283,6 @@ public sealed class ImportService : BackgroundService
 
         if (orderChanged) _order.Write(job.UserId, order);
 
-        // Obsidian vaults ship attachments alongside the .md files — land any
-        // non-markdown entry in the media dir so ![[filename]] links resolve.
-        if (!keep)
-            foreach (var entry in zip.Entries)
-            {
-                if (string.IsNullOrEmpty(entry.Name)) continue; // directory entry
-                if (entry.Name.EndsWith(".md", StringComparison.OrdinalIgnoreCase)) continue;
-                if (IsHiddenPath(RelativePath(entry.FullName, vaultRoot))) continue;
-                await CopyMediaAsync(entry, mediaDir, ct);
-            }
-
         // Each note was indexed as it landed; finish with a full rebuild of this
         // account so search and the note cache match the vault exactly — stale
         // entries dropped, every imported note findable the moment the bar ends.
@@ -277,6 +293,8 @@ public sealed class ImportService : BackgroundService
         {
             _logger.LogWarning(ex, "Search rebuild after import {JobId} failed", job.JobId);
         }
+        // Scanned pages and recordings that came with the import get read too.
+        _mediaJobs?.ScanUser(job.UserId);
 
         status.Done = true;
         await PushAsync(job, ct);
@@ -287,19 +305,33 @@ public sealed class ImportService : BackgroundService
     // Match the incoming note against the vault and write it — new, overwritten in
     // place, or not at all when the vault already holds exactly this version.
     private async Task<Outcome> LandAsync(
-        ImportJob job, Incoming incoming, VaultIndex vault, string notesDir, string mediaDir, CancellationToken ct)
+        ImportJob job, Incoming incoming, VaultIndex vault, string notesDir, string mediaDir,
+        Dictionary<string, string> renames, ImportBudget budget, CancellationToken ct)
     {
         var note = incoming.Note;
         var key = ImportKey(note)!;
         var match = vault.Find(note);
+
+        // A Keep note's attachments land with it — before the comparison, so a
+        // renamed one (its name was taken by a different file) shows up as a change.
+        var mine = renames;
+        if (incoming.Media.Count > 0)
+        {
+            mine = new Dictionary<string, string>(renames, StringComparer.OrdinalIgnoreCase);
+            foreach (var media in incoming.Media)
+            {
+                var stored = await LandMediaAsync(media, mediaDir, budget, ct);
+                if (stored is not null && !string.Equals(stored, media.Name, StringComparison.Ordinal))
+                    mine[media.Name] = stored;
+            }
+        }
+        if (mine.Count > 0) note.Body = MediaRefParser.Rename(note.Body, mine);
 
         if (match is not null && IsSameNote(match.Note, note, incoming.Modified))
         {
             vault.Claim(match, key);
             return Outcome.Unchanged;
         }
-
-        foreach (var media in incoming.Media) await CopyMediaAsync(media, mediaDir, ct);
 
         string path;
         if (match is not null)
@@ -747,15 +779,82 @@ public sealed class ImportService : BackgroundService
 
     // ── Files ───────────────────────────────────────────────────────────────
 
-    // Land an attachment in the media dir under its bare filename, path-jailed. The
-    // same file from a repeat import is left alone. Media isn't watched, so no ring.
-    private async Task CopyMediaAsync(ZipArchiveEntry entry, string mediaDir, CancellationToken ct)
+    // Land an attachment in the media dir and return the name it is stored
+    // under (null: refused — over its kind's size limit). Like an upload:
+    //  - the bytes decide the extension (MediaSniffer) — a page renamed .png is
+    //    stored as inert text, never served as what its name claims;
+    //  - a name already taken by the *same* bytes is reused (a repeat import
+    //    changes nothing); one taken by different bytes is never overwritten —
+    //    the import's file gets `name-2.ext` and its note is pointed there.
+    // Media isn't watched, so no write ring.
+    private async Task<string?> LandMediaAsync(ZipArchiveEntry entry, string mediaDir, ImportBudget budget, CancellationToken ct)
     {
-        var dest = PathGuard.ResolveAndVerify(mediaDir, Path.GetFileName(entry.Name), _logger);
-        if (File.Exists(dest) && new FileInfo(dest).Length == entry.Length) return;
-        await using var src = entry.Open();
-        await using var fs = new FileStream(dest, FileMode.Create, FileAccess.Write, FileShare.None);
-        await src.CopyToAsync(fs, ct);
+        budget.CheckEntry(entry);
+        var name = Path.GetFileName(entry.Name);
+        var tmp = PathGuard.ResolveAndVerify(mediaDir, $"{Guid.NewGuid():N}.tmp", _logger);
+        try
+        {
+            string hash;
+            long size;
+            SniffedMedia sniffed;
+            await using (var src = entry.Open())
+            await using (var fs = new FileStream(tmp, FileMode.CreateNew, FileAccess.Write, FileShare.None, 81920, useAsync: true))
+            using (var sha = IncrementalHash.CreateHash(HashAlgorithmName.SHA256))
+            {
+                var head = new byte[MediaSniffer.HeaderBytes];
+                var headLength = await src.ReadAtLeastAsync(head, head.Length, throwOnEndOfStream: false, ct);
+                sniffed = MediaSniffer.Sniff(head.AsSpan(0, headLength), name);
+                var limit = MediaLimits.ForKind(sniffed.Kind).Limit;
+                size = headLength;
+                budget.Count(headLength);
+                await fs.WriteAsync(head.AsMemory(0, headLength), ct);
+                sha.AppendData(head, 0, headLength);
+                var buffer = new byte[81920];
+                int read;
+                while ((read = await src.ReadAsync(buffer, ct)) > 0)
+                {
+                    size += read;
+                    budget.Count(read);
+                    // The zip's stated size can lie; the bytes can't.
+                    if (size > limit || size > entry.Length)
+                    {
+                        _logger.LogWarning("Import: skipping {Name} — larger than its stated size or the {Kind} limit", name, sniffed.Kind);
+                        return null;
+                    }
+                    await fs.WriteAsync(buffer.AsMemory(0, read), ct);
+                    sha.AppendData(buffer, 0, read);
+                }
+                hash = Convert.ToHexStringLower(sha.GetHashAndReset());
+            }
+
+            var stem = Path.GetFileNameWithoutExtension(name);
+            if (stem.Length == 0) stem = "file";
+            var ext = sniffed.Extension;
+            var wanted = string.Equals(Path.GetExtension(name), ext, StringComparison.OrdinalIgnoreCase) ? name : stem + ext;
+            for (var i = 1; i < 1000; i++)
+            {
+                var candidate = i == 1 ? wanted : $"{stem}-{i}{ext}";
+                var dest = PathGuard.ResolveAndVerify(mediaDir, candidate, _logger);
+                if (!File.Exists(dest))
+                {
+                    File.Move(tmp, dest);
+                    return candidate;
+                }
+                if (new FileInfo(dest).Length == size && await HashOfAsync(dest, ct) == hash) return candidate;
+            }
+            _logger.LogWarning("Import: no free name for {Name}", name);
+            return null;
+        }
+        finally
+        {
+            if (File.Exists(tmp)) File.Delete(tmp);
+        }
+    }
+
+    private static async Task<string> HashOfAsync(string path, CancellationToken ct)
+    {
+        await using var fs = File.OpenRead(path);
+        return Convert.ToHexStringLower(await SHA256.HashDataAsync(fs, ct));
     }
 
     // Creation time is best-effort: not every filesystem keeps a settable one.
@@ -777,8 +876,57 @@ public sealed class ImportService : BackgroundService
 
     private static async Task<string> ReadEntryTextAsync(ZipArchiveEntry entry, CancellationToken ct)
     {
+        if (entry.Length > ImportBudget.MaxNoteBytes)
+            throw new InvalidDataException($"“{entry.Name}” is too large to be a note.");
         await using var stream = entry.Open();
-        using var reader = new StreamReader(stream);
+        var buffer = new byte[ImportBudget.MaxNoteBytes + 1];
+        var read = await stream.ReadAtLeastAsync(buffer, buffer.Length, throwOnEndOfStream: false, ct);
+        if (read > ImportBudget.MaxNoteBytes) throw new InvalidDataException($"“{entry.Name}” is too large to be a note.");
+        using var reader = new StreamReader(new MemoryStream(buffer, 0, read));
         return await reader.ReadToEndAsync(ct);
+    }
+}
+
+/// <summary>
+/// Limits on what an import archive may unpack to — a zip bomb (a few KB that
+/// inflate to terabytes) or a million-entry archive must fail the import with a
+/// clear message, not fill the disk. Stated sizes are checked up front and the
+/// bytes actually written are counted, since a zip's stated sizes can lie.
+/// </summary>
+internal sealed class ImportBudget
+{
+    public const int MaxEntries = 50_000;
+    public const long MaxTotalBytes = 10L * 1024 * 1024 * 1024;
+    public const int MaxRatio = 100;
+    public const int MaxNoteBytes = 16 * 1024 * 1024;
+    private const long RatioFloor = 1024 * 1024; // small files compress wildly and harmlessly
+
+    private long _written;
+
+    public void CheckArchive(ZipArchive zip)
+    {
+        if (zip.Entries.Count > MaxEntries)
+            throw new InvalidDataException($"This archive has more than {MaxEntries:N0} files — too many to import at once.");
+        long total = 0;
+        foreach (var entry in zip.Entries)
+        {
+            total += Math.Max(0, entry.Length);
+            if (total > MaxTotalBytes)
+                throw new InvalidDataException("This archive unpacks to more than 10 GB — too large to import at once.");
+            CheckEntry(entry);
+        }
+    }
+
+    public void CheckEntry(ZipArchiveEntry entry)
+    {
+        if (entry.Length > RatioFloor && entry.Length / Math.Max(1, entry.CompressedLength) > MaxRatio)
+            throw new InvalidDataException($"“{entry.Name}” expands more than {MaxRatio}× — this archive can't be imported.");
+    }
+
+    public void Count(long bytes)
+    {
+        _written += bytes;
+        if (_written > MaxTotalBytes)
+            throw new InvalidDataException("This archive unpacks to more than 10 GB — too large to import at once.");
     }
 }

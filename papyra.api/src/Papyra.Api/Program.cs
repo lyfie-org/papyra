@@ -107,7 +107,17 @@ builder.Services.AddSingleton(sp => new VaultObserverOptions
 });
 
 // ── Ephemeral full-text index (Lucene — disposable; rebuilt from the .md files) ─
-builder.Services.AddSingleton<SearchIndexService>();
+// A note's document also carries the text read out of its attachments (OCR,
+// transcripts — sidecars, so every rebuild keeps it); never for a Secure note.
+builder.Services.AddSingleton<MediaTextStore>();
+builder.Services.AddSingleton(sp =>
+{
+    var texts = sp.GetRequiredService<MediaTextStore>();
+    return new SearchIndexService(sp.GetRequiredService<IConfiguration>(), sp.GetRequiredService<IHostEnvironment>())
+    {
+        AttachmentText = (uid, note) => texts.ForBody(uid, note.Body),
+    };
+});
 
 // AES-GCM encrypted, password-derived vault backups (generate + restore).
 builder.Services.AddSingleton<EncryptedBackupService>();
@@ -154,12 +164,19 @@ builder.Services.AddHostedService<ShareCleanupService>();
 // Phase 15.2 housekeeping: drop block grants whose source note or anchor is gone.
 builder.Services.AddHostedService<GrantCleanupService>();
 
-// Offline audio transcription (local Whisper). No-ops unless a model is configured.
-builder.Services.AddHostedService<AudioTranscriptionService>();
+// Body changes made for someone other than the owner's editor (sharee edits,
+// archive cards, transcripts): locked, snapshotted, live-room aware.
+builder.Services.AddSingleton<NoteBodyWriter>();
 
-// Local-only OCR of images in the media dir → searchable text. No-ops unless
-// Tesseract tessdata is configured.
-builder.Services.AddHostedService<OcrProcessorService>();
+// Text read out of attachments — local OCR (Tesseract) and transcription
+// (Whisper), each a no-op unless configured — through one persisted, retrying
+// queue fed by note saves, a boot scan and per-user media watchers.
+builder.Services.AddSingleton<OcrProcessorService>();
+builder.Services.AddSingleton<AudioTranscriptionService>();
+builder.Services.AddSingleton<IMediaJobHandler>(sp => sp.GetRequiredService<OcrProcessorService>());
+builder.Services.AddSingleton<IMediaJobHandler>(sp => sp.GetRequiredService<AudioTranscriptionService>());
+builder.Services.AddSingleton<MediaJobQueue>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<MediaJobQueue>());
 
 // Read-it-later web archiver: SSRF-guarded background fetch of URLs found in notes.
 // Singleton so the note-write endpoint enqueues onto the same instance the worker drains.
@@ -3407,6 +3424,7 @@ notes.MapPut("/{id}", async (
     SearchIndexService search,
     SnapshotService snapshots,
     WebArchiverService archiver,
+    MediaJobQueue mediaJobs,
     WebhookDispatcherService webhooks,
     MentionDeliveryService mentions,
     EmbeddingService embeddings,
@@ -3538,6 +3556,7 @@ notes.MapPut("/{id}", async (
     search.IndexNote(uid, note); // watcher skips our own write echo, so index here
 
     archiver.Enqueue(uid, id, note.Body); // background-archive any new URLs in the body
+    mediaJobs.EnqueueNewRefs(uid, prior?.Body, note.Body); // OCR / transcribe newly embedded attachments
 
     // Re-embed for semantic search — but never a secure note: its chunks would sit
     // in the vector cache as plaintext, outside the unlock gate.
@@ -6267,9 +6286,13 @@ app.MapGet("/api/export", async (
 
     // Built by hand rather than CreateEntryFromFile: in Create mode an entry is
     // sealed once written, so its time has to be set before the bytes go in.
+    // Notes compress fast; attachments are stored as they are — pictures, video
+    // and PDFs are already compressed, and squeezing gigabytes again only burns
+    // CPU while the download waits.
     void AddFile(ZipArchive zip, string file, string entryName)
     {
-        var entry = zip.CreateEntry(entryName, CompressionLevel.Optimal);
+        var isNote = file.EndsWith(".md", StringComparison.OrdinalIgnoreCase);
+        var entry = zip.CreateEntry(entryName, isNote ? CompressionLevel.Fastest : CompressionLevel.NoCompression);
         entry.LastWriteTime = InZone(File.GetLastWriteTimeUtc(file));
         using var target = entry.Open();
         if (file.EndsWith(".md", StringComparison.OrdinalIgnoreCase))
@@ -6294,45 +6317,47 @@ app.MapGet("/api/export", async (
     var mediaDir = PapyraPaths.UserMediaDir(config, env.ContentRootPath, uid);
     Directory.CreateDirectory(notesDir);
 
+    // What goes in, decided up front: the counts and size for the notice below.
+    var entries = new List<(string File, string Name)>();
     int notesCount = 0, vaultCount = 0, mediaCount = 0;
-    var tmp = Path.Combine(Path.GetTempPath(), $"papyra-export-{Guid.NewGuid():N}.zip");
-    using (var archive = ZipFile.Open(tmp, ZipArchiveMode.Create))
+    long size = 0;
+    foreach (var file in Directory.EnumerateFiles(notesDir, "*", SearchOption.AllDirectories))
     {
-        foreach (var file in Directory.EnumerateFiles(notesDir, "*", SearchOption.AllDirectories))
+        var rel = Path.GetRelativePath(notesDir, file).Replace('\\', '/');
+        // Locked notes go in their own folder, so it is obvious which files
+        // hold what the vault was protecting.
+        if (secureFiles.Contains(Path.GetFullPath(file)))
         {
-            var rel = Path.GetRelativePath(notesDir, file).Replace('\\', '/');
-            // Locked notes go in their own folder, so it is obvious which files
-            // hold what the vault was protecting.
-            if (secureFiles.Contains(Path.GetFullPath(file)))
-            {
-                AddFile(archive, file, "vault/" + rel);
-                vaultCount++;
-            }
-            else
-            {
-                AddFile(archive, file, rel);
-                if (rel.EndsWith(".md", StringComparison.OrdinalIgnoreCase)) notesCount++;
-            }
+            entries.Add((file, "vault/" + rel));
+            vaultCount++;
         }
-
-        // Attachments too. Exporting notes without the images they embed leaves
-        // every ![[file]] dangling the moment the archive is opened somewhere
-        // else — the paths stay relative to `media/`, exactly as on disk.
-        if (Directory.Exists(mediaDir))
+        else
         {
-            foreach (var file in Directory.EnumerateFiles(mediaDir, "*", SearchOption.AllDirectories))
-            {
-                AddFile(archive, file, "media/" + Path.GetRelativePath(mediaDir, file).Replace('\\', '/'));
-                mediaCount++;
-            }
+            entries.Add((file, rel));
+            if (rel.EndsWith(".md", StringComparison.OrdinalIgnoreCase)) notesCount++;
         }
     }
-
+    // Attachments too. Exporting notes without the images they embed leaves
+    // every ![[file]] dangling the moment the archive is opened somewhere
+    // else — the paths stay relative to `media/`, exactly as on disk.
+    if (Directory.Exists(mediaDir))
+    {
+        foreach (var file in Directory.EnumerateFiles(mediaDir, "*", SearchOption.AllDirectories))
+        {
+            entries.Add((file, "media/" + Path.GetRelativePath(mediaDir, file).Replace('\\', '/')));
+            mediaCount++;
+        }
+    }
+    foreach (var (file, _) in entries)
+    {
+        try { size += new FileInfo(file).Length; } catch (IOException) { }
+    }
     var nowLocal = TimeZoneInfo.ConvertTimeFromUtc(DateTime.UtcNow, zone);
-    var size = new FileInfo(tmp).Length;
 
     // Tell the account owner. Security mail: always sent (when there's an
-    // address and mail is set up), never blocks the download.
+    // address and mail is set up), never blocks the download — and sent as it
+    // starts, so a download cut short (a partial zip is still largely readable)
+    // is reported all the same.
     if (me is not null && !string.IsNullOrWhiteSpace(me.Email))
     {
         var ip = http.Connection.RemoteIpAddress?.ToString() ?? "unknown";
@@ -6347,7 +6372,7 @@ app.MapGet("/api/export", async (
             new("Notes", notesCount.ToString()),
             new("Vault (locked) notes", vaultCount.ToString()),
             new("Attachments", mediaCount.ToString()),
-            new("Archive size", size >= 1_048_576 ? $"{size / 1_048_576.0:0.0} MB" : $"{Math.Max(1, size / 1024)} KB"),
+            new("Size", size >= 1_048_576 ? $"about {size / 1_048_576.0:0.0} MB" : $"about {Math.Max(1, size / 1024)} KB"),
             new("Server", email.PublicUrl($"{http.Request.Scheme}://{http.Request.Host}")),
         };
         var owner = me;
@@ -6368,11 +6393,25 @@ app.MapGet("/api/export", async (
         });
     }
 
-    // DeleteOnClose reclaims the temp zip once the response stream finishes.
-    var stream = new FileStream(
-        tmp, FileMode.Open, FileAccess.Read, FileShare.None, 4096, FileOptions.DeleteOnClose);
+    // Streamed: the zip is written straight into the response as it is built —
+    // no temp copy of the whole vault on the server's disk, and the download
+    // starts at once instead of after minutes of silence on a large library.
     // Dated, so a folder of exports sorts itself and one never overwrites another.
-    return Results.File(stream, "application/zip", $"papyra-export-{nowLocal:yyyy-MM-dd-HHmm}.zip");
+    return Results.Stream(body =>
+    {
+        // ZipArchive writes synchronously; allow it for this response only.
+        var bodyControl = http.Features.Get<Microsoft.AspNetCore.Http.Features.IHttpBodyControlFeature>();
+        if (bodyControl is not null) bodyControl.AllowSynchronousIO = true;
+        using (var archive = new ZipArchive(body, ZipArchiveMode.Create, leaveOpen: true))
+        {
+            foreach (var (file, name) in entries)
+            {
+                ct.ThrowIfCancellationRequested();
+                if (File.Exists(file)) AddFile(archive, file, name); // gone since the count: skipped
+            }
+        }
+        return body.FlushAsync(ct);
+    }, "application/zip", $"papyra-export-{nowLocal:yyyy-MM-dd-HHmm}.zip");
 })
 .RequireAuthorization();
 
@@ -6860,35 +6899,20 @@ static async Task<IResult> ApplySharedEdit(
     IHubContext<NotesHub> hub, VaultObserverOptions vault, ILoggerFactory lf,
     ICollabEngine collab, NoteWriteLocks writeLocks, CancellationToken ct)
 {
-    var path = OwnerNotePath(state, vault, lf, ownerUid, noteId);
-    using var writeLock = await writeLocks.AcquireAsync(ownerUid, noteId, ct);
-    var note = await storage.ReadAsync(path, ct);
-    if (note is null) return Results.NotFound();
-    // A body write through the classic path while the note is open live would
-    // overwrite everyone in the room.
-    if (await CollabEndpoints.BodyWriteGuardAsync(collab, ownerUid, noteId, note.Body, newBody, ct) is { } busy)
-        return busy;
-    // A locked note is not writable from outside the vault either: the editor on
-    // the other end was handed an empty body, so saving it would erase the note.
-    if (note.Secure) return Results.Json(
-        new { error = "The owner locked this note." }, statusCode: StatusCodes.Status410Gone);
-
-    // Someone who is not the owner is about to replace the owner's text. Every
-    // other write path snapshots the prior revision first; this one has to as
-    // well, or a sharee (or an edit-link visitor) can erase the owner's writing
-    // with nothing to recover from.
-    var snapRoot = PapyraPaths.UserSnapshotsDir(config, env.ContentRootPath, ownerUid);
-    var noteSnapDir = PathGuard.ResolveAndVerify(snapRoot, noteId, lf.CreateLogger("PathGuard"));
-    await snapshots.CaptureAsync(noteSnapDir, path, ct);
-
-    note.Body = newBody;
-    note.Updated = DateTime.UtcNow;
-    writeRing.Mark(path);
-    await storage.WriteAsync(path, note, ct);
-    state.Upsert(ownerUid, path, note);
-    search.IndexNote(ownerUid, note);
-    await hub.Clients.User(ownerUid).SendAsync("NoteUpdated", NoteMetadata.From(note), ct);
-    return Results.NoContent();
+    // Someone who is not the owner is about to replace the owner's text: the
+    // shared writer snapshots the prior revision first (recoverable), refuses
+    // while the note is open live (the room would be overwritten), and tells
+    // the owner's open editors.
+    var writer = new NoteBodyWriter(state, storage, writeRing, search, snapshots, config, env, hub,
+        collab, writeLocks, vault, lf);
+    var (_, refusal) = await writer.ChangeAsync(ownerUid, noteId, note =>
+        // A locked note is not writable from outside the vault either: the editor on
+        // the other end was handed an empty body, so saving it would erase the note.
+        note.Secure
+            ? NoteEdit.Refuse(Results.Json(new { error = "The owner locked this note." }, statusCode: StatusCodes.Status410Gone))
+            : new NoteEdit(newBody),
+        LiveRoomPolicy.Refuse, ct);
+    return refusal ?? Results.NoContent();
 }
 
 // Replace targetDir's contents with sourceDir's, keeping targetDir itself (so a

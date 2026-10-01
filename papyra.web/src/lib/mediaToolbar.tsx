@@ -1,7 +1,8 @@
-import { ArrowDown, ArrowUp, Download, Link2, Replace } from 'lucide-react';
+import { ArrowDown, ArrowUp, Download, Link2, Replace, ScanText } from 'lucide-react';
 import { $getSelection, $isNodeSelection, type LexicalEditor, type LexicalNode } from 'lexical';
 import type { MediaToolbarContext, MediaToolbarItem } from '@lyfie/luthor-headless';
 import { pickFile } from './pickFile';
+import type { PapyraMediaMeta } from './mediaMeta';
 
 // Papyra's buttons on a selected attachment, after luthor's built-ins (align,
 // sizes, caption, alt text, open, remove). They sit in the editor's own
@@ -44,6 +45,17 @@ export function createMediaToolbarItems({ upload, readOnly, getEditor, notify }:
         { id: 'papyra.move-up', label: 'Move up', icon: <ArrowUp {...ICON} />, disabled: !up, onSelect: () => move(editor, 'up') },
         { id: 'papyra.move-down', label: 'Move down', icon: <ArrowDown {...ICON} />, disabled: !down, onSelect: () => move(editor, 'down') },
       );
+    }
+    // The words read out of it in the background (the server's OCR of a
+    // picture, a recording's transcript) — once there are some.
+    const textKind = (ctx.meta as PapyraMediaMeta | null | undefined)?.text;
+    if (textKind && !readOnly && typeof navigator !== 'undefined' && navigator.clipboard) {
+      items.push({
+        id: 'papyra.copy-text',
+        label: textKind === 'transcript' ? 'Copy transcript' : 'Copy text in picture',
+        icon: <ScanText {...ICON} />,
+        onSelect: () => { void copyText(ctx.target, notify); },
+      });
     }
     if (ctx.url && typeof navigator !== 'undefined' && navigator.clipboard) {
       items.push({
@@ -107,6 +119,19 @@ async function copyLink(url: string, notify?: (message: string) => void) {
     notify?.('Link copied');
   } catch {
     notify?.('Couldn’t copy the link.');
+  }
+}
+
+async function copyText(target: string, notify?: (message: string) => void) {
+  try {
+    const res = await fetch(`/api/media/${encodeURIComponent(target)}/text`, { credentials: 'same-origin' });
+    if (!res.ok) throw new Error(String(res.status));
+    const { kind, text } = (await res.json()) as { kind: string; text: string };
+    await navigator.clipboard.writeText(text);
+    const words = text.trim().split(/\s+/).filter(Boolean).length;
+    notify?.(`${kind === 'transcript' ? 'Transcript' : 'Text'} copied (${words} word${words === 1 ? '' : 's'})`);
+  } catch {
+    notify?.('Couldn’t copy the text.');
   }
 }
 

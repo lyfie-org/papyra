@@ -204,8 +204,9 @@ public sealed class MediaMetaStore(IConfiguration config, IHostEnvironment env, 
     }
 
     /// <summary>
-    /// Forget an attachment's derived state (it was pruned). Its meta and poster
-    /// travel with it to the trash; thumbnails are rebuilt on demand anyway.
+    /// Forget an attachment's derived state (it was pruned). Its meta, poster and
+    /// read-out text (OCR, transcript) travel with it to the trash; thumbnails are
+    /// rebuilt on demand anyway.
     /// </summary>
     public void MoveDerivedTo(string uid, string name, string destinationDir)
     {
@@ -215,11 +216,15 @@ public sealed class MediaMetaStore(IConfiguration config, IHostEnvironment env, 
         foreach (var file in Directory.EnumerateFiles(dir, name + ".*"))
         {
             var suffix = Path.GetFileName(file)[name.Length..];
-            if (suffix is not (".meta.json" or ".poster.webp" or ".poster.jpg" or ".poster.png")) continue;
+            if (!IsSidecarSuffix(suffix)) continue;
             Directory.CreateDirectory(destinationDir);
             File.Move(file, Path.Combine(destinationDir, Path.GetFileName(file)), overwrite: true);
         }
     }
+
+    /// <summary>The per-file derived files that belong to one attachment (not thumbnails, which are shared by content).</summary>
+    public static bool IsSidecarSuffix(string suffix) =>
+        suffix is ".meta.json" or ".poster.webp" or ".poster.jpg" or ".poster.png" or ".ocr.txt" or ".transcript.txt";
 
     /// <summary>Delete thumbnails no remaining attachment uses. Returns how many went.</summary>
     public int SweepThumbnails(string uid, IReadOnlySet<string> liveVersions)
