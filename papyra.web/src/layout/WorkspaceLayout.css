@@ -448,7 +448,7 @@
    Below ~860px a 220px label sidebar leaves too little desk: the note grid was
    running off the right edge on a phone. Force the icon rail (the collapse state
    the user can already choose) and let the desk have the rest. */
-@media (max-width: 860px) {
+@media (min-width: 641px) and (max-width: 860px) {
   .workspace__sidebar {
     flex-basis: 64px;
     width: 64px;
@@ -460,14 +460,41 @@
   .workspace__build { padding: 6px; }
 }
 
-@media (max-width: 560px) {
+/* A phone: no rail at all — the desk gets the whole width, and the burger by
+   the logo slides the full sidebar in over it (and back out). */
+@media (max-width: 640px) {
   .workspace__sidebar {
-    flex-basis: 52px;
-    width: 52px;
-    padding: var(--space-3) var(--space-1);
+    position: fixed;
+    top: 64px;
+    bottom: 0;
+    left: 0;
+    z-index: 45;
+    width: min(280px, 82vw);
+    flex-basis: auto;
+    padding: var(--space-4) var(--space-3);
+    border-right: 1px solid var(--border);
+    box-shadow: var(--shadow);
+    transform: translateX(-100%);
+    visibility: hidden;
+    transition: transform var(--dur) var(--ease-inout), visibility 0s linear var(--dur);
   }
-  /* The rail already carries the same destinations, so the hamburger is noise. */
-  .workspace__sidebar-toggle { display: none; }
+  .workspace--drawer-open .workspace__sidebar {
+    transform: none;
+    visibility: visible;
+    transition: transform var(--dur) var(--ease-inout), visibility 0s;
+  }
+  .workspace__scrim {
+    position: fixed;
+    inset: 64px 0 0;
+    z-index: 44;
+    background: color-mix(in srgb, var(--scrim) 45%, transparent);
+    animation: workspace-scrim-in var(--dur) var(--ease);
+  }
+}
+@keyframes workspace-scrim-in { from { opacity: 0; } }
+@media (prefers-reduced-motion: reduce) {
+  .workspace__sidebar, .workspace--drawer-open .workspace__sidebar { transition: none; }
+  .workspace__scrim { animation: none; }
 }
 
 /* The desk owns vertical scrolling; nothing should ever scroll it sideways. */

@@ -44,11 +44,34 @@ const NAV_ITEMS = [
 
 /** Shown under the connection status so a self-hoster can see what they're running. */
 
+// Phone width: the sidebar leaves the page and opens as a drawer from the burger.
+const PHONE = '(max-width: 640px)';
+
+function usePhoneLayout() {
+  const [phone, setPhone] = useState(() => typeof window !== 'undefined' && window.matchMedia(PHONE).matches);
+  useEffect(() => {
+    const query = window.matchMedia(PHONE);
+    const onChange = () => setPhone(query.matches);
+    query.addEventListener('change', onChange);
+    return () => query.removeEventListener('change', onChange);
+  }, []);
+  return phone;
+}
+
 export default function WorkspaceLayout() {
   const { user } = useAuth();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const [collapsed, setCollapsed] = useState(false);
+  const phone = usePhoneLayout();
+  // The drawer is open for the page it was opened on: going anywhere (or the
+  // window growing past phone width) closes it.
+  const { pathname, search } = useLocation();
+  const here = pathname + search;
+  const [drawerAt, setDrawerAt] = useState<string | null>(null);
+  const drawerOpen = phone && drawerAt === here;
+  const setDrawerOpen = (open: boolean | ((was: boolean) => boolean)) =>
+    setDrawerAt((typeof open === 'function' ? open(drawerOpen) : open) ? here : null);
   const [menuOpen, setMenuOpen] = useState(false);
   const [chatOpen, setChatOpen] = useState(false);
   const [helpOpen, setHelpOpen] = useState(false);
@@ -103,6 +126,13 @@ export default function WorkspaceLayout() {
     return () => window.removeEventListener('mousedown', onDown);
   }, [menuOpen]);
 
+  useEffect(() => {
+    if (!drawerOpen) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === 'Escape' && !e.defaultPrevented) setDrawerAt(null); };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [drawerOpen]);
+
   function go(to: string) { setMenuOpen(false); navigate(to); }
 
   async function logout() {
@@ -116,15 +146,16 @@ export default function WorkspaceLayout() {
   }
 
   return (
-    <div className={`workspace${collapsed ? ' workspace--collapsed' : ''}`}>
+    <div className={`workspace${collapsed && !phone ? ' workspace--collapsed' : ''}${phone ? ' workspace--phone' : ''}${drawerOpen ? ' workspace--drawer-open' : ''}`}>
       <header className="workspace__navbar">
         <div className="workspace__brand">
           <button
             type="button"
             className="workspace__sidebar-toggle"
-            onClick={() => setCollapsed(c => !c)}
-            aria-label={collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
-            aria-expanded={!collapsed}
+            onClick={() => (phone ? setDrawerOpen(o => !o) : setCollapsed(c => !c))}
+            aria-label={phone ? (drawerOpen ? 'Close menu' : 'Open menu') : collapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            aria-expanded={phone ? drawerOpen : !collapsed}
+            aria-controls="workspace-sidebar"
           >
             <Menu size={18} />
           </button>
@@ -201,7 +232,12 @@ export default function WorkspaceLayout() {
       </header>
 
       <div className="workspace__body">
-        <nav className="workspace__sidebar" aria-label="Primary">
+        {phone && drawerOpen && (
+          <div className="workspace__scrim" aria-hidden="true" onClick={() => setDrawerOpen(false)} />
+        )}
+        <nav id="workspace-sidebar" className="workspace__sidebar" aria-label="Primary"
+          // Off-screen on a phone until opened: out of the tab order too.
+          inert={phone && !drawerOpen}>
           <ul>
             {NAV_ITEMS.map(({ to, label, icon: Icon, end }) => (
               <li key={to}>

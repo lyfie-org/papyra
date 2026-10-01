@@ -172,6 +172,57 @@ textarea {
   input[type='url'], input[type='password'], input[type='number'], input[type='tel']) {
   cursor: text;
 }
+/* …except on a coloured note in dark mode. The sheet is the pastel muted
+   toward graphite — a mid-tone — and an inverting beam on a mid-tone inverts
+   to the same mid-tone and all but vanishes. There the beam is drawn in the
+   note's own ink (no halo — that blurred), crisp at 1x and 2x. */
+[data-theme='dark'] :is(.note-editor--colored, .shared-note--colored) :where([contenteditable]:not([contenteditable='false']), textarea,
+  input:not([type]), input[type='text'], input[type='search']) {
+  cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='20' viewBox='0 0 12 20' shape-rendering='crispEdges'%3E%3Cpath d='M6 2v16M3 2h6M3 18h6' fill='none' stroke='%233d2c1e' stroke-width='2'/%3E%3C/svg%3E") 6 10, text;
+  cursor: -webkit-image-set(url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='20' viewBox='0 0 12 20' shape-rendering='crispEdges'%3E%3Cpath d='M6 2v16M3 2h6M3 18h6' fill='none' stroke='%233d2c1e' stroke-width='2'/%3E%3C/svg%3E") 1x, url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='40' viewBox='0 0 12 20' shape-rendering='crispEdges'%3E%3Cpath d='M6 2v16M3 2h6M3 18h6' fill='none' stroke='%233d2c1e' stroke-width='2'/%3E%3C/svg%3E") 2x) 6 10, text;
+  cursor: image-set(url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='20' viewBox='0 0 12 20' shape-rendering='crispEdges'%3E%3Cpath d='M6 2v16M3 2h6M3 18h6' fill='none' stroke='%233d2c1e' stroke-width='2'/%3E%3C/svg%3E") 1x, url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='40' viewBox='0 0 12 20' shape-rendering='crispEdges'%3E%3Cpath d='M6 2v16M3 2h6M3 18h6' fill='none' stroke='%233d2c1e' stroke-width='2'/%3E%3C/svg%3E") 2x) 6 10, text;
+}
+[data-theme='dark'] :is(.note-editor--colored, .shared-note--colored).tint--light-ink :where([contenteditable]:not([contenteditable='false']), textarea,
+  input:not([type]), input[type='text'], input[type='search']) {
+  cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='20' viewBox='0 0 12 20' shape-rendering='crispEdges'%3E%3Cpath d='M6 2v16M3 2h6M3 18h6' fill='none' stroke='%23f0e6d3' stroke-width='2'/%3E%3C/svg%3E") 6 10, text;
+  cursor: -webkit-image-set(url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='20' viewBox='0 0 12 20' shape-rendering='crispEdges'%3E%3Cpath d='M6 2v16M3 2h6M3 18h6' fill='none' stroke='%23f0e6d3' stroke-width='2'/%3E%3C/svg%3E") 1x, url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='40' viewBox='0 0 12 20' shape-rendering='crispEdges'%3E%3Cpath d='M6 2v16M3 2h6M3 18h6' fill='none' stroke='%23f0e6d3' stroke-width='2'/%3E%3C/svg%3E") 2x) 6 10, text;
+  cursor: image-set(url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='20' viewBox='0 0 12 20' shape-rendering='crispEdges'%3E%3Cpath d='M6 2v16M3 2h6M3 18h6' fill='none' stroke='%23f0e6d3' stroke-width='2'/%3E%3C/svg%3E") 1x, url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='40' viewBox='0 0 12 20' shape-rendering='crispEdges'%3E%3Cpath d='M6 2v16M3 2h6M3 18h6' fill='none' stroke='%23f0e6d3' stroke-width='2'/%3E%3C/svg%3E") 2x) 6 10, text;
+}
+[data-theme='dark'] :is(.note-editor--colored, .shared-note--colored).tint--high-ink:not(.tint--light-ink) :where([contenteditable]:not([contenteditable='false']), textarea,
+  input:not([type]), input[type='text'], input[type='search']) {
+  cursor: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='20' viewBox='0 0 12 20' shape-rendering='crispEdges'%3E%3Cpath d='M6 2v16M3 2h6M3 18h6' fill='none' stroke='%23000' stroke-width='2'/%3E%3C/svg%3E") 6 10, text;
+  cursor: -webkit-image-set(url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='20' viewBox='0 0 12 20' shape-rendering='crispEdges'%3E%3Cpath d='M6 2v16M3 2h6M3 18h6' fill='none' stroke='%23000' stroke-width='2'/%3E%3C/svg%3E") 1x, url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='40' viewBox='0 0 12 20' shape-rendering='crispEdges'%3E%3Cpath d='M6 2v16M3 2h6M3 18h6' fill='none' stroke='%23000' stroke-width='2'/%3E%3C/svg%3E") 2x) 6 10, text;
+  cursor: image-set(url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='20' viewBox='0 0 12 20' shape-rendering='crispEdges'%3E%3Cpath d='M6 2v16M3 2h6M3 18h6' fill='none' stroke='%23000' stroke-width='2'/%3E%3C/svg%3E") 1x, url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='24' height='40' viewBox='0 0 12 20' shape-rendering='crispEdges'%3E%3Cpath d='M6 2v16M3 2h6M3 18h6' fill='none' stroke='%23000' stroke-width='2'/%3E%3C/svg%3E") 2x) 6 10, text;
+}
+
+/* Selection menus (luthor's formatting bubble, the Comment button) wait for
+   the mouse to come up: mid-drag the selection isn't finished yet. See
+   lib/selectionGuards. Hidden, not removed, so they still measure and place. */
+html.is-mouse-selecting :is(.luthor-floating-toolbar, .comment-bubble) {
+  visibility: hidden;
+  pointer-events: none;
+}
+/* On a phone the system's own copy/paste callout sits by the selection, so
+   ours docks to the bottom of the screen instead, above the keyboard. */
+@media (hover: none) and (pointer: coarse) {
+  .luthor-floating-toolbar,
+  .comment-bubble {
+    position: fixed !important;
+    top: auto !important;
+    bottom: calc(var(--keyboard-inset, 0px) + env(safe-area-inset-bottom, 0px) + var(--space-3)) !important;
+    left: var(--space-3) !important;
+    right: var(--space-3) !important;
+    width: fit-content;
+    max-width: none !important;
+    margin-inline: auto;
+    transform: none !important;
+    justify-content: center;
+  }
+  /* luthor's editor is its own stacking context, so the open note's footer
+     (z-index 3, a later sibling) would paint over a bar docked at the bottom:
+     while one is up, lift the scroll area that holds it. */
+  .note-editor__scroll:has(.luthor-floating-toolbar) { z-index: 4; }
+}
 
 /* luthor paints its own selection from --papyra-selection-bg; declared on the
    editor element so it picks up the coloured-note override above. */

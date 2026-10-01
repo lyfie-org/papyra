@@ -5,8 +5,11 @@ using Papyra.Api.Models;
 
 namespace Papyra.Api.Storage;
 
-/// <summary>What a body change decided: the new body, or a refusal to return.</summary>
-public readonly record struct NoteEdit(string? Body, IResult? Refusal = null)
+/// <summary>
+/// What a change decided: the new body and/or title (null keeps each), or a
+/// refusal to return.
+/// </summary>
+public readonly record struct NoteEdit(string? Body, IResult? Refusal = null, string? Title = null)
 {
     public static NoteEdit Keep => new(null);
     public static NoteEdit Refuse(IResult result) => new(null, result);
@@ -59,24 +62,36 @@ public sealed class NoteBodyWriter(
 
         var edit = change(note);
         if (edit.Refusal is not null) return (null, edit.Refusal);
-        if (edit.Body is null || edit.Body == note.Body) return (note, null);
+        var newBody = edit.Body is not null && edit.Body != note.Body ? edit.Body : null;
+        var newTitle = edit.Title is not null && edit.Title != note.Title ? edit.Title : null;
+        if (newBody is null && newTitle is null) return (note, null);
 
-        if (live == LiveRoomPolicy.Refuse
-            && await CollabEndpoints.BodyWriteGuardAsync(collab, ownerUid, noteId, note.Body, edit.Body, ct) is { } busy)
+        // Only the body lives in the room; a title is front matter, written
+        // around it like the owner's own metadata save.
+        if (newBody is not null && live == LiveRoomPolicy.Refuse
+            && await CollabEndpoints.BodyWriteGuardAsync(collab, ownerUid, noteId, note.Body, newBody, ct) is { } busy)
             return (null, busy);
 
         var snapRoot = PapyraPaths.UserSnapshotsDir(config, env.ContentRootPath, ownerUid);
         var noteSnapDir = PathGuard.ResolveAndVerify(snapRoot, noteId, lf.CreateLogger("PathGuard"));
         await snapshots.CaptureAsync(noteSnapDir, path, ct);
 
-        note.Body = edit.Body;
+        if (newBody is not null) note.Body = newBody;
+        if (newTitle is not null)
+        {
+            note.Title = newTitle;
+            // The file follows its title, as it does for the owner's own rename.
+            path = NoteFileNamer.Move(ownerUid, path,
+                NoteFileNamer.TargetPath(path, NoteFileNamer.DesiredBaseName(note), noteId),
+                state, writeRing, lf.CreateLogger("NoteFileNamer"));
+        }
         note.Updated = DateTime.UtcNow;
         writeRing.Mark(path);
         await storage.WriteAsync(path, note, ct);
         state.Upsert(ownerUid, path, note);
         search.IndexNote(ownerUid, note);
 
-        if (live == LiveRoomPolicy.Merge && !note.Secure && collab.Status == CollabStatus.Ok)
+        if (newBody is not null && live == LiveRoomPolicy.Merge && !note.Secure && collab.Status == CollabStatus.Ok)
         {
             // Our own write is invisible to the file watcher (WriteRing), so hand
             // it to any live room ourselves — the room merges it block-wise and

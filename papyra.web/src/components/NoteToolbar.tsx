@@ -1,25 +1,22 @@
-import { useCallback, useRef, useState } from 'react';
-import { Pin, Palette, History, Archive, Trash2, Maximize2, Lock, LockOpen, Share2, Type } from 'lucide-react';
+import { useCallback, useRef, useState, type ReactNode } from 'react';
+import { Palette, History, Archive, Trash2, Lock, LockOpen, Share2, Type } from 'lucide-react';
 import PalettePicker from './PalettePicker';
 import './NoteToolbar.css';
 import { useSyncState } from '../hooks/useSync';
 import { useDismiss } from '../hooks/useDismiss';
 
-// Frontmatter-action rail for the open note: Pin/Palette write into YAML, Trash
-// deletes the .md. Fades in on editor hover (see NoteToolbar.css). Presentational
-// only — the editor owns the actual mutations so they ride the live draft.
+// Frontmatter-action rail for the open note: Palette writes into YAML, Trash
+// deletes the .md. Pin and focus mode sit at the sheet's top right instead.
+// Fades in on editor hover (see NoteToolbar.css). Presentational only — the editor owns the actual mutations so they ride the live draft.
 interface Props {
   /** Whether the formatting toolbar above the note body is showing. */
   formattingOpen: boolean;
   onFormatting: () => void;
-  pinned: boolean;
   color: string | null;
-  onTogglePin: () => void;
   onPickColor: (color: string | null) => void;
   /** Version history — one mode that replaced "time machine" + "file recovery". */
   historyOpen: boolean;
   onHistory: () => void;
-  onFocus: () => void;
   onArchive: () => void;
   onShare: () => void;
   onTrash: () => void;
@@ -32,24 +29,24 @@ interface Props {
    */
   canToggleSecure: boolean;
   onToggleSecure: () => void;
+  /** The comments button, when comments are on for this note. */
+  comments?: ReactNode;
 }
 
 export default function NoteToolbar({
   formattingOpen,
   onFormatting,
-  pinned,
   color,
-  onTogglePin,
   onPickColor,
   historyOpen,
   onHistory,
-  onFocus,
   onArchive,
   onShare,
   onTrash,
   secure,
   canToggleSecure,
   onToggleSecure,
+  comments,
 }: Props) {
   const { online } = useSyncState();
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -72,16 +69,6 @@ export default function NoteToolbar({
         onClick={onFormatting}
       >
         <Type size={18} />
-      </button>
-
-      <button
-        type="button"
-        className={`note-toolbar__btn${pinned ? ' is-active' : ''}`}
-        aria-pressed={pinned}
-        aria-label={pinned ? 'Unpin note' : 'Pin note'}
-        onClick={onTogglePin}
-      >
-        <Pin size={18} fill={pinned ? 'currentColor' : 'none'} />
       </button>
 
       <div className="note-toolbar__palette-wrap" ref={paletteRef}>
@@ -122,14 +109,7 @@ export default function NoteToolbar({
         <History size={18} />
       </button>
 
-      <button
-        type="button"
-        className="note-toolbar__btn"
-        aria-label="Focus mode"
-        onClick={onFocus}
-      >
-        <Maximize2 size={18} />
-      </button>
+      {comments}
 
       <button
         type="button"

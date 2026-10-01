@@ -205,11 +205,16 @@ export default function DraggableNoteGrid({
   // lands exactly where it would in the full layout. Mounting every card made
   // each resize frame (the sidebar sliding open, a window drag) re-render and
   // re-measure hundreds of them.
+  // A shared note you pinned (your pin, not the owner's) joins your pinned ones.
+  const sharedPinned = useMemo(() => shared.filter(s => s.pinned), [shared]);
+  const sharedOthers = useMemo(() => shared.filter(s => !s.pinned), [shared]);
   const total = pinned.length + others.length + shared.length;
   const { shown: budget, sentinelRef } = useRevealMore(total, cols);
   const pinnedShown = pinned.length > budget ? pinned.slice(0, budget) : pinned;
-  const othersShown = others.slice(0, Math.max(0, budget - pinned.length));
-  const sharedShown = shared.slice(0, Math.max(0, budget - pinned.length - others.length));
+  const sharedPinnedShown = sharedPinned.slice(0, Math.max(0, budget - pinned.length));
+  const pinnedCount = pinned.length + sharedPinned.length;
+  const othersShown = others.slice(0, Math.max(0, budget - pinnedCount));
+  const sharedShown = sharedOthers.slice(0, Math.max(0, budget - pinnedCount - others.length));
   const shownIds = new Set([...pinnedShown, ...othersShown].map(n => n.id));
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
@@ -231,9 +236,12 @@ export default function DraggableNoteGrid({
   const pinnedBase = pack(pinnedVis, heights, cols, colW, undefined, prefer);
   const othersBase = pack(othersVis, heights, cols, colW, undefined, prefer);
   // DISPLAY = base, plus the make-room gap at the drop index (what we render).
-  const pinnedLayout = drop?.section === 'pinned'
-    ? pack(pinnedVis, heights, cols, colW, { index: drop.index, h: activeH }, prefer)
-    : pinnedBase;
+  // Pinned shared cards flow on after your own pinned ones, as below.
+  const sharedPinnedIds = sharedPinnedShown.map(s => `shared:${s.shareId}`);
+  const pinnedLayout = pack(
+    [...pinnedVis, ...sharedPinnedIds], heights, cols, colW,
+    drop?.section === 'pinned' ? { index: drop.index, h: activeH } : undefined, prefer,
+  );
   // Keyed `shared:<shareId>` — a note id is only unique within its own vault,
   // so a shared note can carry the same id as one of yours.
   // They flow on after your own unpinned notes in the same canvas. Hit-testing
@@ -424,8 +432,8 @@ export default function DraggableNoteGrid({
     );
   };
 
-  const showPinnedHeading = pinned.length > 0;
-  const showOthersHeading = pinned.length > 0 && (others.length > 0 || shared.length > 0);
+  const showPinnedHeading = pinnedCount > 0;
+  const showOthersHeading = pinnedCount > 0 && (others.length > 0 || sharedOthers.length > 0);
   const noun = todosOnly ? 'list' : 'note';
 
   return (
@@ -454,6 +462,14 @@ export default function DraggableNoteGrid({
         {showPinnedHeading && <h2 className="note-grid__heading">PINNED</h2>}
         <div className="dnd-canvas" ref={pinnedRef} style={{ height: pinnedLayout.height }}>
           {pinnedShown.map(n => renderCard(n, pinnedLayout))}
+          {sharedPinnedShown.map((s, i) => {
+            const box = pinnedLayout.boxes.get(sharedPinnedIds[i]);
+            return (
+              <SharedCell key={sharedPinnedIds[i]} id={sharedPinnedIds[i]} x={box?.x ?? 0} y={box?.y ?? 0} colW={colW} onMeasure={onMeasure}>
+                <SharedNoteCard share={s} showSharedDate={showSharedDate} />
+              </SharedCell>
+            );
+          })}
         </div>
 
         {showOthersHeading && <h2 className="note-grid__heading">OTHERS</h2>}

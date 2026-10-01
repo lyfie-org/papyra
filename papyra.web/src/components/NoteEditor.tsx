@@ -30,7 +30,7 @@ import NoteHistory, { type HistoryVersion, type HistoryView } from './NoteHistor
 import NoteToc from './NoteToc';
 import SecureNoteGate from './SecureNoteGate';
 import ShareDialog from './ShareDialog';
-import { Minimize2, RefreshCw, Volume2, VolumeX } from 'lucide-react';
+import { Maximize2, Minimize2, Pin, RefreshCw, Volume2, VolumeX } from 'lucide-react';
 import { useFocus } from '../hooks/useFocus';
 import { useDialogFocus } from '../hooks/useDialogFocus';
 import { useAmbient } from '../hooks/useAmbient';
@@ -41,6 +41,7 @@ import LinkCards from './LinkCards';
 import LinkHoverCard from './LinkHoverCard';
 import MediaDropZone from './MediaDropZone';
 import { pauseOffscreenVideos } from '../lib/videoVisibility';
+import { keepMediaToolbarsInView } from '../lib/mediaToolbarPlacement';
 import CollabPresence from './CollabPresence';
 import CollabJoining from './CollabJoining';
 import { useShareSummary } from '../hooks/useShares';
@@ -184,6 +185,7 @@ export default function NoteEditor({ note, isDraft = false }: { note: Note; isDr
   useInPlaceWikilinks(sheetRef, openLinkedNote);
   // A video scrolled out of view stops playing.
   useEffect(() => (sheetRef.current ? pauseOffscreenVideos(sheetRef.current) : undefined), []);
+  useEffect(() => (sheetRef.current ? keepMediaToolbarsInView(sheetRef.current) : undefined), []);
   const [title, setTitle] = useState(note.title);
   // Mirror the title in a ref so the debounced save reads the live value, not a
   // value captured in the closure of the render that scheduled it.
@@ -820,9 +822,6 @@ export default function NoteEditor({ note, isDraft = false }: { note: Note; isDr
           readOnly={isLocked || history}
           onChange={(e) => { titleRef.current = e.target.value; setTitle(e.target.value); bump(); }}
         />
-        {commentsOn && comments.data && !history && !focus && (
-          <CommentsButton count={openCommentCount} pressed={commentsPanel} onClick={() => setCommentsPanel(o => !o)} />
-        )}
         {collabLive && !history && !focus && (
           <CollabPresence
             provider={room.provider}
@@ -831,6 +830,23 @@ export default function NoteEditor({ note, isDraft = false }: { note: Note; isDr
             selfUid={room.self?.uid ?? null}
             viewOnly={!room.collaboration}
           />
+        )}
+        {!focus && (
+          <div className="note-editor__corner">
+            <button
+              type="button"
+              className={`note-toolbar__btn${note.pinned ? ' is-active' : ''}`}
+              aria-pressed={note.pinned}
+              aria-label={note.pinned ? 'Unpin note' : 'Pin note'}
+              title={note.pinned ? 'Unpin' : 'Pin'}
+              onClick={() => void saveFrontmatter({ pinned: !note.pinned })}
+            >
+              <Pin size={18} fill={note.pinned ? 'currentColor' : 'none'} />
+            </button>
+            <button type="button" className="note-toolbar__btn" aria-label="Focus mode" title="Focus mode" onClick={enterFocus}>
+              <Maximize2 size={18} />
+            </button>
+          </div>
         )}
       </header>
 
@@ -1032,13 +1048,13 @@ export default function NoteEditor({ note, isDraft = false }: { note: Note; isDr
           <NoteToolbar
             formattingOpen={toolbarShown}
             onFormatting={() => setToolbarOverride({ scope: toolbarScope, shown: !toolbarShown })}
-            pinned={note.pinned}
             color={note.color}
-            onTogglePin={() => void saveFrontmatter({ pinned: !note.pinned })}
             onPickColor={(c) => void saveFrontmatter({ color: c })}
             historyOpen={history}
             onHistory={() => (history ? leaveHistory() : void openHistory())}
-            onFocus={enterFocus}
+            comments={commentsOn && comments.data && !history
+              ? <CommentsButton inToolbar count={openCommentCount} pressed={commentsPanel} onClick={() => setCommentsPanel(o => !o)} />
+              : null}
             secure={note.secure ?? false}
             canToggleSecure={!isLocked}
             onToggleSecure={() => void toggleSecure()}
@@ -1052,6 +1068,8 @@ export default function NoteEditor({ note, isDraft = false }: { note: Note; isDr
             {STATUS_LABEL[status]}
           </span>
           {!isDraft && !history && <EditedStamp updated={note.updated} />}
+          {/* Same as clicking outside the sheet. */}
+          <button type="button" className="note-close" onClick={() => void close()}>Close</button>
         </footer>
       )}
 

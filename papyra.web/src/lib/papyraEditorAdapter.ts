@@ -92,7 +92,7 @@ export function createPapyraEditorAdapter(
     validateMedia: (file) => checkMediaFile(file),
     onUploadError: (error) => { if (!isAbort(error)) onUploadError?.(uploadMessage(error)); },
 
-    // Replace / Move / Copy link / Download on a selected attachment. Replace
+    // Replace / Move / Copy text / Download on a selected attachment. Replace
     // uploads outside the drop pipeline, so it checks and reports on its own.
     mediaToolbarItems: createMediaToolbarItems({
       getEditor,

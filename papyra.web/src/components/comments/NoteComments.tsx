@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react';
+import { useCallback, useEffect, useLayoutEffect, useMemo, useRef, useState, type RefObject, useSyncExternalStore } from 'react';
 import { createPortal } from 'react-dom';
 import { MessageSquarePlus, MessageSquareText, X } from 'lucide-react';
 import Avatar from '../Avatar';
@@ -232,6 +232,19 @@ export default function NoteComments({
     return () => { document.removeEventListener('selectionchange', onChange); window.clearTimeout(timer); };
   }, [rootEl, data]);
 
+  // luthor's formatting bubble over the same selection (it portals into the
+  // editor's wrapper): Comment joins it as one more button rather than floating
+  // a second pill beside it. Without one (a read-only view), the pill it is.
+  const barHost = rootEl?.closest<HTMLElement>('.luthor-editor-wrapper') ?? null;
+  const watchBar = useCallback((notify: () => void) => {
+    if (!barHost) return () => {};
+    const observer = new MutationObserver(notify);
+    observer.observe(barHost, { childList: true });
+    return () => observer.disconnect();
+  }, [barHost]);
+  const selectionBar = useSyncExternalStore(watchBar,
+    () => barHost?.querySelector<HTMLElement>(':scope > .luthor-floating-toolbar') ?? null);
+
   const startDraft = useCallback((range: Range) => {
     if (!rootEl) return;
     const quote = quoteFromRange(buildTextIndex(rootEl), range);
@@ -357,8 +370,24 @@ export default function NoteComments({
 
   return (
     <>
-      {/* "Comment" beside a selection. */}
-      {bubble && !draft && createPortal(
+      {/* "Comment" on a selection: in the formatting bubble, else beside it. */}
+      {bubble && !draft && selectionBar && createPortal(
+        <>
+          <div className="luthor-floating-toolbar-separator" />
+          <button
+            type="button"
+            className="luthor-toolbar-button comment-ui comment-tool"
+            onMouseDown={(e) => e.preventDefault()}
+            onClick={() => startDraft(bubble.range)}
+            title="Comment (Ctrl+Alt+M)"
+            aria-label="Comment"
+          >
+            <MessageSquarePlus size={14} aria-hidden="true" />
+          </button>
+        </>,
+        selectionBar,
+      )}
+      {bubble && !draft && !selectionBar && createPortal(
         <button
           type="button"
           className="comment-ui comment-bubble"
@@ -517,11 +546,16 @@ function CommentsPanel({ threads, anchored, data, api, onJump, onClose }: {
 }
 
 /** The header button: how many open threads, and the way into the panel. */
-export function CommentsButton({ count, onClick, pressed }: { count: number; onClick: () => void; pressed: boolean }) {
+export function CommentsButton({ count, onClick, pressed, inToolbar = false }: {
+  count: number; onClick: () => void; pressed: boolean;
+  /** Drawn as one of the note's footer actions rather than a header pill. */
+  inToolbar?: boolean;
+}) {
   return (
-    <button type="button" className="comments-button" aria-pressed={pressed} onClick={onClick}
+    <button type="button" className={inToolbar ? `note-toolbar__btn comments-button--toolbar${pressed ? ' is-active' : ''}` : 'comments-button'}
+      aria-pressed={pressed} onClick={onClick}
       aria-label={count ? `Comments (${count} open)` : 'Comments'} title="Comments">
-      <MessageSquareText size={16} aria-hidden="true" />
+      <MessageSquareText size={inToolbar ? 18 : 16} aria-hidden="true" />
       {count > 0 && <span className="comments-button__count">{count}</span>}
     </button>
   );

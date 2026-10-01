@@ -24,9 +24,12 @@ import ErrorScreen from './components/ErrorScreen.tsx';
 import { crashActions } from './lib/errorActions.ts';
 import ServerErrorNotices from './components/ServerErrorNotices.tsx';
 import { installServerErrorWatch } from './lib/errorReport.ts';
+import { installSelectionGuards } from './lib/selectionGuards.ts';
 
 // Before anything fetches: a server 500 anywhere surfaces its reference.
 installServerErrorWatch();
+// Selection menus: hidden mid-drag, docked above the keyboard on a phone.
+installSelectionGuards();
 
 // Demo mode: stand up the in-browser fake server BEFORE React mounts, so the
 // very first request the app makes (the /api/auth/me session probe) is already
