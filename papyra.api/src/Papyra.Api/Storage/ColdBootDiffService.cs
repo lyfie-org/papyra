@@ -125,6 +125,9 @@ public sealed class ColdBootDiffService : IHostedService
             File.GetLastWriteTimeUtc(path)));
     }
 
+    // The DB is on disk as well: a locked note's title stays out of it.
+    private static string CachedTitle(Note note) => note.Secure ? string.Empty : note.Title;
+
     private static void UpsertCache(
         AppDbContext db, NoteCache? existing, Note note, string userId, DateTime mtime)
     {
@@ -134,14 +137,14 @@ public sealed class ColdBootDiffService : IHostedService
             {
                 UserId = userId,
                 Id = note.Id,
-                Title = note.Title,
+                Title = CachedTitle(note),
                 Tags = string.Join(' ', note.Tags),
                 LastModified = mtime,
             });
         }
         else
         {
-            existing.Title = note.Title;
+            existing.Title = CachedTitle(note);
             existing.Tags = string.Join(' ', note.Tags);
             existing.LastModified = mtime;
         }

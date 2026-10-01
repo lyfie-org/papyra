@@ -215,7 +215,7 @@ public sealed partial class SnapshotService
                 && hit.Length == info.Length && hit.Mtime == info.LastWriteTimeUtc)
                 return hit.Hash;
 
-            var note = _storage.Deserialize(File.ReadAllText(path));
+            var note = _storage.Deserialize(File.ReadAllText(path), path);
             var hash = Fingerprint(note.Title, note.Body);
             if (cache) _fingerprints[path] = (info.Length, info.LastWriteTimeUtc, hash);
             return hash;

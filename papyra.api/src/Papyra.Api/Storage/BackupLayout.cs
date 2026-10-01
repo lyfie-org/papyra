@@ -44,12 +44,15 @@ public sealed record BackupSummary(int Version, bool Legacy, BackupCounts Counts
 /// README.md                 how to read and restore it
 /// notes/                    ordinary notes (.md, frontmatter + markdown)
 /// todos/                    to-do lists
-/// vault/                    locked (secure) notes
+/// vault/                    locked (secure) notes — readable inside an encrypted
+///                           backup; sealed in a plain one (see below)
 /// media/images|documents|videos|audio|other/
 /// media-derived/            video posters + attachment metadata (not rebuildable)
 /// settings/account.json     profile + preferences (no password, no PIN)
 /// settings/collections.json saved searches
 /// settings/order.json, categories.json, avatar.*
+/// settings/vault-keys.json  plain backups only: the keys to vault/, sealed
+///                           under the account password
 /// </code>
 ///
 /// The live vault keeps its own layout (one notes dir, one flat media dir) —
@@ -80,15 +83,22 @@ public sealed class BackupLayout
             || name.EndsWith(".poster.png", StringComparison.Ordinal);
     }
 
+    public const string VaultKeysFile = "vault-keys.json";
+
     private readonly MarkdownStorageService _storage;
     private readonly IConfiguration _config;
     private readonly IHostEnvironment _env;
+    private readonly LockedNoteCipher? _cipher;
+    private readonly LockedNoteSealer? _sealer;
 
-    public BackupLayout(MarkdownStorageService storage, IConfiguration config, IHostEnvironment env)
+    public BackupLayout(MarkdownStorageService storage, IConfiguration config, IHostEnvironment env,
+        LockedNoteCipher? cipher = null, LockedNoteSealer? sealer = null)
     {
         _storage = storage;
         _config = config;
         _env = env;
+        _cipher = cipher;
+        _sealer = sealer;
     }
 
     public static string MediaFolder(string fileName) => Path.GetExtension(fileName).ToLowerInvariant() switch
@@ -103,8 +113,14 @@ public sealed class BackupLayout
 
     // ── Build ───────────────────────────────────────────────────────────────────
 
-    /// <summary>Write <paramref name="user"/>'s notes, media and settings into <paramref name="dest"/> in the backup layout.</summary>
-    public async Task<BackupCounts> BuildAsync(User user, AppDbContext db, string dest, CancellationToken ct)
+    /// <summary>
+    /// Write <paramref name="user"/>'s notes, media and settings into <paramref name="dest"/> in the backup layout.
+    /// Locked notes are written readable — the whole backup is encrypted around
+    /// them — unless <paramref name="sealedVault"/>: a plain backup keeps them as
+    /// they are on disk, encrypted, with their keys sealed under the account
+    /// password beside them (when a sign-in has sealed them yet).
+    /// </summary>
+    public async Task<BackupCounts> BuildAsync(User user, AppDbContext db, string dest, CancellationToken ct, bool sealedVault = false)
     {
         var root = _env.ContentRootPath;
         var uid = user.Id.ToString();
@@ -121,7 +137,19 @@ public sealed class BackupLayout
                 if (file.EndsWith(".md", StringComparison.OrdinalIgnoreCase))
                 {
                     var note = await _storage.ReadAsync(file, ct);
-                    if (note?.Secure == true) { folder = "vault"; vault++; }
+                    if (note?.Secure == true)
+                    {
+                        vault++;
+                        if (!sealedVault)
+                        {
+                            var target = Path.Combine(dest, "vault", rel);
+                            Directory.CreateDirectory(Path.GetDirectoryName(target)!);
+                            await File.WriteAllTextAsync(target, _storage.Serialize(note), ct);
+                            File.SetLastWriteTimeUtc(target, File.GetLastWriteTimeUtc(file));
+                            continue;
+                        }
+                        folder = "vault";
+                    }
                     else if (note?.Kind == "todo") { folder = "todos"; todos++; }
                     else notes++;
                 }
@@ -166,6 +194,9 @@ public sealed class BackupLayout
             foreach (var avatar in Directory.EnumerateFiles(dot, "avatar.*"))
                 CopyInto(avatar, Path.Combine(settings, Path.GetFileName(avatar)));
 
+        if (sealedVault && vault > 0 && _cipher?.SealedBundle(uid) is { } bundle)
+            await WriteJsonAsync(Path.Combine(settings, VaultKeysFile), bundle, ct);
+
         var counts = new BackupCounts(notes, todos, vault, media);
         await WriteJsonAsync(Path.Combine(dest, BackupManifest.FileName),
             new BackupManifest(BackupManifest.FormatName, BackupManifest.CurrentVersion, false, counts), ct);
@@ -196,14 +227,61 @@ public sealed class BackupLayout
 
           - `notes/` — your notes, as Markdown with YAML frontmatter
           - `todos/` — your to-do lists
-          - `vault/` — your locked notes (**not encrypted here** — switch Papyra's
-            backup to *Encrypted* if this repository could ever be seen by others)
+          - `vault/` — your locked notes, **encrypted**: their titles and text are
+            sealed, and `settings/vault-keys.json` holds the key, itself locked with
+            your Papyra password. Restoring asks for that password.
           - `media/images`, `media/documents`, `media/videos`, `media/audio`, `media/other`
           - `settings/` — your profile and preferences (never your password or PIN)
 
           To restore: on a new Papyra, choose **Restore from a backup → GitHub** during
           setup, or in Settings → Backup.
           """;
+
+    /// <summary>
+    /// Open a plain backup's sealed <c>vault/</c> in place with its
+    /// <c>settings/vault-keys.json</c> and the password it was sealed under, so
+    /// the tree restores like any other (the restore seals it again under the
+    /// restoring account's own key). Returns null when done or there was nothing
+    /// sealed, else <c>password_required</c>, <c>password_wrong</c> or <c>damaged</c>.
+    /// </summary>
+    public static string? OpenSealedVault(string root, string? password)
+    {
+        var keysFile = Path.Combine(root, "settings", VaultKeysFile);
+        if (!File.Exists(keysFile)) return null;
+        if (string.IsNullOrEmpty(password)) return "password_required";
+
+        Dictionary<string, byte[]> keys;
+        try
+        {
+            var bundle = JsonSerializer.Deserialize<LockedNoteKeyBundle>(File.ReadAllText(keysFile), Json);
+            if (bundle is null) return "damaged";
+            keys = LockedNoteCipher.OpenBundle(bundle, password);
+        }
+        catch (JsonException) { return "damaged"; }
+        catch (FormatException) { return "damaged"; }
+        catch (System.Security.Cryptography.CryptographicException) { return "password_wrong"; }
+
+        try
+        {
+            var readable = new MarkdownStorageService();
+            var vaultDir = Path.Combine(root, "vault");
+            if (Directory.Exists(vaultDir))
+                foreach (var file in Directory.EnumerateFiles(vaultDir, "*.md", SearchOption.AllDirectories))
+                {
+                    var note = readable.Deserialize(File.ReadAllText(file));
+                    if (!note.Secure || !LockedNoteCipher.TryOpen(keys, note.Body, out var title, out var body)) continue;
+                    note.Title = title;
+                    note.Body = body;
+                    File.WriteAllText(file, readable.Serialize(note));
+                }
+            File.Delete(keysFile);
+            return null;
+        }
+        finally
+        {
+            foreach (var key in keys.Values) System.Security.Cryptography.CryptographicOperations.ZeroMemory(key);
+        }
+    }
 
     // ── Read ────────────────────────────────────────────────────────────────────
 
@@ -286,6 +364,11 @@ public sealed class BackupLayout
                 foreach (var folder in MediaFolders) MergeInto(Path.Combine(mediaIn, folder), mediaOut);
             else
                 MergeInto(mediaIn, mediaOut);
+
+            // Locked notes come out of a backup readable (or carry another key):
+            // sealed under this account's key, and anonymously named, before
+            // they reach the vault.
+            if (_sealer is not null) await _sealer.SealFolderAsync(notesOut, ct);
 
             ReplaceDirContents(notesOut, PapyraPaths.UserNotesDir(_config, contentRoot, uid));
             ReplaceDirContents(mediaOut, PapyraPaths.UserMediaDir(_config, contentRoot, uid));
