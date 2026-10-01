@@ -50,14 +50,16 @@ export default function SharedNotePage() {
     })();
   }, [token]);
 
-  async function save(body: string) {
+  async function put(change: { body?: string; title?: string }) {
     const res = await fetch(`/api/shared/${token}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ body }),
+      body: JSON.stringify(change),
     });
     if (!res.ok) throw new Error(`save failed: ${res.status}`);
   }
+  const save = (body: string) => put({ body });
+  const saveTitle = (title: string) => put({ title });
 
   return (
     <div className="shared-page">
@@ -82,6 +84,7 @@ export default function SharedNotePage() {
           <SharedNoteView
             note={note}
             onSave={save}
+            onSaveTitle={saveTitle}
             mediaBase={`/api/shared/${encodeURIComponent(token ?? '')}/media`}
           />
         )}

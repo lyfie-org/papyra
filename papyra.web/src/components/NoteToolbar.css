@@ -64,6 +64,28 @@
   color: inherit;
 }
 
+/* Close, at the foot's right end of an open note (own or shared) — the same
+   as clicking outside the sheet. */
+.note-close {
+  flex: none;
+  height: 2rem;
+  padding: 0 var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--text-h);
+  font: 500 var(--fs-xs) / 1 var(--sans);
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
+}
+.note-close:hover { border-color: var(--border-hover); background: var(--accent-bg); }
+.note-close:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+:is(.note-editor--colored, .shared-note--colored) .note-close {
+  border-color: color-mix(in srgb, var(--tint-ink) 25%, transparent);
+  color: var(--tint-ink);
+}
+:is(.note-editor--colored, .shared-note--colored) .note-close:hover { background: var(--tint-scrim); }
+
 /* Nine actions have to fit one row on a phone; the buttons keep their 2rem
    targets and give up the gaps between them instead. */
 @media (max-width: 620px) {

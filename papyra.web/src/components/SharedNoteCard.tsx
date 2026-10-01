@@ -1,7 +1,7 @@
 import type { CSSProperties } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Users } from 'lucide-react';
-import type { IncomingShare } from '../hooks/useShares';
+import { Pin, Users } from 'lucide-react';
+import { useSharedPin, type IncomingShare } from '../hooks/useShares';
 import { useResolvedTheme } from '../hooks/useTheme';
 import { tintInkClass } from '../lib/noteColors';
 import MarkdownPreview from './MarkdownPreview';
@@ -31,6 +31,8 @@ export default function SharedNoteCard({ share, showSharedDate = false }: {
   const access = share.access === 'edit' ? 'Can edit' : share.requestPending ? 'Edit requested' : 'View only';
   const next = new URLSearchParams(params);
   next.set('open', String(share.shareId));
+  const pin = useSharedPin();
+  const pinned = !!share.pinned;
 
   return (
     <Link
@@ -39,6 +41,16 @@ export default function SharedNoteCard({ share, showSharedDate = false }: {
       aria-label={`${title}, shared with you by @${share.owner}, ${access.toLowerCase()}`}
     >
       <article className={className} style={style}>
+        {/* Your own pin for it — the owner's desk is unaffected. */}
+        <button
+          type="button"
+          className={`note-card__pin${pinned ? ' note-card__pin--active' : ''}`}
+          aria-pressed={pinned}
+          aria-label={pinned ? 'Unpin note' : 'Pin note'}
+          onClick={(e) => { e.preventDefault(); e.stopPropagation(); pin.mutate({ shareId: share.shareId, pinned: !pinned }); }}
+        >
+          <Pin size={15} fill={pinned ? 'currentColor' : 'none'} />
+        </button>
         <h3 className="note-card__title">{title}</h3>
         {share.body.trim() && <MarkdownPreview body={share.body} />}
         <p className="shared-card__foot" title={`Shared with you by @${share.owner}`}>

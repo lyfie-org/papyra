@@ -79,12 +79,14 @@ export default function NotesPage() {
     return list;
   }, [notes, scope, selectedTags, activeRules]);
 
-  // Shared notes show under All and under Shared with me. Pinning, tags and
-  // collections are the owner's, so those filters narrow to your own notes.
-  const visibleShared = useMemo(
-    () => (scope === 'pinned' || selectedTags.length > 0 || activeRules ? [] : incoming ?? []),
-    [scope, selectedTags, activeRules, incoming],
-  );
+  // Shared notes show under All and under Shared with me — and under Pinned
+  // once you pin one (your own pin). Tags and collections are the owner's, so
+  // those filters narrow to your own notes.
+  const visibleShared = useMemo(() => {
+    if (selectedTags.length > 0 || activeRules) return [];
+    const list = incoming ?? [];
+    return scope === 'pinned' ? list.filter((s) => s.pinned) : list;
+  }, [scope, selectedTags, activeRules, incoming]);
 
   // A genuinely empty vault (not just an empty filter or an all-archived one)
   // gets the first-run explainer instead of the grid.

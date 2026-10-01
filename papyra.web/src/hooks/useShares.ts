@@ -28,6 +28,8 @@ export interface IncomingShare {
   sharedUtc?: string;
   /** The caller has asked the owner for edit access and is waiting. */
   requestPending: boolean;
+  /** Pinned on the caller's own desk (the owner's pin is theirs). */
+  pinned?: boolean;
 }
 
 
@@ -114,6 +116,34 @@ export function useIncomingShares() {
       const res = await fetch('/api/shares/incoming');
       if (!res.ok) throw new Error(`GET incoming shares failed: ${res.status}`);
       return res.json();
+    },
+  });
+}
+
+/** Pin or unpin a note shared with you, on your desk only. Applied at once. */
+export function useSharedPin() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async ({ shareId, pinned }: { shareId: number; pinned: boolean }) => {
+      const res = await fetch(`/api/shares/incoming/${shareId}/pin`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pinned }),
+      });
+      if (!res.ok) throw new Error(`Pin failed: ${res.status}`);
+    },
+    onMutate: async ({ shareId, pinned }) => {
+      await queryClient.cancelQueries({ queryKey: ['shares', 'incoming'], exact: true });
+      const before = queryClient.getQueryData<IncomingShare[]>(['shares', 'incoming']);
+      queryClient.setQueryData<IncomingShare[]>(['shares', 'incoming'],
+        (list) => list?.map((s) => (s.shareId === shareId ? { ...s, pinned } : s)));
+      return { before };
+    },
+    onError: (_err, _vars, context) => {
+      if (context?.before) queryClient.setQueryData(['shares', 'incoming'], context.before);
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: ['shares', 'incoming'], exact: true });
     },
   });
 }

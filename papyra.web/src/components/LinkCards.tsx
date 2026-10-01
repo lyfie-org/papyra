@@ -1,4 +1,4 @@
-import { memo, useMemo } from 'react';
+import { memo, useMemo, useState } from 'react';
 import { ExternalLink, Globe } from 'lucide-react';
 import { extractLinks, hostOf, useLinkPreview } from '../lib/noteLinks';
 import './LinkCards.css';
@@ -22,13 +22,17 @@ export function LinkCard({ url, compact = false }: { url: string; compact?: bool
   const { data: preview, isLoading } = useLinkPreview(url);
   const host = hostOf(url);
   const title = preview?.title ?? host;
+  // A page with no picture (or one that won't load) gets a globe in its place,
+  // so every card in the list keeps the same shape.
+  const [imageFailed, setImageFailed] = useState<string | null>(null);
+  const image = preview?.image && imageFailed !== preview.image ? preview.image : null;
 
   const className = `link-card${compact ? ' link-card--compact' : ''}${isLoading ? ' is-loading' : ''}`;
   const inner = (
     <>
-      {!compact && preview?.image && (
-        <span className="link-card__image"><img src={preview.image} alt="" loading="lazy" decoding="async" /></span>
-      )}
+      {!compact && (image
+        ? <span className="link-card__image"><img src={image} alt="" loading="lazy" decoding="async" onError={() => setImageFailed(image)} /></span>
+        : <span className="link-card__image link-card__image--placeholder" aria-hidden="true"><Globe size={28} strokeWidth={1.5} /></span>)}
       <span className="link-card__body">
         <span className="link-card__site">
           {preview?.icon

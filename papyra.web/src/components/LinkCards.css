@@ -24,6 +24,12 @@
   background: color-mix(in srgb, var(--text) 8%, transparent);
 }
 .link-card__image img { display: block; width: 100%; height: 100%; object-fit: cover; }
+.link-card__image--placeholder {
+  display: grid;
+  place-items: center;
+  color: var(--text);
+}
+.link-card__image--placeholder svg { opacity: 0.55; }
 
 .link-card__body {
   display: grid;
@@ -75,7 +81,8 @@
   background: color-mix(in srgb, var(--tint-lift) 45%, transparent);
 }
 :is(.note-card--colored, .note-editor--colored, .shared-note--colored) :is(.link-card__title) { color: var(--tint-ink); }
-:is(.note-card--colored, .note-editor--colored, .shared-note--colored) :is(.link-card__site, .link-card__desc, .link-card__out) { color: var(--tint-ink-muted); }
+:is(.note-card--colored, .note-editor--colored, .shared-note--colored) :is(.link-card__site, .link-card__desc, .link-card__out, .link-card__image--placeholder) { color: var(--tint-ink-muted); }
+:is(.note-card--colored, .note-editor--colored, .shared-note--colored) .link-card__image--placeholder { background: color-mix(in srgb, var(--tint-ink) 8%, transparent); }
 
 @media (prefers-reduced-motion: reduce) {
   .link-card, .link-card:hover { transition: none; transform: none; }

@@ -444,6 +444,22 @@
 .comments-button[aria-pressed='true'] { color: var(--text-h); border-color: var(--accent-border); background: var(--accent-bg); }
 .comments-button:focus-visible { outline: 2px solid var(--text-h); outline-offset: 2px; }
 .comments-button__count { color: var(--text-h); }
+/* In the note's footer rail: an icon button like its neighbours, the count a
+   small badge on its corner. */
+.comments-button--toolbar { position: relative; }
+.comments-button--toolbar .comments-button__count {
+  position: absolute;
+  top: 1px;
+  right: 0;
+  min-width: 14px;
+  height: 14px;
+  padding: 0 3px;
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+  color: var(--accent-fg);
+  font: 600 9px / 14px var(--sans);
+  text-align: center;
+}
 
 @media (prefers-reduced-motion: reduce) {
   .comment-bubble, .comment-card--float, .comment-float-host, .comment-panel { animation: none; }

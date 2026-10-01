@@ -32,11 +32,19 @@
 }
 /* The attachment toolbar (luthor's buttons + Papyra's) wraps onto a second
    row on a narrow picture rather than scrolling its last buttons out of view. */
-.note-editor__canvas .luthor-media__toolbar {
+.note-editor__canvas .luthor-media__toolbar,
+.shared-note__canvas .luthor-media__toolbar {
   width: max-content;
   flex-wrap: wrap;
   justify-content: center;
   overflow: visible;
+  /* Set by keepMediaToolbarsInView when the centred bar would leave the sheet. */
+  translate: var(--media-toolbar-shift, 0px) 0;
+}
+/* Fewer, clearer buttons: no size presets (the drag handles size a picture),
+   no alt text, no open-in-tab. luthor builds them; Papyra leaves them out. */
+:is(.note-editor__canvas, .shared-note__canvas) .luthor-media__tool:is([data-media-action^="size-"], [data-media-action="alt"], [data-media-action="open"]) {
+  display: none;
 }
 /* A card (document, PDF, audio) is too short to host the bar on top of it —
    it would cover the file's name — so the bar sits just above it instead. */

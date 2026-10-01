@@ -4994,9 +4994,28 @@ shares.MapGet("/incoming", async (
             // When it was shared with you — the Shared with me page says so.
             sharedUtc = DateTime.SpecifyKind(s.CreatedUtc, DateTimeKind.Utc),
             requestPending = pending.Contains((s.OwnerId, s.NoteId)),
+            pinned = s.GranteePinned,
         });
     }
     return Results.Ok(result);
+});
+
+// Grantee: pin or unpin a note shared with me, on my own desk only.
+shares.MapPut("/incoming/{shareId:int}/pin", async (
+    int shareId, SharedPinWrite body, ClaimsPrincipal user, AppDbContext db, IHubContext<NotesHub> hub,
+    CancellationToken ct) =>
+{
+    var uid = int.Parse(Uid(user));
+    var share = await db.Shares.FirstOrDefaultAsync(s => s.Id == shareId && s.GranteeUserId == uid, ct);
+    if (share is null) return Results.NotFound();
+    if (share.GranteePinned != body.Pinned)
+    {
+        share.GranteePinned = body.Pinned;
+        await db.SaveChangesAsync(ct);
+        // The same desk open on another device follows.
+        await hub.Clients.User(uid.ToString()).SendAsync("SharesChanged", ct);
+    }
+    return Results.Ok(new { pinned = share.GranteePinned });
 });
 
 // Grantee: read one incoming shared note.
@@ -5036,7 +5055,7 @@ shares.MapPut("/incoming/{shareId:int}", async (
     var share = await db.Shares.FirstOrDefaultAsync(s => s.Id == shareId && s.GranteeUserId == uid, ct);
     if (share is null) return Results.NotFound();
     if (share.Access != "edit") return Results.Forbid();
-    return await ApplySharedEdit(share.OwnerId.ToString(), share.NoteId, body.Body ?? string.Empty,
+    return await ApplySharedEdit(share.OwnerId.ToString(), share.NoteId, body, db,
         state, storage, writeRing, search, snapshots, config, env, hub, vault, lf, collab, writeLocks, ct);
 });
 
@@ -5439,7 +5458,7 @@ app.MapPut("/api/shared/{token}", async (
     if (share.ExpiresUtc is { } exp && exp < DateTime.UtcNow)
         return Results.Json(new { error = "This link has expired." }, statusCode: StatusCodes.Status410Gone);
     if (share.Access != "edit") return Results.Forbid();
-    return await ApplySharedEdit(share.OwnerId.ToString(), share.NoteId, body.Body ?? string.Empty,
+    return await ApplySharedEdit(share.OwnerId.ToString(), share.NoteId, body, db,
         state, storage, writeRing, search, snapshots, config, env, hub, vault, lf, collab, writeLocks, ct);
 });
 
@@ -6895,7 +6914,7 @@ static IResult AvatarFile(string uid, IConfiguration config, IHostEnvironment en
 // Apply a body-only edit to a note in the owner's vault on behalf of a sharee,
 // keeping the caches + watchers consistent (mirrors the notes PUT write path).
 static async Task<IResult> ApplySharedEdit(
-    string ownerUid, string noteId, string newBody,
+    string ownerUid, string noteId, SharedBodyWrite edit, AppDbContext db,
     VaultState state, MarkdownStorageService storage, WriteRing writeRing, SearchIndexService search,
     SnapshotService snapshots, IConfiguration config, IHostEnvironment env,
     IHubContext<NotesHub> hub, VaultObserverOptions vault, ILoggerFactory lf,
@@ -6904,7 +6923,12 @@ static async Task<IResult> ApplySharedEdit(
     // Someone who is not the owner is about to replace the owner's text: the
     // shared writer snapshots the prior revision first (recoverable), refuses
     // while the note is open live (the room would be overwritten), and tells
-    // the owner's open editors.
+    // the owner's open editors. A title-only edit (no body) works while live.
+    if (edit.Body is null && edit.Title is null)
+        return Results.BadRequest(new { error = "Nothing to change." });
+    var title = edit.Title?.Trim();
+    if (title is { Length: > 300 })
+        return Results.BadRequest(new { error = "That title is too long." });
     var writer = new NoteBodyWriter(state, storage, writeRing, search, snapshots, config, env, hub,
         collab, writeLocks, vault, lf);
     var (_, refusal) = await writer.ChangeAsync(ownerUid, noteId, note =>
@@ -6912,9 +6936,20 @@ static async Task<IResult> ApplySharedEdit(
         // the other end was handed an empty body, so saving it would erase the note.
         note.Secure
             ? NoteEdit.Refuse(Results.Json(new { error = "The owner locked this note." }, statusCode: StatusCodes.Status410Gone))
-            : new NoteEdit(newBody),
+            : new NoteEdit(edit.Body, Title: title),
         LiveRoomPolicy.Refuse, ct);
-    return refusal ?? Results.NoContent();
+    if (refusal is not null) return refusal;
+    // Everyone else it's shared with sees the new title on their card.
+    if (title is not null)
+    {
+        var owner = int.Parse(ownerUid);
+        var grantees = await db.Shares
+            .Where(s => s.OwnerId == owner && s.NoteId == noteId && s.Kind == "user" && s.GranteeUserId != null)
+            .Select(s => s.GranteeUserId!.Value.ToString()).Distinct().ToListAsync(ct);
+        if (grantees.Count > 0)
+            await hub.Clients.Users(grantees).SendAsync("SharedNoteUpdated", new { ownerId = owner, noteId }, ct);
+    }
+    return Results.NoContent();
 }
 
 // Replace targetDir's contents with sourceDir's, keeping targetDir itself (so a
@@ -7423,7 +7458,8 @@ public sealed record ShareWrite(
     string? Kind, string? Access, string? GranteeUsername, DateTime? ExpiresUtc, int? MaxViews);
 
 // Body-only edit payload for a shared note (sharees can't touch frontmatter).
-public sealed record SharedBodyWrite(string? Body);
+public sealed record SharedBodyWrite(string? Body, string? Title = null);
+public sealed record SharedPinWrite(bool Pinned);
 public sealed record AccessRequestWrite(int? ShareId, int? InboxId, string? Access, int? NotificationId = null);
 public sealed record AccessDecision(string? Access);
 

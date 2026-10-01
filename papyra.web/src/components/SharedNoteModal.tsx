@@ -1,7 +1,7 @@
 import { useEffect, useRef } from 'react';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { X } from 'lucide-react';
-import { useRequestAccess } from '../hooks/useShares';
+import { useIncomingShares, useRequestAccess, useSharedPin } from '../hooks/useShares';
 import { useDialogFocus } from '../hooks/useDialogFocus';
 import { useToast } from '../lib/toastContext';
 import SharedNoteView, { type SharedNote } from './SharedNoteView';
@@ -20,6 +20,10 @@ export default function SharedNoteModal({ shareId, onClose }: { shareId: number;
   const queryClient = useQueryClient();
   const request = useRequestAccess();
   const { toast } = useToast();
+  // Your own pin for it lives on the desk's list of shares.
+  const { data: incoming } = useIncomingShares();
+  const pinned = !!incoming?.find((s) => s.shareId === shareId)?.pinned;
+  const sharedPin = useSharedPin();
 
   // Under ['shares', 'incoming'] so an approval pushed over the hub (which
   // invalidates that prefix) refetches the open note and flips it editable.
@@ -44,13 +48,19 @@ export default function SharedNoteModal({ shareId, onClose }: { shareId: number;
     return () => window.removeEventListener('keydown', onKey);
   }, [onClose]);
 
-  async function save(body: string) {
+  async function put(change: { body?: string; title?: string }) {
     const res = await fetch(`/api/shares/incoming/${shareId}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ body }),
+      body: JSON.stringify(change),
     });
     if (!res.ok) throw new Error(`save failed: ${res.status}`);
+  }
+  const save = (body: string) => put({ body });
+  async function saveTitle(title: string) {
+    await put({ title });
+    // The desk card shows the new title too.
+    void queryClient.invalidateQueries({ queryKey: ['shares', 'incoming'], exact: true });
   }
 
   async function requestEdit() {
@@ -72,7 +82,10 @@ export default function SharedNoteModal({ shareId, onClose }: { shareId: number;
           <SharedNoteView
             note={note}
             onSave={save}
+            onSaveTitle={saveTitle}
             onRequestEdit={requestEdit}
+            pin={{ pinned, onToggle: () => sharedPin.mutate({ shareId, pinned: !pinned }) }}
+            onClose={onClose}
             mediaBase={`/api/shares/incoming/${shareId}/media`}
             // Signed in: join the note's live room (classic saves if the
             // collab engine is off).

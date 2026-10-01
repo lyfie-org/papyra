@@ -1,11 +1,12 @@
-import { ArrowDown, ArrowUp, Download, Link2, Replace, ScanText } from 'lucide-react';
+import { ArrowDown, ArrowUp, Download, Replace, ScanText } from 'lucide-react';
 import { $getSelection, $isNodeSelection, type LexicalEditor, type LexicalNode } from 'lexical';
 import type { MediaToolbarContext, MediaToolbarItem } from '@lyfie/luthor-headless';
 import { pickFile } from './pickFile';
 import type { PapyraMediaMeta } from './mediaMeta';
 
 // Papyra's buttons on a selected attachment, after luthor's built-ins (align,
-// sizes, caption, alt text, open, remove). They sit in the editor's own
+// caption, remove — its size presets, alt text and open-in-tab are hidden in
+// MediaDropZone.css; the drag handles size a picture). They sit in the editor's own
 // in-picture toolbar, so they come and go with the selection — no hover bar
 // of our own racing it.
 
@@ -57,14 +58,6 @@ export function createMediaToolbarItems({ upload, readOnly, getEditor, notify }:
         onSelect: () => { void copyText(ctx.target, notify); },
       });
     }
-    if (ctx.url && typeof navigator !== 'undefined' && navigator.clipboard) {
-      items.push({
-        id: 'papyra.copy-link',
-        label: 'Copy link',
-        icon: <Link2 {...ICON} />,
-        onSelect: () => { void copyLink(ctx.url, notify); },
-      });
-    }
     if (ctx.url) {
       items.push({
         id: 'papyra.download',
@@ -109,17 +102,6 @@ function move(editor: LexicalEditor, direction: 'up' | 'down') {
     if (direction === 'up') block.getPreviousSibling()?.insertBefore(block);
     else block.getNextSibling()?.insertAfter(block);
   });
-}
-
-// The file's own address — it opens for anyone signed in to this account (and
-// nobody else: media is private; share the note to share it).
-async function copyLink(url: string, notify?: (message: string) => void) {
-  try {
-    await navigator.clipboard.writeText(new URL(url, window.location.origin).href);
-    notify?.('Link copied');
-  } catch {
-    notify?.('Couldn’t copy the link.');
-  }
 }
 
 async function copyText(target: string, notify?: (message: string) => void) {

@@ -97,6 +97,16 @@
 .note-editor--colored .note-editor__edited { color: var(--tint-ink-muted); opacity: 1; }
 .note-editor__footer .note-editor__status:empty + .note-editor__edited { margin-left: auto; }
 
+/* Pin and focus mode, at the title row's right end. */
+.note-editor__corner {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  flex: none;
+  margin-left: auto;
+}
+
+
 /* At the bottom of the sheet the colour palette opens upward, not off the edge. */
 .note-editor__footer .palette-picker {
   top: auto;
@@ -190,10 +200,11 @@
   background-color: color-mix(in srgb, var(--note-tint) 55%, var(--tint-lift));
 }
 /* Same for every overlay the editor opens over the text: the formatting
-   toolbar's menus and dialogs, and the /, @, [[ and emoji menus. They read the
-   editor's (transparent) surface too, so on a coloured note they floated
-   see-through over the body. */
-.note-editor--colored :is(
+   toolbar's menus and dialogs, the /, @, [[ and emoji menus, and an
+   attachment's toolbar. They read the editor's (transparent) surface too, so
+   on a coloured note they floated see-through over the body. */
+:is(.note-editor--colored, .shared-note--colored) :is(
+  .luthor-media__toolbar,
   .luthor-dropdown-content,
   .luthor-select-dropdown,
   .luthor-dialog,
