@@ -545,17 +545,18 @@ function CommentsPanel({ threads, anchored, data, api, onJump, onClose }: {
   );
 }
 
-/** The header button: how many open threads, and the way into the panel. */
-export function CommentsButton({ count, onClick, pressed, inToolbar = false }: {
+/**
+ * How many open threads, and the way into the panel. One of the note's footer
+ * actions, drawn exactly like its neighbours (focus mode included).
+ */
+export function CommentsButton({ count, onClick, pressed }: {
   count: number; onClick: () => void; pressed: boolean;
-  /** Drawn as one of the note's footer actions rather than a header pill. */
-  inToolbar?: boolean;
 }) {
   return (
-    <button type="button" className={inToolbar ? `note-toolbar__btn comments-button--toolbar${pressed ? ' is-active' : ''}` : 'comments-button'}
+    <button type="button" className={`note-toolbar__btn comments-button${pressed ? ' is-active' : ''}`}
       aria-pressed={pressed} onClick={onClick}
       aria-label={count ? `Comments (${count} open)` : 'Comments'} title="Comments">
-      <MessageSquareText size={inToolbar ? 18 : 16} aria-hidden="true" />
+      <MessageSquareText size={18} aria-hidden="true" />
       {count > 0 && <span className="comments-button__count">{count}</span>}
     </button>
   );

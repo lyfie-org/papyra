@@ -375,7 +375,7 @@ export default function SharedNoteView({
       {((comments.data && collab) || onClose) && (
         <footer className="shared-note__footer">
           {comments.data && collab && (
-            <CommentsButton inToolbar count={comments.data.threads.filter(t => !t.resolved).length} pressed={commentsPanel}
+            <CommentsButton count={comments.data.threads.filter(t => !t.resolved).length} pressed={commentsPanel}
               onClick={() => setCommentsPanel(o => !o)} />
           )}
           {onClose && <button type="button" className="note-close" onClick={onClose}>Close</button>}

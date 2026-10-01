@@ -1,4 +1,4 @@
-import { memo, useCallback, useLayoutEffect, useMemo, useRef, useState, type ReactNode, type RefObject } from 'react';
+import { memo, useCallback, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { Pin, PinOff } from 'lucide-react';
 import {
   DndContext, PointerSensor, useSensor, useSensors, useDraggable,
@@ -8,7 +8,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import type { Note } from '../types/note';
 import type { Conflict } from '../hooks/useConflicts';
 import {
-  useNoteOrder, useSaveOrder, sortNotes, effectiveKey, keysBetween,
+  useNoteOrder, useSaveOrder, effectiveKey, sharedKey, sharedOrderId, keysBetween,
   ORDER_KEY, type OrderMap,
 } from '../hooks/useNoteOrder';
 import NoteCard from './NoteCard';
@@ -22,7 +22,7 @@ import {
 import { bulkAction, planGroupDrop, plural } from '../lib/bulk';
 import { useFlipPosition } from '../hooks/useFlipPosition';
 import { useGridWidth } from '../hooks/useGridWidth';
-import type { IncomingShare } from '../hooks/useShares';
+import { useSharedPin, type IncomingShare } from '../hooks/useShares';
 import SharedNoteCard from './SharedNoteCard';
 import { useSelection } from '../hooks/useSelection';
 import { useToast } from '../lib/toastContext';
@@ -39,9 +39,9 @@ interface Props {
   /** Only to-do lists, drawn as checklists (the To Do page). */
   todosOnly?: boolean;
   /**
-   * Notes other people shared with you, laid out after your own in the same
-   * columns. They live in someone else's vault, so they can't be dragged,
-   * pinned or selected here.
+   * Notes other people shared with you, sorted in among your own: by when they
+   * were shared until you drag one, then where you put it. They live in someone
+   * else's vault, so they can't be selected for bulk actions here.
    */
   shared?: IncomingShare[];
   /** Say on each shared card when it was shared (the Shared with me page). */
@@ -49,6 +49,14 @@ interface Props {
 }
 
 type Section = 'pinned' | 'others';
+
+// One card on the desk: a note of yours, or one shared with you (keyed
+// `shared:<shareId>`, see sharedOrderId). `key` is its sort value.
+type Item =
+  | { id: string; kind: 'note'; note: Note; pinned: boolean; key: number }
+  | { id: string; kind: 'shared'; share: IncomingShare; pinned: boolean; key: number };
+
+const byKey = (a: Item, b: Item) => b.key - a.key;
 
 // Where a card follows the dragged one while a selection is carried as a group:
 // stacked just behind it, slightly fanned.
@@ -143,6 +151,49 @@ const AbsCard = memo(function AbsCard({
   );
 });
 
+// A note shared with you, placed and dragged like AbsCard. Never part of a
+// selection: bulk actions (archive, trash, tag) act on your own vault.
+const SharedAbsCard = memo(function SharedAbsCard({
+  share, id, x: boxX, y: boxY, colW, cols, resizedAt, onMeasure, showSharedDate,
+}: {
+  share: IncomingShare; id: string; x: number; y: number; colW: number; cols: number;
+  resizedAt: RefObject<number>;
+  onMeasure: (id: string, h: number) => void;
+  showSharedDate: boolean;
+}) {
+  const { listeners, setNodeRef, transform, isDragging } = useDraggable({ id });
+  const elRef = useRef<HTMLDivElement | null>(null);
+
+  const setRef = useCallback((el: HTMLDivElement | null) => {
+    elRef.current = el;
+    setNodeRef(el);
+    if (el) onMeasure(id, el.offsetHeight);
+  }, [setNodeRef, onMeasure, id]);
+
+  useLayoutEffect(() => {
+    if (elRef.current) onMeasure(id, elRef.current.offsetHeight);
+  });
+
+  const x = boxX + (isDragging && transform ? transform.x : 0);
+  const y = boxY + (isDragging && transform ? transform.y : 0);
+  useFlipPosition(elRef, x, y, { cols, colW, frozen: isDragging, resizedAt });
+
+  return (
+    <div
+      ref={setRef}
+      className={`dnd-card${isDragging ? ' is-dragging' : ''}`}
+      style={{
+        position: 'absolute', top: 0, left: 0, width: colW,
+        transform: `translate3d(${x}px, ${y}px, 0)`,
+        zIndex: isDragging ? 30 : 1,
+      }}
+      {...listeners}
+    >
+      <SharedNoteCard share={share} showSharedDate={showSharedDate} />
+    </div>
+  );
+});
+
 export default function DraggableNoteGrid({
   notes, conflictsByParent, onResolveConflict, includeTodos = false, todosOnly = false, shared = [],
   showSharedDate = false,
@@ -181,14 +232,26 @@ export default function DraggableNoteGrid({
 
   // 'todo' lives on the To Do page and 'inbox' on /inbox — neither belongs on
   // the notes desk, which is for notes the user wrote here.
-  const active = notes.filter(n => !n.archived && !n.trashed && n.kind !== 'inbox'
-    && (todosOnly ? n.kind === 'todo' : includeTodos || n.kind !== 'todo'));
-  const pinned = useMemo(() => sortNotes(active.filter(n => n.pinned), order), [active, order]);
-  const others = useMemo(() => sortNotes(active.filter(n => !n.pinned), order), [active, order]);
-  const byId = useMemo(() => new Map(active.map(n => [n.id, n])), [active]);
-  const ordered = useMemo(() => [...pinned, ...others].map(n => n.id), [pinned, others]);
-  const { width, resizedAt, sticky, recordColumns } = useGridWidth(wrapRef, active.length > 0 || shared.length > 0);
+  const active = useMemo(() => notes.filter(n => !n.archived && !n.trashed && n.kind !== 'inbox'
+    && (todosOnly ? n.kind === 'todo' : includeTodos || n.kind !== 'todo')), [notes, todosOnly, includeTodos]);
+  // Your notes and the ones shared with you, in one order: a shared note sits
+  // where its share date (or your drag) puts it, not trailing after yours. A
+  // shared note you pinned (your pin, not the owner's) joins your pinned ones.
+  const items = useMemo<Item[]>(() => [
+    ...active.map(n => ({ id: n.id, kind: 'note' as const, note: n, pinned: n.pinned, key: effectiveKey(n, order) })),
+    ...shared.map(s => ({
+      id: sharedOrderId(s.shareId), kind: 'shared' as const, share: s, pinned: !!s.pinned, key: sharedKey(s, order),
+    })),
+  ], [active, shared, order]);
+  const pinned = useMemo(() => items.filter(i => i.pinned).sort(byKey), [items]);
+  const others = useMemo(() => items.filter(i => !i.pinned).sort(byKey), [items]);
+  const byId = useMemo(() => new Map(items.map(i => [i.id, i])), [items]);
+  const allOrdered = useMemo(() => [...pinned, ...others].map(i => i.id), [pinned, others]);
+  // What selection and the bulk bar cover: your own notes only.
+  const ordered = useMemo(() => [...pinned, ...others].filter(i => i.kind === 'note').map(i => i.id), [pinned, others]);
+  const { width, resizedAt, sticky, recordColumns } = useGridWidth(wrapRef, items.length > 0);
   const selection = useSelection(ordered);
+  const sharedPin = useSharedPin();
 
   const onMeasure = useCallback((id: string, h: number) => {
     if (dragging.current) return; // heights are frozen mid-drag
@@ -205,17 +268,11 @@ export default function DraggableNoteGrid({
   // lands exactly where it would in the full layout. Mounting every card made
   // each resize frame (the sidebar sliding open, a window drag) re-render and
   // re-measure hundreds of them.
-  // A shared note you pinned (your pin, not the owner's) joins your pinned ones.
-  const sharedPinned = useMemo(() => shared.filter(s => s.pinned), [shared]);
-  const sharedOthers = useMemo(() => shared.filter(s => !s.pinned), [shared]);
-  const total = pinned.length + others.length + shared.length;
+  const total = items.length;
   const { shown: budget, sentinelRef } = useRevealMore(total, cols);
   const pinnedShown = pinned.length > budget ? pinned.slice(0, budget) : pinned;
-  const sharedPinnedShown = sharedPinned.slice(0, Math.max(0, budget - pinned.length));
-  const pinnedCount = pinned.length + sharedPinned.length;
-  const othersShown = others.slice(0, Math.max(0, budget - pinnedCount));
-  const sharedShown = sharedOthers.slice(0, Math.max(0, budget - pinnedCount - others.length));
-  const shownIds = new Set([...pinnedShown, ...othersShown].map(n => n.id));
+  const othersShown = others.slice(0, Math.max(0, budget - pinned.length));
+  const shownIds = new Set([...pinnedShown, ...othersShown].map(i => i.id));
 
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
 
@@ -223,8 +280,8 @@ export default function DraggableNoteGrid({
   const carried = useMemo(() => new Set(group), [group]);
   // Full lists (order keys are computed against every neighbour) and the
   // mounted prefix of each (what gets packed, drawn and hit-tested).
-  const pinnedIds = pinned.map(n => n.id).filter(id => !carried.has(id));
-  const othersIds = others.map(n => n.id).filter(id => !carried.has(id));
+  const pinnedIds = pinned.map(i => i.id).filter(id => !carried.has(id));
+  const othersIds = others.map(i => i.id).filter(id => !carried.has(id));
   const pinnedVis = pinnedIds.filter(id => shownIds.has(id));
   const othersVis = othersIds.filter(id => shownIds.has(id));
   const activeH = activeId ? (heights.get(activeId) ?? EST_H) : 0;
@@ -236,21 +293,12 @@ export default function DraggableNoteGrid({
   const pinnedBase = pack(pinnedVis, heights, cols, colW, undefined, prefer);
   const othersBase = pack(othersVis, heights, cols, colW, undefined, prefer);
   // DISPLAY = base, plus the make-room gap at the drop index (what we render).
-  // Pinned shared cards flow on after your own pinned ones, as below.
-  const sharedPinnedIds = sharedPinnedShown.map(s => `shared:${s.shareId}`);
   const pinnedLayout = pack(
-    [...pinnedVis, ...sharedPinnedIds], heights, cols, colW,
+    pinnedVis, heights, cols, colW,
     drop?.section === 'pinned' ? { index: drop.index, h: activeH } : undefined, prefer,
   );
-  // Keyed `shared:<shareId>` — a note id is only unique within its own vault,
-  // so a shared note can carry the same id as one of yours.
-  // They flow on after your own unpinned notes in the same canvas. Hit-testing
-  // keeps using othersBase (your notes only): packing is sequential, so your
-  // cards sit in the same place either way, and nothing can drop among the
-  // shared ones.
-  const sharedIds = sharedShown.map(s => `shared:${s.shareId}`);
   const othersLayout = pack(
-    [...othersVis, ...sharedIds], heights, cols, colW,
+    othersVis, heights, cols, colW,
     drop?.section === 'others' ? { index: drop.index, h: activeH } : undefined, prefer,
   );
 
@@ -274,12 +322,13 @@ export default function DraggableNoteGrid({
     const o: Section = byId.get(id)?.pinned ? 'pinned' : 'others';
     // Resting box of the card in its full (idle) section layout — the baseline the
     // pointer delta is added to so the card tracks the cursor exactly.
-    const idle = pack((o === 'pinned' ? pinnedShown : othersShown).map(n => n.id), heights, cols, colW, undefined, prefer);
+    const idle = pack((o === 'pinned' ? pinnedShown : othersShown).map(i => i.id), heights, cols, colW, undefined, prefer);
     setStartBox(idle.boxes.get(id) ?? { x: 0, y: 0 });
     const ev = e.activatorEvent as PointerEvent;
     pointerStart.current = { x: ev.clientX ?? 0, y: ev.clientY ?? 0 };
     dragging.current = true;
-    // Dragging a selected card carries the whole selection with it.
+    // Dragging a selected card carries the whole selection with it (a shared
+    // card is never selected, so it always travels alone).
     const carry = selection.selected.has(id) && selection.selected.size > 1
       ? [id, ...ordered.filter(x => x !== id && selection.selected.has(x))]
       : [id];
@@ -287,10 +336,10 @@ export default function DraggableNoteGrid({
     setActiveId(id);
     setOrigin(o);
     setDrag({ dx: 0, dy: 0, pinToOthers: canvasGap() });
-    const rest = (o === 'pinned' ? pinned : others).map(n => n.id).filter(x => !carry.includes(x));
+    const rest = (o === 'pinned' ? pinned : others).map(i => i.id).filter(x => !carry.includes(x));
     // Start where the first carried card sat among what's left.
-    const firstIdx = (o === 'pinned' ? pinned : others).findIndex(n => n.id === id);
-    const index = (o === 'pinned' ? pinned : others).slice(0, firstIdx).filter(n => !carry.includes(n.id)).length;
+    const firstIdx = (o === 'pinned' ? pinned : others).findIndex(i => i.id === id);
+    const index = (o === 'pinned' ? pinned : others).slice(0, firstIdx).filter(i => !carry.includes(i.id)).length;
     setDrop({ section: o, index: Math.min(index, rest.length) });
   }
 
@@ -354,12 +403,12 @@ export default function DraggableNoteGrid({
     armClickSuppression();
     const d = drop;
     // The group lands in display order, whichever card was grabbed.
-    const moving = ordered.filter(id => carried.has(id));
+    const moving = allOrdered.filter(id => carried.has(id));
     if (!activeId || !d || moving.length === 0) { reset(); return; }
 
     const targetIds = d.section === 'pinned' ? pinnedIds : othersIds;
     const keys = planGroupDrop(moving, targetIds, d.index,
-      id => { const n = byId.get(id); return n ? effectiveKey(n, order) : 0; }, keysBetween);
+      id => byId.get(id)?.key ?? 0, keysBetween);
 
     // `setAt` stamps when the drag was committed (bookkeeping; a placed note keeps
     // its position until dragged again — see effectiveKey). Reading the clock is impure, but this runs only from
@@ -372,8 +421,11 @@ export default function DraggableNoteGrid({
 
     // Carried across the PINNED/OTHERS line: every card that isn't already on
     // that side gets pinned (or unpinned) with it — flag only, never the body.
+    // A shared note takes your own pin for it; the owner's desk is untouched.
     const toPinned = d.section === 'pinned';
-    const flip = moving.filter(id => byId.get(id)?.pinned !== toPinned);
+    const crossed = moving.map(id => byId.get(id)).filter((i): i is Item => !!i && i.pinned !== toPinned);
+    const flip = crossed.filter(i => i.kind === 'note').map(i => i.id);
+    for (const i of crossed) if (i.kind === 'shared') sharedPin.mutate({ shareId: i.share.shareId, pinned: toPinned });
 
     queryClient.setQueryData(ORDER_KEY, nextOrder);
     if (flip.length) {
@@ -400,9 +452,9 @@ export default function DraggableNoteGrid({
 
   // Followers stack behind the dragged card, fanned a few pixels each; one in
   // the other section converts through the distance between the two canvases.
-  const followBox = (n: Note, index: number): Box | undefined => {
+  const followBox = (item: Item, index: number): Box | undefined => {
     if (!startBox || !drag || !origin) return undefined;
-    const section: Section = n.pinned ? 'pinned' : 'others';
+    const section: Section = item.pinned ? 'pinned' : 'others';
     const shift = section === origin ? 0 : section === 'others' ? -drag.pinToOthers : drag.pinToOthers;
     return {
       x: startBox.x + drag.dx + STACK_STEP * index,
@@ -410,12 +462,19 @@ export default function DraggableNoteGrid({
     };
   };
 
-  const renderCard = (n: Note, layout: Placed) => {
-    const stackIndex = group.indexOf(n.id);
+  const renderCard = (item: Item, layout: Placed) => {
+    const stackIndex = group.indexOf(item.id);
     const following = stackIndex > 0;
-    const box = n.id === activeId
+    const box = item.id === activeId
       ? startBox ?? undefined
-      : following ? followBox(n, stackIndex) : layout.boxes.get(n.id);
+      : following ? followBox(item, stackIndex) : layout.boxes.get(item.id);
+    if (item.kind === 'shared') {
+      return (
+        <SharedAbsCard key={item.id} id={item.id} share={item.share} colW={colW} cols={cols} resizedAt={resizedAt}
+          x={box?.x ?? 0} y={box?.y ?? 0} onMeasure={onMeasure} showSharedDate={showSharedDate} />
+      );
+    }
+    const n = item.note;
     return (
       <AbsCard key={n.id} note={n} colW={colW} cols={cols} resizedAt={resizedAt}
         x={box?.x ?? 0} y={box?.y ?? 0}
@@ -432,8 +491,8 @@ export default function DraggableNoteGrid({
     );
   };
 
-  const showPinnedHeading = pinnedCount > 0;
-  const showOthersHeading = pinnedCount > 0 && (others.length > 0 || sharedOthers.length > 0);
+  const showPinnedHeading = pinned.length > 0;
+  const showOthersHeading = pinned.length > 0 && others.length > 0;
   const noun = todosOnly ? 'list' : 'note';
 
   return (
@@ -461,28 +520,12 @@ export default function DraggableNoteGrid({
       >
         {showPinnedHeading && <h2 className="note-grid__heading">PINNED</h2>}
         <div className="dnd-canvas" ref={pinnedRef} style={{ height: pinnedLayout.height }}>
-          {pinnedShown.map(n => renderCard(n, pinnedLayout))}
-          {sharedPinnedShown.map((s, i) => {
-            const box = pinnedLayout.boxes.get(sharedPinnedIds[i]);
-            return (
-              <SharedCell key={sharedPinnedIds[i]} id={sharedPinnedIds[i]} x={box?.x ?? 0} y={box?.y ?? 0} colW={colW} onMeasure={onMeasure}>
-                <SharedNoteCard share={s} showSharedDate={showSharedDate} />
-              </SharedCell>
-            );
-          })}
+          {pinnedShown.map(i => renderCard(i, pinnedLayout))}
         </div>
 
         {showOthersHeading && <h2 className="note-grid__heading">OTHERS</h2>}
         <div className="dnd-canvas" ref={othersRef} style={{ height: othersLayout.height }}>
-          {othersShown.map(n => renderCard(n, othersLayout))}
-          {sharedShown.map((s, i) => {
-            const box = othersLayout.boxes.get(sharedIds[i]);
-            return (
-              <SharedCell key={sharedIds[i]} id={sharedIds[i]} x={box?.x ?? 0} y={box?.y ?? 0} colW={colW} onMeasure={onMeasure}>
-                <SharedNoteCard share={s} showSharedDate={showSharedDate} />
-              </SharedCell>
-            );
-          })}
+          {othersShown.map(i => renderCard(i, othersLayout))}
         </div>
         {budget < total && <div ref={sentinelRef} className="note-grid__more" aria-hidden="true" />}
       </div>
@@ -498,33 +541,12 @@ export default function DraggableNoteGrid({
 
       {selection.active && (
         <BulkBar
-          notes={ordered.filter(id => selection.selected.has(id)).map(id => byId.get(id)!)}
+          notes={[...pinned, ...others].flatMap(i => (i.kind === 'note' && selection.selected.has(i.id) ? [i.note] : []))}
           total={ordered.length}
           onClear={selection.clear}
           onSelectAll={selection.selectAll}
         />
       )}
     </DndContext>
-  );
-}
-
-/** A shared card placed on the canvas like AbsCard, minus drag and selection. */
-function SharedCell({ id, x, y, colW, onMeasure, children }: {
-  id: string; x: number; y: number; colW: number;
-  onMeasure: (id: string, h: number) => void;
-  children: ReactNode;
-}) {
-  const ref = useRef<HTMLDivElement | null>(null);
-  useLayoutEffect(() => {
-    if (ref.current) onMeasure(id, ref.current.offsetHeight);
-  });
-  return (
-    <div
-      ref={ref}
-      className="dnd-card"
-      style={{ position: 'absolute', top: 0, left: 0, width: colW, transform: `translate3d(${x}px, ${y}px, 0)` }}
-    >
-      {children}
-    </div>
   );
 }

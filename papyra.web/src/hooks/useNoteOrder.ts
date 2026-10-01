@@ -54,6 +54,22 @@ export function effectiveKey(note: Note, order: OrderMap | undefined): number {
   return Date.parse(note.updated) || 0;
 }
 
+// Order-map id for a note someone shared with you. A note id is only unique
+// within its own vault, so a shared note can carry the same id as one of yours.
+export const sharedOrderId = (shareId: number) => `shared:${shareId}`;
+
+// The sort value for a note shared with you: its manual drag key when you have
+// placed it, else the moment it was shared. A new share lands on top of the
+// desk the way a new note does, and the owner's later edits never move it.
+export function sharedKey(
+  share: { shareId: number; sharedUtc?: string; updatedUtc: string | null },
+  order: OrderMap | undefined,
+): number {
+  const e = order?.[sharedOrderId(share.shareId)];
+  if (e) return e.key;
+  return Date.parse(share.sharedUtc ?? share.updatedUtc ?? '') || 0;
+}
+
 // Recency-or-manual order, highest key first.
 export function sortNotes(notes: Note[], order: OrderMap | undefined): Note[] {
   return [...notes].sort((a, b) => effectiveKey(b, order) - effectiveKey(a, order));

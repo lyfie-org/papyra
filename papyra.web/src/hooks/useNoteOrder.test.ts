@@ -1,5 +1,5 @@
 import { describe, it, expect } from 'vitest';
-import { effectiveKey, sortNotes, keyBetween, ORDER_STEP, type OrderMap } from './useNoteOrder';
+import { effectiveKey, sharedKey, sortNotes,keyBetween, ORDER_STEP, type OrderMap } from './useNoteOrder';
 import type { Note } from '../types/note';
 
 function note(id: string, updatedMs: number): Note {
@@ -37,6 +37,16 @@ describe('effectiveKey', () => {
   it('keeps the manual key after the note is edited (a placed note stays put)', () => {
     const order: OrderMap = { a: { key: 9_000_000, setAt: 5000 } };
     expect(effectiveKey(note('a', 6000), order)).toBe(9_000_000);
+  });
+});
+
+describe('sharedKey', () => {
+  const share = { shareId: 7, sharedUtc: '2026-01-02T00:00:00Z', updatedUtc: '2026-03-01T00:00:00Z' };
+  it('sorts by when it was shared, not the owner’s last edit', () => {
+    expect(sharedKey(share, {})).toBe(Date.parse('2026-01-02T00:00:00Z'));
+  });
+  it('a placed shared note keeps its drag key', () => {
+    expect(sharedKey(share, { 'shared:7': { key: 42, setAt: 1 } })).toBe(42);
   });
 });
 
