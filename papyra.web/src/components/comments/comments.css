@@ -425,29 +425,11 @@
 .comment-panel__jump:disabled { cursor: default; }
 .comment-panel__jump:not(:disabled):hover .comment-thread__quote { color: var(--text-h); }
 
-/* ── Header button ────────────────────────────────────────────────────────── */
-.comments-button {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  flex: none;
-  height: 28px;
-  padding: 0 var(--space-2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-pill);
-  background: transparent;
-  color: var(--text);
-  font: 500 var(--fs-2xs) / 1 var(--sans);
-  cursor: pointer;
-}
-.comments-button:hover { color: var(--text-h); border-color: var(--border-hover); }
-.comments-button[aria-pressed='true'] { color: var(--text-h); border-color: var(--accent-border); background: var(--accent-bg); }
-.comments-button:focus-visible { outline: 2px solid var(--text-h); outline-offset: 2px; }
-.comments-button__count { color: var(--text-h); }
+/* ── Comments button ──────────────────────────────────────────────────────── */
 /* In the note's footer rail: an icon button like its neighbours, the count a
    small badge on its corner. */
-.comments-button--toolbar { position: relative; }
-.comments-button--toolbar .comments-button__count {
+.comments-button { position: relative; }
+.comments-button .comments-button__count {
   position: absolute;
   top: 1px;
   right: 0;

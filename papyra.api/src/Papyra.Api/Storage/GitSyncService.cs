@@ -179,7 +179,9 @@ public sealed class GitSyncService : BackgroundService
                 crypto = await ReadSetting(db, GitKeys.Crypto(userId), ct);
 
                 // The backup, in its published shape, built fresh from the vault.
-                await _layout.BuildAsync(user, db, plain, ct);
+                // An encrypted mirror holds locked notes readable inside its own
+                // encryption; a plain one keeps them sealed (with their keys).
+                await _layout.BuildAsync(user, db, plain, ct, sealedVault: mode != "encrypted");
             }
             branch = string.IsNullOrWhiteSpace(branch) ? "main" : branch.Trim();
 

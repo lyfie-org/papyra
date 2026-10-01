@@ -31,6 +31,11 @@ interface Props {
   onToggleSecure: () => void;
   /** The comments button, when comments are on for this note. */
   comments?: ReactNode;
+  /**
+   * Focus mode: only the writing tools (formatting, colour, history, comments,
+   * share), always visible. Archive, lock and delete wait until you leave it.
+   */
+  focus?: boolean;
 }
 
 export default function NoteToolbar({
@@ -47,6 +52,7 @@ export default function NoteToolbar({
   canToggleSecure,
   onToggleSecure,
   comments,
+  focus = false,
 }: Props) {
   const { online } = useSyncState();
   const [paletteOpen, setPaletteOpen] = useState(false);
@@ -56,7 +62,7 @@ export default function NoteToolbar({
   useDismiss(paletteRef, paletteOpen, closePalette);
 
   return (
-    <div className="note-toolbar">
+    <div className={`note-toolbar${focus ? ' note-toolbar--focus' : ''}`}>
       {/* Shows the formatting toolbar (headings, lists, table, link a note,
           mention, embeds…) above the body. Settings → Appearance can keep it
           open on every note. */}
@@ -111,14 +117,16 @@ export default function NoteToolbar({
 
       {comments}
 
-      <button
-        type="button"
-        className="note-toolbar__btn"
-        aria-label="Archive note"
-        onClick={onArchive}
-      >
-        <Archive size={18} />
-      </button>
+      {!focus && (
+        <button
+          type="button"
+          className="note-toolbar__btn"
+          aria-label="Archive note"
+          onClick={onArchive}
+        >
+          <Archive size={18} />
+        </button>
+      )}
 
       {/* Sharing was reachable only from the card. Opening a note to work on it
           and then wanting to send it to someone is the ordinary order of events,
@@ -137,33 +145,37 @@ export default function NoteToolbar({
 
       {/* Locking is the only way into the Vault, and there was no control for it
           anywhere in the UI — the note had to be edited on disk. */}
-      <button
-        type="button"
-        className={`note-toolbar__btn${secure ? ' is-active' : ''}`}
-        aria-pressed={secure}
-        aria-label={secure ? 'Unlock this note' : 'Lock this note'}
-        disabled={!canToggleSecure}
-        title={!canToggleSecure
-          ? 'Unlock the note with your device first'
-          : secure
-            ? 'Unlock — the note leaves the Vault and becomes searchable again'
-            : 'Lock — moves the note to the Vault, hidden until you unlock it'}
-        onClick={onToggleSecure}
-      >
-        {secure ? <Lock size={18} /> : <LockOpen size={18} />}
-      </button>
+      {!focus && (
+        <>
+          <button
+            type="button"
+            className={`note-toolbar__btn${secure ? ' is-active' : ''}`}
+            aria-pressed={secure}
+            aria-label={secure ? 'Unlock this note' : 'Lock this note'}
+            disabled={!canToggleSecure}
+            title={!canToggleSecure
+              ? 'Unlock the note with your device first'
+              : secure
+                ? 'Unlock — the note leaves the Vault and becomes searchable again'
+                : 'Lock — moves the note to the Vault, hidden until you unlock it'}
+            onClick={onToggleSecure}
+          >
+            {secure ? <Lock size={18} /> : <LockOpen size={18} />}
+          </button>
 
-      <button
-        type="button"
-        className="note-toolbar__btn note-toolbar__btn--danger"
-        aria-label="Delete note"
-        // Deleting the .md is a server-side move with no offline equivalent.
-        disabled={!online}
-        title={online ? undefined : 'Needs a connection'}
-        onClick={onTrash}
-      >
-        <Trash2 size={18} />
-      </button>
+          <button
+            type="button"
+            className="note-toolbar__btn note-toolbar__btn--danger"
+            aria-label="Delete note"
+            // Deleting the .md is a server-side move with no offline equivalent.
+            disabled={!online}
+            title={online ? undefined : 'Needs a connection'}
+            onClick={onTrash}
+          >
+            <Trash2 size={18} />
+          </button>
+        </>
+      )}
     </div>
   );
 }

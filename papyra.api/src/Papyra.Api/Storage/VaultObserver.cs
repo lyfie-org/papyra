@@ -36,6 +36,7 @@ public sealed class VaultObserver : BackgroundService
     private readonly ConflictState? _conflicts;
     private readonly IHubContext<NotesHub>? _hub;
     private readonly Collab.ICollabEngine? _collab;
+    private readonly LockedNoteSealer? _sealer;
     private readonly ILogger<VaultObserver> _logger;
 
     // One watcher per tenant, keyed by userId.
@@ -59,7 +60,8 @@ public sealed class VaultObserver : BackgroundService
         IHubContext<NotesHub>? hub = null,
         SearchIndexService? search = null,
         ConflictState? conflicts = null,
-        Collab.ICollabEngine? collab = null)
+        Collab.ICollabEngine? collab = null,
+        LockedNoteSealer? sealer = null)
     {
         _options = options;
         _storage = storage;
@@ -70,6 +72,7 @@ public sealed class VaultObserver : BackgroundService
         _search = search;
         _conflicts = conflicts;
         _collab = collab;
+        _sealer = sealer;
     }
 
     protected override Task ExecuteAsync(CancellationToken stoppingToken)
@@ -184,6 +187,10 @@ public sealed class VaultObserver : BackgroundService
                 {
                     var existed = _state.TryGet(userId, path, out _);
                     _state.Upsert(userId, path, note);
+                    // A locked note written readable from outside (another editor,
+                    // a sync tool): encrypt it again straight away.
+                    if (note.NeedsSealing && _sealer is not null)
+                        await _sealer.SealLiveAsync(userId, path, note, token);
                     _search?.IndexNote(userId, note);
                     await Broadcast(userId, existed ? "NoteUpdated" : "NoteCreated", note, token);
                     // Changed outside the API (git sync, Syncthing, another editor):

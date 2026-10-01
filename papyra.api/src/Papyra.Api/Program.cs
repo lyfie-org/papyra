@@ -79,8 +79,12 @@ builder.Services.AddDbContext<AppDbContext>((sp, options) =>
 });
 
 // Zero-trust markdown engine (filesystem is the authority; this is the only
-// thing that serializes notes to/from .md).
+// thing that serializes notes to/from .md). Locked notes are sealed on the way
+// to disk with each user's key (LockedNoteCipher), and swept into that form at
+// boot wherever they are still readable (LockedNoteSealer).
+builder.Services.AddSingleton<LockedNoteCipher>();
 builder.Services.AddSingleton<MarkdownStorageService>();
+builder.Services.AddSingleton<LockedNoteSealer>();
 
 // Per-user manual note ordering (drag positions), persisted under .papyra/.
 builder.Services.AddSingleton<OrderStore>();
@@ -142,6 +146,7 @@ builder.Services.AddSingleton<VaultObserver>();
 builder.Services.AddSingleton<JobRegistry>();
 
 builder.Services.AddHostedService<ColdBootDiffService>();
+builder.Services.AddHostedService<LockedNoteSweepService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<VaultObserver>());
 // Registered as a singleton as well as a hosted service so the housekeeping
 // endpoint can run the same sweep on demand — a 24h timer is not something an
@@ -1460,7 +1465,7 @@ auth.MapPost("/setup", async (
 // generic 401 for unknown user and bad password so we don't leak which one failed.
 auth.MapPost("/login", async (
     LoginRequest body, HttpContext http, AppDbContext db, LoginThrottle throttle, EmailSender email,
-    PendingSignInStore pending, StepUpService stepUp, TotpService totp, CancellationToken ct) =>
+    PendingSignInStore pending, StepUpService stepUp, TotpService totp, LockedNoteCipher lockedNotes, CancellationToken ct) =>
 {
     if (string.IsNullOrWhiteSpace(body.Username) || string.IsNullOrWhiteSpace(body.Password))
         return Results.BadRequest(new { error = "Username and password are required." });
@@ -1498,6 +1503,9 @@ auth.MapPost("/login", async (
     // to "does this account exist".
     if (user!.DisabledUtc is not null) return AccountDisabled();
     var remember = body.Remember == true;
+    // The one moment the password is in hand: keep the copy of the locked-note
+    // keys sealed under it current, so a plain backup can be restored with it.
+    lockedNotes.EnsureSealed(user.Id.ToString(), body.Password, user.PasswordHash);
 
     // Two-step sign-in: the password was right, now the authenticator. A browser
     // the person told to remember them skips it until that runs out.
@@ -2495,7 +2503,7 @@ auth.MapDelete("/avatar", (ClaimsPrincipal principal, IConfiguration config, IHo
 
 auth.MapPost("/password", async (
     PasswordRequest body, ClaimsPrincipal principal, AppDbContext db, UnlockTokenStore unlockTokens,
-    EmailSender email, GitSyncService git, HttpContext http, CancellationToken ct) =>
+    EmailSender email, GitSyncService git, LockedNoteCipher lockedNotes, HttpContext http, CancellationToken ct) =>
 {
     if (PasswordPolicy.Validate(body.Next) is { } weak)
         return Results.BadRequest(new { error = weak });
@@ -2513,6 +2521,7 @@ auth.MapPost("/password", async (
     user.MustChangePassword = false;
     await RewrapGitBackupKeyAsync(db, git, user.Id.ToString(), body.Next!, ct);
     await db.SaveChangesAsync(ct);
+    lockedNotes.EnsureSealed(user.Id.ToString(), body.Next!, user.PasswordHash);
     unlockTokens.RevokeUser(user.Id.ToString());
     // Everywhere else signs in again with the new password.
     await Sessions.RevokeAllAsync(db, user.Id, Sessions.CurrentSid(http.User), ct);
@@ -3437,6 +3446,7 @@ notes.MapPut("/{id}", async (
     HttpContext http,
     ICollabEngine collab,
     NoteWriteLocks writeLocks,
+    LockedNoteSealer sealer,
     CancellationToken ct) =>
 {
     // A new note's file starts under its id until it has a title (then it is
@@ -3556,6 +3566,10 @@ notes.MapPut("/{id}", async (
     await storage.WriteAsync(path, note, ct);
     state.Upsert(uid, path, note);
     search.IndexNote(uid, note); // watcher skips our own write echo, so index here
+
+    // Just locked: its history (including the version captured a moment ago)
+    // and any saved live-editing state still hold it readable.
+    if (note.Secure && !wasSecure && prior is not null) await sealer.SealHistoryAsync(uid, id, ct);
 
     archiver.Enqueue(uid, id, note.Body); // background-archive any new URLs in the body
     mediaJobs.EnqueueNewRefs(uid, prior?.Body, note.Body); // OCR / transcribe newly embedded attachments
@@ -5470,13 +5484,19 @@ app.MapGet("/api/search", (string? q, ClaimsPrincipal user, SearchIndexService s
     if (string.IsNullOrWhiteSpace(q)) return Results.Ok(Array.Empty<object>());
 
     var uid = Uid(user);
-    var results = search.Search(uid, q).Select(hit =>
+    // Locked titles aren't in the index (it's on disk; they're encrypted there),
+    // so they're matched here, against the vault in memory, and merged in.
+    var hits = search.Search(uid, q).ToDictionary(h => h.Id, StringComparer.Ordinal);
+    foreach (var t in search.MatchTitles(q, state.Snapshot(uid).Where(n => n.Secure && !n.Trashed)))
+        hits[t.Id] = hits.TryGetValue(t.Id, out var h) ? h with { Score = h.Score + t.Score } : t;
+    var results = hits.Values.OrderByDescending(h => h.Score).Select(hit =>
     {
         var note = state.PathFor(uid, hit.Id) is { } p && state.TryGet(uid, p, out var n) ? n : null;
         // A secure note stays findable by title, but its body must never leak
         // through a search snippet — that would defeat the unlock gate.
         var snippet = note is not null && !note.Secure ? search.BuildSnippet(q, note.Body) : string.Empty;
-        return new { id = hit.Id, title = hit.Title, snippet, score = hit.Score, secure = note?.Secure ?? false };
+        var title = note?.Secure == true ? note.Title : hit.Title;
+        return new { id = hit.Id, title, snippet, score = hit.Score, secure = note?.Secure ?? false };
     }).ToArray();
 
     return Results.Ok(results);
@@ -6271,6 +6291,7 @@ app.MapGet("/api/export", async (
     ClaimsPrincipal user,
     HttpContext http,
     VaultState state,
+    MarkdownStorageService storage,
     AppDbContext db,
     ExportTicketStore tickets,
     BlockAnchorCleanup anchors,
@@ -6310,7 +6331,7 @@ app.MapGet("/api/export", async (
     // Notes compress fast; attachments are stored as they are — pictures, video
     // and PDFs are already compressed, and squeezing gigabytes again only burns
     // CPU while the download waits.
-    void AddFile(ZipArchive zip, string file, string entryName)
+    void AddFile(ZipArchive zip, string file, string entryName, bool locked)
     {
         var isNote = file.EndsWith(".md", StringComparison.OrdinalIgnoreCase);
         var entry = zip.CreateEntry(entryName, isNote ? CompressionLevel.Fastest : CompressionLevel.NoCompression);
@@ -6318,7 +6339,12 @@ app.MapGet("/api/export", async (
         using var target = entry.Open();
         if (file.EndsWith(".md", StringComparison.OrdinalIgnoreCase))
         {
-            var text = BlockResolver.StripAnchors(File.ReadAllText(file), keepAnchors);
+            var raw = File.ReadAllText(file);
+            // Locked notes are encrypted on disk. The vault was opened to authorize
+            // this export, and a file only this server can read is no export at
+            // all — they leave readable, title and all.
+            if (locked) raw = storage.Serialize(storage.Deserialize(raw, file));
+            var text = BlockResolver.StripAnchors(raw, keepAnchors);
             var bytes = System.Text.Encoding.UTF8.GetBytes(text);
             target.Write(bytes, 0, bytes.Length);
         }
@@ -6428,7 +6454,7 @@ app.MapGet("/api/export", async (
             foreach (var (file, name) in entries)
             {
                 ct.ThrowIfCancellationRequested();
-                if (File.Exists(file)) AddFile(archive, file, name); // gone since the count: skipped
+                if (File.Exists(file)) AddFile(archive, file, name, locked: name.StartsWith("vault/", StringComparison.Ordinal)); // gone since the count: skipped
             }
         }
         return body.FlushAsync(ct);
@@ -7114,6 +7140,17 @@ static async Task<(string? Error, string? Code, GitRestoreSource? Source)> Stage
             var target = Path.Combine(destPlain, rel);
             Directory.CreateDirectory(Path.GetDirectoryName(target)!);
             File.Copy(file, target, overwrite: true);
+        }
+        // A plain backup keeps locked notes encrypted, their keys sealed under the
+        // password the backup was made with.
+        switch (BackupLayout.OpenSealedVault(destPlain, password))
+        {
+            case "password_required":
+                return ("This backup holds locked notes. Enter the Papyra password it was made with.", "password_required", null);
+            case "password_wrong":
+                return ("That password doesn't unlock this backup's locked notes.", "password_wrong", null);
+            case "damaged":
+                return ("That backup's locked-note keys are damaged.", "not_a_backup", null);
         }
         return (null, null, new GitRestoreSource("plain", null, null));
     }

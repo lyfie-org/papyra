@@ -25,6 +25,10 @@ namespace Papyra.Api.Storage;
 ///   note's own folder, marked in the <see cref="WriteRing"/> so the watcher
 ///   doesn't mistake it for a delete and a new note. Links, history and shares
 ///   all key on the id, so none of them notice.</item>
+/// <item>A locked note is the exception: its title is encrypted on disk, so its
+///   file name can't carry it either. It gets a random <c>locked-…</c> name —
+///   whatever it was called before, even a name a person chose — and goes back
+///   to a readable one when the lock comes off.</item>
 /// </list>
 /// </summary>
 public static partial class NoteFileNamer
@@ -43,6 +47,14 @@ public static partial class NoteFileNamer
     [GeneratedRegex(@"-\d+$")]
     private static partial Regex CollisionSuffix();
 
+    public const string LockedPrefix = "locked-";
+
+    [GeneratedRegex(@"^locked-[0-9a-f]{12}(?:-\d+)?$")]
+    private static partial Regex LockedName();
+
+    /// <summary>A file name (no extension) of the kind a locked note is given.</summary>
+    public static bool IsLockedName(string stem) => LockedName().IsMatch(stem);
+
     [GeneratedRegex(@"^\s*(?:#{1,6}\s+|[-*+]\s+(?:\[[ xX]\]\s+)?|\d+[.)]\s+|>\s*)*")]
     private static partial Regex LinePrefix();
 
@@ -52,6 +64,10 @@ public static partial class NoteFileNamer
     /// <summary>The name a note should have (no extension), or null when it has nothing to be named after yet.</summary>
     public static string? DesiredBaseName(Note note)
     {
+        // Random, so the name says nothing — not even which note it is. TargetPath
+        // keeps whichever locked name the file already has.
+        if (note.Secure) return LockedPrefix + Convert.ToHexStringLower(System.Security.Cryptography.RandomNumberGenerator.GetBytes(6));
+
         var fromTitle = Slug(note.Title);
         if (fromTitle.Length > 0) return fromTitle;
 
@@ -124,6 +140,10 @@ public static partial class NoteFileNamer
     {
         if (desiredBase is null) return currentPath;
         var stem = Path.GetFileNameWithoutExtension(currentPath);
+        if (IsLockedName(desiredBase))
+            // Already anonymous, or renamed now: a title in the file name is
+            // exactly what the lock hides, so even a chosen name gives way.
+            return IsLockedName(stem) ? currentPath : FreePath(Path.GetDirectoryName(currentPath)!, desiredBase, currentPath);
         if (Fits(stem, desiredBase)) return currentPath;
         // A name a person chose ("My Recipes.md" from Obsidian, or typed in a
         // file manager) is theirs: other apps may link to it by that name. Only

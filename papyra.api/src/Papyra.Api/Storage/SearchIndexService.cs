@@ -1,4 +1,5 @@
 using Lucene.Net.Analysis.Standard;
+using Lucene.Net.Analysis.TokenAttributes;
 using Lucene.Net.Documents;
 using Lucene.Net.Index;
 using Lucene.Net.QueryParsers.Classic;
@@ -105,7 +106,10 @@ public sealed class SearchIndexService : IDisposable
         new StringField("key", DocKey(userId, note.Id), Field.Store.NO),
         new StringField("id", note.Id, Field.Store.YES),
         new StringField("userId", userId, Field.Store.YES),
-        new TextField("title", note.Title ?? string.Empty, Field.Store.YES) { Boost = 2f },
+        // A locked note's title is encrypted on disk, and the index is on disk too
+        // (indexed terms are readable from it even when not stored), so it stays
+        // out; the search route matches locked titles in memory (MatchTitles).
+        new TextField("title", note.Secure ? string.Empty : note.Title ?? string.Empty, Field.Store.YES) { Boost = 2f },
         new StringField("tags", string.Join(' ', note.Tags), Field.Store.YES),
         // A secure note is findable by title and tags only. Indexing its body would
         // turn search into an oracle for the locked text: a hit on a word answers
@@ -171,6 +175,34 @@ public sealed class SearchIndexService : IDisposable
             }
         }
         return byNote.Values.OrderByDescending(r => r.Score).ToList();
+    }
+
+    // Title matches computed in memory, for notes whose titles never enter the
+    // index (locked notes). Same analyzer as the index, so the same words match;
+    // a hit scores like a boosted title term per word it shares with the query.
+    public IReadOnlyList<SearchHit> MatchTitles(string queryText, IEnumerable<Note> notes)
+    {
+        var wanted = Terms(queryText);
+        if (wanted.Count == 0) return [];
+        var hits = new List<SearchHit>();
+        foreach (var note in notes)
+        {
+            var shared = Terms(note.Title).Count(wanted.Contains);
+            if (shared > 0) hits.Add(new SearchHit(note.Id, note.Title, 2f * shared / wanted.Count));
+        }
+        return hits;
+    }
+
+    private HashSet<string> Terms(string? text)
+    {
+        var terms = new HashSet<string>(StringComparer.Ordinal);
+        if (string.IsNullOrWhiteSpace(text)) return terms;
+        using var stream = _analyzer.GetTokenStream("title", text);
+        var term = stream.AddAttribute<ICharTermAttribute>();
+        stream.Reset();
+        while (stream.IncrementToken()) terms.Add(term.ToString());
+        stream.End();
+        return terms;
     }
 
     // A ~150-char highlighted snippet for a query over a body string. Falls back to

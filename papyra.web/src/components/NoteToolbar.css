@@ -78,6 +78,11 @@
   cursor: pointer;
   transition: background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
 }
+.note-close--focus {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+}
 .note-close:hover { border-color: var(--border-hover); background: var(--accent-bg); }
 .note-close:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 :is(.note-editor--colored, .shared-note--colored) .note-close {
@@ -90,4 +95,10 @@
    targets and give up the gaps between them instead. */
 @media (max-width: 620px) {
   .note-toolbar { gap: 0; }
+}
+
+/* Focus mode: the writing tools stay in view — there is nothing else on the
+   page to hover away to. */
+.note-toolbar--focus {
+  opacity: 1;
 }

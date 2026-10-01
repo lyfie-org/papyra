@@ -39,4 +39,10 @@ public class Note
     // JsonIgnore'd: an internal preservation bag, never part of the API payload.
     [JsonIgnore]
     public Dictionary<string, object?> ExtraFrontmatter { get; set; } = [];
+
+    // Read from a file that is locked but still readable on disk (written before
+    // encryption at rest, by another tool, or restored from a backup) — the next
+    // write seals it. See LockedNoteCipher.
+    [JsonIgnore]
+    public bool NeedsSealing { get; set; }
 }

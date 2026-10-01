@@ -10,7 +10,9 @@ namespace Papyra.Api.Storage;
 // Zero-trust markdown engine: the .md file (YAML frontmatter + body) is the
 // source of truth. Reads/writes are crash-safe (atomic replace) and tolerant of
 // foreign YAML keys (Obsidian/Syncthing etc.) — unknown keys are preserved, never
-// stripped, never fatal. Registered as a singleton.
+// stripped, never fatal. A locked note's title and body are sealed on the way
+// to disk and opened on the way back (see LockedNoteCipher), so every caller
+// above this works with readable notes. Registered as a singleton.
 public sealed class MarkdownStorageService
 {
     // Known frontmatter keys we own; everything else is foreign and preserved.
@@ -45,14 +47,22 @@ public sealed class MarkdownStorageService
         .WithNamingConvention(CamelCaseNamingConvention.Instance)
         .Build();
 
+    // Null in unit tests that exercise the format alone: locked notes then stay readable.
+    private readonly LockedNoteCipher? _cipher;
+
+    public MarkdownStorageService(LockedNoteCipher? cipher = null) => _cipher = cipher;
+
     // ── Pure (string ⇄ Note) ────────────────────────────────────────────────
 
     // Parse a raw .md document into a Note. Never throws on unknown/garbage YAML.
-    public Note Deserialize(string content)
+    // With the file's `path`, a sealed locked note is opened with its owner's key;
+    // one that can't be (another user's, or damaged) keeps the envelope as its
+    // body, which Serialize writes back untouched.
+    public Note Deserialize(string content, string? path = null)
     {
         var (frontmatter, body) = SplitFrontmatter(content ?? string.Empty);
 
-        return new Note
+        var note = new Note
         {
             Id = GetString(frontmatter, KeyId) ?? string.Empty,
             Title = GetString(frontmatter, KeyTitle) ?? string.Empty,
@@ -70,13 +80,28 @@ public sealed class MarkdownStorageService
                 .Where(kv => !KnownKeys.Contains(kv.Key))
                 .ToDictionary(kv => kv.Key, kv => kv.Value),
         };
+
+        if (note.Secure)
+        {
+            if (!LockedNoteCipher.IsEnvelope(body)) note.NeedsSealing = _cipher is not null;
+            else if (_cipher?.UserFor(path) is { } uid && _cipher.TryOpen(uid, body, out var title, out var plain))
+            {
+                note.Title = title;
+                note.Body = plain;
+            }
+        }
+        return note;
     }
 
     // Render a Note back to a .md document. Foreign keys are merged through
     // untouched: first from the note's own carried bag (so imports keep them), then
     // overlaid by `preserve` — the existing file's frontmatter — which wins, since
     // that reflects whatever a sync tool most recently wrote to disk.
-    public string Serialize(Note note, IDictionary<string, object?>? preserve = null)
+    //
+    // With the destination `path` under a user's dir, a locked note is sealed:
+    // no `title` key, and the body is the envelope. Without one (an export, a
+    // backup's readable vault/) it is written readable.
+    public string Serialize(Note note, IDictionary<string, object?>? preserve = null, string? path = null)
     {
         var fm = new Dictionary<string, object?>(note.ExtraFrontmatter);
         if (preserve is not null)
@@ -111,8 +136,21 @@ public sealed class MarkdownStorageService
             fm.Remove(KeyTrashedAt);
         }
 
+        var body = note.Body;
+        if (note.Secure && LockedNoteCipher.IsEnvelope(body))
+        {
+            // Couldn't be opened on read: carry the sealed text through as it was.
+            fm.Remove(KeyTitle);
+            body = body.Trim();
+        }
+        else if (note.Secure && _cipher?.UserFor(path) is { } uid)
+        {
+            fm.Remove(KeyTitle);
+            body = _cipher.Seal(uid, note.Title, note.Body);
+        }
+
         var yaml = _yamlWriter.Serialize(fm).TrimEnd('\n', '\r');
-        return $"---\n{yaml}\n---\n\n{note.Body}";
+        return $"---\n{yaml}\n---\n\n{body}";
     }
 
     // ── Disk (crash-safe I/O) ────────────────────────────────────────────────
@@ -122,7 +160,7 @@ public sealed class MarkdownStorageService
     {
         if (!File.Exists(path)) return null;
         var content = await WithBackoff(() => File.ReadAllTextAsync(path, ct));
-        var note = Deserialize(content);
+        var note = Deserialize(content, path);
         // mtime is the source of "last modified" — not a frontmatter key.
         note.Updated = File.GetLastWriteTimeUtc(path);
         return note;
@@ -139,7 +177,7 @@ public sealed class MarkdownStorageService
             ? SplitFrontmatter(await WithBackoff(() => File.ReadAllTextAsync(path, ct))).Frontmatter
             : null;
 
-        var content = Serialize(note, existing);
+        var content = Serialize(note, existing, path);
 
         var dir = Path.GetDirectoryName(path);
         if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);

@@ -30,10 +30,9 @@ import NoteHistory, { type HistoryVersion, type HistoryView } from './NoteHistor
 import NoteToc from './NoteToc';
 import SecureNoteGate from './SecureNoteGate';
 import ShareDialog from './ShareDialog';
-import { Maximize2, Minimize2, Pin, RefreshCw, Volume2, VolumeX } from 'lucide-react';
+import { Maximize2, Minimize2, Pin, RefreshCw } from 'lucide-react';
 import { useFocus } from '../hooks/useFocus';
 import { useDialogFocus } from '../hooks/useDialogFocus';
-import { useAmbient } from '../hooks/useAmbient';
 import { useAlwaysShowEditorToolbar } from '../hooks/useEditorToolbar';
 import './NoteEditor.css';
 import { editedLabel, fullStamp, useMinuteTick, useTimeZone } from '../lib/timeZone';
@@ -125,7 +124,6 @@ export default function NoteEditor({ note, isDraft = false }: { note: Note; isDr
   // updates while focused). Aliased to avoid clashing with the conflict-banner
   // `pending` state below.
   const { focus, pending: pendingUpdates, enter: enterFocus, exit: exitFocus, flush: flushUpdates } = useFocus();
-  const ambient = useAmbient();
   // The formatting toolbar above the body. Each note opens with the Settings
   // preference ("always show"), and the footer toggle overrides it for the note
   // in hand. It is a live editor prop — showing or hiding it never remounts the
@@ -782,31 +780,6 @@ export default function NoteEditor({ note, isDraft = false }: { note: Note; isDr
       )}
 
       <div ref={editorScrollRef} className="note-editor__scroll">
-      {focus && (
-        <div className="note-editor__focusbar">
-          {pendingUpdates > 0 && (
-            <button type="button" className="note-editor__pending" onClick={() => flushUpdates()}>
-              <RefreshCw size={14} /> {pendingUpdates} new update{pendingUpdates > 1 ? 's' : ''} pending
-            </button>
-          )}
-          <button
-            type="button"
-            className="note-editor__focusbtn"
-            aria-pressed={ambient.playing}
-            aria-label={ambient.playing ? 'Mute ambient audio' : 'Play ambient audio'}
-            onClick={ambient.toggle}
-          >
-            {ambient.playing ? <Volume2 size={16} /> : <VolumeX size={16} />}
-          </button>
-          {commentsOn && comments.data && !history && (
-            <CommentsButton count={openCommentCount} pressed={commentsPanel} onClick={() => setCommentsPanel(o => !o)} />
-          )}
-          <button type="button" className="note-editor__focusbtn" aria-label="Exit focus mode" onClick={exitFocus}>
-            <Minimize2 size={16} />
-          </button>
-        </div>
-      )}
-
       {history && <div ref={setDiffSlot} className="note-editor__diff-slot" />}
 
       {!focus && <NoteToc scrollRef={editorScrollRef} />}
@@ -897,7 +870,7 @@ export default function NoteEditor({ note, isDraft = false }: { note: Note; isDr
                 key={`${note.id}-live-${room.generation}`}
                 initialTheme={theme}
                 colored={colored}
-                toolbar={toolbarShown && !focus}
+                toolbar={toolbarShown}
                 toolbarAlignment="center"
                 toolbarLayout={PAPYRA_TOOLBAR_LAYOUT}
                 toolbarItems={toolbarItems}
@@ -936,9 +909,9 @@ export default function NoteEditor({ note, isDraft = false }: { note: Note; isDr
           readOnly={collabLive}
           initialTheme={theme}
           colored={colored}
-          // Not in focus mode (distraction-free) or while history previews an
-          // old version (the canvas is read-only then).
-          toolbar={toolbarShown && !focus && !history}
+          // Not while history previews an old version (the canvas is
+          // read-only then).
+          toolbar={toolbarShown && !history}
           toolbarAlignment="center"
           toolbarLayout={PAPYRA_TOOLBAR_LAYOUT}
           toolbarItems={toolbarItems}
@@ -1042,36 +1015,48 @@ export default function NoteEditor({ note, isDraft = false }: { note: Note; isDr
       {!isLocked && !history && <MediaDropZone editor={lexicalEditor} sheetRef={sheetRef} />}
 
       {/* Actions and save state sit under the note body, outside the scroll
-          area, so a long note keeps them in reach at the bottom of the sheet. */}
-      {!focus && (
-        <footer className="note-editor__footer">
-          <NoteToolbar
-            formattingOpen={toolbarShown}
-            onFormatting={() => setToolbarOverride({ scope: toolbarScope, shown: !toolbarShown })}
-            color={note.color}
-            onPickColor={(c) => void saveFrontmatter({ color: c })}
-            historyOpen={history}
-            onHistory={() => (history ? leaveHistory() : void openHistory())}
-            comments={commentsOn && comments.data && !history
-              ? <CommentsButton inToolbar count={openCommentCount} pressed={commentsPanel} onClick={() => setCommentsPanel(o => !o)} />
-              : null}
-            secure={note.secure ?? false}
-            canToggleSecure={!isLocked}
-            onToggleSecure={() => void toggleSecure()}
-            onArchive={() => void archive()}
-            onShare={() => void openShare()}
-            onTrash={() => {
-              void trash();
-            }}
-          />
-          <span className="note-editor__status" role="status">
-            {STATUS_LABEL[status]}
-          </span>
-          {!isDraft && !history && <EditedStamp updated={note.updated} />}
-          {/* Same as clicking outside the sheet. */}
+          area, so a long note keeps them in reach at the bottom of the sheet.
+          Focus mode keeps the writing tools here too, and swaps Close for the
+          way back out of focus. */}
+      <footer className="note-editor__footer">
+        <NoteToolbar
+          focus={focus}
+          formattingOpen={toolbarShown}
+          onFormatting={() => setToolbarOverride({ scope: toolbarScope, shown: !toolbarShown })}
+          color={note.color}
+          onPickColor={(c) => void saveFrontmatter({ color: c })}
+          historyOpen={history}
+          onHistory={() => (history ? leaveHistory() : void openHistory())}
+          comments={commentsOn && comments.data && !history
+            ? <CommentsButton count={openCommentCount} pressed={commentsPanel} onClick={() => setCommentsPanel(o => !o)} />
+            : null}
+          secure={note.secure ?? false}
+          canToggleSecure={!isLocked}
+          onToggleSecure={() => void toggleSecure()}
+          onArchive={() => void archive()}
+          onShare={() => void openShare()}
+          onTrash={() => {
+            void trash();
+          }}
+        />
+        {focus && pendingUpdates > 0 && (
+          <button type="button" className="note-editor__pending" onClick={() => flushUpdates()}>
+            <RefreshCw size={14} /> {pendingUpdates} new update{pendingUpdates > 1 ? 's' : ''} pending
+          </button>
+        )}
+        <span className="note-editor__status" role="status">
+          {STATUS_LABEL[status]}
+        </span>
+        {!isDraft && !history && <EditedStamp updated={note.updated} />}
+        {focus ? (
+          <button type="button" className="note-close note-close--focus" onClick={exitFocus}>
+            <Minimize2 size={14} aria-hidden="true" /> Exit focus
+          </button>
+        ) : (
+          // Same as clicking outside the sheet.
           <button type="button" className="note-close" onClick={() => void close()}>Close</button>
-        </footer>
-      )}
+        )}
+      </footer>
 
       {shareOpen && <ShareDialog note={note} onClose={() => setShareOpen(false)} />}
       {commentsOn && !history && !isLocked && (
