@@ -1,6 +1,10 @@
 using System.Diagnostics;
+using Microsoft.Data.Sqlite;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
+using Papyra.Api.Data;
 using Papyra.Api.Storage;
 
 namespace Papyra.Tests;
@@ -191,6 +195,83 @@ public sealed class VaultObserverTests
             observer.Dispose();
             Directory.Delete(dir, recursive: true);
         }
+    }
+
+    [Fact]
+    public async Task WatchedNote_DeletedWhileStopped_IsGoneFromSearchAfterRestart()
+    {
+        // The reported sequence: API running → another tool creates a note → the
+        // watcher indexes it → API stops → the file is deleted → API starts. The
+        // cold-boot diff used to prune only by NoteCache rows, which the watcher
+        // never wrote, so search kept returning the deleted note.
+        var dir = NewTempDir();
+        var indexDir = NewTempDir();
+        using var conn = new SqliteConnection("DataSource=:memory:");
+        conn.Open(); // one in-memory database shared by every scope
+        using var services = new ServiceCollection()
+            .AddDbContext<AppDbContext>(o => o.UseSqlite(conn))
+            .BuildServiceProvider();
+        using (var setup = services.CreateScope())
+            setup.ServiceProvider.GetRequiredService<AppDbContext>().Database.EnsureCreated();
+        var scopes = services.GetRequiredService<IServiceScopeFactory>();
+
+        var options = new VaultObserverOptions { UsersDir = dir, DebounceMs = 150 };
+        var notesDir = options.UserNotesDir(Uid);
+        Directory.CreateDirectory(notesDir);
+        var path = Path.Combine(notesDir, "delete-me-later.md");
+        var search = new SearchIndexService(indexDir);
+        var observer = new VaultObserver(
+            options, new MarkdownStorageService(), new VaultState(),
+            new WriteRing(new MemoryCache(new MemoryCacheOptions())),
+            NullLogger<VaultObserver>.Instance, search: search, scopes: scopes);
+        try
+        {
+            // Running: the watcher picks the note up, indexes it and caches it.
+            await observer.StartAsync(default);
+            // Re-emit until seen (see ExternalCreate_IsPickedUp).
+            await WaitUntil(async () =>
+            {
+                if (await CachedAsync(scopes, "delete-me-later")) return true;
+                await File.WriteAllTextAsync(path, "---\nid: delete-me-later\ntitle: Delete me later\n---\n\nscratch");
+                return false;
+            }, WaitTimeoutMs);
+            Assert.Equal("delete-me-later", search.Search(Uid, "delete").Single().Id);
+            Assert.True(await CachedAsync(scopes, "delete-me-later")); // the watcher kept the cache
+
+            // Stopped: the file goes while nothing is watching.
+            await observer.StopAsync(default);
+            observer.Dispose();
+            search.Dispose();
+            File.Delete(path);
+
+            // Started again: the cold-boot diff reconciles against disk.
+            search = new SearchIndexService(indexDir);
+            using (var scope = scopes.CreateScope())
+            {
+                var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+                await new ColdBootDiffService(
+                        options, new MarkdownStorageService(), new VaultState(), search,
+                        scopes, NullLogger<ColdBootDiffService>.Instance)
+                    .RunDiffAsync(db, default);
+            }
+
+            Assert.Empty(search.Search(Uid, "delete"));
+            Assert.False(await CachedAsync(scopes, "delete-me-later"));
+        }
+        finally
+        {
+            observer.Dispose();
+            search.Dispose(); // release write.lock before deleting the index dir
+            Directory.Delete(dir, recursive: true);
+            Directory.Delete(indexDir, recursive: true);
+        }
+    }
+
+    private static async Task<bool> CachedAsync(IServiceScopeFactory scopes, string noteId)
+    {
+        using var scope = scopes.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        return await db.NoteCache.FindAsync(Uid, noteId) is not null;
     }
 
     // The observer may be mid-replace on the file while a test polls it.

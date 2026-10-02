@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using Microsoft.AspNetCore.SignalR;
+using Papyra.Api.Data;
 using Papyra.Api.Hubs;
 
 namespace Papyra.Api.Storage;
@@ -38,7 +39,12 @@ public sealed class VaultObserver : BackgroundService
     private readonly Collab.ICollabEngine? _collab;
     private readonly LockedNoteSealer? _sealer;
     private readonly ForeignNoteAdopter _adopter;
+    private readonly IServiceScopeFactory? _scopes;
     private readonly ILogger<VaultObserver> _logger;
+
+    // NoteCache writes from concurrent flushes go one at a time: SQLite has a
+    // single writer, and a rename's delete and create flushes touch the same row.
+    private readonly SemaphoreSlim _cacheGate = new(1, 1);
 
     // One watcher per tenant, keyed by userId.
     private readonly ConcurrentDictionary<string, FileSystemWatcher> _watchers =
@@ -63,7 +69,8 @@ public sealed class VaultObserver : BackgroundService
         ConflictState? conflicts = null,
         Collab.ICollabEngine? collab = null,
         LockedNoteSealer? sealer = null,
-        ForeignNoteAdopter? adopter = null)
+        ForeignNoteAdopter? adopter = null,
+        IServiceScopeFactory? scopes = null)
     {
         _options = options;
         _storage = storage;
@@ -76,6 +83,7 @@ public sealed class VaultObserver : BackgroundService
         _collab = collab;
         _sealer = sealer;
         _adopter = adopter ?? new ForeignNoteAdopter(storage, writeRing);
+        _scopes = scopes;
     }
 
     protected override Task ExecuteAsync(CancellationToken stoppingToken)
@@ -179,7 +187,14 @@ public sealed class VaultObserver : BackgroundService
                 if (_state.TryGet(userId, path, out var gone) && gone is not null)
                 {
                     _state.Remove(userId, path);
-                    _search?.RemoveNote(userId, gone.Id);
+                    // A rename flushes its old path (deleted) and new path (created)
+                    // independently; if the create landed first the note lives on
+                    // under its new path and must stay indexed.
+                    if (_state.PathFor(userId, gone.Id) is null)
+                    {
+                        _search?.RemoveNote(userId, gone.Id);
+                        await SyncCache(userId, gone.Id, null, null, token);
+                    }
                     await Broadcast(userId, "NoteDeleted", gone, token);
                 }
             }
@@ -202,6 +217,7 @@ public sealed class VaultObserver : BackgroundService
                     if (note.NeedsSealing && _sealer is not null)
                         await _sealer.SealLiveAsync(userId, path, note, token);
                     _search?.IndexNote(userId, note);
+                    await SyncCache(userId, note.Id, note, path, token);
                     await Broadcast(userId, existed ? "NoteUpdated" : "NoteCreated", note, token);
                     // Changed outside the API (git sync, Syncthing, another editor):
                     // if the note is open live, the room merges it in rather than
@@ -216,6 +232,41 @@ public sealed class VaultObserver : BackgroundService
         catch (Exception ex)
         {
             _logger.LogWarning(ex, "Failed to sync vault for {Path}", path);
+        }
+    }
+
+    // Keep the NoteCache row for (userId, noteId) in step with what was just indexed
+    // (note = null: the note is gone). Without it a note that arrived here and was
+    // deleted while the API was down had no row for the cold-boot diff to prune by.
+    // The cache is disposable — a failed write is logged, never fails the update.
+    private async Task SyncCache(string userId, string noteId, Models.Note? note, string? path, CancellationToken token)
+    {
+        if (_scopes is null || string.IsNullOrEmpty(noteId)) return;
+        await _cacheGate.WaitAsync(token);
+        try
+        {
+            using var scope = _scopes.CreateScope();
+            var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+            var row = await db.NoteCache.FindAsync([userId, noteId], token);
+            if (note is null)
+            {
+                if (row is null) return;
+                db.NoteCache.Remove(row);
+            }
+            else
+            {
+                // Read after any re-seal, so it matches the mtime the cold boot sees.
+                NoteCacheRows.Upsert(db, row, userId, note, File.GetLastWriteTimeUtc(path!));
+            }
+            await db.SaveChangesAsync(token);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            _logger.LogWarning(ex, "Failed to update the note cache for {User}/{Note}", userId, noteId);
+        }
+        finally
+        {
+            _cacheGate.Release();
         }
     }
 
@@ -275,6 +326,7 @@ public sealed class VaultObserver : BackgroundService
     {
         foreach (var watcher in _watchers.Values) watcher.Dispose();
         foreach (var cts in _debounce.Values) cts.Dispose();
+        _cacheGate.Dispose();
         base.Dispose();
     }
 }

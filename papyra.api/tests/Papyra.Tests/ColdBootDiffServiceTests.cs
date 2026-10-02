@@ -265,6 +265,43 @@ public sealed class ColdBootDiffServiceTests
         }
     }
 
+    [Fact]
+    public async Task ColdBoot_PrunesIndexedNotesThatHaveNoCacheRow()
+    {
+        // Notes saved through the API (or picked up by the watcher before it kept
+        // the cache) are indexed with no NoteCache row. Deleted while the API was
+        // down, they used to survive in search because the prune walked only the
+        // cache. Tenant 2 shares the id and still has the file: it must stay.
+        var usersDir = NewTempDir();
+        var indexDir = NewTempDir();
+        var search = new SearchIndexService(indexDir);
+        var db = NewDb();
+        try
+        {
+            UserNotesDir(usersDir);
+            var dir2 = Path.Combine(usersDir, "2", "notes");
+            Directory.CreateDirectory(dir2);
+            await File.WriteAllTextAsync(
+                Path.Combine(dir2, "delete-me-later.md"), "---\nid: delete-me-later\ntitle: Kept\n---\n\nkeeptoken");
+
+            search.IndexNote(Uid, new Note { Id = "delete-me-later", Title = "Ghost", Body = "orphantoken" });
+            search.IndexNote("3", new Note { Id = "n1", Title = "Orphan tenant", Body = "orphantoken" });
+
+            await NewService(usersDir, new VaultState(), search).RunDiffAsync(db, default);
+
+            Assert.Empty(search.Search(Uid, "orphantoken"));
+            Assert.Empty(search.Search("3", "orphantoken")); // no vault on disk at all
+            Assert.Equal("delete-me-later", search.Search("2", "keeptoken").Single().Id);
+            Assert.DoesNotContain((Uid, "delete-me-later"), search.IndexedNotes());
+        }
+        finally
+        {
+            db.Dispose();
+            search.Dispose();
+            CleanUp(usersDir, indexDir);
+        }
+    }
+
     // Build (and create) tenant "1"'s notes dir under a users-root.
     private static string UserNotesDir(string usersDir)
     {

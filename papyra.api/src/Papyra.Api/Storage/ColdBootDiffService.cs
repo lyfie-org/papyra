@@ -67,7 +67,7 @@ public sealed class ColdBootDiffService : IHostedService
         var cached = await db.NoteCache
             .ToDictionaryAsync(n => (n.UserId, n.Id), ct);
         var seen = new HashSet<(string UserId, string Id)>();
-        int indexed = 0, removed = 0;
+        var indexed = 0;
 
         foreach (var userDir in Directory.EnumerateDirectories(_options.UsersDir))
         {
@@ -110,24 +110,30 @@ public sealed class ColdBootDiffService : IHostedService
                 if (!cached.TryGetValue((userId, note.Id), out var row) || row.LastModified != mtime)
                 {
                     _search.IndexNote(userId, note);
-                    UpsertCache(db, row, note, userId, mtime);
+                    NoteCacheRows.Upsert(db, row, userId, note, mtime);
                     indexed++;
                 }
             }
         }
 
+        // Files deleted while we were down. A NoteCache row alone can't name them
+        // all: notes saved through the API are indexed with no cache row, so the
+        // index itself is asked which notes it still holds.
+        var gone = new HashSet<(string UserId, string Id)>();
         foreach (var (key, row) in cached)
         {
             if (seen.Contains(key)) continue;
-            _search.RemoveNote(key.UserId, key.Id); // file deleted while offline
             db.NoteCache.Remove(row);
-            removed++;
+            gone.Add(key);
         }
+        foreach (var key in _search.IndexedNotes())
+            if (!seen.Contains(key)) gone.Add(key);
+        _search.RemoveNotes(gone); // by (userId, id): a shared id in another vault stays
 
         await db.SaveChangesAsync(ct);
         _logger.LogInformation(
             "Cold-boot diff: {Loaded} note(s) on disk, {Indexed} (re)indexed, {Removed} pruned",
-            seen.Count, indexed, removed);
+            seen.Count, indexed, gone.Count);
     }
 
     // Rehydrate one conflict copy into the (disposable) conflict registry on boot.
@@ -143,30 +149,5 @@ public sealed class ColdBootDiffService : IHostedService
             note?.Id ?? string.Empty,
             note?.Title ?? string.Empty,
             File.GetLastWriteTimeUtc(path)));
-    }
-
-    // The DB is on disk as well: a locked note's title stays out of it.
-    private static string CachedTitle(Note note) => note.Secure ? string.Empty : note.Title;
-
-    private static void UpsertCache(
-        AppDbContext db, NoteCache? existing, Note note, string userId, DateTime mtime)
-    {
-        if (existing is null)
-        {
-            db.NoteCache.Add(new NoteCache
-            {
-                UserId = userId,
-                Id = note.Id,
-                Title = CachedTitle(note),
-                Tags = string.Join(' ', note.Tags),
-                LastModified = mtime,
-            });
-        }
-        else
-        {
-            existing.Title = CachedTitle(note);
-            existing.Tags = string.Join(' ', note.Tags);
-            existing.LastModified = mtime;
-        }
     }
 }
