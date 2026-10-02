@@ -6,6 +6,13 @@ a Docker Hub tag and a GitHub Release.
 
 <!-- new releases are inserted directly below this line -->
 
+## [0.3.3] - 2026-10-02
+
+- fix: prune deleted notes from search on cold boot even without a cache row (6efa1ca)
+- fix: never let autosave or the snapshot throttle lose an external revision (3b2ddea)
+- fix: adopt .md files created outside Papyra without an id (b5b0695)
+- fix: conflict resolver diff rows collapsing into narrow columns (53b84db)
+
 ## [0.3.2] - 2026-10-01
 
 - feat: focus-mode bottom bar, shared notes sort in with yours (4ab06df)
