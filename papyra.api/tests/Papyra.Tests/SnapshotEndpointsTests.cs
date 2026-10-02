@@ -204,6 +204,49 @@ public sealed class SnapshotEndpointsTests
     });
 
     [Fact]
+    public Task DraftVersion_IsKeptInHistory_WithoutTouchingTheNote() => InApp(unthrottled: false, async (client, uid, dir) =>
+    {
+        // The banner's Review: an editor holding unsaved "mine" adopts the outside
+        // revision, keeping its draft as a version first — inside the throttle.
+        await Put(client, "k1", "a");
+        await Put(client, "k1", "b");
+        var md = NoteFiles.Find(Path.Combine(dir, "users", uid, "notes"), "k1");
+        await File.AppendAllTextAsync(md, "\nouter\n");
+        var before = await File.ReadAllTextAsync(md);
+
+        var res = await client.PostAsJsonAsync("/api/notes/k1/snapshots", new { title = "Draft title", body = "b mine" });
+        Assert.Equal(HttpStatusCode.OK, res.StatusCode);
+        var id = (await res.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>()).GetProperty("id").GetString();
+
+        Assert.Equal(before, await File.ReadAllTextAsync(md)); // the note is untouched
+        var kept = await client.GetFromJsonAsync<Note>($"/api/notes/k1/snapshots/{id}");
+        Assert.Equal(("Draft title", "b mine"), (kept!.Title, kept.Body.Trim()));
+        Assert.Equal(["b mine", "a"], await Bodies(client, "k1"));
+
+        // Asking again keeps one copy.
+        var again = await client.PostAsJsonAsync("/api/notes/k1/snapshots", new { title = "Draft title", body = "b mine" });
+        Assert.Equal(id, (await again.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>()).GetProperty("id").GetString());
+
+        // The next save over the outside revision still archives it (see IsForeign).
+        await Put(client, "k1", "c");
+        Assert.Equal(["b\nouter", "b mine", "a"], await Bodies(client, "k1"));
+    });
+
+    [Fact]
+    public Task DraftVersion_SameAsTheNote_KeepsNothing_AndUnknownNoteIs404() => InApp(unthrottled: false, async (client, _, _) =>
+    {
+        await Put(client, "k2", "same");
+        var res = await client.PostAsJsonAsync("/api/notes/k2/snapshots", new { title = "Doc", body = "same" });
+        Assert.Equal(HttpStatusCode.OK, res.StatusCode);
+        Assert.Equal(System.Text.Json.JsonValueKind.Null,
+            (await res.Content.ReadFromJsonAsync<System.Text.Json.JsonElement>()).GetProperty("id").ValueKind);
+        Assert.Empty((await client.GetFromJsonAsync<List<SnapshotDto>>("/api/notes/k2/snapshots"))!);
+
+        var missing = await client.PostAsJsonAsync("/api/notes/nope/snapshots", new { title = "x", body = "y" });
+        Assert.Equal(HttpStatusCode.NotFound, missing.StatusCode);
+    });
+
+    [Fact]
     public Task RestoreTwiceQuickly_DoesNotOverwriteASnapshot() => InApp(unthrottled: false, async (client, _, _) =>
     {
         await Put(client, "r2", "a");
