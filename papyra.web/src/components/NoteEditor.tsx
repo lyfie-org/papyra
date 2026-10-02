@@ -46,7 +46,7 @@ import CollabJoining from './CollabJoining';
 import { useShareSummary } from '../hooks/useShares';
 import { useCollabRoom } from '../hooks/useCollabRoom';
 import { useCollabCursorLabels } from '../hooks/useCollabCursorLabels';
-import { COLLAB_HEADER, SNAPSHOT_HEADER } from '../lib/notesApi';
+import { COLLAB_HEADER } from '../lib/notesApi';
 import NoteComments, { CommentsButton } from './comments/NoteComments';
 import { useComments } from '../hooks/useComments';
 
@@ -81,7 +81,6 @@ const STATUS_LABEL = {
   saving: 'Saving…',
   saved: 'Saved to local disk',
   queued: 'Saved on this device — will sync',
-  held: 'Not saved — choose an option above',
 } as const;
 
 /** "Edited 3:42 PM", in the person's time zone; the full date on hover. */
@@ -274,15 +273,7 @@ export default function NoteEditor({ note, isDraft = false }: { note: Note; isDr
     [offerMentionShare],
   );
 
-  // A remote revision held back because the local draft is dirty (caret guard).
-  // While it is up, autosave is held too (see useAutoSave `hold`): nothing is
-  // written over it until the person picks Review or Overwrite with Local.
-  const [pending, setPending] = useState<{ title: string; body: string } | null>(null);
-  // A save that went out over it anyway (closing, opening history) resolved it:
-  // the revision is archived in History and the file holds the local text.
-  const onOverwrote = useCallback(() => setPending(null), []);
-
-  const { status, isDirty, bump, reset, flush, hold, isHeld, savedRef } = useAutoSave(note, getDraft, getSaveDraft, onSaved, isCollab, onOverwrote);
+  const { status, isDirty, bump, reset, flush, savedRef } = useAutoSave(note, getDraft, getSaveDraft, onSaved, isCollab);
   // Keyboard users land inside the editor instead of at the top of the page.
   useDialogFocus(sheetRef);
 
@@ -349,6 +340,8 @@ export default function NoteEditor({ note, isDraft = false }: { note: Note; isDr
   // What the editor currently displays — the yardstick for detecting that the
   // server snapshot (refreshed by SignalR invalidation) carries a new revision.
   const shown = useRef({ id: note.id, title: note.title, body: note.body });
+  // A remote revision held back because the local draft is dirty (caret guard).
+  const [pending, setPending] = useState<{ title: string; body: string } | null>(null);
   // A remote revision that arrived while history was open. The canvas is showing
   // a past version then, so it can neither be adopted (the remount would drop the
   // read-only preview) nor judged against the draft (the "draft" is the preview,
@@ -490,17 +483,13 @@ export default function NoteEditor({ note, isDraft = false }: { note: Note; isDr
       || draft.title !== savedRef.current.title
       || draft.body !== savedRef.current.body;
     if (!holdingUnsaved) { applyRemote(incoming); return; }
-    // Dirty: protect the caret, surface the conflict for the user to resolve —
-    // and stop autosave writing the draft over the revision meanwhile.
+    // Dirty: protect the caret, surface the conflict for the user to resolve.
     shown.current = { id: note.id, ...incoming };
-    hold(true);
     setPending(incoming);
-  }, [note, isDirty, applyRemote, savedRef, getDraft, history, collabLive, reset, hold]);
+  }, [note, isDirty, applyRemote, savedRef, getDraft, history, collabLive, reset]);
 
-  // Keep my local edits: write them over the remote revision now. The save asks
-  // the server to archive that revision first, so it stays in History; a
-  // successful save clears the banner (onOverwrote).
-  const keepLocal = useCallback(() => { void flush({ overwrite: true }); }, [flush]);
+  // Keep my local edits and let the next save overwrite the remote revision.
+  const keepLocal = useCallback(() => { setPending(null); bump(); }, [bump]);
 
   // Edits arrive from the editor itself (luthor >=2.9.1 `onChange`). Before that
   // API existed Papyra had to sniff the DOM — Lexical stops propagation of the
@@ -555,15 +544,8 @@ export default function NoteEditor({ note, isDraft = false }: { note: Note; isDr
     patchNoteInCache(queryClient, note.id, patch);
     if (isDraft) patchDraft(note.id, patch);
     fmInFlight.current++;
-    // Read now as well as when the write runs: archive re-baselines (releasing
-    // the hold) straight after queuing this.
-    const heldAtCall = isHeld();
     const run = fmChain.current.then(async () => {
       const draft = getDraft();
-      // The draft rides along, so with the "modified externally" banner up this
-      // is an overwrite like closing would be: the held revision is archived
-      // (forced past the throttle) and the banner goes.
-      const overwriting = heldAtCall || isHeld();
       // Same offline-safe seam as the autosave path: parks in the outbox when the
       // API is unreachable instead of throwing away the toggle.
       await putNote(note.id, {
@@ -572,9 +554,8 @@ export default function NoteEditor({ note, isDraft = false }: { note: Note; isDr
         body: draft.body,
         // `secure` is never sent from here (see toggleSecure); the API reads an
         // absent value as "leave the lock alone".
-      }, note.updated, { collab: collabRef.current, forceSnapshot: overwriting });
+      }, note.updated, { collab: collabRef.current });
       reset(draft);
-      if (overwriting) setPending(null);
       // A color flip remounts the editor (theme swap, see key/style below); seed the
       // fresh mount with the live text so unsaved edits survive the remount.
       latestBody.current = draft.body;
@@ -590,7 +571,7 @@ export default function NoteEditor({ note, isDraft = false }: { note: Note; isDr
     });
     fmChain.current = run;
     return run;
-  }, [getDraft, note.id, note.updated, reset, queryClient, isLocked, toast, isDraft, isHeld]);
+  }, [getDraft, note.id, note.updated, reset, queryClient, isLocked, toast, isDraft]);
 
   // Lock or unlock the note. Not through saveFrontmatter: that path parks a failed
   // write in the offline outbox, and the two refusals here are answers, not
@@ -601,17 +582,13 @@ export default function NoteEditor({ note, isDraft = false }: { note: Note; isDr
     if (isLocked) return;
     const next = !(note.secure ?? false);
     const draft = getDraft();
-    // Carries the draft: over a held revision, an overwrite (see saveFrontmatter).
-    const overwriting = isHeld();
     let res: Response;
     try {
       res = await vaultFetch(`/api/notes/${encodeURIComponent(note.id)}`, {
         method: 'PUT',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(collabRef.current ? { [COLLAB_HEADER]: 'frontmatter' } : {}),
-          ...(overwriting ? { [SNAPSHOT_HEADER]: 'force' } : {}),
-        },
+        headers: collabRef.current
+          ? { 'Content-Type': 'application/json', [COLLAB_HEADER]: 'frontmatter' }
+          : { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           title: draft.title, tags: note.tags, color: note.color, pinned: note.pinned,
           archived: note.archived, kind: note.kind, body: draft.body, secure: next,
@@ -631,13 +608,12 @@ export default function NoteEditor({ note, isDraft = false }: { note: Note; isDr
     setUnlockToChangeLock(false);
     patchNoteInCache(queryClient, note.id, { secure: next });
     reset(draft);
-    if (overwriting) setPending(null);
     latestBody.current = draft.body;
     setBody(draft.body);
     shown.current = { id: note.id, title: draft.title, body: draft.body };
     void queryClient.invalidateQueries({ queryKey: ['notes'] });
     toast(next ? 'Note locked and moved to the Vault.' : 'Note unlocked — it is back with your other notes.');
-  }, [isLocked, note, getDraft, toast, navigate, queryClient, reset, isHeld]);
+  }, [isLocked, note, getDraft, toast, navigate, queryClient, reset]);
 
   // Enter history. Flush any unsaved edits FIRST, so the live draft is on disk:
   // the server leaves out versions identical to the live file, and "Now" on the

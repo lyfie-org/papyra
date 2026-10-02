@@ -45,10 +45,4 @@ public class Note
     // write seals it. See LockedNoteCipher.
     [JsonIgnore]
     public bool NeedsSealing { get; set; }
-
-    // The file has no `title:` key — written by another tool (Obsidian, an
-    // editor), not by Papyra, which always stamps one. ReadAsync then names the
-    // note after its first heading or its file name.
-    [JsonIgnore]
-    public bool TitleMissing { get; set; }
 }

@@ -6,7 +6,6 @@ const queue = new Map<string, OutboxEntry>();
 
 vi.mock('./outbox', () => ({
   queueWrite: async (e: OutboxEntry) => { queue.set(e.id, e); },
-  pendingWrite: async (id: string) => queue.get(id),
   pendingWrites: async () => [...queue.values()],
   removeWrite: async (id: string) => { queue.delete(id); },
 }));

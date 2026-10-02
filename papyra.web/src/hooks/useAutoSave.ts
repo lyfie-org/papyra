@@ -3,7 +3,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import type { Note } from '../types/note';
 import { putNote } from '../lib/notesApi';
 
-export type SaveStatus = 'idle' | 'saving' | 'saved' | 'queued' | 'held';
+export type SaveStatus = 'idle' | 'saving' | 'saved' | 'queued';
 
 // Draft = the editable surface of a note. Tags/color/pinned ride along unchanged
 // so a body/title save never clobbers frontmatter the editor doesn't touch.
@@ -40,8 +40,6 @@ export function useAutoSave(
    * collab header, so the server keeps the room's body. Read at save time.
    */
   isCollab?: () => boolean,
-  /** A save went out over a held revision (see `hold`), which is now resolved. */
-  onOverwrote?: () => void,
 ) {
   const [status, setStatus] = useState<SaveStatus>('idle');
   // isDirty drives caret protection: a remote update may only overwrite the
@@ -54,18 +52,8 @@ export function useAutoSave(
   // normalising markdown on open shouldn't masquerade as a user edit). Also the
   // baseline used to recognise our own write echoing back through the cache.
   const saved = useRef<Draft>({ title: note.title, body: note.body });
-  // A revision the editor hasn't adopted is on disk (NoteEditor's "modified
-  // externally" banner). Autosave stands down until the person chooses — saving
-  // now would replace that revision before they had. A save that still goes out
-  // (Overwrite with Local, or closing with the banner up) asks the server to
-  // archive the revision first, so History keeps it whatever the throttle says.
-  const held = useRef(false);
 
-  /**
-   * `overwrite`: write even if the draft matches the last save — the person chose
-   * their text over a held revision, so the file must end up holding it.
-   */
-  const flush = useCallback(async (opts?: { overwrite?: boolean }) => {
+  const flush = useCallback(async () => {
     // Check the RAW (unstamped) draft first. getSaveDraft() may stamp block
     // anchors onto every un-anchored block, and a never-anchored note's stamped
     // text always differs from its on-disk (unstamped) baseline — so checking
@@ -73,14 +61,12 @@ export function useAutoSave(
     // because flush() ran (e.g. on close, or opening version history), and
     // silently rewrite + re-date a note the user never touched.
     const raw = getDraft();
-    if (!(opts?.overwrite && held.current)
-        && raw.title === saved.current.title && raw.body === saved.current.body) {
+    if (raw.title === saved.current.title && raw.body === saved.current.body) {
       setIsDirty(false);
       return; // nothing actually changed
     }
 
     const draft = (getSaveDraft ?? getDraft)();
-    const overwriting = held.current;
 
     setStatus('saving');
     // putNote parks the write in the offline outbox rather than throwing when
@@ -97,59 +83,33 @@ export function useAutoSave(
         body: draft.body,
       },
       note.updated,
-      { collab: !!isCollab?.(), forceSnapshot: overwriting },
+      { collab: !!isCollab?.() },
     );
 
     const priorBody = saved.current.body;
     saved.current = draft;
     setIsDirty(false);
     setStatus(outcome === 'queued' ? 'queued' : 'saved');
-    if (overwriting) {
-      held.current = false;
-      onOverwrote?.();
-    }
     if (outcome !== 'queued' && !isCollab?.()) onSaved?.(priorBody, draft.body);
     // Our own write is logged in the Write-Ring server-side (no broadcast echo),
     // so refresh the grid's snapshot ourselves. A queued write refreshes too —
     // the read path merges the outbox back over the server snapshot.
     queryClient.invalidateQueries({ queryKey: ['notes'] });
-  }, [getDraft, getSaveDraft, onSaved, note.id, note.tags, note.color, note.pinned, note.archived, note.kind, note.updated, queryClient, isCollab, onOverwrote]);
+  }, [getDraft, getSaveDraft, onSaved, note.id, note.tags, note.color, note.pinned, note.archived, note.kind, note.updated, queryClient, isCollab]);
 
   // Mark dirty: reset the debounce window on every keystroke (reset-on-new).
-  // While held, nothing is scheduled: the edit waits for the person's choice.
   const bump = useCallback(() => {
     setIsDirty(true);
     if (timer.current) clearTimeout(timer.current);
-    timer.current = null;
-    if (held.current) {
-      setStatus('held');
-      return;
-    }
     timer.current = setTimeout(() => {
-      if (!held.current) void flush();
+      void flush();
     }, DEBOUNCE_MS);
   }, [flush]);
 
-  // Hold (or release) autosave over a revision the editor hasn't adopted. Holding
-  // also cancels a save already scheduled from keystrokes typed just before.
-  const hold = useCallback((on: boolean) => {
-    held.current = on;
-    if (on) {
-      if (timer.current) clearTimeout(timer.current);
-      timer.current = null;
-      setStatus('held');
-    } else {
-      setStatus((s) => (s === 'held' ? 'idle' : s));
-    }
-  }, []);
-
   // Re-baseline to a known-on-disk draft without writing (used when the editor
   // adopts a remote update). Cancels any pending save and clears the dirty flag.
-  // Adopting is also the one way to resolve a hold without writing.
   const reset = useCallback((draft: Draft) => {
     if (timer.current) clearTimeout(timer.current);
-    timer.current = null;
-    held.current = false;
     saved.current = draft;
     setIsDirty(false);
     setStatus('idle');
@@ -159,20 +119,16 @@ export function useAutoSave(
   // a note never drops the last keystrokes. flush is a no-op when already clean,
   // so the redundant call after an explicit close is harmless. Held in a ref so
   // this runs only on the real unmount, not whenever flush's identity changes.
-  // Leaving with a hold up saves too (archiving the held revision): the person's
-  // words are the one copy that exists nowhere else.
   const flushRef = useRef(flush);
   useLayoutEffect(() => {
     flushRef.current = flush;
   }, [flush]);
   useEffect(() => () => {
-    if (timer.current || held.current) {
-      if (timer.current) clearTimeout(timer.current);
+    if (timer.current) {
+      clearTimeout(timer.current);
       void flushRef.current();
     }
   }, []);
 
-  const isHeld = useCallback(() => held.current, []);
-
-  return { status, isDirty, bump, reset, flush, hold, isHeld, savedRef: saved };
+  return { status, isDirty, bump, reset, flush, savedRef: saved };
 }

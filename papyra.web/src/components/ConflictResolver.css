@@ -94,12 +94,8 @@
 .conflict-resolver__swatch--del { background: var(--danger-bg); }
 .conflict-resolver__swatch--add { background: var(--accent-bg); }
 
-/* Block, not the global `pre { display: inline-flex }` — under that every row
-   became a side-by-side flex column and unchanged lines wrapped one char wide. */
 .conflict-resolver__pre {
-  display: block;
   flex: 1;
-  min-height: 0;
   margin: 0;
   padding: 0.5rem;
   overflow: auto;
@@ -128,14 +124,8 @@
   user-select: none;
 }
 
-.conflict-resolver__text {
-  flex: 1;
-  min-width: 0;
-}
-
 .conflict-resolver__actions {
   display: flex;
-  flex-wrap: wrap;
   justify-content: flex-end;
   gap: 0.5rem;
   padding: 0.75rem 1.25rem;
@@ -153,7 +143,6 @@
   color: var(--text-h);
   font-family: var(--sans);
   font-size: 0.85rem;
-  white-space: nowrap;
   cursor: pointer;
 }
 

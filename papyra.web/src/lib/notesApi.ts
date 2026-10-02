@@ -6,7 +6,7 @@
 
 import type { Note } from '../types/note';
 import {
-  pendingWrite, pendingWrites, queueWrite, removeWrite, type NoteWritePayload, type OutboxEntry,
+  pendingWrites, queueWrite, removeWrite, type NoteWritePayload, type OutboxEntry,
 } from './outbox';
 import { refreshPending, setSync, getSyncState } from './syncStatus';
 import { fetchWithProgress } from './progress';
@@ -38,19 +38,10 @@ function isOffline(res?: Response): boolean {
  */
 export const COLLAB_HEADER = 'X-Papyra-Collab';
 
-/**
- * `X-Papyra-Snapshot: force` — this write replaces a revision its editor never
- * adopted (the "modified externally" banner, an offline edit replayed over a
- * newer one). The API archives that revision first, past its snapshot throttle.
- */
-export const SNAPSHOT_HEADER = 'X-Papyra-Snapshot';
-
-function writeHeaders(collab: boolean, forceSnapshot = false): Record<string, string> {
-  const headers: Record<string, string> = collab
+function writeHeaders(collab: boolean): Record<string, string> {
+  return collab
     ? { 'Content-Type': 'application/json', [COLLAB_HEADER]: 'frontmatter' }
     : { 'Content-Type': 'application/json' };
-  if (forceSnapshot) headers[SNAPSHOT_HEADER] = 'force';
-  return headers;
 }
 
 /**
@@ -82,22 +73,12 @@ export async function putNote(
   id: string,
   payload: NoteWritePayload,
   base?: string,
-  /**
-   * `collab`: sent from a live editor — metadata only, the room owns the body.
-   * `forceSnapshot`: replacing a revision the editor never adopted (see SNAPSHOT_HEADER).
-   */
-  opts?: { collab?: boolean; forceSnapshot?: boolean },
+  /** `collab`: sent from a live editor — metadata only, the room owns the body. */
+  opts?: { collab?: boolean },
 ): Promise<SaveOutcome> {
   const collab = !!opts?.collab;
-  const forceSnapshot = !!opts?.forceSnapshot;
   const park = async (): Promise<SaveOutcome> => {
-    // A later write to the same note replaces the queued one, but must not drop
-    // its promise to archive the revision it was going to overwrite.
-    const sticky = forceSnapshot || !!(await pendingWrite(id).catch(() => undefined))?.forceSnapshot;
-    await queueWrite({
-      id, payload, base, queuedAt: new Date().toISOString(),
-      ...(collab ? { collab } : {}), ...(sticky ? { forceSnapshot: true } : {}),
-    });
+    await queueWrite({ id, payload, base, queuedAt: new Date().toISOString(), ...(collab ? { collab } : {}) });
     await refreshPending();
     setSync({ online: false });
     return 'queued';
@@ -112,7 +93,7 @@ export async function putNote(
   try {
     res = await fetch(`/api/notes/${encodeURIComponent(id)}`, {
       method: 'PUT',
-      headers: writeHeaders(collab, forceSnapshot),
+      headers: writeHeaders(collab),
       body: JSON.stringify(payload),
       // A hung server must not hold a save open forever; the outbox is right there.
       signal: AbortSignal.timeout(SAVE_TIMEOUT_MS),
@@ -201,10 +182,9 @@ export function mergeQueued(notes: Note[], queued: OutboxEntry[]): Note[] {
 
 /**
  * Replay the outbox oldest-first. Last-write-wins: a queued edit overwrites a
- * newer server revision, but that revision is archived first — the write asks
- * for it (SNAPSHOT_HEADER) past the API's snapshot throttle, which would
- * otherwise fold it away — so the overwritten text stays recoverable, and we
- * surface which notes that happened to.
+ * newer server revision, but the API snapshots the previous body before every
+ * write, so the overwritten text stays recoverable — and we surface which notes
+ * that happened to.
  */
 export async function flushOutbox(): Promise<{ synced: number; conflicts: string[] }> {
   const queued = await pendingWrites();
@@ -235,7 +215,7 @@ export async function flushOutbox(): Promise<{ synced: number; conflicts: string
     try {
       res = await fetch(`/api/notes/${encodeURIComponent(entry.id)}`, {
         method: 'PUT',
-        headers: writeHeaders(!!entry.collab, !!entry.forceSnapshot || movedOn),
+        headers: writeHeaders(!!entry.collab),
         body: JSON.stringify(entry.payload),
       });
     } catch {

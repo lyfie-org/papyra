@@ -32,11 +32,6 @@ export interface OutboxEntry {
    * writer's — the body belongs to the room, so the server keeps its own.
    */
   collab?: boolean;
-  /**
-   * The write replaces a revision its editor never adopted: the replay asks
-   * the API to archive that revision first (see notesApi SNAPSHOT_HEADER).
-   */
-  forceSnapshot?: boolean;
 }
 
 const DB_NAME = 'papyra-outbox';

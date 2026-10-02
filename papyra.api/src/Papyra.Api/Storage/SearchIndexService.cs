@@ -133,42 +133,6 @@ public sealed class SearchIndexService : IDisposable
         _writer.Commit();
     }
 
-    /// <summary>Drop several tenants' notes in one commit (see <see cref="RemoveNote"/>).</summary>
-    public void RemoveNotes(IEnumerable<(string UserId, string Id)> notes)
-    {
-        foreach (var (userId, id) in notes)
-        {
-            if (string.IsNullOrEmpty(id)) continue;
-            _writer.DeleteDocuments(new Term("key", DocKey(userId, id)));
-        }
-        _writer.Commit();
-    }
-
-    /// <summary>
-    /// Every (tenant, note id) the index holds a document for. Lets the cold-boot
-    /// diff prune notes deleted while the API was down even when no NoteCache row
-    /// remembers them (notes saved through the API or picked up by the watcher
-    /// are indexed directly). Documents an older build wrote per OCR file carry a
-    /// `noteId` instead and aren't keyed by <see cref="DocKey"/>; they're left to
-    /// the next rebuild.
-    /// </summary>
-    public IReadOnlyCollection<(string UserId, string Id)> IndexedNotes()
-    {
-        using var reader = DirectoryReader.Open(_writer, applyAllDeletes: true);
-        var live = MultiFields.GetLiveDocs(reader);
-        var fields = new HashSet<string> { "userId", "id", "noteId" };
-        var notes = new HashSet<(string UserId, string Id)>();
-        for (var i = 0; i < reader.MaxDoc; i++)
-        {
-            if (live is not null && !live.Get(i)) continue;
-            var doc = reader.Document(i, fields);
-            if (doc.Get("noteId") is not null) continue;
-            var (userId, id) = (doc.Get("userId"), doc.Get("id"));
-            if (!string.IsNullOrEmpty(userId) && !string.IsNullOrEmpty(id)) notes.Add((userId, id));
-        }
-        return notes;
-    }
-
     // Relevance-ranked search over title/body/tags, fenced to one tenant. Returns
     // id + title + score; the snippet is built by the caller from the live body
     // (body isn't stored).

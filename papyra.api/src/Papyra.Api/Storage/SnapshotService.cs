@@ -33,17 +33,6 @@ public sealed partial class SnapshotService
     // snapshots are immutable once written, so listing re-reads almost nothing.
     private readonly ConcurrentDictionary<string, (long Length, DateTime Mtime, string Hash)> _fingerprints = new();
 
-    // What a plain save last wrote, per note (keyed by snapshot dir, which a
-    // rename doesn't move). See IsForeign.
-    private readonly ConcurrentDictionary<string, string> _saved = new();
-
-    /// <summary>
-    /// A save may set this request header to <c>force</c>: it is replacing a
-    /// revision its editor never adopted (the "modified externally" banner), so
-    /// that revision is archived whatever the throttle says.
-    /// </summary>
-    public const string ForceHeader = "X-Papyra-Snapshot";
-
     public TimeSpan MinInterval { get; }
 
     public SnapshotService(ILogger<SnapshotService> logger, MarkdownStorageService storage, IConfiguration? config = null)
@@ -107,32 +96,6 @@ public sealed partial class SnapshotService
             return null;
         }
     }
-
-    // ── Revisions from outside ───────────────────────────────────────────────
-    // The throttle exists to fold one person's stream of autosaves into a version
-    // every few minutes. It must never fold away somebody else's revision: a line
-    // another program appended between two of those autosaves is on disk only,
-    // and the next save would replace it with nothing archived. So a plain save
-    // remembers what it wrote, and a file that no longer reads that way came from
-    // outside — its capture is forced (the collab save path's `externalPrior`).
-
-    /// <summary>Record the revision a plain save just wrote to <paramref name="notePath"/>.</summary>
-    public void RememberSaved(string noteSnapshotDir, string notePath)
-    {
-        if (FingerprintOf(notePath, cache: false) is { } hash) _saved[noteSnapshotDir] = hash;
-        else _saved.TryRemove(noteSnapshotDir, out _);
-    }
-
-    /// <summary>
-    /// True when the file holds a revision no plain save of this process wrote —
-    /// edited outside, written by another path, or simply not seen since boot. The
-    /// last costs at most one extra version per note, and only when it differs
-    /// from the newest snapshot.
-    /// </summary>
-    public bool IsForeign(string noteSnapshotDir, string notePath)
-        => !_saved.TryGetValue(noteSnapshotDir, out var saved)
-           || FingerprintOf(notePath, cache: false) is not { } now
-           || now != saved;
 
     // ── Contributors ─────────────────────────────────────────────────────────
     // A version written by a live room also remembers *who* wrote it: a sidecar
@@ -215,10 +178,6 @@ public sealed partial class SnapshotService
             File.Replace(tmp, notePath, destinationBackupFileName: null);
         else
             File.Move(tmp, notePath, overwrite: true);
-
-        // The restored version is already in history; the next save over it isn't
-        // replacing anything from outside.
-        RememberSaved(Path.GetDirectoryName(snapshotPath) ?? string.Empty, notePath);
     }
 
     // ── Content fingerprint ──────────────────────────────────────────────────
