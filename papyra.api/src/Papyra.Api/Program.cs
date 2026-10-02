@@ -3555,10 +3555,15 @@ notes.MapPut("/{id}", async (
             return busy;
     }
 
-    // Snapshot the prior on-disk revision before we overwrite it (throttled).
+    // Snapshot the prior on-disk revision before we overwrite it. Throttled for a
+    // run of our own saves — but forced when that revision came from outside (or
+    // the client says it is replacing one it never adopted), since nothing else
+    // holds it once this write lands.
     var snapRoot = PapyraPaths.UserSnapshotsDir(config, env.ContentRootPath, uid);
     var noteSnapDir = PathGuard.ResolveAndVerify(snapRoot, id, loggerFactory.CreateLogger("PathGuard"));
-    await snapshots.CaptureAsync(noteSnapDir, path, ct);
+    var forceSnapshot = string.Equals(http.Request.Headers[SnapshotService.ForceHeader], "force", StringComparison.OrdinalIgnoreCase)
+                        || snapshots.IsForeign(noteSnapDir, path);
+    await snapshots.CaptureAsync(noteSnapDir, path, ct, force: forceSnapshot);
 
     if (priorPath is not null)
         path = NoteFileNamer.Move(uid, path, NoteFileNamer.TargetPath(path, desiredName, id),
@@ -3566,6 +3571,7 @@ notes.MapPut("/{id}", async (
 
     writeRing.Mark(path); // log self-write before touching disk (loop prevention)
     await storage.WriteAsync(path, note, ct);
+    snapshots.RememberSaved(noteSnapDir, path);
     state.Upsert(uid, path, note);
     search.IndexNote(uid, note); // watcher skips our own write echo, so index here
 
