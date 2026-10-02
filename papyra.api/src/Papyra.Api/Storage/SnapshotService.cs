@@ -3,6 +3,7 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using Papyra.Api.Models;
 
 namespace Papyra.Api.Storage;
 
@@ -106,6 +107,26 @@ public sealed partial class SnapshotService
             _logger.LogWarning(ex, "Snapshot capture failed for {Dir}", noteSnapshotDir);
             return null;
         }
+    }
+
+    // Archive a version that was never on disk — an editor's unsaved draft, kept
+    // in History before the editor adopts a revision from outside in its place
+    // (the "modified externally" banner's Review). Written through storage, so a
+    // locked note's version is sealed like every other copy of it. Never throttled
+    // (the person asked for it), but a copy identical to the newest one is skipped.
+    // Returns the id of the version that holds `version`.
+    public async Task<string> ArchiveAsync(string noteSnapshotDir, Note version, CancellationToken ct = default)
+    {
+        var newest = NewestPath(noteSnapshotDir);
+        if (newest is not null && FingerprintOf(newest) == Fingerprint(version.Title, version.Body))
+            return Path.GetFileNameWithoutExtension(newest);
+
+        Directory.CreateDirectory(noteSnapshotDir);
+        var ticks = DateTime.UtcNow.Ticks;
+        while (File.Exists(Path.Combine(noteSnapshotDir, $"{ticks}.md"))) ticks++;
+        await _storage.WriteAsync(Path.Combine(noteSnapshotDir, $"{ticks}.md"), version, ct, mergeExisting: false);
+        Prune(noteSnapshotDir);
+        return ticks.ToString();
     }
 
     // ── Revisions from outside ───────────────────────────────────────────────

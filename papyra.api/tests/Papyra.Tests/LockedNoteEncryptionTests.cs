@@ -152,6 +152,16 @@ public sealed class LockedNoteEncryptionTests
             var versions = await client.GetFromJsonAsync<JsonElement>("/api/notes/p1/snapshots");
             Assert.True(versions.GetArrayLength() > 0);
 
+            // A draft kept in History from the banner's Review is sealed too.
+            var kept = await client.PostAsJsonAsync("/api/notes/p1/snapshots", new { title = "Diary entry", body = "unsaved draft" });
+            Assert.True(kept.IsSuccessStatusCode);
+            history = Directory.EnumerateFiles(Path.Combine(dir, "users", "1", ".papyra", "snapshots", "p1"), "*.md").ToList();
+            Assert.All(history, f => Assert.DoesNotContain("draft", File.ReadAllText(f)));
+            var keptId = (await kept.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetString();
+            var keptReq = new HttpRequestMessage(HttpMethod.Get, $"/api/notes/p1/snapshots/{keptId}");
+            keptReq.Headers.Add("X-Unlock-Token", token);
+            Assert.Equal("unsaved draft", (await (await client.SendAsync(keptReq)).Content.ReadFromJsonAsync<Note>())!.Body.Trim());
+
             // Editing a locked note (autosave sends no flag) keeps it sealed.
             Assert.True((await client.PutAsJsonAsync("/api/notes/p1", Write("Diary entry", "third draft"))).IsSuccessStatusCode);
             file = NoteFiles.Find(notesDir, "p1");

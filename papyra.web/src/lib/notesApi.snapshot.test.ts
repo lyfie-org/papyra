@@ -22,7 +22,7 @@ vi.mock('./syncStatus', () => ({
   getSyncState: () => ({ online, conflicts: [] }),
 }));
 
-const { putNote, flushOutbox, SNAPSHOT_HEADER } = await import('./notesApi');
+const { putNote, flushOutbox, keepDraftVersion, SNAPSHOT_HEADER } = await import('./notesApi');
 
 const payload = {
   title: 'Plan', tags: [], color: null, pinned: false, archived: false, kind: 'note' as const, body: 'mine',
@@ -76,5 +76,27 @@ describe('force-snapshot writes', () => {
       { url: '/api/notes/n1', force: true },
       { url: '/api/notes/n2', force: false },
     ]);
+  });
+});
+
+describe('keeping a draft as a History version', () => {
+  it('posts the draft to the note’s versions and returns the version id', async () => {
+    const calls: Array<{ url: string; method?: string; body: unknown }> = [];
+    vi.stubGlobal('fetch', async (url: string, init?: RequestInit) => {
+      calls.push({ url, method: init?.method, body: JSON.parse(String(init?.body)) });
+      return new Response(JSON.stringify({ id: '638950' }), { status: 200 });
+    });
+    expect(await keepDraftVersion('n 1', { title: 'Plan', body: 'mine Local words' })).toBe('638950');
+    expect(calls).toEqual([{
+      url: '/api/notes/n%201/snapshots', method: 'POST', body: { title: 'Plan', body: 'mine Local words' },
+    }]);
+  });
+
+  it('throws rather than parking when the API refuses or is unreachable', async () => {
+    vi.stubGlobal('fetch', async () => new Response('{}', { status: 503 }));
+    await expect(keepDraftVersion('n1', { title: 'Plan', body: 'x' })).rejects.toThrow();
+    vi.stubGlobal('fetch', async () => { throw new TypeError('Failed to fetch'); });
+    await expect(keepDraftVersion('n1', { title: 'Plan', body: 'x' })).rejects.toThrow();
+    expect(queue.size).toBe(0);
   });
 });

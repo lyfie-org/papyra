@@ -4587,6 +4587,45 @@ notes.MapPost("/{id}/restore/{snapshotId}", async (
     return Results.Ok(note);
 });
 
+// Keep an editor's unsaved draft as a version without writing it to the note.
+// The "modified externally" banner's Review adopts the outside revision in the
+// editor's place; the person's own unsaved typing goes to History first, so it
+// can be read and restored. The draft is the live note with its title and body
+// swapped — frontmatter (tags, a lock, foreign keys) as on disk right now.
+notes.MapPost("/{id}/snapshots", async (
+    string id,
+    DraftVersion draft,
+    ClaimsPrincipal user,
+    VaultState state,
+    MarkdownStorageService storage,
+    SnapshotService snapshots,
+    NoteWriteLocks writeLocks,
+    IConfiguration config,
+    IHostEnvironment env,
+    ILoggerFactory loggerFactory,
+    CancellationToken ct) =>
+{
+    if (!PathGuard.IsValidNoteId(id))
+        return Results.BadRequest(new { error = "Invalid note id." });
+    var uid = Uid(user);
+    if (state.PathFor(uid, id) is not { } path) return Results.NotFound();
+
+    var snapRoot = PapyraPaths.UserSnapshotsDir(config, env.ContentRootPath, uid);
+    var noteSnapDir = PathGuard.ResolveAndVerify(snapRoot, id, loggerFactory.CreateLogger("PathGuard"));
+    using var writeLock = await writeLocks.AcquireAsync(uid, id, ct);
+    var live = await storage.ReadAsync(path, ct);
+    if (live is null) return Results.NotFound();
+
+    // Identical to the note itself: adopting it loses nothing, so nothing to keep.
+    var title = draft.Title ?? live.Title;
+    var body = draft.Body ?? string.Empty;
+    if (SnapshotService.Fingerprint(title, body) == SnapshotService.Fingerprint(live.Title, live.Body))
+        return Results.Ok(new { id = (string?)null });
+    live.Title = title;
+    live.Body = body;
+    return Results.Ok(new { id = await snapshots.ArchiveAsync(noteSnapDir, live, ct) });
+});
+
 // ── Conflicts (sync-copy resolution) ────────────────────────────────────────────
 // Sync tools (Syncthing/Dropbox/Nextcloud) drop a conflict copy next to a note
 // when two devices edit it offline. The observer registers these instead of
@@ -7309,6 +7348,9 @@ public sealed record NoteWrite(
     string? Kind = null,
     // Nullable on purpose: omitted means "leave the existing lock state alone".
     bool? Secure = null);
+
+// An editor's unsaved draft, kept as a version (POST /api/notes/{id}/snapshots).
+public sealed record DraftVersion(string? Title, string? Body);
 
 // Manual ordering payload: the full desired map of note id → fractional sort key
 // plus the note's mtime at drag time. Replaces the stored order wholesale.
