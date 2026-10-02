@@ -1,6 +1,10 @@
 using System.Diagnostics;
+using Microsoft.Data.Sqlite;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
+using Papyra.Api.Data;
 using Papyra.Api.Storage;
 
 namespace Papyra.Tests;
@@ -124,6 +128,158 @@ public sealed class VaultObserverTests
             observer.Dispose();
             Directory.Delete(dir, recursive: true);
         }
+    }
+
+    [Fact]
+    public async Task ExternalCreate_WithoutAnId_IsAdopted_AndTheIdWrittenBack()
+    {
+        var dir = NewTempDir();
+        var observer = NewObserver(dir, out var state, out _, out var notesDir);
+        try
+        {
+            await observer.StartAsync(default);
+            var path = Path.Combine(notesDir, "made-in-obsidian.md");
+            const string content = "# Made in Obsidian\n\nNo frontmatter at all.\n";
+            var expectedId = ForeignNoteAdopter.DeriveId(notesDir, path, _ => false);
+
+            // Re-emit until seen (see ExternalCreate_IsPickedUp); the id is a
+            // function of the path, so every round adopts it identically.
+            await WaitUntil(async () =>
+            {
+                if (state.Count(Uid) == 0) await File.WriteAllTextAsync(path, content);
+                return state.Count(Uid) >= 1;
+            }, WaitTimeoutMs);
+            await WaitUntil(() => ReadShared(path).StartsWith("---"), WaitTimeoutMs);
+
+            var note = Assert.Single(state.Snapshot(Uid));
+            Assert.Equal(expectedId, note.Id);           // was "" — listed, but unaddressable
+            Assert.Equal("Made in Obsidian", note.Title); // was ""
+            Assert.Equal($"---\nid: '{expectedId}'\n---\n\n{content}", File.ReadAllText(path));
+        }
+        finally
+        {
+            await observer.StopAsync(default);
+            observer.Dispose();
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task ExternalSave_ThatDropsTheId_KeepsTheNotesId()
+    {
+        // An editor holding a stale buffer saves over the file without its `id:`.
+        // The note must stay the same note — shares, comments and links key on it.
+        var dir = NewTempDir();
+        var observer = NewObserver(dir, out var state, out _, out var notesDir);
+        try
+        {
+            await observer.StartAsync(default);
+            var path = Path.Combine(notesDir, "kept.md");
+            await WaitUntil(async () =>
+            {
+                if (state.Count(Uid) == 0) await File.WriteAllTextAsync(path, "---\nid: keep1\ntitle: Kept\n---\n\nv1");
+                return state.Count(Uid) >= 1;
+            }, WaitTimeoutMs);
+
+            await File.WriteAllTextAsync(path, "v2 from another editor");
+            await WaitUntil(() => ReadShared(path).Contains("id:"), WaitTimeoutMs);
+            await WaitUntil(() => state.Snapshot(Uid).Single().Body.Contains("v2"), WaitTimeoutMs);
+
+            var note = Assert.Single(state.Snapshot(Uid));
+            Assert.Equal("keep1", note.Id);
+            Assert.StartsWith("---\nid: 'keep1'\n", File.ReadAllText(path));
+        }
+        finally
+        {
+            await observer.StopAsync(default);
+            observer.Dispose();
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task WatchedNote_DeletedWhileStopped_IsGoneFromSearchAfterRestart()
+    {
+        // The reported sequence: API running → another tool creates a note → the
+        // watcher indexes it → API stops → the file is deleted → API starts. The
+        // cold-boot diff used to prune only by NoteCache rows, which the watcher
+        // never wrote, so search kept returning the deleted note.
+        var dir = NewTempDir();
+        var indexDir = NewTempDir();
+        using var conn = new SqliteConnection("DataSource=:memory:");
+        conn.Open(); // one in-memory database shared by every scope
+        using var services = new ServiceCollection()
+            .AddDbContext<AppDbContext>(o => o.UseSqlite(conn))
+            .BuildServiceProvider();
+        using (var setup = services.CreateScope())
+            setup.ServiceProvider.GetRequiredService<AppDbContext>().Database.EnsureCreated();
+        var scopes = services.GetRequiredService<IServiceScopeFactory>();
+
+        var options = new VaultObserverOptions { UsersDir = dir, DebounceMs = 150 };
+        var notesDir = options.UserNotesDir(Uid);
+        Directory.CreateDirectory(notesDir);
+        var path = Path.Combine(notesDir, "delete-me-later.md");
+        var search = new SearchIndexService(indexDir);
+        var observer = new VaultObserver(
+            options, new MarkdownStorageService(), new VaultState(),
+            new WriteRing(new MemoryCache(new MemoryCacheOptions())),
+            NullLogger<VaultObserver>.Instance, search: search, scopes: scopes);
+        try
+        {
+            // Running: the watcher picks the note up, indexes it and caches it.
+            await observer.StartAsync(default);
+            // Re-emit until seen (see ExternalCreate_IsPickedUp).
+            await WaitUntil(async () =>
+            {
+                if (await CachedAsync(scopes, "delete-me-later")) return true;
+                await File.WriteAllTextAsync(path, "---\nid: delete-me-later\ntitle: Delete me later\n---\n\nscratch");
+                return false;
+            }, WaitTimeoutMs);
+            Assert.Equal("delete-me-later", search.Search(Uid, "delete").Single().Id);
+            Assert.True(await CachedAsync(scopes, "delete-me-later")); // the watcher kept the cache
+
+            // Stopped: the file goes while nothing is watching.
+            await observer.StopAsync(default);
+            observer.Dispose();
+            search.Dispose();
+            File.Delete(path);
+
+            // Started again: the cold-boot diff reconciles against disk.
+            search = new SearchIndexService(indexDir);
+            using (var scope = scopes.CreateScope())
+            {
+                var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+                await new ColdBootDiffService(
+                        options, new MarkdownStorageService(), new VaultState(), search,
+                        scopes, NullLogger<ColdBootDiffService>.Instance)
+                    .RunDiffAsync(db, default);
+            }
+
+            Assert.Empty(search.Search(Uid, "delete"));
+            Assert.False(await CachedAsync(scopes, "delete-me-later"));
+        }
+        finally
+        {
+            observer.Dispose();
+            search.Dispose(); // release write.lock before deleting the index dir
+            Directory.Delete(dir, recursive: true);
+            Directory.Delete(indexDir, recursive: true);
+        }
+    }
+
+    private static async Task<bool> CachedAsync(IServiceScopeFactory scopes, string noteId)
+    {
+        using var scope = scopes.CreateScope();
+        var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
+        return await db.NoteCache.FindAsync(Uid, noteId) is not null;
+    }
+
+    // The observer may be mid-replace on the file while a test polls it.
+    private static string ReadShared(string path)
+    {
+        try { return File.ReadAllText(path); }
+        catch (IOException) { return string.Empty; }
+        catch (UnauthorizedAccessException) { return string.Empty; } // Windows, during File.Replace
     }
 
     private static async Task WaitUntil(Func<bool> cond, int timeoutMs)

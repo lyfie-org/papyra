@@ -106,7 +106,7 @@ export default function ConflictResolver({ conflictId, onClose }: Props) {
                     <span className="conflict-resolver__sign">
                       {r.kind === 'add' ? '+' : r.kind === 'del' ? '−' : ' '}
                     </span>
-                    {r.text || ' '}
+                    <span className="conflict-resolver__text">{r.text || ' '}</span>
                   </div>
                 ))}
               </pre>

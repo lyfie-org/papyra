@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using Papyra.Api.Data;
 using Papyra.Api.Models;
 
@@ -17,6 +18,7 @@ public sealed class ColdBootDiffService : IHostedService
     private readonly VaultState _state;
     private readonly SearchIndexService _search;
     private readonly ConflictState? _conflicts;
+    private readonly ForeignNoteAdopter _adopter;
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<ColdBootDiffService> _logger;
 
@@ -27,13 +29,16 @@ public sealed class ColdBootDiffService : IHostedService
         SearchIndexService search,
         IServiceScopeFactory scopeFactory,
         ILogger<ColdBootDiffService> logger,
-        ConflictState? conflicts = null)
+        ConflictState? conflicts = null,
+        ForeignNoteAdopter? adopter = null)
     {
         _options = options;
         _storage = storage;
         _state = state;
         _search = search;
         _conflicts = conflicts;
+        // Tests build this without the container; nothing watches the vault then.
+        _adopter = adopter ?? new ForeignNoteAdopter(storage, new WriteRing(new MemoryCache(new MemoryCacheOptions())));
         _scopeFactory = scopeFactory;
         _logger = logger;
     }
@@ -62,7 +67,7 @@ public sealed class ColdBootDiffService : IHostedService
         var cached = await db.NoteCache
             .ToDictionaryAsync(n => (n.UserId, n.Id), ct);
         var seen = new HashSet<(string UserId, string Id)>();
-        int indexed = 0, removed = 0;
+        var indexed = 0;
 
         foreach (var userDir in Directory.EnumerateDirectories(_options.UsersDir))
         {
@@ -70,6 +75,9 @@ public sealed class ColdBootDiffService : IHostedService
             var notesDir = _options.UserNotesDir(userId);
             if (!Directory.Exists(notesDir)) continue;
 
+            // Read the whole vault before adopting anything: an id-less file
+            // must not be handed an id that a file later in the walk holds.
+            var notes = new List<(string Path, Note Note)>();
             foreach (var path in Directory.EnumerateFiles(notesDir, "*.md", SearchOption.AllDirectories))
             {
                 // Conflict copies are not notes — register them for resolution and
@@ -80,9 +88,21 @@ public sealed class ColdBootDiffService : IHostedService
                     continue;
                 }
 
-                var note = await _storage.ReadAsync(path, ct);
-                if (note is null || string.IsNullOrEmpty(note.Id)) continue;
+                if (await _storage.ReadAsync(path, ct) is { } note) notes.Add((path, note));
+            }
 
+            // Made by another tool while we were down (or before Papyra adopted
+            // them): give them ids, exactly as the watcher would have.
+            var ids = notes.Where(n => !ForeignNoteAdopter.NeedsId(n.Note))
+                .Select(n => n.Note.Id).ToHashSet(StringComparer.Ordinal);
+            foreach (var (path, note) in notes.Where(n => ForeignNoteAdopter.NeedsId(n.Note)))
+            {
+                await _adopter.AdoptAsync(notesDir, path, note, ids.Contains, ct: ct);
+                ids.Add(note.Id);
+            }
+
+            foreach (var (path, note) in notes)
+            {
                 seen.Add((userId, note.Id));
                 _state.Upsert(userId, path, note); // hydrate the in-memory vault on boot
 
@@ -90,24 +110,30 @@ public sealed class ColdBootDiffService : IHostedService
                 if (!cached.TryGetValue((userId, note.Id), out var row) || row.LastModified != mtime)
                 {
                     _search.IndexNote(userId, note);
-                    UpsertCache(db, row, note, userId, mtime);
+                    NoteCacheRows.Upsert(db, row, userId, note, mtime);
                     indexed++;
                 }
             }
         }
 
+        // Files deleted while we were down. A NoteCache row alone can't name them
+        // all: notes saved through the API are indexed with no cache row, so the
+        // index itself is asked which notes it still holds.
+        var gone = new HashSet<(string UserId, string Id)>();
         foreach (var (key, row) in cached)
         {
             if (seen.Contains(key)) continue;
-            _search.RemoveNote(key.UserId, key.Id); // file deleted while offline
             db.NoteCache.Remove(row);
-            removed++;
+            gone.Add(key);
         }
+        foreach (var key in _search.IndexedNotes())
+            if (!seen.Contains(key)) gone.Add(key);
+        _search.RemoveNotes(gone); // by (userId, id): a shared id in another vault stays
 
         await db.SaveChangesAsync(ct);
         _logger.LogInformation(
             "Cold-boot diff: {Loaded} note(s) on disk, {Indexed} (re)indexed, {Removed} pruned",
-            seen.Count, indexed, removed);
+            seen.Count, indexed, gone.Count);
     }
 
     // Rehydrate one conflict copy into the (disposable) conflict registry on boot.
@@ -123,30 +149,5 @@ public sealed class ColdBootDiffService : IHostedService
             note?.Id ?? string.Empty,
             note?.Title ?? string.Empty,
             File.GetLastWriteTimeUtc(path)));
-    }
-
-    // The DB is on disk as well: a locked note's title stays out of it.
-    private static string CachedTitle(Note note) => note.Secure ? string.Empty : note.Title;
-
-    private static void UpsertCache(
-        AppDbContext db, NoteCache? existing, Note note, string userId, DateTime mtime)
-    {
-        if (existing is null)
-        {
-            db.NoteCache.Add(new NoteCache
-            {
-                UserId = userId,
-                Id = note.Id,
-                Title = CachedTitle(note),
-                Tags = string.Join(' ', note.Tags),
-                LastModified = mtime,
-            });
-        }
-        else
-        {
-            existing.Title = CachedTitle(note);
-            existing.Tags = string.Join(' ', note.Tags);
-            existing.LastModified = mtime;
-        }
     }
 }

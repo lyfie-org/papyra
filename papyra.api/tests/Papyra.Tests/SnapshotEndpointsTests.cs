@@ -145,6 +145,65 @@ public sealed class SnapshotEndpointsTests
     });
 
     [Fact]
+    public Task ExternalEdit_OverwrittenWithinThrottleWindow_StaysInHistory() => InApp(unthrottled: false, async (client, uid, dir) =>
+    {
+        // Default 5-minute throttle. v1 is archived when v2 lands, so the newest
+        // snapshot is seconds old when another program appends to the file.
+        await Put(client, "x1", "mine v1");
+        await Put(client, "x1", "mine v2");
+        var md = NoteFiles.Find(Path.Combine(dir, "users", uid, "notes"), "x1");
+        await File.AppendAllTextAsync(md, "\n- extra line\n");
+
+        // An editor that never adopted that revision saves over it.
+        await Put(client, "x1", "mine v2 and more typing");
+
+        Assert.Equal(["mine v2\n- extra line", "mine v1"], await Bodies(client, "x1"));
+    });
+
+    [Fact]
+    public Task OwnSaves_AfterAnArchivedExternalEdit_AreThrottledAgain() => InApp(unthrottled: false, async (client, uid, dir) =>
+    {
+        await Put(client, "x2", "a");
+        await Put(client, "x2", "b");
+        await File.AppendAllTextAsync(NoteFiles.Find(Path.Combine(dir, "users", uid, "notes"), "x2"), "\nouter\n");
+        await Put(client, "x2", "c");
+        await Put(client, "x2", "d"); // the API wrote "c" itself: throttled as usual
+        await Put(client, "x2", "e");
+
+        Assert.Equal(["b\nouter", "a"], await Bodies(client, "x2"));
+    });
+
+    [Fact]
+    public Task SaveAfterRestore_IsNotMistakenForAnOutsideRevision() => InApp(unthrottled: false, async (client, _, _) =>
+    {
+        await Put(client, "x4", "a");
+        await Put(client, "x4", "b");
+        var a = Assert.Single((await client.GetFromJsonAsync<List<SnapshotDto>>("/api/notes/x4/snapshots"))!);
+        await client.PostAsync($"/api/notes/x4/restore/{a.Id}", content: null); // archives "b"
+        await Put(client, "x4", "c");                                           // over "a": throttled
+
+        Assert.Equal(["b", "a"], await Bodies(client, "x4"));
+    });
+
+    [Fact]
+    public Task ForceSnapshotHeader_ArchivesTheReplacedRevision_DespiteThrottle() => InApp(unthrottled: false, async (client, _, _) =>
+    {
+        // "b" is a revision the API wrote (another tab or device, say), so only the
+        // client knows it is overwriting one it never adopted — and says so.
+        await Put(client, "x3", "a");
+        await Put(client, "x3", "b");
+        using var req = new HttpRequestMessage(HttpMethod.Put, "/api/notes/x3")
+        {
+            Content = JsonContent.Create(new NoteWrite(
+                Title: "Doc", Tags: null, Color: null, Pinned: false, Archived: false, Body: "c")),
+        };
+        req.Headers.Add("X-Papyra-Snapshot", "force");
+        Assert.Equal(HttpStatusCode.OK, (await client.SendAsync(req)).StatusCode);
+
+        Assert.Equal(["b", "a"], await Bodies(client, "x3"));
+    });
+
+    [Fact]
     public Task RestoreTwiceQuickly_DoesNotOverwriteASnapshot() => InApp(unthrottled: false, async (client, _, _) =>
     {
         await Put(client, "r2", "a");
