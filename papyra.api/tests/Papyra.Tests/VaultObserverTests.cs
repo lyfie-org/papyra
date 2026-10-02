@@ -126,6 +126,81 @@ public sealed class VaultObserverTests
         }
     }
 
+    [Fact]
+    public async Task ExternalCreate_WithoutAnId_IsAdopted_AndTheIdWrittenBack()
+    {
+        var dir = NewTempDir();
+        var observer = NewObserver(dir, out var state, out _, out var notesDir);
+        try
+        {
+            await observer.StartAsync(default);
+            var path = Path.Combine(notesDir, "made-in-obsidian.md");
+            const string content = "# Made in Obsidian\n\nNo frontmatter at all.\n";
+            var expectedId = ForeignNoteAdopter.DeriveId(notesDir, path, _ => false);
+
+            // Re-emit until seen (see ExternalCreate_IsPickedUp); the id is a
+            // function of the path, so every round adopts it identically.
+            await WaitUntil(async () =>
+            {
+                if (state.Count(Uid) == 0) await File.WriteAllTextAsync(path, content);
+                return state.Count(Uid) >= 1;
+            }, WaitTimeoutMs);
+            await WaitUntil(() => ReadShared(path).StartsWith("---"), WaitTimeoutMs);
+
+            var note = Assert.Single(state.Snapshot(Uid));
+            Assert.Equal(expectedId, note.Id);           // was "" — listed, but unaddressable
+            Assert.Equal("Made in Obsidian", note.Title); // was ""
+            Assert.Equal($"---\nid: '{expectedId}'\n---\n\n{content}", File.ReadAllText(path));
+        }
+        finally
+        {
+            await observer.StopAsync(default);
+            observer.Dispose();
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
+    public async Task ExternalSave_ThatDropsTheId_KeepsTheNotesId()
+    {
+        // An editor holding a stale buffer saves over the file without its `id:`.
+        // The note must stay the same note — shares, comments and links key on it.
+        var dir = NewTempDir();
+        var observer = NewObserver(dir, out var state, out _, out var notesDir);
+        try
+        {
+            await observer.StartAsync(default);
+            var path = Path.Combine(notesDir, "kept.md");
+            await WaitUntil(async () =>
+            {
+                if (state.Count(Uid) == 0) await File.WriteAllTextAsync(path, "---\nid: keep1\ntitle: Kept\n---\n\nv1");
+                return state.Count(Uid) >= 1;
+            }, WaitTimeoutMs);
+
+            await File.WriteAllTextAsync(path, "v2 from another editor");
+            await WaitUntil(() => ReadShared(path).Contains("id:"), WaitTimeoutMs);
+            await WaitUntil(() => state.Snapshot(Uid).Single().Body.Contains("v2"), WaitTimeoutMs);
+
+            var note = Assert.Single(state.Snapshot(Uid));
+            Assert.Equal("keep1", note.Id);
+            Assert.StartsWith("---\nid: 'keep1'\n", File.ReadAllText(path));
+        }
+        finally
+        {
+            await observer.StopAsync(default);
+            observer.Dispose();
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    // The observer may be mid-replace on the file while a test polls it.
+    private static string ReadShared(string path)
+    {
+        try { return File.ReadAllText(path); }
+        catch (IOException) { return string.Empty; }
+        catch (UnauthorizedAccessException) { return string.Empty; } // Windows, during File.Replace
+    }
+
     private static async Task WaitUntil(Func<bool> cond, int timeoutMs)
     {
         var sw = Stopwatch.StartNew();

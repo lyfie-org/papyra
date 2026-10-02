@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Memory;
 using Papyra.Api.Data;
 using Papyra.Api.Models;
 
@@ -17,6 +18,7 @@ public sealed class ColdBootDiffService : IHostedService
     private readonly VaultState _state;
     private readonly SearchIndexService _search;
     private readonly ConflictState? _conflicts;
+    private readonly ForeignNoteAdopter _adopter;
     private readonly IServiceScopeFactory _scopeFactory;
     private readonly ILogger<ColdBootDiffService> _logger;
 
@@ -27,13 +29,16 @@ public sealed class ColdBootDiffService : IHostedService
         SearchIndexService search,
         IServiceScopeFactory scopeFactory,
         ILogger<ColdBootDiffService> logger,
-        ConflictState? conflicts = null)
+        ConflictState? conflicts = null,
+        ForeignNoteAdopter? adopter = null)
     {
         _options = options;
         _storage = storage;
         _state = state;
         _search = search;
         _conflicts = conflicts;
+        // Tests build this without the container; nothing watches the vault then.
+        _adopter = adopter ?? new ForeignNoteAdopter(storage, new WriteRing(new MemoryCache(new MemoryCacheOptions())));
         _scopeFactory = scopeFactory;
         _logger = logger;
     }
@@ -70,6 +75,9 @@ public sealed class ColdBootDiffService : IHostedService
             var notesDir = _options.UserNotesDir(userId);
             if (!Directory.Exists(notesDir)) continue;
 
+            // Read the whole vault before adopting anything: an id-less file
+            // must not be handed an id that a file later in the walk holds.
+            var notes = new List<(string Path, Note Note)>();
             foreach (var path in Directory.EnumerateFiles(notesDir, "*.md", SearchOption.AllDirectories))
             {
                 // Conflict copies are not notes — register them for resolution and
@@ -80,9 +88,21 @@ public sealed class ColdBootDiffService : IHostedService
                     continue;
                 }
 
-                var note = await _storage.ReadAsync(path, ct);
-                if (note is null || string.IsNullOrEmpty(note.Id)) continue;
+                if (await _storage.ReadAsync(path, ct) is { } note) notes.Add((path, note));
+            }
 
+            // Made by another tool while we were down (or before Papyra adopted
+            // them): give them ids, exactly as the watcher would have.
+            var ids = notes.Where(n => !ForeignNoteAdopter.NeedsId(n.Note))
+                .Select(n => n.Note.Id).ToHashSet(StringComparer.Ordinal);
+            foreach (var (path, note) in notes.Where(n => ForeignNoteAdopter.NeedsId(n.Note)))
+            {
+                await _adopter.AdoptAsync(notesDir, path, note, ids.Contains, ct: ct);
+                ids.Add(note.Id);
+            }
+
+            foreach (var (path, note) in notes)
+            {
                 seen.Add((userId, note.Id));
                 _state.Upsert(userId, path, note); // hydrate the in-memory vault on boot
 

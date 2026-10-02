@@ -105,6 +105,8 @@ builder.Services.AddSingleton<HeicConverter>();
 // Per-request resolver for media reached through a share.
 builder.Services.AddScoped<SharedMedia>();
 builder.Services.AddSingleton<WriteRing>();
+// Gives .md files other tools create without an `id:` one (watcher + cold boot).
+builder.Services.AddSingleton<ForeignNoteAdopter>();
 builder.Services.AddSingleton(sp => new VaultObserverOptions
 {
     UsersDir = PapyraPaths.UsersDir(

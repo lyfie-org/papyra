@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using Markdig;
 using Markdig.Extensions.Yaml;
 using Markdig.Syntax;
@@ -13,7 +14,7 @@ namespace Papyra.Api.Storage;
 // stripped, never fatal. A locked note's title and body are sealed on the way
 // to disk and opened on the way back (see LockedNoteCipher), so every caller
 // above this works with readable notes. Registered as a singleton.
-public sealed class MarkdownStorageService
+public sealed partial class MarkdownStorageService
 {
     // Known frontmatter keys we own; everything else is foreign and preserved.
     private const string KeyId = "id";
@@ -90,6 +91,8 @@ public sealed class MarkdownStorageService
                 note.Body = plain;
             }
         }
+        // A locked note's title lives in its envelope, never in a `title:` key.
+        note.TitleMissing = !note.Secure && GetString(frontmatter, KeyTitle) is null;
         return note;
     }
 
@@ -163,8 +166,80 @@ public sealed class MarkdownStorageService
         var note = Deserialize(content, path);
         // mtime is the source of "last modified" — not a frontmatter key.
         note.Updated = File.GetLastWriteTimeUtc(path);
+        // Made by another tool: name it the way that tool shows it — its first
+        // heading, else its file name. Derived on every read rather than written
+        // into the file, so it follows the heading while the other tool owns the
+        // note; Papyra's first save of it stamps the title for good.
+        if (note.TitleMissing) note.Title = QuickImport.TitleFrom(note.Body, path);
         return note;
     }
+
+    // Add an `id:` to a file another tool wrote without one (see
+    // ForeignNoteAdopter). Unlike WriteAsync this re-renders nothing: one line is
+    // added (or a blank `id:` filled in) and every other byte — foreign keys, their
+    // order and comments, the body — stays as that tool wrote it. The file keeps its
+    // mtime, so adopting a note doesn't read as an edit to the grid, the cold-boot
+    // diff or a sync tool. Returns false, writing nothing, when the file can't be
+    // stamped safely (unparseable YAML, an odd `id:` shape) or changed under us
+    // mid-stamp — the next watcher event for it tries again.
+    public async Task<bool> TryStampIdAsync(string path, string id, CancellationToken ct = default)
+    {
+        var before = new FileInfo(path);
+        if (!before.Exists) return false;
+        var (mtime, length) = (before.LastWriteTimeUtc, before.Length);
+
+        var content = await WithBackoff(() => File.ReadAllTextAsync(path, ct));
+        if (StampId(content, id) is not { } stamped) return false;
+
+        // Another program writing the file between our read and our replace
+        // would lose its write; skip rather than clobber it.
+        var replaced = await ReplaceAtomicallyAsync(path, stamped, ct, stillCurrent: () =>
+        {
+            var now = new FileInfo(path);
+            return now.Exists && now.LastWriteTimeUtc == mtime && now.Length == length;
+        });
+        if (replaced) File.SetLastWriteTimeUtc(path, mtime);
+        return replaced;
+    }
+
+    // Pure half of TryStampIdAsync: `content` with `id` written into its
+    // frontmatter (one created if it has none), or null when that can't be done
+    // without guessing at the YAML. Line endings follow the file's own.
+    internal string? StampId(string content, string id)
+    {
+        var nl = content.Contains("\r\n", StringComparison.Ordinal) ? "\r\n" : "\n";
+        // Quoted: an id that looks like a YAML number or `null` must read back as
+        // the same string.
+        var line = $"{KeyId}: '{id.Replace("'", "''")}'";
+
+        var doc = Markdown.Parse(content, _pipeline);
+        var block = doc.Descendants<YamlFrontMatterBlock>().FirstOrDefault();
+        // No frontmatter: give it one. SplitFrontmatter drops exactly the blank
+        // line written after the fence, so the body reads back as it did before
+        // (leading blank lines were already trimmed from it then).
+        if (block is null) return $"---{nl}{line}{nl}---{nl}{nl}{content.TrimStart('\r', '\n')}";
+
+        Dictionary<string, object?>? fm;
+        try { fm = _yamlReader.Deserialize<Dictionary<string, object?>>(FrontmatterYaml(content, block)); }
+        catch { return null; } // broken YAML: adding a line can't be trusted to fix it
+        fm ??= [];
+
+        var firstBreak = content.IndexOf('\n');
+        if (firstBreak < 0) return null;
+        if (!fm.ContainsKey(KeyId))
+            return content[..(firstBreak + 1)] + line + nl + content[(firstBreak + 1)..];
+
+        // A present but blank `id:` — replace that one line. Writing a second key
+        // would make the YAML a duplicate-key error and lose every other key.
+        if (!string.IsNullOrWhiteSpace(GetString(fm, KeyId))) return null;
+        var matches = BlankIdLine().Matches(content[..(block.Span.End + 1)]);
+        if (matches.Count != 1) return null;
+        var m = matches[0];
+        return content[..m.Index] + line + content[(m.Index + m.Length)..];
+    }
+
+    [GeneratedRegex(@"^id[ \t]*:[ \t]*(?:''|""{2}|~|null|Null|NULL)?[ \t]*(?=\r?$)", RegexOptions.Multiline)]
+    private static partial Regex BlankIdLine();
 
     // Atomically persist a note: write a uuid.tmp sibling, fsync, then replace the
     // target in one move. Never leaves a 0-byte .md behind. Foreign frontmatter on
@@ -178,7 +253,15 @@ public sealed class MarkdownStorageService
             : null;
 
         var content = Serialize(note, existing, path);
+        await ReplaceAtomicallyAsync(path, content, ct);
+    }
 
+    // Write a uuid.tmp sibling, fsync, then swap it in with one move. With
+    // `stillCurrent`, the swap only happens if that still holds once the new text
+    // is safely on disk (the tmp is discarded otherwise); returns whether it did.
+    private static async Task<bool> ReplaceAtomicallyAsync(
+        string path, string content, CancellationToken ct, Func<bool>? stillCurrent = null)
+    {
         var dir = Path.GetDirectoryName(path);
         if (!string.IsNullOrEmpty(dir)) Directory.CreateDirectory(dir);
 
@@ -197,6 +280,12 @@ public sealed class MarkdownStorageService
             return true;
         });
 
+        if (stillCurrent is not null && !stillCurrent())
+        {
+            File.Delete(tmp);
+            return false;
+        }
+
         // Replace is atomic where the destination exists; fall back to a move
         // (overwrite) for first writes when there's nothing to replace.
         await WithBackoff(() =>
@@ -207,6 +296,7 @@ public sealed class MarkdownStorageService
                 File.Move(tmp, path, overwrite: true);
             return Task.FromResult(true);
         });
+        return true;
     }
 
     // ── Internals ────────────────────────────────────────────────────────────
@@ -220,12 +310,7 @@ public sealed class MarkdownStorageService
         if (block is null)
             return (new Dictionary<string, object?>(), content.TrimStart('\r', '\n'));
 
-        var raw = content.Substring(block.Span.Start, block.Span.Length);
-        // Strip the leading/trailing `---` fence lines.
-        var lines = raw.Replace("\r\n", "\n").Split('\n').ToList();
-        if (lines.Count > 0 && lines[0].TrimEnd() == "---") lines.RemoveAt(0);
-        if (lines.Count > 0 && lines[^1].TrimEnd() == "---") lines.RemoveAt(lines.Count - 1);
-        var yamlText = string.Join('\n', lines);
+        var yamlText = FrontmatterYaml(content, block);
 
         // Drop the fence's own line ending and the one blank line Serialize writes
         // after it — no more. Blank lines beyond that are the note's own: the
@@ -245,6 +330,16 @@ public sealed class MarkdownStorageService
         }
 
         return (fm, body);
+    }
+
+    // The YAML between a frontmatter block's `---` fence lines.
+    private static string FrontmatterYaml(string content, YamlFrontMatterBlock block)
+    {
+        var raw = content.Substring(block.Span.Start, block.Span.Length);
+        var lines = raw.Replace("\r\n", "\n").Split('\n').ToList();
+        if (lines.Count > 0 && lines[0].TrimEnd() == "---") lines.RemoveAt(0);
+        if (lines.Count > 0 && lines[^1].TrimEnd() == "---") lines.RemoveAt(lines.Count - 1);
+        return string.Join('\n', lines);
     }
 
     private static string StripOneLineBreak(string s) =>

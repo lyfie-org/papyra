@@ -72,6 +72,82 @@ public sealed class ColdBootDiffServiceTests
         }
     }
 
+    // ── Files other tools made without an `id:` ───────────────────────────────
+
+    [Fact]
+    public async Task ColdBoot_AdoptsAnIdlessFile_AndKeepsItsIdOnTheNextBoot()
+    {
+        var usersDir = NewTempDir();
+        var indexDir = NewTempDir();
+        var notesDir = UserNotesDir(usersDir);
+        var search = new SearchIndexService(indexDir);
+        var db = NewDb();
+        try
+        {
+            var path = Path.Combine(notesDir, "made-in-obsidian.md");
+            await File.WriteAllTextAsync(path, "# Made in Obsidian\n\nNo frontmatter at all, quokkatoken.\n");
+            var mtime = new DateTime(2024, 5, 1, 12, 0, 0, DateTimeKind.Utc);
+            File.SetLastWriteTimeUtc(path, mtime);
+
+            var state = new VaultState();
+            await NewService(usersDir, state, search).RunDiffAsync(db, default);
+
+            // Used to be skipped outright: gone from the list after every restart.
+            var note = Assert.Single(state.Snapshot(Uid));
+            Assert.True(PathGuard.IsValidNoteId(note.Id));
+            Assert.Equal("Made in Obsidian", note.Title);
+            Assert.Equal(note.Id, search.Search(Uid, "quokkatoken").Single().Id);
+            Assert.NotNull(await db.NoteCache.FindAsync(Uid, note.Id));
+            Assert.StartsWith($"---\nid: '{note.Id}'\n---\n\n# Made in Obsidian", await File.ReadAllTextAsync(path));
+            Assert.Equal(mtime, File.GetLastWriteTimeUtc(path));
+
+            var next = new VaultState();
+            await NewService(usersDir, next, search).RunDiffAsync(db, default);
+            Assert.Equal(note.Id, Assert.Single(next.Snapshot(Uid)).Id);
+            Assert.Equal(1, await db.NoteCache.CountAsync());
+        }
+        finally
+        {
+            db.Dispose();
+            search.Dispose();
+            CleanUp(usersDir, indexDir);
+        }
+    }
+
+    [Fact]
+    public async Task ColdBoot_NeverHandsAnIdlessFileAnIdAnotherFileHolds()
+    {
+        var usersDir = NewTempDir();
+        var indexDir = NewTempDir();
+        var notesDir = UserNotesDir(usersDir);
+        var search = new SearchIndexService(indexDir);
+        var db = NewDb();
+        try
+        {
+            // "z.md" (walked after "a.md") already holds the id "a.md" would derive.
+            var idless = Path.Combine(notesDir, "a.md");
+            var wanted = ForeignNoteAdopter.DeriveId(notesDir, idless, _ => false);
+            await File.WriteAllTextAsync(idless, "foreign");
+            await File.WriteAllTextAsync(Path.Combine(notesDir, "z.md"), $"---\nid: {wanted}\ntitle: Holder\n---\n\nmine");
+
+            var state = new VaultState();
+            await NewService(usersDir, state, search).RunDiffAsync(db, default);
+
+            var notes = state.Snapshot(Uid);
+            Assert.Equal(2, notes.Count);
+            Assert.Equal(wanted, notes.Single(n => n.Title == "Holder").Id);
+            var adopted = notes.Single(n => n.Title != "Holder");
+            Assert.NotEqual(wanted, adopted.Id);
+            Assert.True(PathGuard.IsValidNoteId(adopted.Id));
+        }
+        finally
+        {
+            db.Dispose();
+            search.Dispose();
+            CleanUp(usersDir, indexDir);
+        }
+    }
+
     // ── Multi-tenant id collisions ────────────────────────────────────────────
     // A note id is unique only *within* a vault. Two tenants sharing one is
     // ordinary — every user who has been @mentioned owns a note with id "Inbox"

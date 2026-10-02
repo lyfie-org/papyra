@@ -37,6 +37,7 @@ public sealed class VaultObserver : BackgroundService
     private readonly IHubContext<NotesHub>? _hub;
     private readonly Collab.ICollabEngine? _collab;
     private readonly LockedNoteSealer? _sealer;
+    private readonly ForeignNoteAdopter _adopter;
     private readonly ILogger<VaultObserver> _logger;
 
     // One watcher per tenant, keyed by userId.
@@ -61,7 +62,8 @@ public sealed class VaultObserver : BackgroundService
         SearchIndexService? search = null,
         ConflictState? conflicts = null,
         Collab.ICollabEngine? collab = null,
-        LockedNoteSealer? sealer = null)
+        LockedNoteSealer? sealer = null,
+        ForeignNoteAdopter? adopter = null)
     {
         _options = options;
         _storage = storage;
@@ -73,6 +75,7 @@ public sealed class VaultObserver : BackgroundService
         _conflicts = conflicts;
         _collab = collab;
         _sealer = sealer;
+        _adopter = adopter ?? new ForeignNoteAdopter(storage, writeRing);
     }
 
     protected override Task ExecuteAsync(CancellationToken stoppingToken)
@@ -185,7 +188,14 @@ public sealed class VaultObserver : BackgroundService
                 var note = await _storage.ReadAsync(path, token);
                 if (note is not null)
                 {
-                    var existed = _state.TryGet(userId, path, out _);
+                    var existed = _state.TryGet(userId, path, out var previous);
+                    // Created by another tool with no `id:` — adopt it rather than
+                    // list an id-less note. Keeps the id this path already had, if
+                    // the tool just dropped the key on a save.
+                    if (ForeignNoteAdopter.NeedsId(note))
+                        await _adopter.AdoptAsync(
+                            _options.UserNotesDir(userId), path, note,
+                            id => IdTakenElsewhere(userId, path, id), previous?.Id, token);
                     _state.Upsert(userId, path, note);
                     // A locked note written readable from outside (another editor,
                     // a sync tool): encrypt it again straight away.
@@ -208,6 +218,11 @@ public sealed class VaultObserver : BackgroundService
             _logger.LogWarning(ex, "Failed to sync vault for {Path}", path);
         }
     }
+
+    // Whether another file in the tenant's vault already holds `id`.
+    private bool IdTakenElsewhere(string userId, string path, string id) =>
+        _state.PathFor(userId, id) is { } holder
+        && !string.Equals(holder, path, StringComparison.OrdinalIgnoreCase);
 
     // Push a metadata-only event to the note's owner. Body never crosses the wire —
     // clients fetch it via REST only for the open note. Owner only: a title is
