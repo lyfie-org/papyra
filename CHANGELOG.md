@@ -6,6 +6,11 @@ a Docker Hub tag and a GitHub Release.
 
 <!-- new releases are inserted directly below this line -->
 
+## [0.3.5] - 2026-10-06
+
+- Update tokens.css (1c9becc)
+- fix: match shared-note spacing to the editor, unify dark card rail (4645cdc)
+
 ## [0.3.4] - 2026-10-06
 
 - chore: bump luthor to 2.11.2 for uniform pasted line heights (75921eb)
