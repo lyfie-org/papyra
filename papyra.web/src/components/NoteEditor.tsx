@@ -46,7 +46,8 @@ import CollabJoining from './CollabJoining';
 import { useShareSummary } from '../hooks/useShares';
 import { useCollabRoom } from '../hooks/useCollabRoom';
 import { useCollabCursorLabels } from '../hooks/useCollabCursorLabels';
-import { COLLAB_HEADER, SNAPSHOT_HEADER } from '../lib/notesApi';
+import { COLLAB_HEADER, SNAPSHOT_HEADER, keepDraftVersion } from '../lib/notesApi';
+import { reviewRevision } from '../lib/reviewRevision';
 import NoteComments, { CommentsButton } from './comments/NoteComments';
 import { useComments } from '../hooks/useComments';
 
@@ -278,6 +279,11 @@ export default function NoteEditor({ note, isDraft = false }: { note: Note; isDr
   // While it is up, autosave is held too (see useAutoSave `hold`): nothing is
   // written over it until the person picks Review or Overwrite with Local.
   const [pending, setPending] = useState<{ title: string; body: string } | null>(null);
+  // Read when Review adopts, so a newer revision arriving mid-review is the one shown.
+  const pendingRef = useRef(pending);
+  useEffect(() => { pendingRef.current = pending; }, [pending]);
+  // Review is keeping the draft in History; both banner actions wait for it.
+  const [reviewing, setReviewing] = useState(false);
   // A save that went out over it anyway (closing, opening history) resolved it:
   // the revision is archived in History and the file holds the local text.
   const onOverwrote = useCallback(() => setPending(null), []);
@@ -666,6 +672,25 @@ export default function NoteEditor({ note, isDraft = false }: { note: Note; isDr
     if (editorScrollRef.current) editorScrollRef.current.scrollTop = 0;
   }, [history, flush, reset, getDraft]);
 
+  // Review: show the outside revision instead of the draft. Adopting remounts
+  // the editor on it (never a patch of the live canvas), which drops the draft,
+  // so the draft is kept as a History version first — and if that fails nothing
+  // is adopted and the banner stays.
+  const review = useCallback(async () => {
+    if (!pendingRef.current || reviewing) return;
+    setReviewing(true);
+    const outcome = await reviewRevision({
+      getDraft,
+      getIncoming: () => pendingRef.current,
+      keep: (draft) => keepDraftVersion(note.id, draft),
+      adopt: applyRemote,
+    });
+    setReviewing(false);
+    if (!outcome.adopted) {
+      if (outcome.reason === 'failed') toast('Couldn’t keep your unsaved changes in History, so nothing was replaced.');
+    } else if (outcome.kept) toast('Your unsaved changes are in History.', { label: 'History', onClick: () => void openHistory() });
+  }, [reviewing, getDraft, note.id, applyRemote, toast, openHistory]);
+
   // Put one version (or the live note, for null) into the canvas.
   const previewVersion = useCallback((version: HistoryVersion | null) => {
     editorRef.current?.setMarkdown(version ? version.body : latestBody.current);
@@ -853,8 +878,8 @@ export default function NoteEditor({ note, isDraft = false }: { note: Note; isDr
         <div className="note-editor__conflict" role="alert">
           <span>This note was modified externally.</span>
           <div className="note-editor__conflict-actions">
-            <button type="button" onClick={() => applyRemote(pending)}>Review</button>
-            <button type="button" onClick={keepLocal}>Overwrite with Local</button>
+            <button type="button" onClick={() => void review()} disabled={reviewing}>Review</button>
+            <button type="button" onClick={keepLocal} disabled={reviewing}>Overwrite with Local</button>
           </div>
         </div>
       )}

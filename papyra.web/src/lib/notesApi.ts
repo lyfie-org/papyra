@@ -147,6 +147,24 @@ export async function putNote(
   return 'saved';
 }
 
+/**
+ * Keep an editor's unsaved draft in the note's History without writing it to
+ * the note (the "modified externally" banner's Review, which then adopts the
+ * outside revision in its place). Returns the version that holds it, or null
+ * when the draft reads the same as the note. Never parked in the outbox and
+ * throws on any failure: the caller must not discard the draft unless it is kept.
+ */
+export async function keepDraftVersion(id: string, draft: { title: string; body: string }): Promise<string | null> {
+  const res = await fetch(`/api/notes/${encodeURIComponent(id)}/snapshots`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(draft),
+    signal: AbortSignal.timeout(SAVE_TIMEOUT_MS),
+  });
+  if (!res.ok) throw new Error(`POST /api/notes/${id}/snapshots failed: ${res.status}`);
+  return ((await res.json()) as { id: string | null }).id;
+}
+
 /** Server snapshot with queued local edits laid over the top. */
 export async function fetchNotesMerged(): Promise<Note[]> {
   let notes: Note[];
