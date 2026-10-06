@@ -335,7 +335,8 @@
    again around every nested list), so a note typed line by line read almost
    double-spaced. A note is written a line at a time: keep line-height for
    legibility and close the gaps between blocks instead. Blank lines still work
-   for anyone who wants air. */
+   for anyone who wants air. SharedNoteView.css repeats these for the
+   shared-with-me view. */
 /* Paragraph margin reads this offset, and so does the placeholder's position,
    so the two stay aligned. */
 .note-editor__canvas .luthor-richtext-container { --luthor-first-block-offset: 2px; }
