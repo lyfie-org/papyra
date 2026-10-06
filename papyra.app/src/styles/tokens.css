@@ -222,6 +222,11 @@
     rgba(0, 0, 0, 0.55) 0 6px 20px -4px,
     rgba(0, 0, 0, 0.30) 0 2px 6px 0px;
 
+  /* Note-card hover rail: the light bar every card gets in dark mode, plain or
+     coloured, so it never changes with the note's colour. */
+  --card-rail-bg:  color-mix(in srgb, #fff 72%, transparent);
+  --card-rail-ink: #5c4636;
+
   --social-bg: rgba(40, 35, 30, 0.6);
   --shadow:
     rgba(0, 0, 0, 0.45) 0 4px 14px -2px,
