@@ -212,11 +212,9 @@
 .note-card--colored .note-card__actions {
   background: color-mix(in srgb, var(--tint-lift) 65%, transparent);
 }
-[data-theme='dark'] .note-card--colored .note-card__actions {
-  background: color-mix(in srgb, var(--tint-lift) 72%, transparent);
-}
-[data-theme='dark'] .note-card--colored .note-card__action {
-  color: var(--tint-ink-muted);
+/* Dark mode: one light rail for every card, whatever its colour. */
+[data-theme='dark'] .note-card .note-card__actions {
+  background: var(--card-rail-bg);
 }
 
 .note-card__action {
@@ -228,7 +226,7 @@
   border: none;
   border-radius: var(--radius-sm);
   background: transparent;
-  color: var(--text);
+  color: var(--card-rail-ink, var(--text));
   cursor: pointer;
   transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
 }
@@ -243,7 +241,7 @@
 }
 .note-card__action:disabled:hover {
   background: transparent;
-  color: var(--text);
+  color: var(--card-rail-ink, var(--text));
 }
 
 .note-card__action--danger:hover {

@@ -148,7 +148,14 @@
 .shared-note .luthor-richtext-container {
   --luthor-editor-content-padding-x: 0px;
   background: transparent;
+  /* The same tight block spacing as the note editor (see "Line spacing" in
+     NoteEditor.css): this is the same note, so lines sit the same distance
+     apart whether it is opened here or there. */
+  --luthor-first-block-offset: 2px;
 }
+.shared-note .luthor-list-li { margin: 1px 0; }
+.shared-note :is(.luthor-list-ul, .luthor-list-ol) { margin-block: 4px; }
+.shared-note .luthor-list-li :is(.luthor-list-ul, .luthor-list-ol) { margin-block: 0; }
 .shared-note .luthor-editor { min-height: 0; }
 @media (max-width: 600px) {
   .shared-note { padding: var(--space-5) var(--space-4); }
