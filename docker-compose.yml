@@ -1,33 +1,20 @@
+# Builds Papyra from source. Run `docker compose up --build`, open http://localhost:8080
+
 services:
   papyra:
     build:
       context: .
       dockerfile: Dockerfile
     image: papyra:latest
+    restart: unless-stopped
     ports:
       - "8080:8080"
-    # The image declares VOLUME ["/data"], so without this every `up --build`
-    # recreated the container against a FRESH anonymous volume — silently
-    # discarding the vault, the SQLite cache and the user accounts on each
-    # rebuild. Name it so notes survive image upgrades.
     volumes:
       - papyra-data:/data
     environment:
       Cors__AllowedOrigins__0: "http://localhost:8080"
-      # ── Time zone ──────────────────────────────────────────────────────────────
-      # The zone Papyra shows times in by default (an IANA name, e.g.
-      # "Europe/London", "America/New_York", "Asia/Kolkata"). Each person can
-      # pick their own under Settings → Profile. Unset = UTC.
       TZ: "UTC"
-      # The assistant is held back for a later release, so nothing here talks to a
-      # model and there is no point pulling gigabytes of one. Uncomment this, the
-      # depends_on and the ollama service below when it ships — and set
-      # PAPYRA_AI_ENABLED: "true" to switch the feature back on.
-      # Ollama__BaseUrl: "http://ollama:11434"
-    # depends_on:
-    #   - ollama
     stop_grace_period: 30s
-    restart: unless-stopped
     healthcheck:
       test: ["CMD", "wget", "-qO-", "http://localhost:8080/health"]
       interval: 30s
@@ -35,25 +22,5 @@ services:
       start_period: 20s
       retries: 3
 
-  # Runs the local language model that answers questions about your notes.
-  # Nothing here talks to the internet except to download a model you picked.
-  #
-  # Commented out while the assistant is held back for a later release: a several-
-  # gigabyte image for a feature nothing can reach is a bad first `up`.
-  # ollama:
-  #   image: ollama/ollama:latest
-  #   # Models are gigabytes each — a named volume keeps them across upgrades so a
-  #   # rebuild never silently re-downloads them.
-  #   volumes:
-  #     - ollama-models:/root/.ollama
-  #   # Not published to the host: only Papyra needs to reach it, and exposing an
-  #   # unauthenticated model runner on the network is a bad default.
-  #   expose:
-  #     - "11434"
-  #   restart: unless-stopped
-
 volumes:
   papyra-data:
-  # Kept declared so an existing stack's downloaded models survive the assistant
-  # being switched off and come back with it.
-  ollama-models:
