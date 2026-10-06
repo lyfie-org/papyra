@@ -115,6 +115,33 @@ public sealed class ForcedPasswordChangeTests
     }
 
     [Fact]
+    public async Task FirstSignInNeverAsksForThePasswordTwice()
+    {
+        // The person typed the given password to sign in; choosing their own and
+        // adding the authenticator that follows are the sign-in gate, not
+        // settings changes, so neither asks for a password again.
+        var (factory, dir) = NewApp();
+        try
+        {
+            var admin = await AdminAsync(factory);
+            await ProvisionAsync(admin, "bea", Pw);
+            var bea = factory.CreateClient();
+            await bea.LoginAsync("bea", Pw);
+
+            Assert.Equal(HttpStatusCode.NoContent,
+                (await bea.PostAsJsonAsync("/api/auth/password", new { next = "her own one" })).StatusCode);
+
+            await TestAuth.EnrolTotpAsync(bea); // no password: asserts it succeeds
+            Assert.Equal(HttpStatusCode.OK, (await bea.GetAsync("/api/notes")).StatusCode);
+
+            // Once the flag is gone the password change is a settings action again.
+            Assert.Equal(HttpStatusCode.BadRequest,
+                (await bea.PostAsJsonAsync("/api/auth/password", new { current = "wrong", next = "another one" })).StatusCode);
+        }
+        finally { Cleanup(factory, dir); }
+    }
+
+    [Fact]
     public async Task TheFlagBitesASessionThatIsAlreadyOpen()
     {
         // The reason the middleware reads the database instead of a cookie claim:

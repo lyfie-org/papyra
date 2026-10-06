@@ -24,8 +24,11 @@ internal static class TestAuth
         await EnrolTotpAsync(client, password);
     }
 
-    /// <summary>Set up the authenticator for the signed-in account (its test secret, see <see cref="SecretFor"/>).</summary>
-    public static async Task EnrolTotpAsync(HttpClient client, string password)
+    /// <summary>
+    /// Set up the authenticator for the signed-in account (its test secret, see <see cref="SecretFor"/>).
+    /// The password is only for the settings flow; the sign-in gate takes none.
+    /// </summary>
+    public static async Task EnrolTotpAsync(HttpClient client, string? password = null)
     {
         var me = await client.GetFromJsonAsync<JsonElement>("/api/auth/me");
         if (me.GetProperty("totpEnabled").GetBoolean()) return;

@@ -5,6 +5,7 @@ import { useFocus } from './useFocus';
 import { setSync } from '../lib/syncStatus';
 import { IMPORT_STATUS_KEY, type ImportStatus } from './useImportStatus';
 import { ORDER_KEY } from './useNoteOrder';
+import { RESUME_EVENT } from '../lib/resume';
 
 export type ServerStatus = 'online' | 'offline';
 
@@ -126,8 +127,22 @@ export function useSignalR(): ServerStatus {
 
     connect();
 
+    // Back from the background (see lib/resume): the socket most likely died
+    // while the page was frozen, so reconnect now rather than wait out the
+    // backoff, and re-read notes — through the focus buffer, like any remote change.
+    const onResume = () => {
+      if (cancelled) return;
+      if (connection.state === HubConnectionState.Disconnected) {
+        if (retry) clearTimeout(retry);
+        connect();
+      }
+      onExternalUpdate();
+    };
+    window.addEventListener(RESUME_EVENT, onResume);
+
     return () => {
       cancelled = true;
+      window.removeEventListener(RESUME_EVENT, onResume);
       if (retry) clearTimeout(retry);
       if (connection.state !== HubConnectionState.Disconnected) {
         void connection.stop();

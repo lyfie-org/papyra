@@ -25,6 +25,7 @@ import { crashActions } from './lib/errorActions.ts';
 import ServerErrorNotices from './components/ServerErrorNotices.tsx';
 import { installServerErrorWatch } from './lib/errorReport.ts';
 import { installSelectionGuards } from './lib/selectionGuards.ts';
+import { installResumeRefresh } from './lib/resume.ts';
 
 // Before anything fetches: a server 500 anywhere surfaces its reference.
 installServerErrorWatch();
@@ -38,6 +39,9 @@ if (import.meta.env.VITE_DEMO) {
   const { startDemo } = await import('./demo');
   await startDemo();
 }
+
+// Coming back from the background: catch up on what the hub couldn't tell us.
+if (!import.meta.env.VITE_DEMO) installResumeRefresh(queryClient);
 
 // Offline shell + read cache. Only registered for the built app: in dev the
 // module graph is served unbundled and a caching worker would fight HMR.

@@ -329,7 +329,7 @@ export default function SetupPage() {
         {step === 'authenticator' && (
           <form className="setup__body" onSubmit={e => { e.preventDefault(); void verifyAuthenticator(); }}>
             <h1 className="auth__title">Add an authenticator</h1>
-            <p className="auth__tagline">Scan with Google Authenticator, 1Password or similar. Its codes confirm sensitive changes.</p>
+            <p className="auth__tagline">Add Papyra to an authenticator app, then enter its 6-digit code.</p>
             {totp ? <TotpQr secret={totp.secret} uri={totp.uri} /> : <Loader2 className="setup__spin" aria-label="Loading" />}
             <label className="auth__field">Code from the app
               <input value={totpCode} onChange={e => { setTotpCode(e.target.value.replace(/\D/g, '')); setTotpProven(false); }} inputMode="numeric"

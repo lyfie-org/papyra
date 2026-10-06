@@ -22,6 +22,7 @@ import {
 import { bulkAction, planGroupDrop, plural } from '../lib/bulk';
 import { useFlipPosition } from '../hooks/useFlipPosition';
 import { useGridWidth } from '../hooks/useGridWidth';
+import { useReportHeight } from '../hooks/useReportHeight';
 import { useSharedPin, type IncomingShare } from '../hooks/useShares';
 import SharedNoteCard from './SharedNoteCard';
 import { useSelection } from '../hooks/useSelection';
@@ -104,6 +105,7 @@ const AbsCard = memo(function AbsCard({
   useLayoutEffect(() => {
     if (elRef.current) onMeasure(note.id, elRef.current.offsetHeight);
   });
+  useReportHeight(elRef, note.id, onMeasure);
 
   const x = boxX + (isDragging && transform ? transform.x : 0);
   const y = boxY + (isDragging && transform ? transform.y : 0);
@@ -173,6 +175,7 @@ const SharedAbsCard = memo(function SharedAbsCard({
   useLayoutEffect(() => {
     if (elRef.current) onMeasure(id, elRef.current.offsetHeight);
   });
+  useReportHeight(elRef, id, onMeasure);
 
   const x = boxX + (isDragging && transform ? transform.x : 0);
   const y = boxY + (isDragging && transform ? transform.y : 0);

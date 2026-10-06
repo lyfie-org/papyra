@@ -2,10 +2,11 @@
   "name": "Papyra",
   "short_name": "Papyra",
   "description": "Self-hosted Markdown note-taking — works offline",
+  "id": "/",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",
-  "orientation": "portrait-primary",
+  "orientation": "any",
   "theme_color": "#7aaa8a",
   "background_color": "#f2ebe0",
   "icons": [

@@ -71,7 +71,7 @@ function RequireAuth() {
   if (user?.deletionScheduledUtc) return <DeletionScheduledPage username={user.username} scheduledUtc={user.deletionScheduledUtc} />;
   if (user?.mustChangePassword) return <ChoosePasswordPage username={user.username} />;
   // Every account has an authenticator; the server refuses the rest until there is one.
-  if (user?.mustSetUpTotp) return <SetUpAuthenticatorPage username={user.username} hasPassword={user.hasPassword !== false} />;
+  if (user?.mustSetUpTotp) return <SetUpAuthenticatorPage username={user.username} />;
   return (
     <FocusProvider>
       <ThemeAccountSync key={user?.id} />

@@ -67,3 +67,25 @@
 }
 .totp-qr__copy:hover { border-color: var(--border-hover); color: var(--text-h); }
 .totp-qr__copy:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* Touch devices: the tap target leads, the key sits under it, the QR is a
+   disclosure (a phone can't scan its own screen). */
+.totp-qr--touch { flex-direction: column; align-items: stretch; gap: var(--space-3, 0.75rem); }
+.totp-qr--touch .totp-qr__side { flex: none; }
+.totp-qr__open--primary {
+  justify-content: center;
+  align-self: stretch;
+  padding: 0.8rem 1rem;
+  border: 1px solid var(--accent-border);
+  border-radius: var(--radius-pill);
+  background: var(--accent);
+  color: var(--accent-fg);
+  font-size: 0.95rem;
+  text-decoration: none;
+}
+.totp-qr__more summary {
+  color: var(--accent-text);
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+.totp-qr__more .totp-qr__code { display: block; margin: var(--space-3, 0.75rem) auto 0; }
