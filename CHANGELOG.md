@@ -6,6 +6,11 @@ a Docker Hub tag and a GitHub Release.
 
 <!-- new releases are inserted directly below this line -->
 
+## [0.3.4] - 2026-10-06
+
+- chore: bump luthor to 2.11.2 for uniform pasted line heights (75921eb)
+- fix: keep the unsaved draft in History before Review adopts an outside revision (485b790)
+
 ## [0.3.3] - 2026-10-02
 
 - fix: prune deleted notes from search on cold boot even without a cache row (6efa1ca)
