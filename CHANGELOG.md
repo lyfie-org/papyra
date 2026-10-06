@@ -6,6 +6,10 @@ a Docker Hub tag and a GitHub Release.
 
 <!-- new releases are inserted directly below this line -->
 
+## [0.3.6] - 2026-10-06
+
+- feat: smoother first sign-in and a PWA that catches up on resume (2f7286a)
+
 ## [0.3.5] - 2026-10-06
 
 - Update tokens.css (1c9becc)
