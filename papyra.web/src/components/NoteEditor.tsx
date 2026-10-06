@@ -363,6 +363,24 @@ export default function NoteEditor({ note, isDraft = false }: { note: Note; isDr
   // Where focus was when a remote adopt remounted the canvas (see applyRemote).
   const focusToRestore = useRef<{ el: HTMLElement; start: number | null; end: number | null } | null>(null);
 
+  // Note where focus is, if it is in a field outside the canvas (the title, a tag
+  // input). Loading markdown into a fresh Lexical editor moves the DOM selection
+  // — and with it the focus — into the body, which is how typing in the title
+  // ended up in the note: on a phone's first launch the canvas mounts a beat after
+  // the title is already tapped (media metadata, a theme settling), and the caret
+  // jumps mid-word. onReady puts it back.
+  const rememberFieldFocus = useCallback(() => {
+    if (focusToRestore.current) return;
+    const active = document.activeElement as HTMLElement | null;
+    if (!active || !active.matches('input, textarea') || active.closest('.note-editor__canvas')) return;
+    const field = active as HTMLInputElement;
+    focusToRestore.current = {
+      el: active,
+      start: typeof field.selectionStart === 'number' ? field.selectionStart : null,
+      end: typeof field.selectionEnd === 'number' ? field.selectionEnd : null,
+    };
+  }, []);
+
   // Force the editor to display a remote revision, re-baselining the save state
   // so the adopted content isn't immediately written back.
   const applyRemote = useCallback((next: { title: string; body: string }) => {
@@ -371,15 +389,7 @@ export default function NoteEditor({ note, isDraft = false }: { note: Note; isDr
     // That is how a new note's first save (its echo can differ from what was
     // sent, e.g. whitespace the file drops) pulled the caret out of the title
     // mid-word. Remember where focus was; onReady puts it back.
-    const active = document.activeElement as HTMLElement | null;
-    if (active && active !== document.body && !active.closest('.note-editor__canvas')) {
-      const field = active as HTMLInputElement;
-      focusToRestore.current = {
-        el: active,
-        start: typeof field.selectionStart === 'number' ? field.selectionStart : null,
-        end: typeof field.selectionEnd === 'number' ? field.selectionEnd : null,
-      };
-    }
+    rememberFieldFocus();
     titleRef.current = next.title;
     latestBody.current = next.body;
     setTitle(next.title);
@@ -388,7 +398,7 @@ export default function NoteEditor({ note, isDraft = false }: { note: Note; isDr
     reset(next);
     shown.current = { id: note.id, ...next };
     setPending(null);
-  }, [reset, note.id]);
+  }, [reset, note.id, rememberFieldFocus]);
 
   // Leave history without restoring: put the live note back in an editable
   // canvas, forget the preview undo steps, and re-enable saving.
@@ -977,6 +987,8 @@ export default function NoteEditor({ note, isDraft = false }: { note: Note; isDr
           // letting the visible note and the saved note drift apart in silence.
           onDesync={(info) => console.warn('[papyra] editor DOM diverged from model', info)}
           onReady={(methods) => {
+            // First thing, before setMarkdown below moves the selection.
+            rememberFieldFocus();
             editorRef.current = methods;
             const lexical = methods.getLexicalEditor();
             setLexicalEditor(lexical ?? null);

@@ -23,6 +23,9 @@ function applyTheme(theme: Theme) {
   if (root.getAttribute('data-theme') === theme) return;
   root.setAttribute('data-theme', theme);
   root.style.colorScheme = theme;
+  // The installed app's status bar follows the page (--bg in each theme).
+  document.querySelector('meta[name="theme-color"]')
+    ?.setAttribute('content', theme === 'dark' ? '#1c1917' : '#f2ebe0');
 }
 
 /**

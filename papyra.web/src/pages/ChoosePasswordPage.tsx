@@ -6,13 +6,13 @@ import './ChoosePasswordPage.css';
  * The wall a freshly provisioned account meets on its first sign-in.
  *
  * The server refuses everything else while `mustChangePassword` is set, so this
- * is not a nag that can be dismissed — it is the only door. Rendered instead of
+ * is not a nag that can be dismissed — it is the only door. The given password
+ * isn't asked for again: the person typed it to sign in a moment ago. Rendered instead of
  * the workspace rather than as a modal over it, because there is nothing behind
  * it to go back to.
  */
 export default function ChoosePasswordPage({ username }: { username: string }) {
   const queryClient = useQueryClient();
-  const [current, setCurrent] = useState('');
   const [next, setNext] = useState('');
   const [repeat, setRepeat] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -28,7 +28,7 @@ export default function ChoosePasswordPage({ username }: { username: string }) {
       const res = await fetch('/api/auth/password', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ current, next }),
+        body: JSON.stringify({ next }),
       });
       if (!res.ok) {
         const data = await res.json().catch(() => null);
@@ -47,26 +47,14 @@ export default function ChoosePasswordPage({ username }: { username: string }) {
   return (
     <main className="choose-pw">
       <form className="choose-pw__card" onSubmit={submit}>
-        <h1 className="choose-pw__title">Choose your password</h1>
+        <h1 className="choose-pw__title">Choose a password</h1>
         <p className="choose-pw__body">
-          You’re signed in as <strong>{username}</strong> with a password somebody
-          else picked for you. Set your own before you carry on — until you do,
-          whoever set up your account can sign in as you.
+          Welcome, <strong>@{username}</strong>. Pick one only you know.
         </p>
 
         {error && <p className="choose-pw__error" role="alert">{error}</p>}
 
-        <label className="choose-pw__field">The password you were given
-          <input
-            type="password"
-            value={current}
-            onChange={e => setCurrent(e.target.value)}
-            autoComplete="current-password"
-            required
-            autoFocus
-          />
-        </label>
-        <label className="choose-pw__field">Your new password
+        <label className="choose-pw__field">New password
           <input
             type="password"
             value={next}
@@ -74,9 +62,10 @@ export default function ChoosePasswordPage({ username }: { username: string }) {
             autoComplete="new-password"
             minLength={8}
             required
+            autoFocus
           />
         </label>
-        <label className="choose-pw__field">Repeat your new password
+        <label className="choose-pw__field">Confirm password
           <input
             type="password"
             value={repeat}
@@ -86,10 +75,10 @@ export default function ChoosePasswordPage({ username }: { username: string }) {
           />
         </label>
 
-        <p className="choose-pw__hint">At least 8 characters. A few words you’ll remember beats a short scramble.</p>
+        <p className="choose-pw__hint">At least 8 characters.</p>
 
         <button type="submit" className="choose-pw__submit" disabled={busy}>
-          {busy ? 'Saving…' : 'Save and continue'}
+          {busy ? 'Saving…' : 'Continue'}
         </button>
       </form>
     </main>

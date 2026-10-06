@@ -2325,15 +2325,18 @@ auth.MapPost("/totp", async (
     if (user is null) return Results.NotFound();
     var key = $"totp:{user.Id}";
     if (throttle.IsLockedOut(key)) return Results.Json(new { error = "Too many attempts. Try again later." }, statusCode: 429);
-    // An SSO account has no Papyra password; its identity provider vouched for it.
-    if (!string.IsNullOrEmpty(user.PasswordHash)
+    // The first authenticator is the sign-in gate itself (a new account, or one an
+    // admin reset): the person just signed in to reach it, so asking for the
+    // password again proves nothing. Adding another app later is a second key to
+    // the account — that asks for the password (an SSO account has none; its
+    // identity provider vouched for it) and a code from an app you already have.
+    var existing = await totp.HasAnyAsync(user.Id, ct);
+    if (existing && !string.IsNullOrEmpty(user.PasswordHash)
         && (string.IsNullOrEmpty(body.Password) || !BCrypt.Net.BCrypt.Verify(body.Password, user.PasswordHash)))
     {
         throttle.RecordFailure(key);
         return Results.Json(new { error = "That password isn't right.", field = "password" }, statusCode: 401);
     }
-    // A second app is a second key to the account: prove the first one.
-    var existing = await totp.HasAnyAsync(user.Id, ct);
     if (existing && !await stepUp.VerifyAsync(db, user, body.ConfirmCode, ct))
     {
         throttle.RecordFailure(key);
@@ -2514,7 +2517,11 @@ auth.MapPost("/password", async (
     var user = await db.Users.FindAsync([id], ct);
     if (user is null) return Results.NotFound();
 
-    if (!BCrypt.Net.BCrypt.Verify(body.Current ?? string.Empty, user.PasswordHash))
+    // Choosing your own password after an admin set one is the sign-in gate, not a
+    // settings change: the person typed the given password a moment ago to get
+    // here, so it isn't asked for twice.
+    if (!user.MustChangePassword
+        && !BCrypt.Net.BCrypt.Verify(body.Current ?? string.Empty, user.PasswordHash))
         return Results.Json(new { error = "Current password is incorrect." }, statusCode: StatusCodes.Status400BadRequest);
 
     user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(body.Next);
