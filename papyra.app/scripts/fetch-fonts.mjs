@@ -1,14 +1,14 @@
 // Self-host the three Papyra typefaces.
 //
-// papyra.web/index.html pulls Marcellus/Sora/Roboto Mono from fonts.googleapis.com.
-// That is fine for an app you run on your own server, but it is wrong for a public
-// marketing site: it is two extra cross-origin round trips everywhere, and it is
-// simply blocked in mainland China. Serving the woff2 files ourselves means the
-// site makes ZERO third-party requests and renders identically on every network.
+// Both the site and the app (papyra.web/public/fonts) serve Marcellus/Sora/
+// Roboto Mono themselves: Google Fonts would be two extra cross-origin round
+// trips, is blocked in mainland China, and — for the app — would be the one
+// request leaving a self-hoster's server. Serving the woff2 files ourselves
+// means ZERO third-party requests and identical rendering on every network.
 //
 // Run: pnpm --filter papyra-app run fonts
 // Commits the woff2 files and src/styles/fonts.css. Only re-run to change weights.
-import { mkdir, writeFile } from 'node:fs/promises';
+import { copyFile, mkdir, writeFile } from 'node:fs/promises';
 import { fileURLToPath } from 'node:url';
 
 const FAMILIES = [
@@ -47,6 +47,7 @@ const out = [
   '',
 ];
 let downloaded = 0;
+const files = [];
 let skipped = 0;
 
 for (const [, subset, block] of blocks) {
@@ -67,6 +68,7 @@ for (const [, subset, block] of blocks) {
   if (!bin.ok) throw new Error(`woff2 ${bin.status} for ${src}`);
   const bytes = Buffer.from(await bin.arrayBuffer());
   await writeFile(new URL(file, fontsDir), bytes);
+  files.push(file);
   downloaded += 1;
   console.log(`  ${file}  ${(bytes.length / 1024).toFixed(1)} KB`);
 
@@ -91,6 +93,12 @@ await writeFile(cssOut, css_, 'utf8');
 // Vite build with its own index.html, so it cannot import the Astro stylesheet,
 // but it is served from this same origin and can just fetch it.
 await writeFile(new URL('fonts.css', fontsDir), css_, 'utf8');
+
+// The app's copy: same files, relative URLs, so it also works under /demo/.
+const webFonts = new URL('../../papyra.web/public/fonts/', import.meta.url);
+await mkdir(webFonts, { recursive: true });
+for (const file of files) await copyFile(new URL(file, fontsDir), new URL(file, webFonts));
+await writeFile(new URL('fonts.css', webFonts), css_.replaceAll("url('/fonts/", "url('./"), 'utf8');
 
 console.log(
   `\nfetch-fonts: ${downloaded} files → public/fonts/, ${skipped} non-latin subsets skipped.`,

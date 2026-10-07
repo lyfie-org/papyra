@@ -17,6 +17,8 @@ export interface Milestone {
   text: string;
   /** Rendered as the highlighted head of the timeline. */
   current?: boolean;
+  /** A commit to link instead of a release, e.g. the very first one. */
+  commit?: string;
 }
 
 export const JOURNEY: Milestone[] = [
@@ -131,5 +133,14 @@ export const JOURNEY: Milestone[] = [
     icon: 'flag',
     title: 'Day one',
     text: 'The first commit.',
+    commit: 'eb5ac36cf8348caab8e852d1bb08992700a2cab6',
   },
+];
+
+/** On the horizon — plans, not promises. */
+export const NEXT: { icon: IconName; title: string; text: string }[] = [
+  { icon: 'sparkles', title: 'Private AI', text: 'Ask your notes questions. Runs on your own hardware.' },
+  { icon: 'monitor', title: 'Desktop app', text: 'Windows, macOS and Linux, pointed at your server.' },
+  { icon: 'smartphone', title: 'Mobile app', text: 'iOS and Android, offline-first.' },
+  { icon: 'message', title: 'Discord and Telegram alerts', text: 'Admin notifications where you already are.' },
 ];

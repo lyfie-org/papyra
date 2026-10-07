@@ -6,31 +6,24 @@ import Clip from '../components/Clip.astro';
 import HeroShowcase from '../components/HeroShowcase.astro';
 import CodeBlock from '../components/CodeBlock.astro';
 import logo from '../assets/papyra_logo.png';
-import { GITHUB_URL, DOCKER_HUB_URL, TAGLINE } from '../data/site';
-import { JOURNEY } from '../data/journey';
+import { GITHUB_URL, DESCRIPTION, LUTHOR_URL, LYFIE_URL, SITE_URL } from '../data/site';
+import { FAQ, homeGraph } from '../data/about';
+import { JOURNEY, NEXT } from '../data/journey';
 import { readChangelog } from '../lib/changelog.mjs';
+import { dockerPulls, roundedCount, starCount } from '../lib/stats.mjs';
 import type { IconName } from '../lib/icons';
 
 const { version } = readChangelog();
+const stars = await starCount();
+// A count only helps once there is one worth showing.
+const starLabel = stars !== null && stars >= 10 ? `Star on GitHub · ${stars.toLocaleString('en-GB')}` : 'Star on GitHub';
 
-// Structured data so search results can show Papyra as the application it is —
-// free, self-hosted, open source — rather than guessing from the prose.
-const jsonLd = {
-  '@context': 'https://schema.org',
-  '@type': 'SoftwareApplication',
-  name: 'Papyra',
-  description: TAGLINE,
-  applicationCategory: 'ProductivityApplication',
-  applicationSubCategory: 'Note-taking',
-  operatingSystem: 'Docker (Linux, macOS, Windows)',
-  url: 'https://papyra.app',
-  downloadUrl: DOCKER_HUB_URL,
-  codeRepository: GITHUB_URL,
-  license: 'https://www.gnu.org/licenses/gpl-3.0.html',
-  isAccessibleForFree: true,
-  ...(version ? { softwareVersion: version } : {}),
-  offers: { '@type': 'Offer', price: '0', priceCurrency: 'USD' },
-};
+const pulls = await dockerPulls();
+const pullsLabel = pulls !== null && pulls >= 1000 ? roundedCount(pulls) : null;
+
+// Structured data: who publishes Papyra (Lyfie), what it is, and its FAQ — so
+// search engines and AI assistants describe it from facts, not guesses.
+const jsonLd = homeGraph({ version, pulls, screenshot: `${SITE_URL}/media/clips/drop-light.webp` });
 
 const installSample = `curl -O https://raw.githubusercontent.com/lyfie-org/papyra/main/docker-compose.hub.yml
 docker compose -f docker-compose.hub.yml up -d
@@ -39,8 +32,10 @@ docker compose -f docker-compose.hub.yml up -d
 
 const facts: { icon: IconName; text: string }[] = [
   { icon: 'file', text: 'Plain Markdown files' },
-  { icon: 'wifi-off', text: 'Works offline' },
-  { icon: 'box', text: 'One Docker container' },
+  { icon: 'shield', text: 'No telemetry, ever' },
+  pullsLabel
+    ? { icon: 'docker', text: `${pullsLabel} Docker pulls` }
+    : { icon: 'box', text: 'One Docker container' },
   { icon: 'heart', text: 'Free and open source' },
 ];
 
@@ -97,6 +92,27 @@ const imports: { icon: IconName; title: string; text: string }[] = [
   { icon: 'file', title: 'Any Markdown', text: 'Drag files onto the desk. That’s the whole import.' },
 ];
 
+const notCollected = ['Telemetry', 'Analytics', 'Crash reports', 'Usage pings', 'An account with us'];
+
+const security: { icon: IconName; title: string; text: string }[] = [
+  { icon: 'lock', title: 'Locked notes, sealed on disk', text: 'Encrypted at rest. Opened with your PIN — or your fingerprint.' },
+  { icon: 'key', title: 'Sign-in, done properly', text: 'Passkeys, authenticator codes, SSO, and devices you can sign out.' },
+  { icon: 'mail', title: 'Alerts from your own mail server', text: 'Add your SMTP: new sign-ins, password changes, failed backups.' },
+  { icon: 'globe', title: 'Zero third-party requests', text: 'No CDNs, no trackers. Even the fonts come from your server.' },
+];
+
+const backups: { icon: IconName; title: string; text: string; featured?: boolean }[] = [
+  {
+    icon: 'git',
+    title: 'Git sync',
+    text: 'Papyra commits and pushes your notes to a private repo on a schedule — encrypted if you like, so even GitHub can’t read them. Full history, never force-pushed.',
+    featured: true,
+  },
+  { icon: 'download', title: 'One-click export', text: 'Your whole vault as a zip, whenever you want it.' },
+  { icon: 'archive', title: 'Encrypted archives', text: 'A sealed backup only your password opens.' },
+  { icon: 'folder', title: 'Or just copy the folder', text: 'rsync, snapshots, your NAS backup — it all just works.' },
+];
+
 const helps: { icon: IconName; title: string; text: string; href: string }[] = [
   { icon: 'bug', title: 'Report a bug', text: 'Tell us what broke.', href: `${GITHUB_URL}/issues/new` },
   { icon: 'bulb', title: 'Suggest an idea', text: 'Say what you’re trying to do.', href: `${GITHUB_URL}/issues/new` },
@@ -111,16 +127,17 @@ const when = (m: (typeof JOURNEY)[number]) =>
 ---
 
 <Base
-  title="Papyra — a beautiful, self-hosted home for your notes"
-  description="Papyra is a calm, self-hosted notes app: simple as sticky notes, deep as a wiki. Every note stays a plain Markdown file on your own server. Free and open source."
+  title="Papyra — private, self-hosted Markdown notes app"
+  description={DESCRIPTION}
   bareTitle
 >
-  <script type="application/ld+json" is:inline set:html={JSON.stringify(jsonLd)} />
+  <script slot="head" type="application/ld+json" is:inline set:html={JSON.stringify(jsonLd)} />
 
   <!-- ------------------------------------------------------------ hero -->
   <section class="hero">
     <div class="hero__glow" aria-hidden="true"></div>
-    <div class="wrap hero__copy">
+    <div class="wrap wrap--wide hero__grid">
+    <div class="hero__copy">
       <a class="chip hero__chip" href="#journey">
         <span class="chip__dot"></span>
         Papyra 1.0 · Free and open source
@@ -140,8 +157,9 @@ const when = (m: (typeof JOURNEY)[number]) =>
       </div>
       <p class="hero__note">No sign-up. The demo runs entirely in your browser.</p>
     </div>
-    <div class="wrap wrap--wide hero__shot">
+    <div class="hero__shot">
       <HeroShowcase />
+    </div>
     </div>
   </section>
 
@@ -204,8 +222,29 @@ const when = (m: (typeof JOURNEY)[number]) =>
     </div>
   </section>
 
+  <!-- ------------------------------------------------------ everything -->
+  <section class="section section--tint">
+    <div class="wrap">
+      <header class="intro" data-reveal>
+        <p class="eyebrow">And the rest</p>
+        <h2>Everything you’d expect.<br />Nothing you won’t use.</h2>
+      </header>
+      <ul class="tiles">
+        {
+          everything.map((t, i) => (
+            <li class="tile" data-reveal style={`--reveal-delay:${(i % 4) * 60}ms`}>
+              <Icon name={t.icon} size={20} class="tile__icon" />
+              <h3>{t.title}</h3>
+              <p>{t.text}</p>
+            </li>
+          ))
+        }
+      </ul>
+    </div>
+  </section>
+
   <!-- ---------------------------------------------------------- import -->
-  <section class="section section--tint" id="import">
+  <section class="section" id="import">
     <div class="wrap">
       <header class="intro" data-reveal>
         <p class="eyebrow">Move in tonight</p>
@@ -231,24 +270,83 @@ const when = (m: (typeof JOURNEY)[number]) =>
     </div>
   </section>
 
-  <!-- ------------------------------------------------------ everything -->
-  <section class="section">
-    <div class="wrap">
-      <header class="intro" data-reveal>
-        <p class="eyebrow">And the rest</p>
-        <h2>Everything you’d expect.<br />Nothing you won’t use.</h2>
-      </header>
-      <ul class="tiles">
+  <!-- --------------------------------------------------------- privacy -->
+  <section class="section section--tint" id="privacy">
+    <div class="wrap privacy">
+      <div class="privacy__copy" data-reveal>
+        <p class="eyebrow">Private by default</p>
+        <h2>Nothing phones home.</h2>
+        <p>
+          Your notes never leave your server — unless you share one, back it up to Git, or email
+          yourself a sign-in alert.
+        </p>
+        <ul class="nope" aria-label="What Papyra never collects">
+          {
+            notCollected.map((item) => (
+              <li>
+                <Icon name="x" size={13} />
+                {item}
+              </li>
+            ))
+          }
+        </ul>
+        <figure class="quote">
+          <blockquote>
+            I’m a home-labber. Keeping my own data alive is hard enough — I have zero interest in
+            storing yours.
+          </blockquote>
+          <figcaption>— Rahul, who made Papyra</figcaption>
+        </figure>
+      </div>
+      <ul class="shields">
         {
-          everything.map((t, i) => (
-            <li class="tile" data-reveal style={`--reveal-delay:${(i % 4) * 60}ms`}>
-              <Icon name={t.icon} size={20} class="tile__icon" />
-              <h3>{t.title}</h3>
-              <p>{t.text}</p>
+          security.map((s, i) => (
+            <li class="shields__card" data-reveal style={`--reveal-delay:${i * 80}ms`}>
+              <span class="shields__icon">
+                <Icon name={s.icon} size={20} />
+              </span>
+              <h3>{s.title}</h3>
+              <p>{s.text}</p>
             </li>
           ))
         }
       </ul>
+    </div>
+  </section>
+
+  <!-- --------------------------------------------------------- backups -->
+  <section class="section" id="backups">
+    <div class="wrap">
+      <header class="intro" data-reveal>
+        <p class="eyebrow">Backups</p>
+        <h2>Your notes are just files.</h2>
+        <p class="intro__lede">A folder of Markdown on your server. Four easy ways to keep a copy somewhere else.</p>
+      </header>
+      <ul class="vaults">
+        {
+          backups.map((b, i) => (
+            <li class:list={['vaults__card', { 'vaults__card--featured': b.featured }]} data-reveal style={`--reveal-delay:${i * 80}ms`}>
+              <span class="vaults__icon">
+                <Icon name={b.icon} size={b.featured ? 24 : 20} />
+              </span>
+              <h3>{b.title}</h3>
+              <p>{b.text}</p>
+            </li>
+          ))
+        }
+      </ul>
+      <aside class="warning" data-reveal>
+        <Icon name="shield" size={20} class="warning__icon" />
+        <div>
+          <p>
+            <strong>Back it up anyway.</strong> Papyra is young software. Keep at least one copy off
+            the machine — and copy the whole <code>/data</code> folder, hidden <code>.papyra</code>
+            folders included. Locked notes are encrypted on disk; without those keys nobody can open
+            them, including you.
+          </p>
+          <a href="/docs/backups/">Backup guide</a>
+        </div>
+      </aside>
     </div>
   </section>
 
@@ -281,6 +379,11 @@ const when = (m: (typeof JOURNEY)[number]) =>
                     v{m.version}
                   </a>
                 )}
+                {m.commit && (
+                  <a class="journey__tag" href={`${GITHUB_URL}/commit/${m.commit}`} rel="noopener noreferrer" aria-label="The first commit on GitHub">
+                    {m.commit.slice(0, 7)}
+                  </a>
+                )}
               </div>
             </li>
           ))
@@ -291,6 +394,27 @@ const when = (m: (typeof JOURNEY)[number]) =>
           Show all {JOURNEY.length} milestones
         </button>
         <a href="/changelog/">Full changelog</a>
+      </div>
+
+      <div class="horizon" data-reveal>
+        <h3>On the horizon</h3>
+        <p class="horizon__note">Plans, not promises.</p>
+        <ul class="horizon__list">
+          {
+            NEXT.map((n) => (
+              <li>
+                <Icon name={n.icon} size={18} />
+                <span>
+                  <strong>{n.title}</strong>
+                  {n.text}
+                </span>
+              </li>
+            ))
+          }
+        </ul>
+        <p class="horizon__ask">
+          Want something else? <a href={`${GITHUB_URL}/issues/new`} rel="noopener noreferrer">Ask for it</a>.
+        </p>
       </div>
     </div>
   </section>
@@ -303,12 +427,12 @@ const when = (m: (typeof JOURNEY)[number]) =>
         <h2>Up in a minute.</h2>
         <p>
           Save one file, run one command, open your browser. The first account you create is the
-          admin.
+          admin.{pullsLabel && ` Pulled ${pullsLabel} times from Docker Hub so far.`}
         </p>
         <ul class="ticks">
           <li><Icon name="check" size={16} />Runs on amd64 and arm64 — a NAS, a Pi, a VPS</li>
           <li><Icon name="check" size={16} />One container, one volume</li>
-          <li><Icon name="check" size={16} />Your notes stay plain files you can always take with you</li>
+          <li><Icon name="check" size={16} />No accounts with us, no licence keys, no phoning home</li>
         </ul>
         <p class="install__links">
           <a class="btn btn--ghost" href="/docs/install/">
@@ -316,7 +440,6 @@ const when = (m: (typeof JOURNEY)[number]) =>
             Install guide
           </a>
         </p>
-        <p class="install__young">Papyra is young and moving fast — keep the backups it makes for you.</p>
       </div>
       <div class="install__code" data-reveal style="--reveal-delay:120ms">
         <CodeBlock lang="bash" label="Terminal" code={installSample} />
@@ -331,12 +454,16 @@ const when = (m: (typeof JOURNEY)[number]) =>
         <p class="eyebrow">Open source</p>
         <h2>Help shape what comes next.</h2>
         <p>Papyra is free, GPL-licensed and built in the open. Every bug report, idea and pull request counts.</p>
+        <p class="contribute__star">
+          <strong>Like it? Star it.</strong> A star on GitHub is the easiest way to show support —
+          and it helps other people find Papyra.
+        </p>
         <p class="contribute__actions">
-          <a class="btn" href="/contribute/">Contributing guide</a>
-          <a class="btn btn--ghost" href={GITHUB_URL} rel="noopener noreferrer">
+          <a class="btn" href={GITHUB_URL} rel="noopener noreferrer">
             <Icon name="star" size={16} />
-            Star on GitHub
+            {starLabel}
           </a>
+          <a class="btn btn--ghost" href="/contribute/">Contributing guide</a>
         </p>
       </div>
       <ul class="helps">
@@ -360,6 +487,38 @@ const when = (m: (typeof JOURNEY)[number]) =>
     </div>
   </section>
 
+  <!-- ------------------------------------------------------------- faq -->
+  <section class="section" id="faq">
+    <div class="wrap wrap--narrow">
+      <header class="intro" data-reveal>
+        <p class="eyebrow">Questions</p>
+        <h2>Good to know.</h2>
+      </header>
+      <div class="faq" data-reveal>
+        {
+          FAQ.map((item, i) => (
+            <details class="faq__item" open={i === 0}>
+              <summary>
+                <h3>{item.q}</h3>
+                <Icon name="arrow-right" size={16} class="faq__chev" />
+              </summary>
+              <p>
+                {item.a}
+                {item.q === 'Who makes Papyra?' && (
+                  <>
+                    {' '}
+                    <a href={LYFIE_URL} rel="noopener">lyfie.org</a> ·{' '}
+                    <a href={LUTHOR_URL} rel="noopener">luthor</a>
+                  </>
+                )}
+              </p>
+            </details>
+          ))
+        }
+      </div>
+    </div>
+  </section>
+
   <!-- ------------------------------------------------------------- end -->
   <section class="section section--end">
     <div class="wrap">
@@ -373,6 +532,10 @@ const when = (m: (typeof JOURNEY)[number]) =>
           </a>
           <a class="btn btn--ghost btn--lg" href="/docs/install/">Install Papyra</a>
         </div>
+        <a class="finale__star" href={GITHUB_URL} rel="noopener noreferrer">
+          <Icon name="star" size={15} />
+          Enjoying it? Leave a star on GitHub
+        </a>
       </div>
     </div>
   </section>
@@ -422,12 +585,19 @@ const when = (m: (typeof JOURNEY)[number]) =>
     }
   }
 
+  .hero__grid {
+    position: relative;
+    display: grid;
+    grid-template-columns: minmax(0, 0.82fr) minmax(0, 1.18fr);
+    gap: clamp(var(--space-8), 4vw, var(--space-12));
+    align-items: center;
+  }
+
   .hero__copy {
     position: relative;
     display: flex;
     flex-direction: column;
-    align-items: center;
-    text-align: center;
+    align-items: flex-start;
   }
 
   .hero__chip {
@@ -435,10 +605,10 @@ const when = (m: (typeof JOURNEY)[number]) =>
   }
 
   .hero__title {
-    font-size: clamp(40px, 5.6vw + 12px, 80px);
+    font-size: clamp(40px, 3.4vw + 16px, 72px);
     line-height: 1.02;
     letter-spacing: -0.035em;
-    max-width: 13ch;
+    max-width: 11ch;
     margin-bottom: var(--space-5);
   }
 
@@ -450,7 +620,7 @@ const when = (m: (typeof JOURNEY)[number]) =>
     font-size: var(--fs-lg);
     line-height: 1.55;
     color: var(--text);
-    max-width: 44ch;
+    max-width: 34ch;
     margin-bottom: var(--space-8);
   }
 
@@ -461,15 +631,49 @@ const when = (m: (typeof JOURNEY)[number]) =>
     justify-content: center;
   }
 
+  .hero__copy .hero__actions {
+    justify-content: flex-start;
+  }
+
   .hero__note {
     margin: var(--space-4) 0 0;
     font-size: var(--fs-xs);
     color: var(--text);
   }
 
+  /* The window runs off the right edge on wide screens — the hero clips it. */
   .hero__shot {
     position: relative;
-    margin-top: clamp(var(--space-10), 6vw, 5rem);
+    min-width: 0;
+    margin-right: calc(-1 * clamp(0px, 7vw, 9rem));
+  }
+
+  @media (max-width: 69.99rem) {
+    .hero__grid {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .hero__copy {
+      align-items: center;
+      text-align: center;
+    }
+
+    .hero__title {
+      max-width: 13ch;
+    }
+
+    .hero__lede {
+      max-width: 44ch;
+    }
+
+    .hero__copy .hero__actions {
+      justify-content: center;
+    }
+
+    .hero__shot {
+      margin-right: 0;
+      margin-top: var(--space-4);
+    }
   }
 
   /* ----------------------------------------------------------- facts */
@@ -670,6 +874,252 @@ const when = (m: (typeof JOURNEY)[number]) =>
     color: var(--text);
   }
 
+  .intro__lede {
+    max-width: 44ch;
+    margin: var(--space-4) auto 0;
+    font-size: var(--fs-md);
+    color: var(--text);
+  }
+
+  /* ---------------------------------------------------------- privacy */
+  .privacy {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: clamp(var(--space-8), 5vw, var(--space-12));
+    align-items: center;
+  }
+
+  .privacy__copy h2 {
+    font-size: clamp(30px, 3vw + 14px, 48px);
+  }
+
+  .privacy__copy > p:not(.eyebrow) {
+    font-size: var(--fs-md);
+    line-height: 1.6;
+    max-width: 38ch;
+  }
+
+  .nope {
+    list-style: none;
+    margin: var(--space-5) 0 var(--space-8);
+    padding: 0;
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+  }
+
+  .nope li {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    padding: 5px 12px 5px 9px;
+    border: 1px dashed var(--border-hover);
+    border-radius: var(--radius-pill);
+    font-size: var(--fs-xs);
+    color: var(--text);
+    text-decoration: line-through;
+    text-decoration-color: color-mix(in srgb, var(--text) 60%, transparent);
+  }
+
+  .nope :global(svg) {
+    color: var(--danger);
+    flex: none;
+  }
+
+  .quote {
+    margin: 0;
+    padding: var(--space-5) var(--space-6);
+    border-left: 3px solid var(--accent);
+    border-radius: 0 var(--radius-md) var(--radius-md) 0;
+    background: var(--surface);
+  }
+
+  .quote blockquote {
+    margin: 0 0 var(--space-2);
+    font: 400 var(--fs-lg) / 1.4 var(--heading);
+    color: var(--text-h);
+  }
+
+  .quote figcaption {
+    font-size: var(--fs-xs);
+    color: var(--text);
+  }
+
+  .shields {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-4);
+  }
+
+  .shields__card {
+    padding: var(--space-5);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--surface);
+    box-shadow: var(--shadow-card);
+  }
+
+  .shields__icon,
+  .vaults__icon {
+    display: inline-grid;
+    place-items: center;
+    width: 40px;
+    height: 40px;
+    margin-bottom: var(--space-3);
+    border-radius: var(--radius-md);
+    background: var(--accent-bg);
+    color: var(--accent-text);
+  }
+
+  .shields__card h3,
+  .vaults__card h3 {
+    font-size: var(--fs-md);
+    margin-bottom: var(--space-1);
+  }
+
+  .shields__card p,
+  .vaults__card p {
+    margin: 0;
+    font-size: var(--fs-sm);
+    line-height: 1.5;
+    color: var(--text);
+  }
+
+  /* ---------------------------------------------------------- backups */
+  .vaults {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: var(--space-4);
+  }
+
+  .vaults__card {
+    padding: var(--space-5);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--surface);
+  }
+
+  .vaults__card--featured {
+    grid-column: 1 / -1;
+    display: grid;
+    grid-template-columns: auto minmax(0, 1fr);
+    column-gap: var(--space-5);
+    align-items: center;
+    padding: var(--space-6);
+    border-color: var(--accent-border);
+    background:
+      radial-gradient(30rem 12rem at 0% 0%, var(--accent-bg), transparent 70%),
+      var(--surface);
+    box-shadow: var(--shadow-card);
+  }
+
+  .vaults__card--featured .vaults__icon {
+    grid-row: 1 / span 2;
+    width: 56px;
+    height: 56px;
+    margin: 0;
+  }
+
+  .vaults__card--featured h3 {
+    font: 400 var(--fs-xl) / 1.2 var(--heading);
+  }
+
+  .vaults__card--featured p {
+    font-size: var(--fs-md);
+    max-width: 60ch;
+  }
+
+  .warning {
+    display: flex;
+    gap: var(--space-4);
+    margin-top: var(--space-8);
+    padding: var(--space-5) var(--space-6);
+    border: 1px solid var(--warn-border);
+    border-left-width: 3px;
+    border-radius: var(--radius-md);
+    background: var(--warn-bg);
+  }
+
+  .warning :global(.warning__icon) {
+    flex: none;
+    color: var(--warn);
+    margin-top: 2px;
+  }
+
+  .warning p {
+    margin: 0 0 var(--space-2);
+    font-size: var(--fs-sm);
+    line-height: 1.6;
+    color: var(--text-h);
+  }
+
+  .warning a {
+    font-size: var(--fs-sm);
+    font-weight: 500;
+  }
+
+  /* ---------------------------------------------------------- horizon */
+  .horizon {
+    margin-top: var(--space-12);
+    padding: var(--space-6);
+    border: 1.5px dashed var(--border-hover);
+    border-radius: var(--radius-lg);
+  }
+
+  .horizon h3 {
+    font-size: var(--fs-xl);
+    margin: 0;
+  }
+
+  .horizon__note {
+    margin: var(--space-1) 0 var(--space-5);
+    font-size: var(--fs-xs);
+    color: var(--text);
+  }
+
+  .horizon__list {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-4) var(--space-6);
+  }
+
+  .horizon__list li {
+    display: flex;
+    gap: var(--space-3);
+    align-items: flex-start;
+    font-size: var(--fs-xs);
+    line-height: 1.5;
+    color: var(--text);
+  }
+
+  .horizon__list :global(svg) {
+    flex: none;
+    margin-top: 2px;
+    color: var(--accent);
+  }
+
+  .horizon__list strong {
+    display: block;
+    font-size: var(--fs-sm);
+    font-weight: 500;
+    color: var(--text-h);
+  }
+
+  .horizon__ask {
+    margin: var(--space-5) 0 0;
+    font-size: var(--fs-sm);
+    color: var(--text);
+  }
+
   /* ---------------------------------------------------------- journey */
   .journey {
     --date-w: 7.5rem;
@@ -851,6 +1301,21 @@ const when = (m: (typeof JOURNEY)[number]) =>
     margin: var(--space-6) 0 0;
   }
 
+  .contribute__star {
+    margin: var(--space-5) 0 0;
+    padding: var(--space-4) var(--space-5);
+    border-radius: var(--radius-md);
+    background: var(--surface);
+    border: 1px solid var(--border);
+    font-size: var(--fs-sm);
+    line-height: 1.55;
+  }
+
+  .contribute__star strong {
+    color: var(--text-h);
+    font-weight: 600;
+  }
+
   .helps {
     list-style: none;
     margin: 0;
@@ -906,6 +1371,56 @@ const when = (m: (typeof JOURNEY)[number]) =>
     color: var(--text);
   }
 
+  /* -------------------------------------------------------------- faq */
+  .faq {
+    display: grid;
+    gap: var(--space-3);
+  }
+
+  .faq__item {
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--surface);
+  }
+
+  .faq__item summary {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: var(--space-4);
+    padding: var(--space-4) var(--space-5);
+    cursor: pointer;
+    list-style: none;
+  }
+
+  .faq__item summary::-webkit-details-marker {
+    display: none;
+  }
+
+  .faq__item h3 {
+    margin: 0;
+    font: 500 var(--fs-md) / 1.4 var(--sans);
+    letter-spacing: 0;
+  }
+
+  .faq__item :global(.faq__chev) {
+    flex: none;
+    color: var(--text);
+    transition: transform var(--dur) var(--ease);
+  }
+
+  .faq__item[open] :global(.faq__chev) {
+    transform: rotate(90deg);
+  }
+
+  .faq__item p {
+    margin: 0;
+    padding: 0 var(--space-5) var(--space-5);
+    font-size: var(--fs-sm);
+    line-height: 1.6;
+    color: var(--text);
+  }
+
   /* ----------------------------------------------------------- finale */
   .section--end {
     padding-bottom: 0;
@@ -935,6 +1450,27 @@ const when = (m: (typeof JOURNEY)[number]) =>
     margin-bottom: var(--space-8);
   }
 
+  .finale__star {
+    display: inline-flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    text-align: center;
+    align-items: center;
+    gap: var(--space-2);
+    margin-top: var(--space-6);
+    font-size: var(--fs-sm);
+    color: var(--text);
+    text-decoration: none;
+  }
+
+  .finale__star:hover {
+    color: var(--accent-text);
+  }
+
+  .finale__star :global(svg) {
+    color: var(--accent);
+  }
+
   @media (prefers-reduced-motion: reduce) {
     .helps__item:hover {
       transform: none;
@@ -952,7 +1488,8 @@ const when = (m: (typeof JOURNEY)[number]) =>
     .row,
     .row--flip,
     .install,
-    .contribute {
+    .contribute,
+    .privacy {
       grid-template-columns: minmax(0, 1fr);
     }
 
@@ -960,12 +1497,55 @@ const when = (m: (typeof JOURNEY)[number]) =>
       order: 0;
     }
 
-    .imports {
+    .imports,
+    .vaults {
       grid-template-columns: minmax(0, 1fr);
     }
   }
 
   @media (max-width: 40rem) {
+    .shields__card,
+    .vaults__card:not(.vaults__card--featured),
+    .imports__card {
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr);
+      column-gap: var(--space-4);
+      align-items: start;
+      padding: var(--space-4);
+    }
+
+    .shields__icon,
+    .vaults__card:not(.vaults__card--featured) .vaults__icon,
+    .imports__icon {
+      grid-row: 1 / span 2;
+      margin: 0;
+    }
+
+    .shields,
+    .horizon__list {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .vaults__card--featured {
+      display: block;
+      padding: var(--space-5);
+    }
+
+    .vaults__card--featured .vaults__icon {
+      width: 44px;
+      height: 44px;
+      margin-bottom: var(--space-3);
+    }
+
+    .horizon {
+      padding: var(--space-5);
+    }
+
+    .warning {
+      padding: var(--space-4);
+      gap: var(--space-3);
+    }
+
     .tile {
       padding: var(--space-4);
     }

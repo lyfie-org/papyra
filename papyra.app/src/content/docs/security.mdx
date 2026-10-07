@@ -59,11 +59,14 @@ an unlisted proxy cannot spoof a client address past the rate limiter.
 
 ## What Papyra does not claim
 
-- **Notes are not encrypted at rest.** They are plain files on your disk, which
-  is the entire point of the design. Use full-disk encryption if you need it.
-  Encrypted *backups* are a separate, supported thing.
-- **Vault notes are access-controlled, not encrypted.** The server withholds
-  them; it does not encrypt them on disk. Someone with your disk has them.
+- **Ordinary notes are not encrypted at rest.** They are plain files on your
+  disk, which is the entire point of the design. Use full-disk encryption if you
+  need it. Encrypted *backups* are a separate, supported thing.
+- **Locked notes are encrypted at rest — with a key on the same server.** Their
+  files are sealed with a per-account key ring kept in `.papyra/`, so a copied
+  notes folder or a plain git mirror does not expose them. Someone with the
+  whole disk, keys included, could still open them. Lose the keys and nobody
+  can — back up the whole `/data` folder, hidden folders included.
 - **No third-party audit** has been performed.
 - **This is young software**, under active development, and the project says so
   on its own front page.

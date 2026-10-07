@@ -10,7 +10,17 @@ export default defineConfig({
   // Fully static: every byte is served from Cloudflare's edge with no origin,
   // no cold start and no region. Nothing on this site needs a server.
   output: 'static',
-  integrations: [mdx(), react(), sitemap()],
+  integrations: [
+    mdx(),
+    react(),
+    sitemap({
+      // HTML pages only: the 404, and the plain-text twins (/llms.txt,
+      // /docs/*.md) which are linked from the pages themselves.
+      filter: (page) => !/\/404\/?$|\.(txt|md)\/?$/.test(page),
+      // Every build is a fresh look at the docs and the release notes.
+      serialize: (item) => ({ ...item, lastmod: new Date().toISOString() }),
+    }),
+  ],
   markdown: {
     // Tables scroll inside their own box so a wide one never makes the page
     // scroll sideways on a phone.

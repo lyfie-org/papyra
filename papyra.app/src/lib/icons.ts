@@ -166,6 +166,30 @@ export const ICONS = {
     viewBox: '0 0 24 24',
     body: '<path d="M11 18H3M15 18l2 2 4-4M16 12H3M16 6H3"/>',
   },
+  'monitor': {
+    viewBox: '0 0 24 24',
+    body: '<rect width="20" height="14" x="2" y="3" rx="2"/><path d="M8 21h8M12 17v4"/>',
+  },
+  'sparkles': {
+    viewBox: '0 0 24 24',
+    body: '<path d="M9.94 14.06 8 20l-1.94-5.94L0 12l6.06-1.94L8 4l1.94 6.06L16 12z" transform="translate(2 -1) scale(.9)"/><path d="M19 3v4M17 5h4"/>',
+  },
+  'x': {
+    viewBox: '0 0 24 24',
+    body: '<path d="M18 6 6 18M6 6l12 12"/>',
+  },
+  'download': {
+    viewBox: '0 0 24 24',
+    body: '<path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4M7 10l5 5 5-5M12 15V3"/>',
+  },
+  'mail': {
+    viewBox: '0 0 24 24',
+    body: '<rect width="20" height="16" x="2" y="4" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/>',
+  },
+  'archive': {
+    viewBox: '0 0 24 24',
+    body: '<rect width="20" height="5" x="2" y="3" rx="1"/><path d="M4 8v11a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8M10 12h4"/>',
+  },
 } satisfies Record<string, { viewBox: string; body: string; filled?: boolean }>;
 
 export type IconName = keyof typeof ICONS;

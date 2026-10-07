@@ -9,7 +9,7 @@ const path = Astro.url.pathname;
 const isCurrent = (href: string) => (href === '/' ? path === '/' : path.startsWith(href));
 ---
 
-<header class="site-header">
+<header class="site-header" data-header>
   <div class="wrap site-header__inner">
     <a class="site-header__brand" href="/">
       <Image src={logo} alt="" width={30} height={30} densities={[1, 2]} loading="eager" />
@@ -36,10 +36,39 @@ const isCurrent = (href: string) => (href === '/' ? path === '/' : path.startsWi
       >
         <Icon name="github" size={18} />
       </a>
-      <a class="btn site-header__cta" href="/demo/">Try the demo</a>
+      <a class="btn site-header__cta" href="/demo/">
+        <span class="site-header__cta-long">Try the demo</span>
+        <span class="site-header__cta-short">Demo</span>
+      </a>
     </div>
   </div>
 </header>
+
+<script>
+  // On phones the header is two rows tall. Slide it away while reading down the
+  // page and bring it back the moment you scroll up (CSS does the moving).
+  const header = document.querySelector<HTMLElement>('[data-header]');
+  if (header) {
+    let last = window.scrollY;
+    let ticking = false;
+    window.addEventListener(
+      'scroll',
+      () => {
+        if (ticking) return;
+        ticking = true;
+        requestAnimationFrame(() => {
+          const y = window.scrollY;
+          if (Math.abs(y - last) > 6) {
+            header.toggleAttribute('data-tucked', y > last && y > 140);
+            last = y;
+          }
+          ticking = false;
+        });
+      },
+      { passive: true },
+    );
+  }
+</script>
 
 <style>
   .site-header {
@@ -131,8 +160,9 @@ const isCurrent = (href: string) => (href === '/' ? path === '/' : path.startsWi
   @media (max-width: 56rem) {
     .site-header__inner {
       flex-wrap: wrap;
-      gap: var(--space-3);
-      padding-block: var(--space-3);
+      gap: var(--space-2) var(--space-3);
+      min-height: 0;
+      padding-block: var(--space-2) 0;
     }
 
     .site-header__nav {
@@ -143,7 +173,11 @@ const isCurrent = (href: string) => (href === '/' ? path === '/' : path.startsWi
       overflow-x: auto;
       scrollbar-width: none;
       border-top: 1px solid var(--border);
-      padding-top: var(--space-2);
+      padding-top: 0;
+    }
+
+    .site-header__nav a {
+      padding-block: var(--space-2);
     }
 
     .site-header__nav::-webkit-scrollbar {
@@ -151,9 +185,33 @@ const isCurrent = (href: string) => (href === '/' ? path === '/' : path.startsWi
     }
   }
 
+  .site-header__cta-short {
+    display: none;
+  }
+
+  /* Phones: the two-row header slides out of the way while reading down and
+     returns on the first scroll up. A transform, so nothing below it reflows. */
+  @media (max-width: 56rem) {
+    .site-header {
+      transition: transform var(--dur-slow) var(--ease);
+    }
+
+    .site-header[data-tucked]:not(:focus-within) {
+      transform: translateY(-100%);
+    }
+  }
+
   @media (max-width: 30rem) {
-    .site-header__cta {
+    .site-header__cta-long {
       display: none;
+    }
+
+    .site-header__cta-short {
+      display: inline;
+    }
+
+    .site-header__actions {
+      gap: var(--space-2);
     }
   }
 </style>

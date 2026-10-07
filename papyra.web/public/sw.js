@@ -10,7 +10,7 @@
  * durable and conflict-aware. This file only ever touches GETs.
  */
 
-const VERSION = 'papyra-v3';
+const VERSION = 'papyra-v4';
 const SHELL_CACHE = `${VERSION}-shell`;
 const DATA_CACHE = `${VERSION}-data`;
 const FONT_CACHE = `${VERSION}-fonts`;
@@ -53,8 +53,9 @@ function isCacheableApi(url) {
   return url.origin === self.location.origin && CACHEABLE_API.includes(url.pathname);
 }
 
+// Self-hosted typefaces (public/fonts) — they never change, so cache-first.
 function isFont(url) {
-  return url.hostname === 'fonts.googleapis.com' || url.hostname === 'fonts.gstatic.com';
+  return url.origin === self.location.origin && url.pathname.startsWith('/fonts/');
 }
 
 // Hashed build output — immutable, so cache-first is safe and instant.

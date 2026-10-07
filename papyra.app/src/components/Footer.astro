@@ -1,6 +1,6 @@
 ---
 import Icon from './Icon.astro';
-import { GITHUB_URL, DOCKER_HUB_URL, LICENSE } from '../data/site';
+import { CREATOR_URL, DOCKER_HUB_URL, GITHUB_URL, LICENSE, LUTHOR_URL, LYFIE_URL } from '../data/site';
 
 const year = new Date().getFullYear();
 
@@ -30,6 +30,7 @@ const columns = [
       { href: GITHUB_URL, label: 'GitHub', external: true },
       { href: DOCKER_HUB_URL, label: 'Docker Hub', external: true },
       { href: '/docs/security/', label: 'Security' },
+      { href: LYFIE_URL, label: 'Lyfie', external: true },
     ],
   },
 ];
@@ -41,6 +42,10 @@ const columns = [
       <p class="site-footer__mark">Papyra</p>
       <p class="site-footer__blurb">
         A calm, beautiful home for your notes — on your own server, in plain Markdown.
+      </p>
+      <p class="site-footer__family">
+        A <a href={LYFIE_URL} rel="noopener">Lyfie</a> project, written with{' '}
+        <a href={LUTHOR_URL} rel="noopener">luthor</a>.
       </p>
       <p class="site-footer__icons">
         <a href={GITHUB_URL} rel="noopener noreferrer" aria-label="Papyra on GitHub">
@@ -71,8 +76,13 @@ const columns = [
   </div>
 
   <div class="wrap site-footer__legal">
-    <p>© {year} Papyra · Released under the {LICENSE}</p>
-    <p>Vibe-coded by Rahul, with AI doing most of the typing.</p>
+    <p>
+      © {year} Papyra, a <a href={LYFIE_URL} rel="noopener">lyfie.org</a> project · Released under
+      the {LICENSE}
+    </p>
+    <p>
+      Vibe-coded by <a href={CREATOR_URL} rel="noopener">Rahul</a>, with AI doing most of the typing.
+    </p>
   </div>
 </footer>
 
@@ -103,6 +113,23 @@ const columns = [
     line-height: 1.55;
     color: var(--text);
     max-width: 32ch;
+  }
+
+  .site-footer__family {
+    font-size: var(--fs-xs);
+    color: var(--text);
+    margin: 0 0 var(--space-4);
+  }
+
+  .site-footer__legal a,
+  .site-footer__family a {
+    color: inherit;
+    text-decoration-color: var(--border-hover);
+  }
+
+  .site-footer__legal a:hover,
+  .site-footer__family a:hover {
+    color: var(--accent-text);
   }
 
   .site-footer__icons {
