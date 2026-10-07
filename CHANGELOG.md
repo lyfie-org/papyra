@@ -6,6 +6,15 @@ a Docker Hub tag and a GitHub Release.
 
 <!-- new releases are inserted directly below this line -->
 
+## [0.3.8] - 2026-10-07
+
+- chore: bump @lyfie/luthor to 2.11.3; drop the list-bullet override (e08d643)
+- style(site): warm-steel hero phone with a soft screen glare; drop the window hover effect (f7b25fe)
+- feat(site): typewriter headline, larger hero preview, roadmap order, footer polish (25ef024)
+- feat(site): live hero slideshow, docs search and contents, growing vine, polish (c0c6853)
+- feat(site): split hero, privacy and backups sections, roadmap, star CTA; self-host app fonts (9a129d7)
+- feat(site): styled home page with real-app clips, journey timeline and contributing guide (31fe660)
+
 ## [0.3.7] - 2026-10-07
 
 - fix: show where search hits live, stop PWA card pile-up, touch-friendly cards (ac38629)
