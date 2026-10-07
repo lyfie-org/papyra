@@ -32,7 +32,9 @@ const OUT = join(ROOT, 'src/assets/shots');
  * the repository. Add a viewport when a page needs it.
  */
 const VIEWPORTS = {
-  desktop: { width: 1440, height: 900 },
+  // Smaller than a typical laptop on purpose: the hero shows these at ~760px,
+  // and a tighter viewport keeps the app's own text readable there.
+  desktop: { width: 1200, height: 750 },
   mobile: { width: 390, height: 844 },
 };
 

@@ -1,6 +1,5 @@
 ---
 import { Image } from 'astro:assets';
-import logo from '../assets/papyra_logo.png';
 
 // The hero's product shot: a browser window and a phone, cycling together
 // through six real screens of the app. Dashboard, search and focus come from the
@@ -65,8 +64,16 @@ const widths = [640, 960, 1280, 1600];
     </div>
 
     <div class="showcase__phone" aria-hidden="true">
-      <span class="showcase__camera"></span>
       <div class="showcase__phone-screen">
+        <div class="showcase__status">
+          <span class="showcase__time">9:41</span>
+          <span class="showcase__camera"></span>
+          <span class="showcase__icons">
+            <svg viewBox="0 0 18 12"><rect x="0" y="8" width="3" height="4" rx="0.8"></rect><rect x="5" y="5.5" width="3" height="6.5" rx="0.8"></rect><rect x="10" y="3" width="3" height="9" rx="0.8"></rect><rect x="15" y="0" width="3" height="12" rx="0.8"></rect></svg>
+            <svg viewBox="0 0 16 12"><path d="M8 11.5 5.6 9a3.4 3.4 0 0 1 4.8 0Z"></path><path d="M3.2 6.6a6.8 6.8 0 0 1 9.6 0l-1.3 1.3a5 5 0 0 0-7 0Z"></path><path d="M.8 4.2a10.2 10.2 0 0 1 14.4 0l-1.3 1.3a8.4 8.4 0 0 0-11.8 0Z"></path></svg>
+            <span class="showcase__battery"><span></span></span>
+          </span>
+        </div>
         {
           slides.map((s, i) => (
             <div class="showcase__screen" data-slide={i} data-active={i === 0 ? '' : undefined}>
@@ -86,9 +93,6 @@ const widths = [640, 960, 1280, 1600];
       </div>
     </div>
 
-    <span class="showcase__seal" aria-hidden="true">
-      <Image src={logo} alt="" width={44} height={44} densities={[1, 2]} loading="eager" />
-    </span>
   </div>
 
   <div class="showcase__tabs" role="tablist" aria-label="App screens">
@@ -197,24 +201,24 @@ const widths = [640, 960, 1280, 1600];
     background: color-mix(in srgb, var(--surface) 70%, var(--bg));
   }
 
-  /* Close, minimise, expand — in the palette's own red, amber and sage. */
+  /* Close, minimise, expand — the colours everyone knows from a Mac. */
   .showcase__dot {
-    width: 11px;
-    height: 11px;
+    width: 12px;
+    height: 12px;
     border-radius: 50%;
-    box-shadow: inset 0 0 0 0.5px color-mix(in srgb, var(--scrim) 25%, transparent);
+    box-shadow: inset 0 0 0 0.5px color-mix(in srgb, var(--scrim) 22%, transparent);
   }
 
   .showcase__dot--close {
-    background: var(--danger);
+    background: var(--mac-close);
   }
 
   .showcase__dot--min {
-    background: var(--warn);
+    background: var(--mac-min);
   }
 
   .showcase__dot--max {
-    background: var(--accent);
+    background: var(--mac-max);
   }
 
   .showcase__url {
@@ -263,117 +267,100 @@ const widths = [640, 960, 1280, 1600];
     display: block !important;
   }
 
-  /* A phone in brushed metallic blue, in front of the window's right edge. */
+  /* A phone: one blue, a hint of sheen, a thin bezel, and a status bar so the
+     app sits under it the way it would on a real screen. */
   .showcase__phone {
     position: absolute;
     right: 0;
     bottom: -9%;
-    width: clamp(96px, 21%, 210px);
-    aspect-ratio: 390 / 844;
-    padding: 5px;
-    border-radius: 20px;
-    background:
-      linear-gradient(140deg, var(--phone-metal-hi) 0%, var(--phone-metal) 28%, var(--phone-metal-lo) 62%, var(--phone-metal) 84%, var(--phone-metal-hi) 100%);
+    width: clamp(96px, 20%, 200px);
+    aspect-ratio: 390 / 870;
+    padding: 3px;
+    border-radius: 22px;
+    background: linear-gradient(160deg, var(--phone-metal-hi), var(--phone-metal) 45%);
     box-shadow:
-      inset 0 0 0 1px color-mix(in srgb, var(--phone-metal-hi) 70%, transparent),
+      inset 0 0 0 1px color-mix(in srgb, var(--phone-metal-hi) 60%, transparent),
       var(--shadow-frame);
   }
 
-  /* A thin status-bar strip above the app, so the pinhole camera sits in it
-     rather than on top of the app's own header. */
   .showcase__phone-screen {
     position: relative;
+    display: flex;
+    flex-direction: column;
     width: 100%;
     height: 100%;
     overflow: hidden;
-    border-radius: 15px;
-    background: var(--surface);
+    border-radius: 19px;
+    background: var(--bg);
   }
 
   .showcase__phone-screen .showcase__screen {
-    top: 5.5%;
+    top: 6%;
   }
 
-  /* The selfie camera: a pinhole, not a notch, so the app's header stays whole. */
-  .showcase__camera {
-    position: absolute;
-    z-index: 1;
-    top: 9px;
-    left: 50%;
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-    background: var(--scrim);
-    transform: translateX(-50%);
-  }
-
-  /* The seal: Papyra's mark, pinned where the copy meets the window. */
-  .showcase__seal {
-    position: absolute;
-    z-index: 2;
-    top: 18%;
-    left: 0;
-    display: grid;
-    place-items: center;
-    width: 76px;
-    height: 76px;
-    border-radius: 50%;
-    background: var(--surface);
-    box-shadow: var(--shadow-frame);
-    transform: translateX(-50%);
-  }
-
-  /* A slowly turning ring of the palette's greens and ambers around the seal. */
-  .showcase__seal::before {
-    content: '';
-    position: absolute;
-    inset: -3px;
-    z-index: -1;
-    border-radius: 50%;
-    background: conic-gradient(from var(--seal-turn, 0deg), var(--accent), var(--warn), var(--accent-border), var(--accent));
-  }
-
-  .showcase__seal::after {
-    content: '';
-    position: absolute;
-    inset: 0;
-    z-index: -1;
-    border-radius: 50%;
-    background: var(--surface);
-  }
-
-  .showcase__seal :global(img) {
+  .showcase__status {
     position: relative;
     z-index: 1;
-    border-radius: 12px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 6%;
+    padding: 0 9% 0 11%;
+    background: var(--bg);
+    color: var(--text-h);
+    font: 600 clamp(6px, 0.55vw, 9px) / 1 var(--sans);
   }
 
-  @property --seal-turn {
-    syntax: '<angle>';
-    inherits: false;
-    initial-value: 0deg;
+  .showcase__camera {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--scrim);
+    transform: translate(-50%, -50%);
   }
 
-  @media (prefers-reduced-motion: no-preference) {
-    .showcase__seal {
-      animation: seal-float 6s var(--ease-inout) infinite alternate;
-    }
-
-    .showcase__seal::before {
-      animation: seal-turn 9s linear infinite;
-    }
+  .showcase__icons {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
   }
 
-  @keyframes seal-float {
-    to {
-      translate: 0 -8px;
-    }
+  .showcase__icons svg {
+    height: 0.9em;
+    fill: currentColor;
   }
 
-  @keyframes seal-turn {
-    to {
-      --seal-turn: 360deg;
-    }
+  .showcase__battery {
+    position: relative;
+    display: inline-block;
+    width: 1.9em;
+    height: 0.95em;
+    padding: 1px;
+    border: 1px solid currentColor;
+    border-radius: 3px;
+    opacity: 0.9;
+  }
+
+  .showcase__battery::after {
+    content: '';
+    position: absolute;
+    right: -3px;
+    top: 30%;
+    width: 1.5px;
+    height: 40%;
+    border-radius: 0 1px 1px 0;
+    background: currentColor;
+  }
+
+  .showcase__battery span {
+    display: block;
+    width: 78%;
+    height: 100%;
+    border-radius: 1.5px;
+    background: currentColor;
   }
 
   .showcase__tabs {
@@ -437,28 +424,6 @@ const widths = [640, 960, 1280, 1600];
     }
   }
 
-  /* Stacked under the copy: the seal sits on the window's top edge. */
-  @media (max-width: 69.99rem) {
-    .showcase__seal {
-      top: 0;
-      left: 50%;
-      transform: translate(-50%, -55%);
-      width: 64px;
-      height: 64px;
-    }
-
-    .showcase__seal :global(img) {
-      width: 38px;
-      height: 38px;
-    }
-
-    /* The seal now sits on the bar's centre; the address moves aside for it. */
-    .showcase__url {
-      margin-inline: auto 0;
-      transform: none;
-    }
-  }
-
   @media (max-width: 40rem) {
     .showcase__stage,
     .showcase__tabs {
@@ -473,18 +438,21 @@ const widths = [640, 960, 1280, 1600];
       right: var(--space-2);
       bottom: -4%;
       width: 27%;
-      padding: 3px;
-      border-radius: 13px;
+      padding: 2px;
+      border-radius: 14px;
     }
 
     .showcase__phone-screen {
-      border-radius: 10px;
+      border-radius: 12px;
     }
 
     .showcase__camera {
-      top: 6px;
       width: 4px;
       height: 4px;
+    }
+
+    .showcase__status {
+      font-size: 5px;
     }
 
     .showcase__url {

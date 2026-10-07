@@ -137,13 +137,19 @@ const when = (m: (typeof JOURNEY)[number]) =>
   <!-- ------------------------------------------------------------ hero -->
   <section class="hero">
     <div class="hero__glow" aria-hidden="true"></div>
-    <div class="wrap wrap--wide hero__grid">
+    <div class="wrap hero__grid">
     <div class="hero__copy">
       <p class="chip hero__chip">
         <span class="chip__dot"></span>
         Papyra 1.0 · Free and open source
       </p>
-      <h1 class="hero__title">Your notes deserve a <span>beautiful</span> home.</h1>
+      <h1 class="hero__title">
+        <span class="sr-only">Your thoughts deserve a beautiful home.</span>
+        <span aria-hidden="true">
+          Your <span class="hero__typed" data-typed data-words="thoughts,ideas,notes,plans,recipes,memories,journals">thoughts</span><br />deserve
+          a<br />beautiful home.
+        </span>
+      </h1>
       <p class="hero__lede">
         A calm, self-hosted notes app — as easy as sticky notes, as deep as a wiki. Every note
         stays a plain Markdown file on your own server.
@@ -201,13 +207,13 @@ const when = (m: (typeof JOURNEY)[number]) =>
                   </a>
                 )}
               </div>
-              <Clip class="row__clip" name={row.clip} label={row.alt} vine="side" />
+              <Clip class="row__clip" name={row.clip} label={row.alt} vine />
             </article>
           ))
         }
       </div>
 
-      <div class="theme-band" data-reveal>
+      <div class="theme-band" data-reveal data-vine-anchor>
         <div class="theme-band__copy">
           <p class="eyebrow">Day and night</p>
           <h3>Easy on the eyes.</h3>
@@ -217,7 +223,6 @@ const when = (m: (typeof JOURNEY)[number]) =>
           class="theme-band__clip"
           name="theme"
           single
-          vine="top"
           label="The desk switching from the light theme to the dark one and back"
         />
       </div>
@@ -266,7 +271,7 @@ const when = (m: (typeof JOURNEY)[number]) =>
         }
       </div>
       <p class="imports__foot" data-reveal>
-        Re-import any time — Papyra never duplicates a note.
+        Re-import any time — Papyra never duplicates a note.{' '}
         <a href="/docs/importing/">How importing works</a>
       </p>
     </div>
@@ -355,13 +360,13 @@ const when = (m: (typeof JOURNEY)[number]) =>
   <section class="section section--tint" id="journey">
     <div class="wrap wrap--narrow">
       <header class="intro" data-reveal>
-        <p class="eyebrow">The journey</p>
-        <h2>First commit to 1.0 in four months.</h2>
+        <p class="eyebrow">Roadmap</p>
+        <h2>Where Papyra has been, and where it’s going.</h2>
       </header>
 
       <ol class="journey" data-journey>
         {
-          NEXT.map((n) => (
+          [...NEXT].reverse().map((n) => (
             <li class:list={['journey__item', 'journey__item--soon', { 'journey__item--next': n.next }]}>
               <span class="journey__date">Coming soon</span>
               <span class="journey__node" aria-hidden="true">
@@ -414,11 +419,6 @@ const when = (m: (typeof JOURNEY)[number]) =>
         </button>
         <a href="/changelog/">Full changelog</a>
       </div>
-      <p class="journey__ask">
-        Plans, not promises. Want something else?{' '}
-        <a href={`${GITHUB_URL}/issues/new`} rel="noopener noreferrer">Ask for it</a>.
-      </p>
-
     </div>
   </section>
 
@@ -525,6 +525,38 @@ const when = (m: (typeof JOURNEY)[number]) =>
 </Base>
 
 <script>
+  // The hero's changing word: type it, hold it, backspace it fast, type the
+  // next. Paused while the tab is hidden; off entirely for reduced motion
+  // (the first word simply stays). Screen readers get the fixed sentence.
+  const typed = document.querySelector<HTMLElement>('[data-typed]');
+  if (typed && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    const words = (typed.dataset.words ?? '').split(',').filter(Boolean);
+    const wait = (ms: number) => new Promise((r) => window.setTimeout(r, ms));
+    const visible = () =>
+      document.hidden ? new Promise<void>((r) => document.addEventListener('visibilitychange', () => r(), { once: true })) : null;
+    (async () => {
+      let i = 0;
+      for (;;) {
+        await wait(2400);
+        await visible();
+        typed.setAttribute('data-busy', '');
+        const word = words[i];
+        for (let n = word.length; n >= 0; n -= 1) {
+          typed.textContent = word.slice(0, n);
+          await wait(38);
+        }
+        i = (i + 1) % words.length;
+        const next = words[i];
+        await wait(160);
+        for (let n = 1; n <= next.length; n += 1) {
+          typed.textContent = next.slice(0, n);
+          await wait(85 + Math.random() * 45);
+        }
+        typed.removeAttribute('data-busy');
+      }
+    })();
+  }
+
   const list = document.querySelector<HTMLElement>('[data-journey]');
   const toggle = document.querySelector<HTMLButtonElement>('[data-journey-toggle]');
   if (list && toggle) {
@@ -571,7 +603,7 @@ const when = (m: (typeof JOURNEY)[number]) =>
   .hero__grid {
     position: relative;
     display: grid;
-    grid-template-columns: minmax(0, 0.82fr) minmax(0, 1.18fr);
+    grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
     gap: clamp(var(--space-8), 4vw, var(--space-12));
     align-items: center;
   }
@@ -588,15 +620,16 @@ const when = (m: (typeof JOURNEY)[number]) =>
   }
 
   .hero__title {
-    font-size: clamp(40px, 3.4vw + 16px, 72px);
+    font-size: clamp(40px, 3vw + 16px, 66px);
     line-height: 1.02;
     letter-spacing: -0.035em;
     max-width: 11ch;
     margin-bottom: var(--space-5);
   }
 
-  /* The one coloured word breathes: a slow drift through the palette's greens. */
-  .hero__title span {
+  /* The word that changes: typed, held, backspaced, retyped (script below),
+     in a slow drift through the palette's greens, with a blinking caret. */
+  .hero__typed {
     color: var(--accent-text);
     background: linear-gradient(100deg, var(--accent-text) 0%, var(--accent) 35%, var(--accent-text) 60%, var(--accent) 100%) 0 0 / 220% 100%;
     -webkit-background-clip: text;
@@ -604,15 +637,46 @@ const when = (m: (typeof JOURNEY)[number]) =>
     -webkit-text-fill-color: transparent;
   }
 
+  .hero__typed::after {
+    content: '';
+    display: inline-block;
+    width: 0.06em;
+    height: 0.82em;
+    margin-left: 0.06em;
+    vertical-align: -0.04em;
+    background: var(--accent);
+    border-radius: 1px;
+  }
+
   @media (prefers-reduced-motion: no-preference) {
-    .hero__title span {
+    .hero__typed {
       animation: hero-ink 7s var(--ease-inout) infinite alternate;
+    }
+
+    .hero__typed::after {
+      animation: hero-caret 1.05s steps(1) infinite;
+    }
+
+    .hero__typed[data-busy]::after {
+      animation: none;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .hero__typed::after {
+      display: none;
     }
   }
 
   @keyframes hero-ink {
     to {
       background-position: 100% 0;
+    }
+  }
+
+  @keyframes hero-caret {
+    50% {
+      opacity: 0;
     }
   }
 
@@ -641,10 +705,13 @@ const when = (m: (typeof JOURNEY)[number]) =>
     color: var(--text);
   }
 
+  /* The copy lines up with the navigation; the window is allowed past it, out
+     to the page's edge, so the app inside is big enough to read. */
   .hero__shot {
     position: relative;
     min-width: 0;
-    padding-left: var(--space-6);
+    padding-left: var(--space-4);
+    margin-right: calc(-1 * clamp(0px, (100vw - 68rem) / 2, 10rem));
   }
 
   @media (max-width: 69.99rem) {
@@ -671,6 +738,7 @@ const when = (m: (typeof JOURNEY)[number]) =>
 
     .hero__shot {
       padding-left: 0;
+      margin-right: 0;
       margin-top: var(--space-10);
     }
   }
@@ -731,12 +799,6 @@ const when = (m: (typeof JOURNEY)[number]) =>
     z-index: 1;
   }
 
-  /* Room under the heading for the pot the vine trails out of. */
-  @media (min-width: 56rem) {
-    .features .intro {
-      margin-bottom: calc(clamp(var(--space-10), 6vw, var(--space-12)) + 4.5rem);
-    }
-  }
 
   .rows {
     display: grid;
@@ -1225,13 +1287,6 @@ const when = (m: (typeof JOURNEY)[number]) =>
   .journey__tag--next {
     font-family: var(--sans);
     font-weight: 600;
-  }
-
-  .journey__ask {
-    margin: var(--space-4) 0 0;
-    text-align: center;
-    font-size: var(--fs-xs);
-    color: var(--text);
   }
 
   .journey__more {

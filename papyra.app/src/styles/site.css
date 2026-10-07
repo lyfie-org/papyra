@@ -18,12 +18,14 @@
     0 30px 70px -28px color-mix(in srgb, var(--scrim) 42%, transparent);
 }
 
-/* The hero phone's brushed metallic blue (think a navy flagship). Fixed in
-   both themes: it is a material, not a surface. */
+/* Materials in the hero mock-ups, fixed in both themes because they are
+   objects, not surfaces: the phone's blue, and a Mac window's traffic lights. */
 :root {
-  --phone-metal-hi: #a9c3e2;
-  --phone-metal: #4a6c9b;
-  --phone-metal-lo: #1f3352;
+  --phone-metal-hi: #6f8fbe;
+  --phone-metal: #4b6b9a;
+  --mac-close: #ff5f57;
+  --mac-min: #febc2e;
+  --mac-max: #28c840;
 }
 
 [data-theme='dark'] {
