@@ -197,5 +197,5 @@ assert its routes are correctly hidden — so both suites are green either way.
 
 ### 📄 License
 
-[GNU GPL v3.0](LICENSE). Contributions welcome — open an issue first for
-anything large.
+[GNU GPL v3.0](LICENSE). Contributions welcome — see
+[CONTRIBUTING.md](CONTRIBUTING.md), and open an issue first for anything large.

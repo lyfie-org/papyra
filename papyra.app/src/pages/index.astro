@@ -2,32 +2,14 @@
 import { Image } from 'astro:assets';
 import Base from '../layouts/Base.astro';
 import Icon from '../components/Icon.astro';
+import Clip from '../components/Clip.astro';
+import HeroShowcase from '../components/HeroShowcase.astro';
 import CodeBlock from '../components/CodeBlock.astro';
 import logo from '../assets/papyra_logo.png';
-import { getCollection } from 'astro:content';
 import { GITHUB_URL, DOCKER_HUB_URL, TAGLINE } from '../data/site';
+import { JOURNEY } from '../data/journey';
 import { readChangelog } from '../lib/changelog.mjs';
-
-// The feature collection is the single source for these cards and for the
-// deep-dive pages, so the two can never describe Papyra differently.
-const pillars = (await getCollection('features')).sort((a, b) => a.data.order - b.data.order);
-
-const noteSample = `---
-id: quarterly-review
-title: Quarterly review
-created: 2026-08-12T09:14:22Z
-updated: 2026-08-28T16:02:41Z
-categories: [work, planning]
-pinned: true
----
-
-# Quarterly review
-
-Pull the numbers from [[revenue-model]] before Thursday.
-
-- [x] Draft the summary
-- [ ] Ask @dana for the support figures
-`;
+import type { IconName } from '../lib/icons';
 
 const { version } = readChangelog();
 
@@ -54,164 +36,421 @@ const installSample = `curl -O https://raw.githubusercontent.com/lyfie-org/papyr
 docker compose -f docker-compose.hub.yml up -d
 
 # then open http://localhost:8080`;
+
+const facts: { icon: IconName; text: string }[] = [
+  { icon: 'file', text: 'Plain Markdown files' },
+  { icon: 'wifi-off', text: 'Works offline' },
+  { icon: 'box', text: 'One Docker container' },
+  { icon: 'heart', text: 'Free and open source' },
+];
+
+const showcase = [
+  {
+    clip: 'drop',
+    eyebrow: 'Bring your notes',
+    title: 'Drop in any Markdown.',
+    text: 'Drag a .md file onto your desk and it’s a note — headings, checklists and all.',
+    link: { href: '/demo/', label: 'Try it in the demo' },
+    alt: 'A Markdown file is dragged onto the Papyra desk, becomes a note card, and opens fully formatted',
+  },
+  {
+    clip: 'write',
+    eyebrow: 'Write',
+    title: 'It saves itself.',
+    text: 'No save button, ever. Type [[ to link another note. Every version is kept, so you can always go back.',
+    alt: 'Typing a new note: a heading, a [[ link to another note picked from a list, a bulleted list, then “Saved”',
+  },
+  {
+    clip: 'search',
+    eyebrow: 'Find',
+    title: 'Anything, in a keystroke.',
+    text: 'Press Ctrl K. Every word of every note, to-do and collection — matches highlighted.',
+    alt: 'Searching for “pricing”: results from notes, to-dos and collections appear with the word highlighted',
+  },
+  {
+    clip: 'vault',
+    eyebrow: 'Protect',
+    title: 'Lock what’s private.',
+    text: 'Locked notes are encrypted on disk and open only with your PIN — or your fingerprint.',
+    alt: 'A locked note stays blurred until the vault PIN is typed, then its contents appear',
+  },
+];
+
+const everything: { icon: IconName; title: string; text: string }[] = [
+  { icon: 'users', title: 'Live collaboration', text: 'Edit shared notes together, cursors and all.' },
+  { icon: 'history', title: 'Version history', text: 'Every change kept. Restore any of them.' },
+  { icon: 'link', title: 'Links and backlinks', text: 'Link notes with [[ and see what links back.' },
+  { icon: 'wifi-off', title: 'Works offline', text: 'Keep writing on a plane. It syncs when you land.' },
+  { icon: 'image', title: 'Pictures, PDFs, video', text: 'Drop files in. Preview them right in the note.' },
+  { icon: 'message', title: 'Share and comment', text: 'Share a note, @mention, reply in threads.' },
+  { icon: 'key', title: 'Passkeys and 2FA', text: 'Fingerprint sign-in, authenticator codes, SSO.' },
+  { icon: 'git', title: 'Encrypted backups', text: 'Push your notes to a private Git repo, sealed.' },
+  { icon: 'layers', title: 'Smart collections', text: 'Tags and filters that sort themselves.' },
+  { icon: 'list-check', title: 'To-dos', text: 'Checklists that live beside your notes.' },
+  { icon: 'smartphone', title: 'On every device', text: 'Install it on your phone, tablet and laptop.' },
+  { icon: 'lock', title: 'For the whole family', text: 'Separate, private accounts on one server.' },
+];
+
+const imports: { icon: IconName; title: string; text: string }[] = [
+  { icon: 'note', title: 'Google Keep', text: 'Import your Takeout archive. Checklists, labels, colours and pins come with it.' },
+  { icon: 'gem', title: 'Obsidian', text: 'Upload your vault. Links, frontmatter and attachments arrive intact.' },
+  { icon: 'file', title: 'Any Markdown', text: 'Drag files onto the desk. That’s the whole import.' },
+];
+
+const helps: { icon: IconName; title: string; text: string; href: string }[] = [
+  { icon: 'bug', title: 'Report a bug', text: 'Tell us what broke.', href: `${GITHUB_URL}/issues/new` },
+  { icon: 'bulb', title: 'Suggest an idea', text: 'Say what you’re trying to do.', href: `${GITHUB_URL}/issues/new` },
+  { icon: 'code', title: 'Send a pull request', text: 'Start with the guide.', href: '/contribute/' },
+];
+
+const SHOWN = 6;
+const dayFmt = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
+const monthFmt = new Intl.DateTimeFormat('en-GB', { month: 'short', year: 'numeric', timeZone: 'UTC' });
+const when = (m: (typeof JOURNEY)[number]) =>
+  (m.current ? monthFmt : dayFmt).format(new Date(`${m.date}T00:00:00Z`));
 ---
 
 <Base
-  title="Papyra — a calm, self-hosted home for your notes"
-  description="Self-hosted notes that stay as plain Markdown files on your own server. Full-text search, wiki links and backlinks, offline editing, sharing, and passkey-locked vaults. Open source, one Docker command."
+  title="Papyra — a beautiful, self-hosted home for your notes"
+  description="Papyra is a calm, self-hosted notes app: simple as sticky notes, deep as a wiki. Every note stays a plain Markdown file on your own server. Free and open source."
   bareTitle
 >
   <script type="application/ld+json" is:inline set:html={JSON.stringify(jsonLd)} />
 
+  <!-- ------------------------------------------------------------ hero -->
   <section class="hero">
-    <div class="wrap hero__inner">
-      <Image
-        class="hero__logo"
-        src={logo}
-        alt=""
-        width={88}
-        height={88}
-        densities={[1, 2]}
-        loading="eager"
-      />
-      <h1>Papyra</h1>
-      <p class="hero__tagline">{TAGLINE}</p>
+    <div class="hero__glow" aria-hidden="true"></div>
+    <div class="wrap hero__copy">
+      <a class="chip hero__chip" href="#journey">
+        <span class="chip__dot"></span>
+        Papyra 1.0 · Free and open source
+        <Icon name="arrow-right" size={14} />
+      </a>
+      <h1 class="hero__title">Your notes deserve a <span>beautiful</span> home.</h1>
       <p class="hero__lede">
-        Every note is an ordinary Markdown file in a folder you own. Papyra gives that folder a
-        fast, beautiful place to live — search, links, sharing and offline editing — without ever
-        locking a word of it away.
+        A calm, self-hosted notes app — as easy as sticky notes, as deep as a wiki. Every note
+        stays a plain Markdown file on your own server.
       </p>
       <div class="hero__actions">
-        <a class="btn" href="/demo/">
+        <a class="btn btn--lg" href="/demo/">
           <Icon name="play" size={16} />
-          Try it in your browser
+          Try the live demo
         </a>
-        <a class="btn btn--ghost" href={GITHUB_URL} rel="noopener noreferrer">
-          <Icon name="github" size={16} />
-          View the source
-        </a>
+        <a class="btn btn--ghost btn--lg" href="#install">Install in a minute</a>
       </div>
-      <p class="hero__note">
-        No sign-up. The demo runs entirely on your device — nothing is sent anywhere.
-      </p>
+      <p class="hero__note">No sign-up. The demo runs entirely in your browser.</p>
+    </div>
+    <div class="wrap wrap--wide hero__shot">
+      <HeroShowcase />
     </div>
   </section>
 
-  <section class="section proof">
-    <div class="wrap proof__inner">
-      <div>
-        <p class="eyebrow">The whole idea</p>
-        <h2>Google-Keep-shaped surface.<br />Obsidian-shaped substance.</h2>
-        <p>
-          Most note apps keep your writing in a database and hand you an export button. Papyra has
-          no export button to speak of, because it never needed one: the folder <em>is</em> the storage.
-          Open it in Obsidian, sync it with Syncthing, grep it, back it up with <code>rsync</code>,
-          edit a file by hand — Papyra watches the folder and picks up whatever changed.
-        </p>
-        <p>Nothing about your notes depends on Papyra continuing to exist. That is the point.</p>
-      </div>
-      <figure class="proof__file">
-        <figcaption>~/notes/alice/quarterly-review.md</figcaption>
-        <CodeBlock lang="markdown" label="On disk" code={noteSample} copyable={false} />
-      </figure>
-    </div>
+  <!-- ----------------------------------------------------------- facts -->
+  <section class="facts" aria-label="At a glance">
+    <ul class="wrap facts__list">
+      {
+        facts.map((f) => (
+          <li>
+            <Icon name={f.icon} size={18} />
+            {f.text}
+          </li>
+        ))
+      }
+    </ul>
   </section>
 
+  <!-- -------------------------------------------------------- showcase -->
   <section class="section" id="features">
-    <div class="wrap">
-      <p class="eyebrow">What you get</p>
-      <h2>Everything, running on your own hardware</h2>
-      <p class="lede section__lede">Papyra is one Docker container. All of this ships today.</p>
+    <div class="wrap wrap--wide">
+      <header class="intro" data-reveal>
+        <p class="eyebrow">Made for writing</p>
+        <h2>Calm on the surface.<br />Powerful underneath.</h2>
+      </header>
 
-      <div class="grid">
+      <div class="rows">
         {
-          pillars.map((pillar) => (
-            <a class="card" href={`/features/${pillar.id}/`}>
-              <h3>{pillar.data.title}</h3>
-              <p>{pillar.data.blurb}</p>
-              <p class="card__more">{pillar.data.points.join(' · ')}</p>
-            </a>
+          showcase.map((row, i) => (
+            <article class:list={['row', { 'row--flip': i % 2 === 1 }]} data-reveal>
+              <div class="row__copy">
+                <p class="eyebrow">{row.eyebrow}</p>
+                <h3>{row.title}</h3>
+                <p>{row.text}</p>
+                {row.link && (
+                  <a class="row__link" href={row.link.href}>
+                    {row.link.label}
+                    <Icon name="arrow-right" size={15} />
+                  </a>
+                )}
+              </div>
+              <Clip class="row__clip" name={row.clip} label={row.alt} />
+            </article>
           ))
         }
       </div>
+
+      <div class="theme-band" data-reveal>
+        <div class="theme-band__copy">
+          <p class="eyebrow">Day and night</p>
+          <h3>Easy on the eyes.</h3>
+          <p>Warm paper by day. Warm graphite by night.</p>
+        </div>
+        <Clip
+          class="theme-band__clip"
+          name="theme"
+          single
+          label="The desk switching from the light theme to the dark one and back"
+        />
+      </div>
     </div>
   </section>
 
-  <section class="section install">
-    <div class="wrap install__inner">
-      <div>
-        <p class="eyebrow">Getting started</p>
-        <h2>One file, one command</h2>
+  <!-- ---------------------------------------------------------- import -->
+  <section class="section section--tint" id="import">
+    <div class="wrap">
+      <header class="intro" data-reveal>
+        <p class="eyebrow">Move in tonight</p>
+        <h2>Bring everything with you.</h2>
+      </header>
+      <div class="imports">
+        {
+          imports.map((imp, i) => (
+            <div class="imports__card" data-reveal style={`--reveal-delay:${i * 90}ms`}>
+              <span class="imports__icon">
+                <Icon name={imp.icon} size={22} />
+              </span>
+              <h3>{imp.title}</h3>
+              <p>{imp.text}</p>
+            </div>
+          ))
+        }
+      </div>
+      <p class="imports__foot" data-reveal>
+        Re-import any time — Papyra never duplicates a note.
+        <a href="/docs/importing/">How importing works</a>
+      </p>
+    </div>
+  </section>
+
+  <!-- ------------------------------------------------------ everything -->
+  <section class="section">
+    <div class="wrap">
+      <header class="intro" data-reveal>
+        <p class="eyebrow">And the rest</p>
+        <h2>Everything you’d expect.<br />Nothing you won’t use.</h2>
+      </header>
+      <ul class="tiles">
+        {
+          everything.map((t, i) => (
+            <li class="tile" data-reveal style={`--reveal-delay:${(i % 4) * 60}ms`}>
+              <Icon name={t.icon} size={20} class="tile__icon" />
+              <h3>{t.title}</h3>
+              <p>{t.text}</p>
+            </li>
+          ))
+        }
+      </ul>
+    </div>
+  </section>
+
+  <!-- --------------------------------------------------------- journey -->
+  <section class="section section--tint" id="journey">
+    <div class="wrap wrap--narrow">
+      <header class="intro" data-reveal>
+        <p class="eyebrow">The journey</p>
+        <h2>First commit to 1.0 in four months.</h2>
+      </header>
+
+      <ol class="journey" data-journey>
+        {
+          JOURNEY.map((m, i) => (
+            <li class:list={['journey__item', { 'journey__item--current': m.current }]} data-hidden={i >= SHOWN ? '' : undefined}>
+              <time class="journey__date" datetime={m.date}>
+                {when(m)}
+              </time>
+              <span class="journey__node" aria-hidden="true">
+                {m.current ? <Icon name="star" size={12} /> : <Icon name="check" size={12} />}
+              </span>
+              <div class="journey__card">
+                <h3>
+                  <Icon name={m.icon} size={17} />
+                  {m.title}
+                </h3>
+                <p>{m.text}</p>
+                {m.version && (
+                  <a class="journey__tag" href={m.version === '1.0' ? `${GITHUB_URL}/releases` : `/changelog/#v${m.version}`}>
+                    v{m.version}
+                  </a>
+                )}
+              </div>
+            </li>
+          ))
+        }
+      </ol>
+      <div class="journey__more">
+        <button type="button" class="btn btn--ghost" data-journey-toggle aria-expanded="false">
+          Show all {JOURNEY.length} milestones
+        </button>
+        <a href="/changelog/">Full changelog</a>
+      </div>
+    </div>
+  </section>
+
+  <!-- --------------------------------------------------------- install -->
+  <section class="section" id="install">
+    <div class="wrap install">
+      <div data-reveal>
+        <p class="eyebrow">Get started</p>
+        <h2>Up in a minute.</h2>
         <p>
-          Save the compose file, run it, open <code>http://localhost:8080</code>. The first account
-          you create is the administrator. One container, one volume — there is nothing else to
-          stand up alongside it.
+          Save one file, run one command, open your browser. The first account you create is the
+          admin.
         </p>
+        <ul class="ticks">
+          <li><Icon name="check" size={16} />Runs on amd64 and arm64 — a NAS, a Pi, a VPS</li>
+          <li><Icon name="check" size={16} />One container, one volume</li>
+          <li><Icon name="check" size={16} />Your notes stay plain files you can always take with you</li>
+        </ul>
         <p class="install__links">
           <a class="btn btn--ghost" href="/docs/install/">
             <Icon name="book" size={16} />
-            Full install guide
+            Install guide
           </a>
         </p>
+        <p class="install__young">Papyra is young and moving fast — keep the backups it makes for you.</p>
       </div>
-      <CodeBlock lang="bash" label="Terminal" code={installSample} />
+      <div class="install__code" data-reveal style="--reveal-delay:120ms">
+        <CodeBlock lang="bash" label="Terminal" code={installSample} />
+      </div>
     </div>
   </section>
 
-  <section class="section">
-    <div class="wrap wrap--narrow">
-      <aside class="callout">
-        <h2>Honestly: this is young software</h2>
-        <p>
-          Papyra is under active development, and the project says so on its own front page. Things
-          can change between releases. It is built with care and tested hard — a full backend suite
-          plus 239 end-to-end checks run on every commit — but if you adopt it today, keep the
-          backups it makes for you.
+  <!-- ------------------------------------------------------ contribute -->
+  <section class="section section--tint" id="contribute">
+    <div class="wrap contribute">
+      <div data-reveal>
+        <p class="eyebrow">Open source</p>
+        <h2>Help shape what comes next.</h2>
+        <p>Papyra is free, GPL-licensed and built in the open. Every bug report, idea and pull request counts.</p>
+        <p class="contribute__actions">
+          <a class="btn" href="/contribute/">Contributing guide</a>
+          <a class="btn btn--ghost" href={GITHUB_URL} rel="noopener noreferrer">
+            <Icon name="star" size={16} />
+            Star on GitHub
+          </a>
         </p>
-        <p class="callout__foot">
-          The one thing that will not bite you: your notes are already plain files. Worst case, you
-          keep the folder and walk away.
-        </p>
-      </aside>
+      </div>
+      <ul class="helps">
+        {
+          helps.map((h, i) => (
+            <li data-reveal style={`--reveal-delay:${i * 80}ms`}>
+              <a class="helps__item" href={h.href} rel={h.href.startsWith('http') ? 'noopener noreferrer' : undefined}>
+                <span class="helps__icon">
+                  <Icon name={h.icon} size={18} />
+                </span>
+                <span>
+                  <strong>{h.title}</strong>
+                  <span>{h.text}</span>
+                </span>
+                <Icon name="arrow-right" size={16} class="helps__arrow" />
+              </a>
+            </li>
+          ))
+        }
+      </ul>
+    </div>
+  </section>
+
+  <!-- ------------------------------------------------------------- end -->
+  <section class="section section--end">
+    <div class="wrap">
+      <div class="finale" data-reveal>
+        <Image class="finale__logo" src={logo} alt="" width={64} height={64} densities={[1, 2]} />
+        <h2>Give your notes a calm home.</h2>
+        <div class="hero__actions">
+          <a class="btn btn--lg" href="/demo/">
+            <Icon name="play" size={16} />
+            Try the live demo
+          </a>
+          <a class="btn btn--ghost btn--lg" href="/docs/install/">Install Papyra</a>
+        </div>
+      </div>
     </div>
   </section>
 </Base>
 
+<script>
+  const list = document.querySelector<HTMLElement>('[data-journey]');
+  const toggle = document.querySelector<HTMLButtonElement>('[data-journey-toggle]');
+  if (list && toggle) {
+    const label = toggle.textContent?.trim() ?? '';
+    toggle.addEventListener('click', () => {
+      const open = list.toggleAttribute('data-open');
+      toggle.setAttribute('aria-expanded', String(open));
+      toggle.textContent = open ? 'Show fewer' : label;
+    });
+  }
+</script>
+
 <style>
+  /* ------------------------------------------------------------ hero */
   .hero {
-    padding-block: clamp(var(--space-12), 9vw, 8rem) clamp(var(--space-10), 6vw, 5rem);
-    text-align: center;
+    position: relative;
+    padding-block: clamp(var(--space-10), 7vw, 6rem) clamp(var(--space-8), 4vw, var(--space-10));
+    overflow: hidden;
   }
 
-  .hero__inner {
+  .hero__glow {
+    position: absolute;
+    inset: -20% -10% auto;
+    height: 46rem;
+    pointer-events: none;
+    background:
+      radial-gradient(32rem 22rem at 30% 40%, var(--accent-bg), transparent 70%),
+      radial-gradient(28rem 20rem at 72% 30%, color-mix(in srgb, var(--accent) 14%, transparent), transparent 70%);
+    filter: blur(10px);
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .hero__glow {
+      animation: glow-drift 18s var(--ease-inout) infinite alternate;
+    }
+  }
+
+  @keyframes glow-drift {
+    to {
+      transform: translate3d(4%, 3%, 0) scale(1.06);
+    }
+  }
+
+  .hero__copy {
+    position: relative;
     display: flex;
     flex-direction: column;
     align-items: center;
+    text-align: center;
   }
 
-  .hero__logo {
-    border-radius: var(--radius-lg);
+  .hero__chip {
+    margin-bottom: var(--space-6);
+  }
+
+  .hero__title {
+    font-size: clamp(40px, 5.6vw + 12px, 80px);
+    line-height: 1.02;
+    letter-spacing: -0.035em;
+    max-width: 13ch;
     margin-bottom: var(--space-5);
-    height: auto;
   }
 
-  .hero h1 {
-    margin-bottom: var(--space-3);
-  }
-
-  .hero__tagline {
-    font: 400 var(--fs-xl) / 1.25 var(--heading);
-    color: var(--text-h);
-    letter-spacing: -0.01em;
-    max-width: 20ch;
-    margin-bottom: var(--space-5);
+  .hero__title span {
+    color: var(--accent-text);
   }
 
   .hero__lede {
-    font-size: var(--fs-md);
-    line-height: 1.6;
+    font-size: var(--fs-lg);
+    line-height: 1.55;
     color: var(--text);
-    max-width: 56ch;
+    max-width: 44ch;
     margin-bottom: var(--space-8);
   }
 
@@ -228,75 +467,550 @@ docker compose -f docker-compose.hub.yml up -d
     color: var(--text);
   }
 
-  .section__lede {
-    margin-bottom: var(--space-8);
+  .hero__shot {
+    position: relative;
+    margin-top: clamp(var(--space-10), 6vw, 5rem);
   }
 
-  .proof__inner,
-  .install__inner {
-    display: grid;
-    gap: clamp(var(--space-6), 4vw, var(--space-12));
-    grid-template-columns: 1fr 1fr;
+  /* ----------------------------------------------------------- facts */
+  .facts {
+    border-block: 1px solid var(--border);
+    background: color-mix(in srgb, var(--surface) 55%, transparent);
+  }
+
+  .facts__list {
+    list-style: none;
+    margin-block: 0;
+    padding-block: var(--space-5);
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: space-around;
+    gap: var(--space-4) var(--space-8);
+  }
+
+  .facts__list li {
+    display: inline-flex;
     align-items: center;
-  }
-
-  .proof__file {
-    margin: 0;
-    display: grid;
     gap: var(--space-2);
-    min-width: 0;
-  }
-
-  .proof__file figcaption {
-    font: 400 var(--fs-xs) / 1 var(--mono);
-    color: var(--text);
-  }
-
-  .card__more {
-    margin-top: var(--space-2);
-    padding-top: var(--space-3);
-    border-top: 1px solid var(--border);
-    font-size: var(--fs-xs);
-    color: var(--accent-text);
-  }
-
-  .install__links {
-    margin-bottom: 0;
-  }
-
-  .install__inner :global(.code) {
-    min-width: 0;
-  }
-
-  .callout {
-    padding: var(--space-6);
-    border: 1px solid var(--warn-border);
-    border-left-width: 3px;
-    border-radius: var(--radius-md);
-    background: var(--warn-bg);
-  }
-
-  .callout h2 {
-    font-size: var(--fs-lg);
-    margin-bottom: var(--space-3);
-    color: var(--warn);
-  }
-
-  .callout p {
     font-size: var(--fs-sm);
-    line-height: 1.6;
-    margin-bottom: var(--space-3);
-  }
-
-  .callout__foot {
-    margin-bottom: 0;
+    font-weight: 500;
     color: var(--text-h);
   }
 
+  .facts__list :global(svg) {
+    color: var(--accent);
+  }
+
+  /* -------------------------------------------------------- sections */
+  .section--tint {
+    background: color-mix(in srgb, var(--surface) 50%, transparent);
+    border-block: 1px solid var(--border);
+  }
+
+  .intro {
+    text-align: center;
+    margin-bottom: clamp(var(--space-10), 6vw, var(--space-12));
+  }
+
+  .intro h2 {
+    font-size: clamp(30px, 3vw + 14px, 48px);
+    margin: 0;
+  }
+
+  /* -------------------------------------------------------- showcase */
+  .rows {
+    display: grid;
+    gap: clamp(var(--space-12), 9vw, 8rem);
+  }
+
+  .row {
+    display: grid;
+    grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.5fr);
+    gap: clamp(var(--space-6), 5vw, var(--space-12));
+    align-items: center;
+  }
+
+  .row--flip {
+    grid-template-columns: minmax(0, 1.5fr) minmax(0, 0.8fr);
+  }
+
+  .row--flip .row__copy {
+    order: 2;
+  }
+
+  .row__copy h3,
+  .theme-band__copy h3 {
+    font-size: clamp(26px, 2vw + 14px, 38px);
+    line-height: 1.1;
+    letter-spacing: -0.02em;
+    margin-bottom: var(--space-3);
+  }
+
+  .row__copy p:not(.eyebrow),
+  .theme-band__copy p:not(.eyebrow) {
+    font-size: var(--fs-md);
+    line-height: 1.6;
+    color: var(--text);
+    max-width: 34ch;
+  }
+
+  .row__link {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-1);
+    font-size: var(--fs-sm);
+    font-weight: 500;
+    text-decoration: none;
+  }
+
+  .row__link:hover {
+    text-decoration: underline;
+  }
+
+  .theme-band {
+    margin-top: clamp(var(--space-12), 9vw, 8rem);
+    text-align: center;
+  }
+
+  .theme-band__copy p:not(.eyebrow) {
+    margin-inline: auto;
+  }
+
+  .theme-band :global(.theme-band__clip) {
+    max-width: 58rem;
+    margin: var(--space-8) auto 0;
+  }
+
+  /* ---------------------------------------------------------- import */
+  .imports {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: var(--space-5);
+  }
+
+  .imports__card {
+    padding: var(--space-6);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--surface);
+    box-shadow: var(--shadow-card);
+  }
+
+  .imports__icon {
+    display: inline-grid;
+    place-items: center;
+    width: 44px;
+    height: 44px;
+    margin-bottom: var(--space-4);
+    border-radius: var(--radius-md);
+    background: var(--accent-bg);
+    color: var(--accent-text);
+  }
+
+  .imports__card h3 {
+    margin-bottom: var(--space-2);
+  }
+
+  .imports__card p {
+    margin: 0;
+    font-size: var(--fs-sm);
+    line-height: 1.55;
+    color: var(--text);
+  }
+
+  .imports__foot {
+    margin: var(--space-8) 0 0;
+    text-align: center;
+    font-size: var(--fs-sm);
+    color: var(--text);
+  }
+
+  .imports__foot a {
+    margin-left: var(--space-2);
+  }
+
+  /* ------------------------------------------------------------ tiles */
+  .tiles {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: 1px;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    background: var(--border);
+  }
+
+  .tile {
+    padding: var(--space-6) var(--space-5);
+    background: var(--surface);
+    transition: background var(--dur) var(--ease);
+  }
+
+  .tile:hover {
+    background: color-mix(in srgb, var(--accent-bg) 60%, var(--surface));
+  }
+
+  .tile :global(.tile__icon) {
+    color: var(--accent);
+    margin-bottom: var(--space-3);
+  }
+
+  .tile h3 {
+    font-size: var(--fs-md);
+    margin-bottom: var(--space-1);
+  }
+
+  .tile p {
+    margin: 0;
+    font-size: var(--fs-sm);
+    line-height: 1.5;
+    color: var(--text);
+  }
+
+  /* ---------------------------------------------------------- journey */
+  .journey {
+    --date-w: 7.5rem;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    position: relative;
+  }
+
+  /* The line through every node. */
+  .journey::before {
+    content: '';
+    position: absolute;
+    top: 8px;
+    bottom: 8px;
+    left: calc(var(--date-w) + var(--space-5) + 11px);
+    width: 2px;
+    background: linear-gradient(var(--accent), var(--border) 30%);
+  }
+
+  .journey__item {
+    position: relative;
+    display: grid;
+    grid-template-columns: var(--date-w) 24px minmax(0, 1fr);
+    gap: var(--space-5);
+    align-items: start;
+    padding-bottom: var(--space-4);
+  }
+
+  .journey:not([data-open]) .journey__item[data-hidden] {
+    display: none;
+  }
+
+  .journey__date {
+    padding-top: 12px;
+    text-align: right;
+    font: 400 var(--fs-xs) / 1.4 var(--mono);
+    color: var(--text);
+    white-space: nowrap;
+  }
+
+  .journey__node {
+    position: relative;
+    z-index: 1;
+    display: grid;
+    place-items: center;
+    width: 24px;
+    height: 24px;
+    margin-top: 9px;
+    border-radius: 50%;
+    border: 2px solid var(--accent);
+    background: var(--bg);
+    color: var(--accent-text);
+  }
+
+  .journey__item--current .journey__node {
+    background: var(--accent);
+    color: var(--accent-fg);
+    box-shadow: 0 0 0 6px var(--accent-bg);
+  }
+
+  .journey__card {
+    position: relative;
+    padding: var(--space-3) var(--space-4);
+    padding-right: 4.5rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--surface);
+  }
+
+  .journey__item--current .journey__card {
+    border-color: var(--accent-border);
+    box-shadow: var(--shadow-card);
+  }
+
+  .journey__card h3 {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    font: 500 var(--fs-sm) / 1.35 var(--sans);
+    letter-spacing: 0;
+    margin: 0 0 2px;
+  }
+
+  .journey__card h3 :global(svg) {
+    flex: none;
+    color: var(--accent);
+  }
+
+  .journey__card p {
+    margin: 0;
+    font-size: var(--fs-xs);
+    line-height: 1.5;
+    color: var(--text);
+  }
+
+  .journey__tag {
+    position: absolute;
+    top: var(--space-3);
+    right: var(--space-3);
+    padding: 2px 8px;
+    border: 1px solid var(--accent-border);
+    border-radius: var(--radius-pill);
+    background: var(--accent-bg);
+    font: 500 var(--fs-2xs) / 1.5 var(--mono);
+    color: var(--accent-text);
+    text-decoration: none;
+  }
+
+  .journey__tag:hover {
+    color: var(--text-h);
+  }
+
+  .journey__more {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-5);
+    margin-top: var(--space-6);
+    font-size: var(--fs-sm);
+  }
+
+  /* ---------------------------------------------------------- install */
+  .install,
+  .contribute {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: clamp(var(--space-8), 5vw, var(--space-12));
+    align-items: center;
+  }
+
+  .install h2,
+  .contribute h2 {
+    font-size: clamp(30px, 3vw + 14px, 44px);
+  }
+
+  .ticks {
+    list-style: none;
+    margin: 0 0 var(--space-6);
+    padding: 0;
+    display: grid;
+    gap: var(--space-2);
+    font-size: var(--fs-sm);
+    color: var(--text-h);
+  }
+
+  .ticks li {
+    display: flex;
+    gap: var(--space-2);
+    align-items: baseline;
+  }
+
+  .ticks :global(svg) {
+    flex: none;
+    color: var(--accent);
+    transform: translateY(3px);
+  }
+
+  .install__links {
+    margin-bottom: var(--space-4);
+  }
+
+  .install__young {
+    margin: 0;
+    font-size: var(--fs-xs);
+    color: var(--text);
+  }
+
+  .install__code {
+    min-width: 0;
+  }
+
+  /* ------------------------------------------------------- contribute */
+  .contribute__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-3);
+    margin: var(--space-6) 0 0;
+  }
+
+  .helps {
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    display: grid;
+    gap: var(--space-3);
+  }
+
+  .helps__item {
+    display: grid;
+    grid-template-columns: auto 1fr auto;
+    align-items: center;
+    gap: var(--space-4);
+    padding: var(--space-4) var(--space-5);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--surface);
+    color: inherit;
+    text-decoration: none;
+    transition:
+      border-color var(--dur) var(--ease),
+      transform var(--dur) var(--ease);
+  }
+
+  .helps__item:hover {
+    border-color: var(--border-hover);
+    color: inherit;
+    transform: translateX(3px);
+  }
+
+  .helps__item strong {
+    display: block;
+    font-weight: 500;
+    color: var(--text-h);
+  }
+
+  .helps__item > span:nth-child(2) > span {
+    font-size: var(--fs-xs);
+    color: var(--text);
+  }
+
+  .helps__icon {
+    display: inline-grid;
+    place-items: center;
+    width: 38px;
+    height: 38px;
+    border-radius: var(--radius-sm);
+    background: var(--accent-bg);
+    color: var(--accent-text);
+  }
+
+  .helps__item :global(.helps__arrow) {
+    color: var(--text);
+  }
+
+  /* ----------------------------------------------------------- finale */
+  .section--end {
+    padding-bottom: 0;
+  }
+
+  .finale {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    padding: clamp(var(--space-10), 7vw, 6rem) var(--space-6);
+    border: 1px solid var(--accent-border);
+    border-radius: calc(var(--radius-lg) * 2);
+    background:
+      radial-gradient(40rem 20rem at 50% 0%, var(--accent-bg), transparent 70%),
+      var(--surface);
+    box-shadow: var(--shadow-card);
+  }
+
+  .finale :global(.finale__logo) {
+    border-radius: var(--radius-md);
+    margin-bottom: var(--space-5);
+  }
+
+  .finale h2 {
+    font-size: clamp(30px, 3.4vw + 12px, 52px);
+    margin-bottom: var(--space-8);
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .helps__item:hover {
+      transform: none;
+    }
+  }
+
+  /* -------------------------------------------------------- responsive */
+  @media (max-width: 60rem) {
+    .tiles {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+  }
+
   @media (max-width: 56rem) {
-    .proof__inner,
-    .install__inner {
-      grid-template-columns: 1fr;
+    .row,
+    .row--flip,
+    .install,
+    .contribute {
+      grid-template-columns: minmax(0, 1fr);
+    }
+
+    .row--flip .row__copy {
+      order: 0;
+    }
+
+    .imports {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+
+  @media (max-width: 40rem) {
+    .tile {
+      padding: var(--space-4);
+    }
+
+    .tile h3 {
+      font-size: var(--fs-sm);
+    }
+
+    .tile p {
+      font-size: var(--fs-xs);
+    }
+
+    .journey {
+      --date-w: 0px;
+    }
+
+    .journey__item {
+      grid-template-columns: 24px minmax(0, 1fr);
+      gap: var(--space-4);
+    }
+
+    .journey::before {
+      left: 11px;
+    }
+
+    .journey__date {
+      grid-column: 2;
+      grid-row: 1;
+      text-align: left;
+      padding-top: 0;
+    }
+
+    .journey__node {
+      grid-row: 1 / span 2;
+      grid-column: 1;
+    }
+
+    .journey__card {
+      grid-column: 2;
+    }
+
+    .facts__list {
+      justify-content: flex-start;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
     }
   }
 </style>

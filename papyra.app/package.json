@@ -12,6 +12,7 @@
     "fonts": "node scripts/fetch-fonts.mjs",
     "preview:cf": "wrangler pages dev dist --port 4323",
     "shoot": "node scripts/shoot.mjs",
+    "clips": "node scripts/clips.mjs",
     "check:links": "node scripts/check-links.mjs",
     "check:layout": "node scripts/check-layout.mjs",
     "openapi": "node scripts/fetch-openapi.mjs",

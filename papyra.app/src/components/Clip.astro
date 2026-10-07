@@ -1,0 +1,134 @@
+---
+// A short looping video of the real app, recorded by scripts/clips.mjs.
+//
+// Two still posters (light and dark) sit underneath and CSS shows the one that
+// matches the page, so there is never a flash of the wrong theme. The video on
+// top has no src in the HTML: the script below picks the file for the current
+// theme, plays it only while it is on screen, and swaps it if the theme changes.
+// Nothing downloads for a clip the reader never scrolls to.
+interface Props {
+  /** Base name in public/media/clips, e.g. "drop" → drop-light.mp4 / drop-dark.mp4. */
+  name: string;
+  /** What happens in the clip, for screen readers. */
+  label: string;
+  /** Recorded once, theme-neutral (the theme-switch clip). */
+  single?: boolean;
+  class?: string;
+}
+
+const { name, label, single = false, class: className } = Astro.props;
+const base = '/media/clips/';
+const light = single ? name : `${name}-light`;
+const dark = single ? name : `${name}-dark`;
+---
+
+<figure class:list={['clip', className]} data-clip={name} data-single={single ? '' : undefined}>
+  <div class="clip__frame">
+    <img class="clip__poster clip__poster--light" src={`${base}${light}.webp`} alt="" width="1680" height="1050" loading="lazy" decoding="async" />
+    <img class="clip__poster clip__poster--dark" src={`${base}${dark}.webp`} alt="" width="1680" height="1050" loading="lazy" decoding="async" />
+    <video class="clip__video" muted loop playsinline preload="none" aria-label={label}></video>
+  </div>
+</figure>
+
+<script>
+  const reduce = window.matchMedia('(prefers-reduced-motion: reduce)');
+  const themeOf = () => (document.documentElement.getAttribute('data-theme') === 'dark' ? 'dark' : 'light');
+
+  const clips = [...document.querySelectorAll<HTMLElement>('[data-clip]')].map((figure) => ({
+    figure,
+    video: figure.querySelector('video')!,
+    name: figure.dataset.clip!,
+    single: figure.hasAttribute('data-single'),
+    visible: false,
+  }));
+
+  const srcFor = (c: (typeof clips)[number]) =>
+    `/media/clips/${c.single ? c.name : `${c.name}-${themeOf()}`}.mp4`;
+
+  function sync(c: (typeof clips)[number]) {
+    const want = srcFor(c);
+    if (c.visible && !c.video.getAttribute('src')?.endsWith(want)) {
+      c.figure.classList.remove('is-playing');
+      c.video.src = want;
+    }
+    if (c.visible && !reduce.matches) void c.video.play().catch(() => {});
+    else c.video.pause();
+  }
+
+  for (const c of clips) {
+    c.video.addEventListener('playing', () => c.figure.classList.add('is-playing'));
+    // Reduced motion: no autoplay, but the reader can still choose to watch.
+    if (reduce.matches) {
+      c.video.controls = true;
+      c.video.preload = 'metadata';
+      c.video.src = srcFor(c);
+    }
+  }
+
+  const io = new IntersectionObserver(
+    (entries) => {
+      for (const entry of entries) {
+        const c = clips.find((x) => x.figure === entry.target);
+        if (!c) continue;
+        c.visible = entry.isIntersecting;
+        sync(c);
+      }
+    },
+    { threshold: 0.35 },
+  );
+  for (const c of clips) io.observe(c.figure);
+
+  new MutationObserver(() => clips.forEach((c) => !c.single && sync(c))).observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ['data-theme'],
+  });
+</script>
+
+<style>
+  .clip {
+    margin: 0;
+    min-width: 0;
+  }
+
+  .clip__frame {
+    position: relative;
+    aspect-ratio: 16 / 10;
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    box-shadow: var(--shadow-frame);
+  }
+
+  .clip__poster,
+  .clip__video {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    display: block;
+  }
+
+  .clip__poster--dark {
+    display: none;
+  }
+
+  :global([data-theme='dark']) .clip__poster--light {
+    display: none;
+  }
+
+  :global([data-theme='dark']) .clip__poster--dark {
+    display: block;
+  }
+
+  .clip__video {
+    opacity: 0;
+    transition: opacity var(--dur) var(--ease);
+  }
+
+  .clip.is-playing .clip__video,
+  .clip__video[controls] {
+    opacity: 1;
+  }
+</style>

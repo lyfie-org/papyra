@@ -1,4 +1,10 @@
-# No redirect rules — deliberately. This file exists to record why, because the
+# The old per-feature pages were folded into the home page. Plain path
+# redirects like these parse fine; it is only the /demo SPA fallback that cannot
+# be expressed here (see below).
+/features      /#features  301
+/features/*    /#features  301
+
+# No SPA rule for the demo — deliberately. This file records why, because the
 # obvious thing to put here does not work.
 #
 # The demo at /demo is a client-side-routed SPA (react-router), so a deep link
