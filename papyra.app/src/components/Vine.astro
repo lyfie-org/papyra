@@ -1,0 +1,240 @@
+---
+// A pothos trailing out of a pot under the section heading, winding down the
+// gap between the feature clips and touching each one, growing as you scroll.
+//
+// Pure decoration (aria-hidden), drawn by script from the real positions of the
+// clips — [data-vine-anchor] inside the nearest [data-vine-root] — so it fits
+// whatever the copy and the clips end up measuring. Only where the clips sit
+// beside their copy (wide screens); on a phone the layout is a single column
+// and there is no gap for a vine to live in. With reduced motion it is simply
+// drawn in full.
+---
+
+<svg class="vine" data-vine aria-hidden="true" focusable="false">
+  <g class="vine__pot" data-vine-pot>
+    <path class="vine__pot-body" d="M-20 4 L20 4 L15 34 Q14 38 10 38 L-10 38 Q-14 38 -15 34 Z"></path>
+    <rect class="vine__pot-rim" x="-23" y="-2" width="46" height="9" rx="3"></rect>
+    <path class="vine__leaf vine__leaf--dark" d="M0 -2 C -4 -16, -16 -20, -22 -14 C -16 -10, -8 -6, 0 -2 Z"></path>
+    <path class="vine__leaf" d="M0 -2 C 3 -18, 14 -24, 20 -18 C 14 -12, 7 -7, 0 -2 Z"></path>
+    <path class="vine__leaf" d="M-2 -2 C -2 -14, 2 -26, 6 -28 C 7 -18, 4 -9, -2 -2 Z"></path>
+  </g>
+  <path class="vine__stem" data-vine-path d=""></path>
+  <g data-vine-leaves></g>
+  <g class="vine__bloom" data-vine-bloom>
+    <circle r="5" cx="0" cy="-8"></circle>
+    <circle r="5" cx="7.6" cy="-2.5"></circle>
+    <circle r="5" cx="4.7" cy="6.5"></circle>
+    <circle r="5" cx="-4.7" cy="6.5"></circle>
+    <circle r="5" cx="-7.6" cy="-2.5"></circle>
+    <circle class="vine__bloom-heart" r="3.6"></circle>
+  </g>
+</svg>
+
+<script>
+  const NS = 'http://www.w3.org/2000/svg';
+  const LEAF = 'M0 0 C 6 -9, 19 -9, 24 0 C 19 7, 6 7, 0 0 Z';
+
+  for (const svg of document.querySelectorAll<SVGSVGElement>('[data-vine]')) {
+    const root = svg.closest<HTMLElement>('[data-vine-root]');
+    if (!root) continue;
+    const stem = svg.querySelector<SVGPathElement>('[data-vine-path]')!;
+    const leavesG = svg.querySelector<SVGGElement>('[data-vine-leaves]')!;
+    const pot = svg.querySelector<SVGGElement>('[data-vine-pot]')!;
+    const bloom = svg.querySelector<SVGGElement>('[data-vine-bloom]')!;
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const wide = window.matchMedia('(min-width: 56rem)');
+
+    let total = 0;
+    let leaves: { el: SVGPathElement; at: number }[] = [];
+
+    /** Position relative to the root, ignoring transforms (reveal animations). */
+    const offset = (el: HTMLElement) => {
+      let x = 0;
+      let y = 0;
+      let node: HTMLElement | null = el;
+      while (node && node !== root) {
+        x += node.offsetLeft;
+        y += node.offsetTop;
+        node = node.offsetParent as HTMLElement | null;
+      }
+      return { x, y, w: el.offsetWidth, h: el.offsetHeight };
+    };
+
+    function layout() {
+      if (!wide.matches) {
+        svg.style.display = 'none';
+        return;
+      }
+      svg.style.display = '';
+      const W = root.offsetWidth;
+      const H = root.offsetHeight;
+      svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+      svg.setAttribute('width', String(W));
+      svg.setAttribute('height', String(H));
+
+      const start = root.querySelector<HTMLElement>('[data-vine-start]');
+      const anchors = [...root.querySelectorAll<HTMLElement>('[data-vine-anchor]')];
+      if (!start || !anchors.length) return;
+
+      const s = offset(start);
+      const potX = W / 2;
+      const potY = s.y + s.h + 34;
+      pot.setAttribute('transform', `translate(${potX} ${potY})`);
+
+      // Each clip is touched on the side that faces the gap; the last one
+      // (the wide theme clip) at its top centre.
+      const points = anchors.map((a, i) => {
+        const r = offset(a);
+        const last = i === anchors.length - 1 && a.dataset.vineAnchor === 'top';
+        if (last) return { x: r.x + r.w / 2, y: r.y - 6 };
+        const onRight = r.x + r.w / 2 > W / 2;
+        return { x: onRight ? r.x - 4 : r.x + r.w + 4, y: r.y + r.h * 0.5 };
+      });
+
+      let d = `M ${potX + 18} ${potY + 6}`;
+      let prev = { x: potX + 18, y: potY + 6 };
+      points.forEach((p, i) => {
+        const dy = p.y - prev.y;
+        const sway = (i % 2 ? -1 : 1) * Math.min(60, W * 0.04);
+        d += ` C ${prev.x + sway} ${prev.y + dy * 0.55}, ${p.x - sway} ${p.y - dy * 0.55}, ${p.x} ${p.y}`;
+        prev = p;
+      });
+      stem.setAttribute('d', d);
+      total = stem.getTotalLength();
+      stem.style.strokeDasharray = `${total}`;
+
+      // Leaves every so often along the stem, alternating sides.
+      leavesG.replaceChildren();
+      leaves = [];
+      const step = 120;
+      for (let at = 70, n = 0; at < total - 30; at += step, n += 1) {
+        const p = stem.getPointAtLength(at);
+        const q = stem.getPointAtLength(Math.min(total, at + 1));
+        const angle = (Math.atan2(q.y - p.y, q.x - p.x) * 180) / Math.PI + (n % 2 ? 55 : -55);
+        // The group places and turns the leaf; the path inside grows from
+        // its stalk (local 0,0) when the stem reaches it.
+        const g = document.createElementNS(NS, 'g');
+        g.setAttribute('transform', `translate(${p.x} ${p.y}) rotate(${angle}) scale(${0.8 + (n % 3) * 0.15})`);
+        const el = document.createElementNS(NS, 'path');
+        el.setAttribute('d', LEAF);
+        el.setAttribute('class', n % 3 === 0 ? 'vine__leaf vine__leaf--dark' : 'vine__leaf');
+        g.append(el);
+        leavesG.append(g);
+        leaves.push({ el, at });
+      }
+      const end = points[points.length - 1];
+      bloom.setAttribute('transform', `translate(${end.x} ${end.y - 2})`);
+      draw();
+    }
+
+    function draw() {
+      if (!total || !wide.matches) return;
+      const rootTop = root.getBoundingClientRect().top;
+      // The tip of the vine follows a line two-thirds of the way down the screen.
+      const reach = reduce.matches ? Infinity : window.innerHeight * 0.68 - rootTop;
+      // Map the reach (a y position) onto a length along the stem.
+      const startY = stem.getPointAtLength(0).y;
+      const endY = stem.getPointAtLength(total).y;
+      const t = Math.max(0, Math.min(1, (reach - startY) / (endY - startY)));
+      const drawn = total * t;
+      stem.style.strokeDashoffset = `${total - drawn}`;
+      for (const leaf of leaves) leaf.el.classList.toggle('is-grown', leaf.at <= drawn);
+      bloom.classList.toggle('is-grown', t >= 0.995);
+      pot.classList.toggle('is-grown', t > 0 || reach > startY - 200);
+    }
+
+    let ticking = false;
+    window.addEventListener(
+      'scroll',
+      () => {
+        if (ticking) return;
+        ticking = true;
+        requestAnimationFrame(() => {
+          draw();
+          ticking = false;
+        });
+      },
+      { passive: true },
+    );
+    new ResizeObserver(() => layout()).observe(root);
+    wide.addEventListener('change', layout);
+    // Clip posters and fonts can shift the layout after first paint.
+    window.addEventListener('load', layout);
+    layout();
+  }
+</script>
+
+<style>
+  .vine {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    overflow: visible;
+  }
+
+  .vine__stem {
+    fill: none;
+    stroke: var(--accent-text);
+    stroke-width: 2.5;
+    stroke-linecap: round;
+    opacity: 0.75;
+  }
+
+  .vine :global(.vine__leaf) {
+    fill: var(--accent);
+    opacity: 0;
+    transform-origin: 0 0;
+    scale: 0.2;
+    transition:
+      opacity 500ms var(--ease),
+      scale 600ms var(--ease);
+  }
+
+  .vine :global(.vine__leaf--dark) {
+    fill: var(--accent-text);
+  }
+
+  .vine :global(.vine__leaf.is-grown),
+  .vine__pot.is-grown :global(.vine__leaf) {
+    opacity: 0.9;
+    scale: 1;
+  }
+
+  .vine__pot-body {
+    fill: color-mix(in srgb, var(--danger) 45%, var(--warn));
+  }
+
+  .vine__pot-rim {
+    fill: color-mix(in srgb, var(--danger) 35%, var(--warn));
+  }
+
+  .vine__bloom circle {
+    fill: color-mix(in srgb, var(--danger) 30%, var(--surface));
+  }
+
+  .vine__bloom .vine__bloom-heart {
+    fill: var(--warn);
+  }
+
+  .vine__bloom {
+    opacity: 0;
+    transition: opacity 600ms var(--ease);
+  }
+
+  .vine__bloom.is-grown {
+    opacity: 1;
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .vine :global(.vine__leaf) {
+      transition: none;
+    }
+  }
+
+  @media (max-width: 55.99rem) {
+    .vine {
+      display: none;
+    }
+  }
+</style>

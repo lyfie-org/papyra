@@ -1,6 +1,6 @@
 ---
 import Icon from './Icon.astro';
-import { CREATOR_URL, DOCKER_HUB_URL, GITHUB_URL, LICENSE, LUTHOR_URL, LYFIE_URL } from '../data/site';
+import { CREATOR_URL, DOCKER_HUB_URL, GITHUB_URL, LICENSE, LYFIE_URL } from '../data/site';
 
 const year = new Date().getFullYear();
 
@@ -44,8 +44,7 @@ const columns = [
         A calm, beautiful home for your notes — on your own server, in plain Markdown.
       </p>
       <p class="site-footer__family">
-        A <a href={LYFIE_URL} rel="noopener">Lyfie</a> project, written with{' '}
-        <a href={LUTHOR_URL} rel="noopener">luthor</a>.
+        A <a href={LYFIE_URL} rel="noopener">Lyfie</a> project.
       </p>
       <p class="site-footer__icons">
         <a href={GITHUB_URL} rel="noopener noreferrer" aria-label="Papyra on GitHub">
@@ -81,7 +80,8 @@ const columns = [
       the {LICENSE}
     </p>
     <p>
-      Vibe-coded by <a href={CREATOR_URL} rel="noopener">Rahul</a>, with AI doing most of the typing.
+      Partly vibe-coded by <a href={CREATOR_URL} rel="noopener">Rahul</a> — life’s too short to
+      scroll through forums.
     </p>
   </div>
 </footer>

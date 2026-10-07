@@ -44,9 +44,9 @@ const SHOTS = [
   { name: 'desk', path: '/', wait: '.note-card', viewports: ['desktop', 'mobile'], stage: DESK },
   {
     name: 'focus',
-    path: '/note/sourdough',
+    path: '/note/reading-list',
     wait: '[contenteditable="true"]',
-    viewports: ['desktop'],
+    viewports: ['desktop', 'mobile'],
     stage: DESK,
     then: (page) => page.getByRole('button', { name: 'Focus mode' }).click(),
   },
@@ -54,7 +54,7 @@ const SHOTS = [
     name: 'search',
     path: '/',
     wait: '.note-card',
-    viewports: ['desktop'],
+    viewports: ['desktop', 'mobile'],
     stage: DESK,
     then: async (page) => {
       await page.locator('.search__input').click();

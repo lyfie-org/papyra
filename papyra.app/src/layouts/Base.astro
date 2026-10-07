@@ -2,6 +2,7 @@
 import '../styles/site.css';
 import Header from '../components/Header.astro';
 import Footer from '../components/Footer.astro';
+import ScrollTop from '../components/ScrollTop.astro';
 
 interface Props {
   title: string;
@@ -100,6 +101,7 @@ const canonical = new URL(Astro.url.pathname, Astro.site).href;
       <slot />
     </main>
     <Footer />
+    <ScrollTop />
     <script>
       // Reveal [data-reveal] blocks as they scroll in (see site.css).
       const io = new IntersectionObserver(

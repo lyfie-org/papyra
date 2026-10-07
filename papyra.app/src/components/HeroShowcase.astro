@@ -1,44 +1,53 @@
 ---
 import { Image } from 'astro:assets';
+import logo from '../assets/papyra_logo.png';
 
-// The hero's product shot: a browser window cycling through three real screens
-// of the app, with the phone layout tucked in front. Screens come from
-// scripts/shoot.mjs (the demo build, staged), in both themes; CSS shows the one
-// matching the page, and the hidden theme's images are never fetched.
+// The hero's product shot: a browser window and a phone, cycling together
+// through six real screens of the app. Dashboard, search and focus come from the
+// in-browser demo (scripts/shoot.mjs); collaboration, comments and history need a
+// real server and two accounts, so they are captured from a throwaway instance
+// (blog/launch/capture/hero.mjs). Both themes exist for every screen; CSS shows
+// the one matching the page, and the hidden theme's images are never fetched.
 //
-// Tabs under the window double as the slide controls and a progress indicator.
-// It advances on its own only while on screen, and not at all for readers who
+// Tabs under the window are the slide controls and the progress indicator. It
+// advances on its own only while on screen, and not at all for readers who
 // prefer reduced motion.
 
 const shots = import.meta.glob<{ default: ImageMetadata }>('../assets/shots/*.png', { eager: true });
 const shot = (name: string, device: string, theme: string) => {
   const mod = shots[`../assets/shots/${name}-${device}-${theme}.png`];
-  if (!mod) throw new Error(`Missing shot ${name}-${device}-${theme}.png — run: pnpm --filter papyra-app run shoot`);
+  if (!mod) throw new Error(`Missing shot ${name}-${device}-${theme}.png — run scripts/shoot.mjs or blog/launch/capture/hero.mjs`);
   return mod.default;
 };
 
 const slides = [
-  { name: 'desk', label: 'Your desk', alt: 'The Papyra desk: colourful note cards in a masonry grid, pinned notes on top' },
-  { name: 'focus', label: 'Focus mode', alt: 'A note open in focus mode, with nothing on screen but the writing' },
-  { name: 'search', label: 'Search', alt: 'Search open over the desk, with every match for “pricing” highlighted' },
+  { name: 'desk', label: 'Dashboard', alt: 'The Papyra dashboard: colourful note cards with tags and pins, in a masonry grid' },
+  { name: 'collab', label: 'Collaboration', alt: 'Two people editing the same note at once, each with a named cursor' },
+  { name: 'comments', label: 'Comments', alt: 'Comments threaded beside highlighted sentences in a note' },
+  { name: 'history', label: 'History', alt: 'Version history: a timeline of saved versions and what changed, line by line' },
+  { name: 'search', label: 'Global Search', alt: 'Global search over notes, to-dos and collections, with every match highlighted' },
+  { name: 'focus', label: 'Focus', alt: 'A note open in focus mode, with nothing on screen but the writing' },
 ];
 
-const sizes = '(min-width: 80rem) 1100px, 92vw';
-const widths = [640, 960, 1280, 1600, 2200];
+const THEMES = ['light', 'dark'] as const;
+const sizes = '(min-width: 80rem) 760px, 92vw';
+const widths = [640, 960, 1280, 1600];
 ---
 
 <div class="showcase" data-showcase>
   <div class="showcase__stage">
     <div class="showcase__window">
       <div class="showcase__bar" aria-hidden="true">
-        <span></span><span></span><span></span>
+        <span class="showcase__dot showcase__dot--close"></span>
+        <span class="showcase__dot showcase__dot--min"></span>
+        <span class="showcase__dot showcase__dot--max"></span>
         <span class="showcase__url">notes.your-server.home</span>
       </div>
       <div class="showcase__screens">
         {
           slides.map((s, i) => (
             <div class="showcase__screen" data-slide={i} data-active={i === 0 ? '' : undefined}>
-              {(['light', 'dark'] as const).map((theme) => (
+              {THEMES.map((theme) => (
                 <Image
                   class={`themed themed--${theme}`}
                   src={shot(s.name, 'desktop', theme)}
@@ -56,10 +65,30 @@ const widths = [640, 960, 1280, 1600, 2200];
     </div>
 
     <div class="showcase__phone" aria-hidden="true">
-      {(['light', 'dark'] as const).map((theme) => (
-        <Image class={`themed themed--${theme}`} src={shot('desk', 'mobile', theme)} alt="" widths={[220, 440]} sizes="220px" loading="lazy" />
-      ))}
+      <span class="showcase__camera"></span>
+      <div class="showcase__phone-screen">
+        {
+          slides.map((s, i) => (
+            <div class="showcase__screen" data-slide={i} data-active={i === 0 ? '' : undefined}>
+              {THEMES.map((theme) => (
+                <Image
+                  class={`themed themed--${theme}`}
+                  src={shot(s.name, 'mobile', theme)}
+                  alt=""
+                  widths={[240, 480]}
+                  sizes="240px"
+                  loading={i === 0 ? 'eager' : 'lazy'}
+                />
+              ))}
+            </div>
+          ))
+        }
+      </div>
     </div>
+
+    <span class="showcase__seal" aria-hidden="true">
+      <Image src={logo} alt="" width={44} height={44} densities={[1, 2]} loading="eager" />
+    </span>
   </div>
 
   <div class="showcase__tabs" role="tablist" aria-label="App screens">
@@ -77,6 +106,7 @@ const widths = [640, 960, 1280, 1600, 2200];
 <script>
   const DWELL = 5200;
   for (const root of document.querySelectorAll<HTMLElement>('[data-showcase]')) {
+    // Window and phone each hold one screen per slide; they move together.
     const screens = [...root.querySelectorAll<HTMLElement>('[data-slide]')];
     const tabs = [...root.querySelectorAll<HTMLButtonElement>('[data-tab]')];
     const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -85,8 +115,8 @@ const widths = [640, 960, 1280, 1600, 2200];
     let onScreen = false;
 
     const show = (next: number) => {
-      index = (next + screens.length) % screens.length;
-      screens.forEach((s, i) => s.toggleAttribute('data-active', i === index));
+      index = (next + tabs.length) % tabs.length;
+      screens.forEach((s) => s.toggleAttribute('data-active', Number(s.dataset.slide) === index));
       tabs.forEach((t, i) => t.setAttribute('aria-selected', String(i === index)));
       root.style.setProperty('--dwell', `${DWELL}ms`);
       schedule();
@@ -109,12 +139,15 @@ const widths = [640, 960, 1280, 1600, 2200];
       tabs[index].focus();
     });
 
-    new IntersectionObserver(([entry]) => {
-      onScreen = entry.isIntersecting;
-      // Restart the meter from zero when it comes back into view.
-      if (onScreen) show(index);
-      else schedule();
-    }, { threshold: 0.1 }).observe(root);
+    new IntersectionObserver(
+      ([entry]) => {
+        onScreen = entry.isIntersecting;
+        // Restart the meter from zero when it comes back into view.
+        if (onScreen) show(index);
+        else schedule();
+      },
+      { threshold: 0.1 },
+    ).observe(root);
   }
 </script>
 
@@ -127,30 +160,31 @@ const widths = [640, 960, 1280, 1600, 2200];
 
   .showcase__stage {
     position: relative;
-    padding-left: clamp(0px, 5vw, 4.5rem);
-  }
-
-  /* Beside the headline, the window turns slightly toward the reader and
-     squares up when you reach for it. */
-  @media (min-width: 70rem) and (prefers-reduced-motion: no-preference) {
-    .showcase__stage {
-      transform: perspective(2400px) rotateY(-9deg) rotateX(3deg);
-      transform-origin: 0 50%;
-      transition: transform 900ms var(--ease);
-    }
-
-    .showcase:hover .showcase__stage,
-    .showcase:focus-within .showcase__stage {
-      transform: perspective(2400px) rotateY(-2deg) rotateX(1deg);
-    }
+    padding-right: clamp(2.5rem, 6vw, 5rem);
   }
 
   .showcase__window {
+    position: relative;
     border-radius: var(--radius-lg);
     overflow: hidden;
     border: 1px solid var(--border);
     background: var(--surface);
     box-shadow: var(--shadow-frame);
+    transform-origin: 0 50%;
+  }
+
+  /* Beside the headline, the window turns slightly toward the reader and
+     squares up when you reach for it. The phone stays upright in front. */
+  @media (min-width: 70rem) and (prefers-reduced-motion: no-preference) {
+    .showcase__window {
+      transform: perspective(2400px) rotateY(-8deg) rotateX(2deg);
+      transition: transform 900ms var(--ease);
+    }
+
+    .showcase:hover .showcase__window,
+    .showcase:focus-within .showcase__window {
+      transform: perspective(2400px) rotateY(-2deg) rotateX(1deg);
+    }
   }
 
   .showcase__bar {
@@ -163,11 +197,24 @@ const widths = [640, 960, 1280, 1600, 2200];
     background: color-mix(in srgb, var(--surface) 70%, var(--bg));
   }
 
-  .showcase__bar > span:not(.showcase__url) {
-    width: 10px;
-    height: 10px;
+  /* Close, minimise, expand — in the palette's own red, amber and sage. */
+  .showcase__dot {
+    width: 11px;
+    height: 11px;
     border-radius: 50%;
-    background: var(--border);
+    box-shadow: inset 0 0 0 0.5px color-mix(in srgb, var(--scrim) 25%, transparent);
+  }
+
+  .showcase__dot--close {
+    background: var(--danger);
+  }
+
+  .showcase__dot--min {
+    background: var(--warn);
+  }
+
+  .showcase__dot--max {
+    background: var(--accent);
   }
 
   .showcase__url {
@@ -196,8 +243,7 @@ const widths = [640, 960, 1280, 1600, 2200];
     opacity: 1;
   }
 
-  .showcase__screen :global(img),
-  .showcase__phone :global(img) {
+  .showcase__screen :global(img) {
     width: 100%;
     height: 100%;
     object-fit: cover;
@@ -217,40 +263,139 @@ const widths = [640, 960, 1280, 1600, 2200];
     display: block !important;
   }
 
+  /* A phone in brushed metallic blue, in front of the window's right edge. */
   .showcase__phone {
     position: absolute;
-    left: 0;
-    bottom: -10%;
-    width: clamp(120px, 19%, 220px);
+    right: 0;
+    bottom: -9%;
+    width: clamp(96px, 21%, 210px);
     aspect-ratio: 390 / 844;
-    padding: 7px;
-    border-radius: 30px;
-    /* --scrim is a fixed near-black in both themes: a phone bezel. */
-    background: var(--scrim);
-    box-shadow: var(--shadow-frame);
+    padding: 5px;
+    border-radius: 20px;
+    background:
+      linear-gradient(140deg, var(--phone-metal-hi) 0%, var(--phone-metal) 28%, var(--phone-metal-lo) 62%, var(--phone-metal) 84%, var(--phone-metal-hi) 100%);
+    box-shadow:
+      inset 0 0 0 1px color-mix(in srgb, var(--phone-metal-hi) 70%, transparent),
+      var(--shadow-frame);
   }
 
-  .showcase__phone :global(img) {
-    border-radius: 23px;
+  /* A thin status-bar strip above the app, so the pinhole camera sits in it
+     rather than on top of the app's own header. */
+  .showcase__phone-screen {
+    position: relative;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    border-radius: 15px;
+    background: var(--surface);
+  }
+
+  .showcase__phone-screen .showcase__screen {
+    top: 5.5%;
+  }
+
+  /* The selfie camera: a pinhole, not a notch, so the app's header stays whole. */
+  .showcase__camera {
+    position: absolute;
+    z-index: 1;
+    top: 9px;
+    left: 50%;
+    width: 6px;
+    height: 6px;
+    border-radius: 50%;
+    background: var(--scrim);
+    transform: translateX(-50%);
+  }
+
+  /* The seal: Papyra's mark, pinned where the copy meets the window. */
+  .showcase__seal {
+    position: absolute;
+    z-index: 2;
+    top: 18%;
+    left: 0;
+    display: grid;
+    place-items: center;
+    width: 76px;
+    height: 76px;
+    border-radius: 50%;
+    background: var(--surface);
+    box-shadow: var(--shadow-frame);
+    transform: translateX(-50%);
+  }
+
+  /* A slowly turning ring of the palette's greens and ambers around the seal. */
+  .showcase__seal::before {
+    content: '';
+    position: absolute;
+    inset: -3px;
+    z-index: -1;
+    border-radius: 50%;
+    background: conic-gradient(from var(--seal-turn, 0deg), var(--accent), var(--warn), var(--accent-border), var(--accent));
+  }
+
+  .showcase__seal::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: -1;
+    border-radius: 50%;
+    background: var(--surface);
+  }
+
+  .showcase__seal :global(img) {
+    position: relative;
+    z-index: 1;
+    border-radius: 12px;
+  }
+
+  @property --seal-turn {
+    syntax: '<angle>';
+    inherits: false;
+    initial-value: 0deg;
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .showcase__seal {
+      animation: seal-float 6s var(--ease-inout) infinite alternate;
+    }
+
+    .showcase__seal::before {
+      animation: seal-turn 9s linear infinite;
+    }
+  }
+
+  @keyframes seal-float {
+    to {
+      translate: 0 -8px;
+    }
+  }
+
+  @keyframes seal-turn {
+    to {
+      --seal-turn: 360deg;
+    }
   }
 
   .showcase__tabs {
     display: flex;
+    flex-wrap: wrap;
     justify-content: center;
-    gap: var(--space-2);
-    margin-top: clamp(var(--space-8), 6vw, var(--space-12));
+    gap: var(--space-1);
+    margin-top: clamp(var(--space-8), 5vw, var(--space-10));
+    padding-right: clamp(2.5rem, 6vw, 5rem);
   }
 
   .showcase__tab {
     display: grid;
     gap: var(--space-2);
-    min-width: 7.5rem;
+    min-width: 0;
     padding: var(--space-2) var(--space-3);
     border: none;
     border-radius: var(--radius-sm);
     background: transparent;
     font: 500 var(--fs-xs) / 1.2 var(--sans);
     color: var(--text);
+    white-space: nowrap;
     cursor: pointer;
     transition: color var(--dur-fast) var(--ease);
   }
@@ -292,24 +437,70 @@ const widths = [640, 960, 1280, 1600, 2200];
     }
   }
 
+  /* Stacked under the copy: the seal sits on the window's top edge. */
+  @media (max-width: 69.99rem) {
+    .showcase__seal {
+      top: 0;
+      left: 50%;
+      transform: translate(-50%, -55%);
+      width: 64px;
+      height: 64px;
+    }
+
+    .showcase__seal :global(img) {
+      width: 38px;
+      height: 38px;
+    }
+
+    /* The seal now sits on the bar's centre; the address moves aside for it. */
+    .showcase__url {
+      margin-inline: auto 0;
+      transform: none;
+    }
+  }
+
   @media (max-width: 40rem) {
+    .showcase__stage,
+    .showcase__tabs {
+      padding-right: 0;
+    }
+
     .showcase__stage {
-      padding-left: 0;
+      padding-bottom: var(--space-6);
     }
 
     .showcase__phone {
-      display: none;
+      right: var(--space-2);
+      bottom: -4%;
+      width: 27%;
+      padding: 3px;
+      border-radius: 13px;
+    }
+
+    .showcase__phone-screen {
+      border-radius: 10px;
+    }
+
+    .showcase__camera {
+      top: 6px;
+      width: 4px;
+      height: 4px;
     }
 
     .showcase__url {
-      transform: none;
+      display: none;
+    }
+
+    .showcase__tabs {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      margin-top: var(--space-6);
     }
 
     .showcase__tab {
       min-width: 0;
-      flex: 1;
-      padding-inline: var(--space-1);
-      white-space: nowrap;
+      white-space: normal;
+      text-align: left;
     }
   }
 </style>

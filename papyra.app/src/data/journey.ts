@@ -137,10 +137,16 @@ export const JOURNEY: Milestone[] = [
   },
 ];
 
-/** On the horizon — plans, not promises. */
-export const NEXT: { icon: IconName; title: string; text: string }[] = [
-  { icon: 'sparkles', title: 'Private AI', text: 'Ask your notes questions. Runs on your own hardware.' },
-  { icon: 'monitor', title: 'Desktop app', text: 'Windows, macOS and Linux, pointed at your server.' },
-  { icon: 'smartphone', title: 'Mobile app', text: 'iOS and Android, offline-first.' },
+/** Coming soon — plans, not promises. In order: the next big thing first. */
+export const NEXT: { icon: IconName; title: string; text: string; next?: boolean }[] = [
+  {
+    icon: 'book',
+    title: 'Journal',
+    text: 'Journal your life with everything Papyra does — photos, links, locked entries. One home for your notes, docs and days.',
+    next: true,
+  },
   { icon: 'message', title: 'Discord and Telegram alerts', text: 'Admin notifications where you already are.' },
+  { icon: 'smartphone', title: 'Mobile app', text: 'iOS and Android, offline-first.' },
+  { icon: 'monitor', title: 'Desktop app', text: 'Windows, macOS and Linux, pointed at your server.' },
+  { icon: 'sparkles', title: 'Private AI', text: 'Ask your notes questions. Runs on your own hardware.' },
 ];

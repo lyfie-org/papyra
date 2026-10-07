@@ -355,7 +355,17 @@
 .note-editor--colored .note-history__icon,
 .note-editor--colored .note-history__seg button,
 .note-editor--colored .note-history__empty { color: var(--tint-ink-muted); }
-.note-editor--colored .note-history__seg button[aria-pressed='true'] { color: var(--tint-ink); }
+.note-editor--colored .note-history__seg { border-color: var(--tint-scrim); }
+/* The plain active pill is var(--surface) — dark in dark mode, under ink that
+   stays dark on pastel paper. The tinted chip pairing reads in both themes. */
+.note-editor--colored .note-history__seg button[aria-pressed='true'] {
+  background: var(--tint-scrim);
+  color: var(--tint-ink);
+  box-shadow: none;
+}
+.note-editor--colored .note-history__stats { border-color: var(--tint-scrim); color: var(--tint-ink-muted); }
+.note-editor--colored .note-history__stats :is(.is-add, .is-del) { color: var(--tint-ink); }
+.note-editor--colored .note-history__legend { color: var(--tint-ink-muted); }
 .note-editor--colored .note-history__stop:not(.is-active) { background: color-mix(in srgb, var(--note-tint) 60%, var(--tint-lift)); }
 
 /* The Changes view is the whole comparison, title included — the live title

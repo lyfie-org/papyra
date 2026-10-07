@@ -13,16 +13,18 @@ interface Props {
   label: string;
   /** Recorded once, theme-neutral (the theme-switch clip). */
   single?: boolean;
+  /** Where the home page's vine touches this clip (see Vine.astro). */
+  vine?: 'side' | 'top';
   class?: string;
 }
 
-const { name, label, single = false, class: className } = Astro.props;
+const { name, label, single = false, vine, class: className } = Astro.props;
 const base = '/media/clips/';
 const light = single ? name : `${name}-light`;
 const dark = single ? name : `${name}-dark`;
 ---
 
-<figure class:list={['clip', className]} data-clip={name} data-single={single ? '' : undefined}>
+<figure class:list={['clip', className]} data-clip={name} data-single={single ? '' : undefined} data-vine-anchor={vine}>
   <div class="clip__frame">
     <img class="clip__poster clip__poster--light" src={`${base}${light}.webp`} alt="" width="1680" height="1050" loading="lazy" decoding="async" />
     <img class="clip__poster clip__poster--dark" src={`${base}${dark}.webp`} alt="" width="1680" height="1050" loading="lazy" decoding="async" />

@@ -239,7 +239,7 @@ export default function SharedNoteView({
               viewOnly={!liveEdit}
             />
             {room.status === 'live' && (liveEdit
-              ? <span className="shared-note__status"><PencilLine size={13} aria-hidden="true" /> Editing live</span>
+              ? <span className="shared-note__status shared-note__status--live"><PencilLine size={13} aria-hidden="true" /><span className="shared-note__status-text"> Editing live</span></span>
               : <span className="shared-note__badge"><Eye size={13} aria-hidden="true" /> View only</span>)}
           </>
         ) : canEdit ? (

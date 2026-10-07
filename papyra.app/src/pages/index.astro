@@ -3,6 +3,7 @@ import { Image } from 'astro:assets';
 import Base from '../layouts/Base.astro';
 import Icon from '../components/Icon.astro';
 import Clip from '../components/Clip.astro';
+import Vine from '../components/Vine.astro';
 import HeroShowcase from '../components/HeroShowcase.astro';
 import CodeBlock from '../components/CodeBlock.astro';
 import logo from '../assets/papyra_logo.png';
@@ -138,11 +139,10 @@ const when = (m: (typeof JOURNEY)[number]) =>
     <div class="hero__glow" aria-hidden="true"></div>
     <div class="wrap wrap--wide hero__grid">
     <div class="hero__copy">
-      <a class="chip hero__chip" href="#journey">
+      <p class="chip hero__chip">
         <span class="chip__dot"></span>
         Papyra 1.0 · Free and open source
-        <Icon name="arrow-right" size={14} />
-      </a>
+      </p>
       <h1 class="hero__title">Your notes deserve a <span>beautiful</span> home.</h1>
       <p class="hero__lede">
         A calm, self-hosted notes app — as easy as sticky notes, as deep as a wiki. Every note
@@ -179,8 +179,9 @@ const when = (m: (typeof JOURNEY)[number]) =>
 
   <!-- -------------------------------------------------------- showcase -->
   <section class="section" id="features">
-    <div class="wrap wrap--wide">
-      <header class="intro" data-reveal>
+    <div class="wrap wrap--wide features" data-vine-root>
+      <Vine />
+      <header class="intro" data-reveal data-vine-start>
         <p class="eyebrow">Made for writing</p>
         <h2>Calm on the surface.<br />Powerful underneath.</h2>
       </header>
@@ -200,7 +201,7 @@ const when = (m: (typeof JOURNEY)[number]) =>
                   </a>
                 )}
               </div>
-              <Clip class="row__clip" name={row.clip} label={row.alt} />
+              <Clip class="row__clip" name={row.clip} label={row.alt} vine="side" />
             </article>
           ))
         }
@@ -216,6 +217,7 @@ const when = (m: (typeof JOURNEY)[number]) =>
           class="theme-band__clip"
           name="theme"
           single
+          vine="top"
           label="The desk switching from the light theme to the dark one and back"
         />
       </div>
@@ -295,7 +297,6 @@ const when = (m: (typeof JOURNEY)[number]) =>
             I’m a home-labber. Keeping my own data alive is hard enough — I have zero interest in
             storing yours.
           </blockquote>
-          <figcaption>— Rahul, who made Papyra</figcaption>
         </figure>
       </div>
       <ul class="shields">
@@ -360,6 +361,24 @@ const when = (m: (typeof JOURNEY)[number]) =>
 
       <ol class="journey" data-journey>
         {
+          NEXT.map((n) => (
+            <li class:list={['journey__item', 'journey__item--soon', { 'journey__item--next': n.next }]}>
+              <span class="journey__date">Coming soon</span>
+              <span class="journey__node" aria-hidden="true">
+                <Icon name={n.next ? 'sparkles' : 'history'} size={12} />
+              </span>
+              <div class="journey__card">
+                <h3>
+                  <Icon name={n.icon} size={17} />
+                  {n.title}
+                </h3>
+                <p>{n.text}</p>
+                {n.next && <span class="journey__tag journey__tag--next">Next up</span>}
+              </div>
+            </li>
+          ))
+        }
+        {
           JOURNEY.map((m, i) => (
             <li class:list={['journey__item', { 'journey__item--current': m.current }]} data-hidden={i >= SHOWN ? '' : undefined}>
               <time class="journey__date" datetime={m.date}>
@@ -395,27 +414,11 @@ const when = (m: (typeof JOURNEY)[number]) =>
         </button>
         <a href="/changelog/">Full changelog</a>
       </div>
+      <p class="journey__ask">
+        Plans, not promises. Want something else?{' '}
+        <a href={`${GITHUB_URL}/issues/new`} rel="noopener noreferrer">Ask for it</a>.
+      </p>
 
-      <div class="horizon" data-reveal>
-        <h3>On the horizon</h3>
-        <p class="horizon__note">Plans, not promises.</p>
-        <ul class="horizon__list">
-          {
-            NEXT.map((n) => (
-              <li>
-                <Icon name={n.icon} size={18} />
-                <span>
-                  <strong>{n.title}</strong>
-                  {n.text}
-                </span>
-              </li>
-            ))
-          }
-        </ul>
-        <p class="horizon__ask">
-          Want something else? <a href={`${GITHUB_URL}/issues/new`} rel="noopener noreferrer">Ask for it</a>.
-        </p>
-      </div>
     </div>
   </section>
 
@@ -427,7 +430,7 @@ const when = (m: (typeof JOURNEY)[number]) =>
         <h2>Up in a minute.</h2>
         <p>
           Save one file, run one command, open your browser. The first account you create is the
-          admin.{pullsLabel && ` Pulled ${pullsLabel} times from Docker Hub so far.`}
+          admin.
         </p>
         <ul class="ticks">
           <li><Icon name="check" size={16} />Runs on amd64 and arm64 — a NAS, a Pi, a VPS</li>
@@ -519,26 +522,6 @@ const when = (m: (typeof JOURNEY)[number]) =>
     </div>
   </section>
 
-  <!-- ------------------------------------------------------------- end -->
-  <section class="section section--end">
-    <div class="wrap">
-      <div class="finale" data-reveal>
-        <Image class="finale__logo" src={logo} alt="" width={64} height={64} densities={[1, 2]} />
-        <h2>Give your notes a calm home.</h2>
-        <div class="hero__actions">
-          <a class="btn btn--lg" href="/demo/">
-            <Icon name="play" size={16} />
-            Try the live demo
-          </a>
-          <a class="btn btn--ghost btn--lg" href="/docs/install/">Install Papyra</a>
-        </div>
-        <a class="finale__star" href={GITHUB_URL} rel="noopener noreferrer">
-          <Icon name="star" size={15} />
-          Enjoying it? Leave a star on GitHub
-        </a>
-      </div>
-    </div>
-  </section>
 </Base>
 
 <script>
@@ -612,8 +595,25 @@ const when = (m: (typeof JOURNEY)[number]) =>
     margin-bottom: var(--space-5);
   }
 
+  /* The one coloured word breathes: a slow drift through the palette's greens. */
   .hero__title span {
     color: var(--accent-text);
+    background: linear-gradient(100deg, var(--accent-text) 0%, var(--accent) 35%, var(--accent-text) 60%, var(--accent) 100%) 0 0 / 220% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .hero__title span {
+      animation: hero-ink 7s var(--ease-inout) infinite alternate;
+    }
+  }
+
+  @keyframes hero-ink {
+    to {
+      background-position: 100% 0;
+    }
   }
 
   .hero__lede {
@@ -641,11 +641,10 @@ const when = (m: (typeof JOURNEY)[number]) =>
     color: var(--text);
   }
 
-  /* The window runs off the right edge on wide screens — the hero clips it. */
   .hero__shot {
     position: relative;
     min-width: 0;
-    margin-right: calc(-1 * clamp(0px, 7vw, 9rem));
+    padding-left: var(--space-6);
   }
 
   @media (max-width: 69.99rem) {
@@ -671,8 +670,8 @@ const when = (m: (typeof JOURNEY)[number]) =>
     }
 
     .hero__shot {
-      margin-right: 0;
-      margin-top: var(--space-4);
+      padding-left: 0;
+      margin-top: var(--space-10);
     }
   }
 
@@ -722,6 +721,23 @@ const when = (m: (typeof JOURNEY)[number]) =>
   }
 
   /* -------------------------------------------------------- showcase */
+  /* The vine (Vine.astro) is drawn in this box, behind everything in it. */
+  .features {
+    position: relative;
+  }
+
+  .features > :not(.vine) {
+    position: relative;
+    z-index: 1;
+  }
+
+  /* Room under the heading for the pot the vine trails out of. */
+  @media (min-width: 56rem) {
+    .features .intro {
+      margin-bottom: calc(clamp(var(--space-10), 6vw, var(--space-12)) + 4.5rem);
+    }
+  }
+
   .rows {
     display: grid;
     gap: clamp(var(--space-12), 9vw, 8rem);
@@ -1064,62 +1080,6 @@ const when = (m: (typeof JOURNEY)[number]) =>
     font-weight: 500;
   }
 
-  /* ---------------------------------------------------------- horizon */
-  .horizon {
-    margin-top: var(--space-12);
-    padding: var(--space-6);
-    border: 1.5px dashed var(--border-hover);
-    border-radius: var(--radius-lg);
-  }
-
-  .horizon h3 {
-    font-size: var(--fs-xl);
-    margin: 0;
-  }
-
-  .horizon__note {
-    margin: var(--space-1) 0 var(--space-5);
-    font-size: var(--fs-xs);
-    color: var(--text);
-  }
-
-  .horizon__list {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: var(--space-4) var(--space-6);
-  }
-
-  .horizon__list li {
-    display: flex;
-    gap: var(--space-3);
-    align-items: flex-start;
-    font-size: var(--fs-xs);
-    line-height: 1.5;
-    color: var(--text);
-  }
-
-  .horizon__list :global(svg) {
-    flex: none;
-    margin-top: 2px;
-    color: var(--accent);
-  }
-
-  .horizon__list strong {
-    display: block;
-    font-size: var(--fs-sm);
-    font-weight: 500;
-    color: var(--text-h);
-  }
-
-  .horizon__ask {
-    margin: var(--space-5) 0 0;
-    font-size: var(--fs-sm);
-    color: var(--text);
-  }
-
   /* ---------------------------------------------------------- journey */
   .journey {
     --date-w: 7.5rem;
@@ -1231,6 +1191,47 @@ const when = (m: (typeof JOURNEY)[number]) =>
 
   .journey__tag:hover {
     color: var(--text-h);
+  }
+
+  /* Plans: dashed, quieter — not yet on the line of things that shipped. */
+  .journey__item--soon .journey__date {
+    color: var(--accent-text);
+  }
+
+  .journey__item--soon .journey__node {
+    border-style: dashed;
+    color: var(--text);
+  }
+
+  .journey__item--soon .journey__card {
+    border-style: dashed;
+    background: color-mix(in srgb, var(--surface) 55%, transparent);
+  }
+
+  .journey__item--next .journey__node {
+    border-style: solid;
+    color: var(--accent-text);
+    box-shadow: 0 0 0 5px var(--accent-bg);
+  }
+
+  .journey__item--next .journey__card {
+    border-style: solid;
+    border-color: var(--accent-border);
+    background:
+      radial-gradient(24rem 8rem at 0% 0%, var(--accent-bg), transparent 70%),
+      var(--surface);
+  }
+
+  .journey__tag--next {
+    font-family: var(--sans);
+    font-weight: 600;
+  }
+
+  .journey__ask {
+    margin: var(--space-4) 0 0;
+    text-align: center;
+    font-size: var(--fs-xs);
+    color: var(--text);
   }
 
   .journey__more {
@@ -1421,56 +1422,6 @@ const when = (m: (typeof JOURNEY)[number]) =>
     color: var(--text);
   }
 
-  /* ----------------------------------------------------------- finale */
-  .section--end {
-    padding-bottom: 0;
-  }
-
-  .finale {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    text-align: center;
-    padding: clamp(var(--space-10), 7vw, 6rem) var(--space-6);
-    border: 1px solid var(--accent-border);
-    border-radius: calc(var(--radius-lg) * 2);
-    background:
-      radial-gradient(40rem 20rem at 50% 0%, var(--accent-bg), transparent 70%),
-      var(--surface);
-    box-shadow: var(--shadow-card);
-  }
-
-  .finale :global(.finale__logo) {
-    border-radius: var(--radius-md);
-    margin-bottom: var(--space-5);
-  }
-
-  .finale h2 {
-    font-size: clamp(30px, 3.4vw + 12px, 52px);
-    margin-bottom: var(--space-8);
-  }
-
-  .finale__star {
-    display: inline-flex;
-    flex-wrap: wrap;
-    justify-content: center;
-    text-align: center;
-    align-items: center;
-    gap: var(--space-2);
-    margin-top: var(--space-6);
-    font-size: var(--fs-sm);
-    color: var(--text);
-    text-decoration: none;
-  }
-
-  .finale__star:hover {
-    color: var(--accent-text);
-  }
-
-  .finale__star :global(svg) {
-    color: var(--accent);
-  }
-
   @media (prefers-reduced-motion: reduce) {
     .helps__item:hover {
       transform: none;
@@ -1521,8 +1472,7 @@ const when = (m: (typeof JOURNEY)[number]) =>
       margin: 0;
     }
 
-    .shields,
-    .horizon__list {
+    .shields {
       grid-template-columns: minmax(0, 1fr);
     }
 
@@ -1535,10 +1485,6 @@ const when = (m: (typeof JOURNEY)[number]) =>
       width: 44px;
       height: 44px;
       margin-bottom: var(--space-3);
-    }
-
-    .horizon {
-      padding: var(--space-5);
     }
 
     .warning {

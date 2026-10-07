@@ -72,6 +72,20 @@
   color: var(--tint-ink);
 }
 
+/* On a phone the title needs the room: the live chip keeps its pencil and
+   hides its words (still read out by screen readers). */
+@media (max-width: 30rem) {
+  .shared-note__status--live { padding-inline: var(--space-2); }
+  .shared-note__status--live .shared-note__status-text {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+}
+
 .shared-note__spin { animation: shared-note-spin 0.9s linear infinite; }
 @keyframes shared-note-spin { to { transform: rotate(360deg); } }
 @media (prefers-reduced-motion: reduce) { .shared-note__spin { animation: none; } }

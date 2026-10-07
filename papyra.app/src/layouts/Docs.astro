@@ -1,6 +1,9 @@
 ---
 import { getCollection } from 'astro:content';
 import Base from './Base.astro';
+import Icon from '../components/Icon.astro';
+import DocsSearch from '../components/DocsSearch.astro';
+import { pageHeadings } from '../lib/docs-index';
 import { LYFIE_URL, SITE_URL } from '../data/site';
 
 interface Props {
@@ -16,12 +19,18 @@ const { title, description, current } = Astro.props;
 const GROUPS = ['Getting started', 'Living with it', 'In depth', 'Reference'] as const;
 
 const all = await getCollection('docs');
-const sidebar = GROUPS.map((group) => ({
-  group,
-  pages: all
-    .filter((page) => page.data.group === group)
-    .sort((a, b) => a.data.order - b.data.order),
-})).filter((section) => section.pages.length > 0);
+const sidebar = await Promise.all(
+  GROUPS.map(async (group) => ({
+    group,
+    pages: await Promise.all(
+      all
+        .filter((page) => page.data.group === group)
+        .sort((a, b) => a.data.order - b.data.order)
+        .map(async (page) => ({ page, headings: await pageHeadings(page) })),
+    ),
+  })),
+).then((groups) => groups.filter((section) => section.pages.length > 0));
+const currentTitle = all.find((p) => p.id === current)?.data.title ?? 'Documentation';
 
 // Each docs page is a TechArticle inside a Home › Docs › Page breadcrumb, and
 // has a plain Markdown twin at /docs/<id>.md for AI assistants and scripts.
@@ -55,36 +64,87 @@ const jsonLd = {
   <script slot="head" type="application/ld+json" is:inline set:html={JSON.stringify(jsonLd)} />
   {current && <link slot="head" rel="alternate" type="text/markdown" href={`/docs/${current}.md`} title={`${title} (Markdown)`} />}
   <div class="wrap docs">
-    <nav class="docs__sidebar" aria-label="Documentation">
-      <a class="docs__home" href="/docs/" aria-current={current ? undefined : 'page'}>
-        Documentation
-      </a>
-      {
-        sidebar.map((section) => (
-          <div class="docs__group">
-            <h2>{section.group}</h2>
-            <ul>
-              {section.pages.map((page) => (
-                <li>
-                  <a
-                    href={`/docs/${page.id}/`}
-                    aria-current={page.id === current ? 'page' : undefined}
-                  >
-                    {page.data.title}
-                  </a>
-                </li>
-              ))}
-            </ul>
-          </div>
-        ))
-      }
-    </nav>
+    <aside class="docs__sidebar" data-docs-sidebar>
+      <DocsSearch />
+      <button type="button" class="docs__toggle" data-docs-toggle aria-expanded="false" aria-controls="docs-nav">
+        <span><span class="docs__toggle-label">Contents</span> {currentTitle}</span>
+        <Icon name="chevron-down" size={16} />
+      </button>
+      <nav class="docs__nav" id="docs-nav" aria-label="Documentation">
+        <a class="docs__home" href="/docs/" aria-current={current ? undefined : 'page'}>
+          Documentation
+        </a>
+        {
+          sidebar.map((section) => (
+            <div class="docs__group">
+              <h2>{section.group}</h2>
+              <ul>
+                {section.pages.map(({ page, headings }) => (
+                  <li class="docs__page">
+                    <div class="docs__row">
+                      <a href={`/docs/${page.id}/`} aria-current={page.id === current ? 'page' : undefined}>
+                        {page.data.title}
+                      </a>
+                      {headings.length > 0 && (
+                        <button
+                          type="button"
+                          class="docs__expand"
+                          data-docs-expand
+                          aria-expanded="false"
+                          aria-controls={`docs-sub-${page.id}`}
+                          aria-label={`Sections in ${page.data.title}`}
+                        >
+                          <Icon name="chevron-down" size={14} />
+                        </button>
+                      )}
+                    </div>
+                    {headings.length > 0 && (
+                      <ul class="docs__sub" id={`docs-sub-${page.id}`}>
+                        {headings.map((h) => (
+                          <li>
+                            <a href={`/docs/${page.id}/#${h.slug}`}>{h.text}</a>
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))
+        }
+      </nav>
+    </aside>
 
     <div class="docs__main">
       <slot />
     </div>
   </div>
 </Base>
+
+<script>
+  // Each page's sections fold away under its title; the chevron opens them.
+  document.querySelectorAll<HTMLButtonElement>('[data-docs-expand]').forEach((btn) => {
+    btn.addEventListener('click', () => {
+      const open = btn.getAttribute('aria-expanded') !== 'true';
+      btn.setAttribute('aria-expanded', String(open));
+      document.getElementById(btn.getAttribute('aria-controls')!)?.toggleAttribute('data-open', open);
+    });
+  });
+
+  // Phones: the whole contents list sits behind one "Contents" button.
+  const toggle = document.querySelector<HTMLButtonElement>('[data-docs-toggle]');
+  const sidebar = document.querySelector<HTMLElement>('[data-docs-sidebar]');
+  toggle?.addEventListener('click', () => {
+    const open = toggle.getAttribute('aria-expanded') !== 'true';
+    toggle.setAttribute('aria-expanded', String(open));
+    sidebar?.toggleAttribute('data-open', open);
+  });
+  // Following a link inside the menu closes it, so the page is visible again.
+  sidebar?.querySelector('.docs__nav')?.addEventListener('click', (e) => {
+    if ((e.target as HTMLElement).closest('a') && toggle?.getAttribute('aria-expanded') === 'true') toggle.click();
+  });
+</script>
 
 <style>
   .docs {
@@ -98,9 +158,23 @@ const jsonLd = {
   .docs__sidebar {
     position: sticky;
     top: 76px;
+    max-height: calc(100vh - 92px);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    scrollbar-width: thin;
+    display: grid;
+    gap: var(--space-5);
+    padding: 2px 2px var(--space-6);
+    font-size: var(--fs-sm);
+  }
+
+  .docs__nav {
     display: grid;
     gap: var(--space-6);
-    font-size: var(--fs-sm);
+  }
+
+  .docs__toggle {
+    display: none;
   }
 
   .docs__home {
@@ -122,7 +196,7 @@ const jsonLd = {
     margin: 0 0 var(--space-3);
   }
 
-  .docs__group ul {
+  .docs__group > ul {
     list-style: none;
     margin: 0;
     padding: 0;
@@ -131,7 +205,15 @@ const jsonLd = {
     border-left: 1px solid var(--border);
   }
 
-  .docs__group a {
+  .docs__row {
+    display: flex;
+    align-items: center;
+    gap: var(--space-1);
+  }
+
+  .docs__row a {
+    flex: 1;
+    min-width: 0;
     display: block;
     padding: var(--space-1) var(--space-3);
     margin-left: -1px;
@@ -141,55 +223,139 @@ const jsonLd = {
     line-height: 1.4;
   }
 
-  .docs__group a:hover {
+  .docs__row a:hover {
     color: var(--text-h);
     border-left-color: var(--border);
   }
 
-  .docs__group a[aria-current='page'] {
+  .docs__row a[aria-current='page'] {
     color: var(--accent-text);
     border-left-color: var(--accent);
+  }
+
+  .docs__expand {
+    flex: none;
+    display: grid;
+    place-items: center;
+    width: 26px;
+    height: 26px;
+    border: none;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    color: var(--text);
+    cursor: pointer;
+  }
+
+  .docs__expand:hover {
+    background: var(--accent-bg);
+    color: var(--text-h);
+  }
+
+  .docs__expand :global(svg) {
+    transition: transform var(--dur) var(--ease);
+  }
+
+  .docs__expand[aria-expanded='true'] :global(svg) {
+    transform: rotate(180deg);
+  }
+
+  .docs__sub {
+    list-style: none;
+    margin: 0 0 var(--space-2);
+    padding: 0 0 0 var(--space-5);
+    display: grid;
+    gap: 2px;
+  }
+
+  /* Folded until opened, but only when the script that opens it is running. */
+  :global(.js) .docs__sub:not([data-open]) {
+    display: none;
+  }
+
+  .docs__sub a {
+    display: block;
+    padding: 3px var(--space-2);
+    border-radius: var(--radius-sm);
+    font-size: var(--fs-xs);
+    line-height: 1.4;
+    color: var(--text);
+    text-decoration: none;
+  }
+
+  .docs__sub a:hover {
+    color: var(--text-h);
+    background: var(--accent-bg);
   }
 
   .docs__main {
     min-width: 0;
   }
 
-  /* Under ~64rem the sidebar becomes a scrollable strip above the content
-     rather than a hamburger nobody finds. */
+  /* Phones and small tablets: search stays in view; the contents fold behind
+     one button that says where you are. */
   @media (max-width: 64rem) {
     .docs {
-      /* minmax(0, 1fr) rather than 1fr — a bare fr track will not shrink below
+      /* minmax(0, 1fr) rather than 1fr: a bare fr track will not shrink below
          its min-content, and one wide code block would force the page open. */
       grid-template-columns: minmax(0, 1fr);
       gap: var(--space-6);
+      padding-top: var(--space-6);
     }
 
     .docs__sidebar {
       position: static;
-      gap: var(--space-4);
-      padding-bottom: var(--space-5);
+      max-height: none;
+      overflow: visible;
+      gap: var(--space-3);
+      padding: 0 0 var(--space-5);
       border-bottom: 1px solid var(--border);
     }
 
-    .docs__group ul {
+    .docs__toggle {
       display: flex;
-      flex-wrap: wrap;
-      gap: var(--space-1) var(--space-4);
-      border-left: none;
+      align-items: center;
+      justify-content: space-between;
+      gap: var(--space-3);
+      width: 100%;
+      padding: var(--space-3) var(--space-4);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-md);
+      background: var(--surface);
+      font: 500 var(--fs-sm) / 1.3 var(--sans);
+      color: var(--text-h);
+      text-align: left;
+      cursor: pointer;
     }
 
-    .docs__group a {
-      padding: 2px 0;
-      margin-left: 0;
-      border-left: none;
-      border-bottom: 2px solid transparent;
+    .docs__toggle-label {
+      margin-right: var(--space-2);
+      font: 500 var(--fs-2xs) / 1 var(--sans);
+      letter-spacing: 0.12em;
+      text-transform: uppercase;
+      color: var(--text);
     }
 
-    .docs__group a:hover,
-    .docs__group a[aria-current='page'] {
-      border-left: none;
-      border-bottom-color: var(--accent);
+    .docs__toggle :global(svg) {
+      flex: none;
+      transition: transform var(--dur) var(--ease);
+    }
+
+    .docs__toggle[aria-expanded='true'] :global(svg) {
+      transform: rotate(180deg);
+    }
+
+    :global(.js) .docs__sidebar:not([data-open]) .docs__nav {
+      display: none;
+    }
+
+    .docs__nav {
+      padding: var(--space-4) var(--space-2) 0;
+      gap: var(--space-5);
+    }
+
+    .docs__row a,
+    .docs__sub a {
+      padding-block: var(--space-2);
     }
   }
 </style>
