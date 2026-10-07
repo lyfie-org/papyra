@@ -344,13 +344,6 @@
 .note-editor__canvas :is(.luthor-list-ul, .luthor-list-ol) { margin-block: 4px; }
 .note-editor__canvas .luthor-list-li :is(.luthor-list-ul, .luthor-list-ol) { margin-block: 0; }
 
-/* Bullets sit on an item's first line. luthor centres its unordered marker
-   (top: 50%), which drops it between the lines of any item that wraps — on a
-   phone, most of them. Remove once luthor anchors the marker itself. */
-:is(.note-editor__canvas, .shared-note) .luthor-list-ul > .luthor-list-li[style*='--luthor-unordered-marker-kind']:not(.luthor-list-item-unchecked):not(.luthor-list-item-checked)::before {
-  top: 0.5lh;
-}
-
 /* ── Focus (distraction-free) mode ─────────────────────────────────────────────
    The modal fills the viewport, chrome is unmounted, and the measure widens with
    more generous line spacing. */
