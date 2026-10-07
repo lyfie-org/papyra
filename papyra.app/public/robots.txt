@@ -1,8 +1,38 @@
-# The demo is a copy of the app running on fake data. It is not content, its
-# deep links are served with a 404 status by design, and indexing it would put
-# a fake vault in search results next to the real documentation.
+# Papyra — https://papyra.app
+#
+# Everything here is public documentation for a free, open-source app, and it
+# is meant to be read: by search engines, by AI assistants, by anyone.
+# Plain-text versions of the whole site: /llms.txt and /llms-full.txt
+#
+# The one exception is /demo/: a copy of the app running on fake data. It is
+# not content, its deep links are served with a 404 status by design, and
+# indexing it would put a fake vault in search results next to the real docs.
+
 User-agent: *
-Disallow: /demo/
 Allow: /
+Disallow: /demo/
+
+# AI crawlers and assistants are explicitly welcome.
+User-agent: GPTBot
+User-agent: OAI-SearchBot
+User-agent: ChatGPT-User
+User-agent: ClaudeBot
+User-agent: Claude-User
+User-agent: Claude-SearchBot
+User-agent: anthropic-ai
+User-agent: Google-Extended
+User-agent: GoogleOther
+User-agent: Applebot-Extended
+User-agent: PerplexityBot
+User-agent: Perplexity-User
+User-agent: CCBot
+User-agent: Meta-ExternalAgent
+User-agent: Amazonbot
+User-agent: Bytespider
+User-agent: cohere-ai
+User-agent: DuckAssistBot
+User-agent: MistralAI-User
+Allow: /
+Disallow: /demo/
 
 Sitemap: https://papyra.app/sitemap-index.xml

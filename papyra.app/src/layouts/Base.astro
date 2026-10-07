@@ -8,9 +8,13 @@ interface Props {
   description: string;
   /** Omit the site-name suffix — used by the home page, whose title is already whole. */
   bareTitle?: boolean;
+  /** Keep the page out of search results (the 404). */
+  noindex?: boolean;
+  /** og:type — "article" for documentation pages. */
+  ogType?: 'website' | 'article';
 }
 
-const { title, description, bareTitle = false } = Astro.props;
+const { title, description, bareTitle = false, noindex = false, ogType = 'website' } = Astro.props;
 const fullTitle = bareTitle ? title : `${title} — Papyra`;
 const canonical = new URL(Astro.url.pathname, Astro.site).href;
 ---
@@ -23,6 +27,17 @@ const canonical = new URL(Astro.url.pathname, Astro.site).href;
     <title>{fullTitle}</title>
     <meta name="description" content={description} />
     <link rel="canonical" href={canonical} />
+    <meta
+      name="robots"
+      content={noindex ? 'noindex, follow' : 'index, follow, max-image-preview:large, max-snippet:-1, max-video-preview:-1'}
+    />
+    <meta name="author" content="Lyfie" />
+    <meta name="application-name" content="Papyra" />
+    {/* Plain-text versions of the whole site for AI assistants and crawlers
+        (llmstxt.org), plus the sitemap for everything else. */}
+    <link rel="alternate" type="text/plain" href="/llms.txt" title="Papyra, summarised for AI assistants" />
+    <link rel="alternate" type="text/plain" href="/llms-full.txt" title="Papyra docs as plain text" />
+    <link rel="sitemap" type="application/xml" href="/sitemap-index.xml" />
 
     <link rel="icon" type="image/x-icon" href="/favicon.ico" />
     <link rel="icon" type="image/png" sizes="32x32" href="/favicon-32x32.png" />
@@ -30,7 +45,8 @@ const canonical = new URL(Astro.url.pathname, Astro.site).href;
     <link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
     <meta name="theme-color" content="#7aaa8a" />
 
-    <meta property="og:type" content="website" />
+    <meta property="og:type" content={ogType} />
+    <meta property="og:locale" content="en_GB" />
     <meta property="og:site_name" content="Papyra" />
     <meta property="og:title" content={fullTitle} />
     <meta property="og:description" content={description} />
@@ -41,8 +57,11 @@ const canonical = new URL(Astro.url.pathname, Astro.site).href;
     <meta property="og:image" content={new URL('/og.png', Astro.site).href} />
     <meta property="og:image:width" content="1200" />
     <meta property="og:image:height" content="630" />
-    <meta property="og:image:alt" content="Papyra — a calm, self-hosted home for your notes" />
+    <meta property="og:image:alt" content="Papyra — a calm, private, self-hosted home for your notes" />
     <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:site" content="@lyfieapp" />
+    <meta name="twitter:title" content={fullTitle} />
+    <meta name="twitter:description" content={description} />
     <meta name="twitter:image" content={new URL('/og.png', Astro.site).href} />
 
     {/* Only the two faces above the fold are preloaded; the rest arrive with the
@@ -72,6 +91,7 @@ const canonical = new URL(Astro.url.pathname, Astro.site).href;
         document.documentElement.classList.add('js');
       })();
     </script>
+    <slot name="head" />
   </head>
   <body>
     <a class="skip-link" href="#main">Skip to content</a>

@@ -33,6 +33,11 @@ on:
       - '.github/actions/**'
   # So a deploy can be re-run without an empty commit.
   workflow_dispatch:
+  # Daily rebuild of main, so the Docker Hub pull count and GitHub star count
+  # baked into the pages stay current (src/lib/stats.mjs). The site itself stays
+  # fully static — no Functions or Workers — so traffic never meets a limit.
+  schedule:
+    - cron: '17 3 * * *'
 
 concurrency:
   group: site-${{ github.ref }}

@@ -6,12 +6,9 @@ import react from '@vitejs/plugin-react';
 /**
  * Everything the demo build needs that the app build does not.
  *
- * 1. Self-hosted fonts. index.html pulls Marcellus/Sora/Roboto Mono from
- *    fonts.googleapis.com, which is fine for a server you run yourself but wrong
- *    on papyra.app: it is a third-party origin, it costs two cross-origin round
- *    trips, it is blocked outright in mainland China, and the site's own CSP
- *    (`style-src 'self'`) refuses it. The website serves the same faces from
- *    /fonts, same origin, so point at those instead.
+ * 1. `noindex`. The demo is a copy of the app, not content; search engines
+ *    should land on papyra.app itself. (Fonts need nothing here: the app serves
+ *    its own from public/fonts, which Vite copies under /demo/ like any asset.)
  *
  * 2. A 404.html copy of the shell. The demo is a client-side-routed SPA at /demo,
  *    so /demo/note/xyz has no file behind it. The usual Cloudflare Pages fix —
@@ -30,22 +27,15 @@ function demoBuild(): Plugin {
     apply: 'build',
 
     transformIndexHtml(html) {
-      return html
-        .replace(/\s*<link rel="preconnect"[^>]*fonts\.g[^>]*>/g, '')
-        .replace(
-          /\s*<link href="https:\/\/fonts\.googleapis\.com[^"]*" rel="stylesheet"\s*\/?>/,
-          '\n    <link rel="stylesheet" href="/fonts/fonts.css" />' +
-            '\n    <meta name="robots" content="noindex" />',
-        );
+      return html.replace('</head>', '  <meta name="robots" content="noindex" />\n  </head>');
     },
 
     closeBundle() {
       const out = resolve(import.meta.dirname, '../papyra.app/public/demo');
       copyFileSync(resolve(out, 'index.html'), resolve(out, '404.html'));
       // public/sw.js is copied verbatim by Vite, but the demo never registers it
-      // (see main.tsx) and it precaches fonts.googleapis.com, which the site's
-      // CSP forbids. Shipping a worker nothing installs is dead weight at best
-      // and a stale-cache trap at worst.
+      // (see main.tsx). Shipping a worker nothing installs is dead weight at
+      // best and a stale-cache trap at worst.
       rmSync(resolve(out, 'sw.js'), { force: true });
     },
   };

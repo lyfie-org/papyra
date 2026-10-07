@@ -7,8 +7,10 @@
     <a href="https://papyra.app">Website</a> ·
     <a href="https://papyra.app/demo">Live demo</a> ·
     <a href="https://papyra.app/docs">Docs</a> ·
-    <a href="https://hub.docker.com/r/lyfie/papyra">Docker Hub</a>
+    <a href="https://hub.docker.com/r/lyfie/papyra">Docker Hub</a> ·
+    <a href="https://www.lyfie.org">Lyfie</a>
   </p>
+  <p><sub>A <a href="https://www.lyfie.org">Lyfie</a> project — free, open software with no trackers.</sub></p>
 </div>
 
 ---

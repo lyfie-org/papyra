@@ -121,34 +121,27 @@ const widths = [640, 960, 1280, 1600, 2200];
 <style>
   .showcase {
     position: relative;
-    width: min(100%, 72rem);
+    width: 100%;
     margin-inline: auto;
   }
 
   .showcase__stage {
     position: relative;
-    padding-right: clamp(0px, 6vw, 5.5rem);
-    transform-origin: 50% 0;
+    padding-left: clamp(0px, 5vw, 4.5rem);
   }
 
-  /* The window lies back a little and straightens up as you scroll — a hint of
-     depth, finished long before you reach it. */
-  @media (prefers-reduced-motion: no-preference) {
-    @supports (animation-timeline: view()) {
-      .showcase__stage {
-        animation: showcase-settle linear both;
-        animation-timeline: view();
-        animation-range: cover 0% cover 42%;
-      }
+  /* Beside the headline, the window turns slightly toward the reader and
+     squares up when you reach for it. */
+  @media (min-width: 70rem) and (prefers-reduced-motion: no-preference) {
+    .showcase__stage {
+      transform: perspective(2400px) rotateY(-9deg) rotateX(3deg);
+      transform-origin: 0 50%;
+      transition: transform 900ms var(--ease);
     }
-  }
 
-  @keyframes showcase-settle {
-    from {
-      transform: perspective(1800px) rotateX(14deg) scale(0.95);
-    }
-    to {
-      transform: none;
+    .showcase:hover .showcase__stage,
+    .showcase:focus-within .showcase__stage {
+      transform: perspective(2400px) rotateY(-2deg) rotateX(1deg);
     }
   }
 
@@ -226,8 +219,8 @@ const widths = [640, 960, 1280, 1600, 2200];
 
   .showcase__phone {
     position: absolute;
-    right: 0;
-    bottom: -8%;
+    left: 0;
+    bottom: -10%;
     width: clamp(120px, 19%, 220px);
     aspect-ratio: 390 / 844;
     padding: 7px;
@@ -301,7 +294,7 @@ const widths = [640, 960, 1280, 1600, 2200];
 
   @media (max-width: 40rem) {
     .showcase__stage {
-      padding-right: 0;
+      padding-left: 0;
     }
 
     .showcase__phone {
@@ -315,6 +308,8 @@ const widths = [640, 960, 1280, 1600, 2200];
     .showcase__tab {
       min-width: 0;
       flex: 1;
+      padding-inline: var(--space-1);
+      white-space: nowrap;
     }
   }
 </style>

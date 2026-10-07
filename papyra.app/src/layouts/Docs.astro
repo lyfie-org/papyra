@@ -1,6 +1,7 @@
 ---
 import { getCollection } from 'astro:content';
 import Base from './Base.astro';
+import { LYFIE_URL, SITE_URL } from '../data/site';
 
 interface Props {
   title: string;
@@ -21,9 +22,38 @@ const sidebar = GROUPS.map((group) => ({
     .filter((page) => page.data.group === group)
     .sort((a, b) => a.data.order - b.data.order),
 })).filter((section) => section.pages.length > 0);
+
+// Each docs page is a TechArticle inside a Home › Docs › Page breadcrumb, and
+// has a plain Markdown twin at /docs/<id>.md for AI assistants and scripts.
+const pageUrl = new URL(Astro.url.pathname, SITE_URL).href;
+const jsonLd = {
+  '@context': 'https://schema.org',
+  '@graph': [
+    {
+      '@type': 'BreadcrumbList',
+      itemListElement: [
+        { '@type': 'ListItem', position: 1, name: 'Papyra', item: `${SITE_URL}/` },
+        { '@type': 'ListItem', position: 2, name: 'Documentation', item: `${SITE_URL}/docs/` },
+        ...(current ? [{ '@type': 'ListItem', position: 3, name: title, item: pageUrl }] : []),
+      ],
+    },
+    {
+      '@type': current ? 'TechArticle' : 'CollectionPage',
+      headline: title,
+      description,
+      url: pageUrl,
+      inLanguage: 'en',
+      about: { '@id': `${SITE_URL}/#software` },
+      publisher: { '@id': `${LYFIE_URL}/#organization` },
+      isPartOf: { '@id': `${SITE_URL}/#website` },
+    },
+  ],
+};
 ---
 
-<Base title={title} description={description}>
+<Base title={title} description={description} ogType={current ? 'article' : 'website'}>
+  <script slot="head" type="application/ld+json" is:inline set:html={JSON.stringify(jsonLd)} />
+  {current && <link slot="head" rel="alternate" type="text/markdown" href={`/docs/${current}.md`} title={`${title} (Markdown)`} />}
   <div class="wrap docs">
     <nav class="docs__sidebar" aria-label="Documentation">
       <a class="docs__home" href="/docs/" aria-current={current ? undefined : 'page'}>

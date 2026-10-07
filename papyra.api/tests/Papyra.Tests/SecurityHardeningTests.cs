@@ -162,8 +162,9 @@ public sealed class SecurityHeadersTests
     {
         var csp = SecurityHeaders.AppPolicy([]);
 
-        Assert.Contains("https://fonts.googleapis.com", csp);   // Marcellus/Sora/Roboto Mono
-        Assert.Contains("https://fonts.gstatic.com", csp);
+        // Fonts are self-hosted: the app reaches no third-party origin of its own.
+        Assert.DoesNotContain("fonts.googleapis.com", csp);
+        Assert.DoesNotContain("fonts.gstatic.com", csp);
         Assert.Contains("blob:", csp);                          // local media before upload
         Assert.Contains("ws:", csp);                            // SignalR — not covered by 'self'
         Assert.Contains("frame-src 'self' https:", csp);      // ![[youtube:…]] / ![[iframe:…]] + inline PDFs

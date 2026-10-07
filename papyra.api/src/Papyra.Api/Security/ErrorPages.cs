@@ -147,7 +147,7 @@ public static partial class ErrorPages
             <meta name="robots" content="noindex">
             <title>Something went wrong · Papyra</title>
             <link rel="icon" href="/favicon.ico">
-            <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Marcellus&family=Roboto+Mono&family=Sora:wght@400;500&display=swap">
+            <link rel="stylesheet" href="/fonts/fonts.css">
             <style nonce="{{nonce}}">
               :root { --bg:#f2ebe0; --surface:#fdf8f2; --text:#7a5c4e; --text-h:#3d2c1e; --border:#e2d6c6; --accent:#7aaa8a; --accent-fg:#0f2118; --code-bg:#f6efe5; --danger:#a4452f; }
               @media (prefers-color-scheme: dark) { :root { --bg:#1c1917; --surface:#28231e; --text:#a89070; --text-h:#f0e6d3; --border:#3a322a; --code-bg:#211d19; --danger:#e08a73; } }
@@ -197,7 +197,7 @@ public static partial class ErrorPages
 
     /// <summary>Only the page's own nonce'd style and script run; nothing else.</summary>
     public static string HtmlCsp(string nonce) =>
-        $"default-src 'none'; style-src 'nonce-{nonce}' https://fonts.googleapis.com; font-src https://fonts.gstatic.com; img-src 'self'; script-src 'nonce-{nonce}'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
+        $"default-src 'none'; style-src 'nonce-{nonce}' 'self'; font-src 'self'; img-src 'self'; script-src 'nonce-{nonce}'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'";
 
     /// <summary>Write the error in whichever shape the caller asked for.</summary>
     public static async Task WriteAsync(HttpContext http, Report report)

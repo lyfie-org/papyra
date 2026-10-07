@@ -86,6 +86,12 @@ Then:
 3. Keep it focused: one change per pull request, with a sentence on *why*.
 4. If it changes what a user sees, include a screenshot.
 
+## Part of Lyfie
+
+Papyra is a [Lyfie](https://www.lyfie.org) project, alongside its editor,
+[luthor](https://www.luthor.fyi). Other projects that could use a hand are listed at
+[lyfie.org/contribute](https://www.lyfie.org/contribute/).
+
 ## License
 
 Papyra is [GPL-3.0](https://github.com/lyfie-org/papyra/blob/main/LICENSE). By

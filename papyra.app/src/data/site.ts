@@ -16,3 +16,16 @@ export const NAV = [
   { href: '/docs/', label: 'Docs' },
   { href: '/contribute/', label: 'Contribute' },
 ] as const;
+
+/** Papyra is a Lyfie project — the open-source organisation behind it and luthor. */
+export const LYFIE_URL = 'https://www.lyfie.org';
+export const LYFIE_PROJECT_URL = 'https://www.lyfie.org/projects/papyra/';
+export const LUTHOR_URL = 'https://www.luthor.fyi';
+export const CREATOR_NAME = 'Rahul N. Anand';
+export const CREATOR_URL = 'https://www.rahulnsanand.com';
+
+export const SITE_URL = 'https://papyra.app';
+
+/** One description, used by meta tags, structured data and llms.txt. */
+export const DESCRIPTION =
+  'Papyra is a free, open-source, self-hosted note-taking app — a private Google Keep alternative. Every note is a plain Markdown file on your own server. No telemetry, ever.';

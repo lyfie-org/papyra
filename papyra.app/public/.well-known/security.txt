@@ -1,0 +1,5 @@
+Contact: https://github.com/lyfie-org/papyra/security/advisories/new
+Expires: 2027-10-07T00:00:00.000Z
+Preferred-Languages: en
+Canonical: https://papyra.app/.well-known/security.txt
+Policy: https://papyra.app/docs/security/

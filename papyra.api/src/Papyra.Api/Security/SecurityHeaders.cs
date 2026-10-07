@@ -52,11 +52,12 @@ public static partial class SecurityHeaders
         return string.Join("; ", [
             "default-src 'self'",
             $"script-src {scriptSrc}",
-            // Lexical and React both set element styles at runtime, and the fonts
-            // arrive as a Google Fonts stylesheet. Inline *styles* are not an
-            // script-execution vector, so this is the cheap concession to make.
-            "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
-            "font-src 'self' https://fonts.gstatic.com data:",
+            // Lexical and React both set element styles at runtime. Inline
+            // *styles* are not a script-execution vector, so this is the cheap
+            // concession to make. Fonts are self-hosted (wwwroot/fonts): the app
+            // makes no third-party requests of its own.
+            "style-src 'self' 'unsafe-inline'",
+            "font-src 'self' data:",
             // Notes embed remote images through saved web cards, and local media
             // renders from blob: URLs before upload completes.
             "img-src 'self' data: blob: https:",
