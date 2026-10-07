@@ -23,6 +23,8 @@ on:
       - 'papyra.web/**'
       # The changelog page reads these from the repo root (src/lib/changelog.mjs).
       - 'CHANGELOG.md'
+      # The contribute page renders this from the repo root.
+      - 'CONTRIBUTING.md'
       - 'VERSION'
       - 'package.json'
       - 'pnpm-workspace.yaml'

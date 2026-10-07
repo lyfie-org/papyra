@@ -11,8 +11,8 @@ export const LICENSE = 'GNU GPL v3.0';
 export const TAGLINE = 'A calm, self-hosted home for your notes.';
 
 export const NAV = [
-  { href: '/features/', label: 'Features' },
+  { href: '/#features', label: 'Features' },
+  { href: '/#journey', label: 'Journey' },
   { href: '/docs/', label: 'Docs' },
-  { href: '/api/', label: 'API' },
-  { href: '/demo/', label: 'Demo' },
+  { href: '/contribute/', label: 'Contribute' },
 ] as const;

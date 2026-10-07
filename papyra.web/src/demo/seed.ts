@@ -64,11 +64,12 @@ export const SEED_NOTES: Note[] = [
 - Press **Ctrl+K** (or **⌘K**) and search for *revenue*.
 - Open [[revenue-model]], then look at the **Linked mentions** at the bottom.
 ${AI_ENABLED ? '- Click the spark icon in the toolbar and ask *what did I decide about pricing?*\n' : ''}- Drag a card to reorder it, then reload the page.
+- Drop a \`.md\` file from your computer onto the desk — it becomes a note.
 - Switch to **To Do**, **Categories**, **Vault** and **Settings** in the sidebar.
 
 ## What is different here
 
-The real Papyra stores each of these as a \`.md\` file on your own server and keeps a search index, snapshots and a sync engine beside them. Importing, exporting, backups and passkeys need that server, so those buttons will politely tell you they are unavailable.
+The real Papyra stores each of these as a \`.md\` file on your own server and keeps a search index, snapshots and a sync engine beside them. Exporting, backups and passkeys need that server, so those buttons will politely tell you they are unavailable. Dropping a \`.md\` file onto the desk works right here, though.
 
 Everything else you see is the actual application.`,
   }),

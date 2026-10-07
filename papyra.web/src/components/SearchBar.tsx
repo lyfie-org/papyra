@@ -113,7 +113,9 @@ export default function SearchBar() {
     const local = searchLocally(cached, q);
      
     setNoteHits(local);
-    setOfflineResults(true);
+    // Online, these are only a stand-in while the index answers — not an
+    // "offline" result. The notice appears if the request actually fails.
+    setOfflineResults(!online);
     setPartial(false);
     if (!online) return;
 
@@ -138,7 +140,8 @@ export default function SearchBar() {
           setOfflineResults(false);
           setPartial(false);
         })
-        .catch(() => { /* keep the local results — they're already on screen */ });
+        // Keep the local results — they're already on screen — and say so.
+        .catch(() => { if (!cancelled) setOfflineResults(true); });
     }, DEBOUNCE_MS);
     return () => { cancelled = true; clearTimeout(timer); };
   }, [query, cached, online]);

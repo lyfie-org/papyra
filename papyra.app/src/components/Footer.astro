@@ -8,23 +8,26 @@ const columns = [
   {
     title: 'Product',
     links: [
-      { href: '/features/', label: 'Features' },
+      { href: '/#features', label: 'Features' },
       { href: '/demo/', label: 'Live demo' },
+      { href: '/#journey', label: 'Journey' },
       { href: '/changelog/', label: 'Changelog' },
     ],
   },
   {
-    title: 'Documentation',
+    title: 'Docs',
     links: [
       { href: '/docs/install/', label: 'Install' },
-      { href: '/docs/configuration/', label: 'Configuration' },
+      { href: '/docs/importing/', label: 'Import your notes' },
+      { href: '/docs/', label: 'All docs' },
       { href: '/api/', label: 'API reference' },
     ],
   },
   {
     title: 'Project',
     links: [
-      { href: GITHUB_URL, label: 'Source on GitHub', external: true },
+      { href: '/contribute/', label: 'Contribute' },
+      { href: GITHUB_URL, label: 'GitHub', external: true },
       { href: DOCKER_HUB_URL, label: 'Docker Hub', external: true },
       { href: '/docs/security/', label: 'Security' },
     ],
@@ -37,8 +40,7 @@ const columns = [
     <div class="site-footer__about">
       <p class="site-footer__mark">Papyra</p>
       <p class="site-footer__blurb">
-        A note-taking app you run yourself. Your notes stay as plain text files on your own
-        server.
+        A calm, beautiful home for your notes — on your own server, in plain Markdown.
       </p>
       <p class="site-footer__icons">
         <a href={GITHUB_URL} rel="noopener noreferrer" aria-label="Papyra on GitHub">
@@ -70,7 +72,7 @@ const columns = [
 
   <div class="wrap site-footer__legal">
     <p>© {year} Papyra · Released under the {LICENSE}</p>
-    <p>Built and hosted without a single third-party request.</p>
+    <p>Vibe-coded by Rahul, with AI doing most of the typing.</p>
   </div>
 </footer>
 

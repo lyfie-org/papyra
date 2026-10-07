@@ -1,0 +1,320 @@
+---
+import { Image } from 'astro:assets';
+
+// The hero's product shot: a browser window cycling through three real screens
+// of the app, with the phone layout tucked in front. Screens come from
+// scripts/shoot.mjs (the demo build, staged), in both themes; CSS shows the one
+// matching the page, and the hidden theme's images are never fetched.
+//
+// Tabs under the window double as the slide controls and a progress indicator.
+// It advances on its own only while on screen, and not at all for readers who
+// prefer reduced motion.
+
+const shots = import.meta.glob<{ default: ImageMetadata }>('../assets/shots/*.png', { eager: true });
+const shot = (name: string, device: string, theme: string) => {
+  const mod = shots[`../assets/shots/${name}-${device}-${theme}.png`];
+  if (!mod) throw new Error(`Missing shot ${name}-${device}-${theme}.png — run: pnpm --filter papyra-app run shoot`);
+  return mod.default;
+};
+
+const slides = [
+  { name: 'desk', label: 'Your desk', alt: 'The Papyra desk: colourful note cards in a masonry grid, pinned notes on top' },
+  { name: 'focus', label: 'Focus mode', alt: 'A note open in focus mode, with nothing on screen but the writing' },
+  { name: 'search', label: 'Search', alt: 'Search open over the desk, with every match for “pricing” highlighted' },
+];
+
+const sizes = '(min-width: 80rem) 1100px, 92vw';
+const widths = [640, 960, 1280, 1600, 2200];
+---
+
+<div class="showcase" data-showcase>
+  <div class="showcase__stage">
+    <div class="showcase__window">
+      <div class="showcase__bar" aria-hidden="true">
+        <span></span><span></span><span></span>
+        <span class="showcase__url">notes.your-server.home</span>
+      </div>
+      <div class="showcase__screens">
+        {
+          slides.map((s, i) => (
+            <div class="showcase__screen" data-slide={i} data-active={i === 0 ? '' : undefined}>
+              {(['light', 'dark'] as const).map((theme) => (
+                <Image
+                  class={`themed themed--${theme}`}
+                  src={shot(s.name, 'desktop', theme)}
+                  alt={s.alt}
+                  widths={widths}
+                  sizes={sizes}
+                  loading={i === 0 ? 'eager' : 'lazy'}
+                  fetchpriority={i === 0 ? 'high' : 'auto'}
+                />
+              ))}
+            </div>
+          ))
+        }
+      </div>
+    </div>
+
+    <div class="showcase__phone" aria-hidden="true">
+      {(['light', 'dark'] as const).map((theme) => (
+        <Image class={`themed themed--${theme}`} src={shot('desk', 'mobile', theme)} alt="" widths={[220, 440]} sizes="220px" loading="lazy" />
+      ))}
+    </div>
+  </div>
+
+  <div class="showcase__tabs" role="tablist" aria-label="App screens">
+    {
+      slides.map((s, i) => (
+        <button type="button" role="tab" class="showcase__tab" data-tab={i} aria-selected={i === 0 ? 'true' : 'false'}>
+          <span class="showcase__meter"><span></span></span>
+          {s.label}
+        </button>
+      ))
+    }
+  </div>
+</div>
+
+<script>
+  const DWELL = 5200;
+  for (const root of document.querySelectorAll<HTMLElement>('[data-showcase]')) {
+    const screens = [...root.querySelectorAll<HTMLElement>('[data-slide]')];
+    const tabs = [...root.querySelectorAll<HTMLButtonElement>('[data-tab]')];
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    let index = 0;
+    let timer = 0;
+    let onScreen = false;
+
+    const show = (next: number) => {
+      index = (next + screens.length) % screens.length;
+      screens.forEach((s, i) => s.toggleAttribute('data-active', i === index));
+      tabs.forEach((t, i) => t.setAttribute('aria-selected', String(i === index)));
+      root.style.setProperty('--dwell', `${DWELL}ms`);
+      schedule();
+    };
+
+    const schedule = () => {
+      window.clearTimeout(timer);
+      // Off, reflow, on: restarts the tab's progress meter from zero.
+      root.removeAttribute('data-running');
+      void root.offsetWidth;
+      root.toggleAttribute('data-running', onScreen && !reduce);
+      if (onScreen && !reduce) timer = window.setTimeout(() => show(index + 1), DWELL);
+    };
+
+    tabs.forEach((tab, i) => tab.addEventListener('click', () => show(i)));
+    root.addEventListener('keydown', (e) => {
+      if (!(e.target instanceof HTMLElement) || !e.target.matches('[data-tab]')) return;
+      if (e.key !== 'ArrowRight' && e.key !== 'ArrowLeft') return;
+      show(index + (e.key === 'ArrowRight' ? 1 : -1));
+      tabs[index].focus();
+    });
+
+    new IntersectionObserver(([entry]) => {
+      onScreen = entry.isIntersecting;
+      // Restart the meter from zero when it comes back into view.
+      if (onScreen) show(index);
+      else schedule();
+    }, { threshold: 0.1 }).observe(root);
+  }
+</script>
+
+<style>
+  .showcase {
+    position: relative;
+    width: min(100%, 72rem);
+    margin-inline: auto;
+  }
+
+  .showcase__stage {
+    position: relative;
+    padding-right: clamp(0px, 6vw, 5.5rem);
+    transform-origin: 50% 0;
+  }
+
+  /* The window lies back a little and straightens up as you scroll — a hint of
+     depth, finished long before you reach it. */
+  @media (prefers-reduced-motion: no-preference) {
+    @supports (animation-timeline: view()) {
+      .showcase__stage {
+        animation: showcase-settle linear both;
+        animation-timeline: view();
+        animation-range: cover 0% cover 42%;
+      }
+    }
+  }
+
+  @keyframes showcase-settle {
+    from {
+      transform: perspective(1800px) rotateX(14deg) scale(0.95);
+    }
+    to {
+      transform: none;
+    }
+  }
+
+  .showcase__window {
+    border-radius: var(--radius-lg);
+    overflow: hidden;
+    border: 1px solid var(--border);
+    background: var(--surface);
+    box-shadow: var(--shadow-frame);
+  }
+
+  .showcase__bar {
+    display: flex;
+    align-items: center;
+    gap: 7px;
+    height: 34px;
+    padding-inline: 14px;
+    border-bottom: 1px solid var(--border);
+    background: color-mix(in srgb, var(--surface) 70%, var(--bg));
+  }
+
+  .showcase__bar > span:not(.showcase__url) {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    background: var(--border);
+  }
+
+  .showcase__url {
+    margin-inline: auto;
+    padding: 3px 14px;
+    border-radius: var(--radius-pill);
+    background: var(--bg);
+    font: 400 var(--fs-2xs) / 1.4 var(--mono);
+    color: var(--text);
+    transform: translateX(-24px);
+  }
+
+  .showcase__screens {
+    position: relative;
+    aspect-ratio: 16 / 10;
+  }
+
+  .showcase__screen {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    transition: opacity 700ms var(--ease-inout);
+  }
+
+  .showcase__screen[data-active] {
+    opacity: 1;
+  }
+
+  .showcase__screen :global(img),
+  .showcase__phone :global(img) {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    object-position: top;
+    display: block;
+  }
+
+  .showcase :global(.themed--dark) {
+    display: none !important;
+  }
+
+  :global([data-theme='dark']) .showcase :global(.themed--light) {
+    display: none !important;
+  }
+
+  :global([data-theme='dark']) .showcase :global(.themed--dark) {
+    display: block !important;
+  }
+
+  .showcase__phone {
+    position: absolute;
+    right: 0;
+    bottom: -8%;
+    width: clamp(120px, 19%, 220px);
+    aspect-ratio: 390 / 844;
+    padding: 7px;
+    border-radius: 30px;
+    /* --scrim is a fixed near-black in both themes: a phone bezel. */
+    background: var(--scrim);
+    box-shadow: var(--shadow-frame);
+  }
+
+  .showcase__phone :global(img) {
+    border-radius: 23px;
+  }
+
+  .showcase__tabs {
+    display: flex;
+    justify-content: center;
+    gap: var(--space-2);
+    margin-top: clamp(var(--space-8), 6vw, var(--space-12));
+  }
+
+  .showcase__tab {
+    display: grid;
+    gap: var(--space-2);
+    min-width: 7.5rem;
+    padding: var(--space-2) var(--space-3);
+    border: none;
+    border-radius: var(--radius-sm);
+    background: transparent;
+    font: 500 var(--fs-xs) / 1.2 var(--sans);
+    color: var(--text);
+    cursor: pointer;
+    transition: color var(--dur-fast) var(--ease);
+  }
+
+  .showcase__tab:hover,
+  .showcase__tab[aria-selected='true'] {
+    color: var(--text-h);
+  }
+
+  .showcase__meter {
+    display: block;
+    height: 3px;
+    border-radius: 2px;
+    background: var(--border);
+    overflow: hidden;
+  }
+
+  .showcase__meter > span {
+    display: block;
+    height: 100%;
+    width: 0;
+    background: var(--accent);
+  }
+
+  .showcase__tab[aria-selected='true'] .showcase__meter > span {
+    width: 100%;
+  }
+
+  [data-running] .showcase__tab[aria-selected='true'] .showcase__meter > span {
+    animation: showcase-meter var(--dwell, 5s) linear both;
+  }
+
+  @keyframes showcase-meter {
+    from {
+      width: 0;
+    }
+    to {
+      width: 100%;
+    }
+  }
+
+  @media (max-width: 40rem) {
+    .showcase__stage {
+      padding-right: 0;
+    }
+
+    .showcase__phone {
+      display: none;
+    }
+
+    .showcase__url {
+      transform: none;
+    }
+
+    .showcase__tab {
+      min-width: 0;
+      flex: 1;
+    }
+  }
+</style>

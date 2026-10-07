@@ -821,6 +821,45 @@ const routes: Route[] = [
   ['POST', /^\/api\/jobs\//, () => serverOnly('Running a background job')],
 
   // --------------------------------------------- genuinely needs a real server
+  // Dropping .md/.txt files on the desk works for real: the files are already in
+  // the browser, so nothing here needs a server. Mirrors /api/import/quick —
+  // title from the first heading, else the file name; body kept as written.
+  [
+    'POST',
+    /^\/api\/import\/quick$/,
+    async ({ request }) => {
+      const form = await request.formData();
+      const imported: { id: string; title: string }[] = [];
+      const skipped: { file: string; reason: string }[] = [];
+      for (const entry of form.getAll('files')) {
+        if (typeof entry === 'string') continue;
+        if (!/\.(md|txt)$/i.test(entry.name)) {
+          skipped.push({ file: entry.name, reason: 'Only .md and .txt files can be imported.' });
+          continue;
+        }
+        const body = (await entry.text())
+          .replace(/<(script|style|iframe|object|embed)\b[^>]*>[\s\S]*?<\/\1\s*>/gi, '')
+          .replace(/\son[a-z]+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, '')
+          .replace(/javascript:/gi, '')
+          .trim();
+        if (!body) {
+          skipped.push({ file: entry.name, reason: 'File is empty.' });
+          continue;
+        }
+        const heading = body.split('\n').map((l) => /^#{1,6}\s+(.+)$/.exec(l.trim())).find(Boolean);
+        const title = heading ? heading[1].trim() : entry.name.replace(/\.(md|txt)$/i, '');
+        const id = `import-${nextId()}`;
+        mutate((s) => {
+          s.notes.unshift({
+            id, title, body, tags: [], color: null, pinned: false, archived: false, kind: 'note',
+            trashed: false, trashedAt: null, secure: false, updated: now(),
+          });
+        });
+        imported.push({ id, title });
+      }
+      return json({ imported, skipped });
+    },
+  ],
   ['POST', /^\/api\/import\//, () => serverOnly('Importing notes')],
   ['GET', /^\/api\/export$/, () => serverOnly('Exporting your vault')],
   ['POST', /^\/api\/export\/authorize$/, () => serverOnly('Exporting your vault')],

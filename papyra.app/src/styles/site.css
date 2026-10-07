@@ -10,6 +10,20 @@
   box-sizing: border-box;
 }
 
+/* Site-only derived values. Built from the app's tokens, never hand-written
+   colours, so they re-tint with the theme like everything else. */
+:root {
+  --shadow-frame:
+    0 1px 2px color-mix(in srgb, var(--scrim) 8%, transparent),
+    0 30px 70px -28px color-mix(in srgb, var(--scrim) 42%, transparent);
+}
+
+[data-theme='dark'] {
+  --shadow-frame:
+    0 1px 2px color-mix(in srgb, var(--scrim) 40%, transparent),
+    0 30px 80px -24px color-mix(in srgb, var(--scrim) 85%, transparent);
+}
+
 html {
   scroll-behavior: smooth;
 }
@@ -139,6 +153,10 @@ code {
   max-width: 46rem;
 }
 
+.wrap--wide {
+  max-width: 72rem;
+}
+
 .section {
   padding-block: clamp(var(--space-12), 8vw, 7rem);
 }
@@ -206,6 +224,11 @@ code {
 
 .btn:active {
   transform: translateY(0);
+}
+
+.btn--lg {
+  padding: var(--space-4) var(--space-6);
+  font-size: var(--fs-md);
 }
 
 .btn--ghost {
@@ -437,8 +460,68 @@ a.card:hover {
 [data-theme='dark'] .prose .astro-code,
 [data-theme='dark'] .prose .astro-code span {
   color: var(--shiki-dark) !important;
-  background-color: var(--shiki-dark-bg) !important;
   font-style: var(--shiki-dark-font-style) !important;
   font-weight: var(--shiki-dark-font-weight) !important;
   text-decoration: var(--shiki-dark-text-decoration) !important;
+}
+
+/* The block takes the dark background; its spans stay transparent, or each
+   token draws its own box over the line. */
+[data-theme='dark'] .prose .astro-code {
+  background-color: var(--shiki-dark-bg) !important;
+}
+
+/* Inline-code chrome must not leak onto a highlighted block's <code>. */
+.prose pre code {
+  padding: 0;
+  background: none;
+  border-radius: 0;
+}
+
+/* -------------------------------------------------------------------- reveal */
+/* Sections drift up as they arrive. Only when JS is running (Base adds .js),
+   so nothing is ever hidden from a reader without it. */
+@media (prefers-reduced-motion: no-preference) {
+  .js [data-reveal] {
+    opacity: 0;
+    transform: translateY(18px);
+    transition:
+      opacity 700ms var(--ease),
+      transform 700ms var(--ease);
+    transition-delay: var(--reveal-delay, 0ms);
+  }
+
+  .js [data-reveal].is-in {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+/* --------------------------------------------------------------------- chips */
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: 6px 14px 6px 8px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: color-mix(in srgb, var(--surface) 80%, transparent);
+  font: 500 var(--fs-xs) / 1.2 var(--sans);
+  color: var(--text-h);
+  text-decoration: none;
+}
+
+.chip__dot {
+  width: 8px;
+  height: 8px;
+  margin-left: 4px;
+  border-radius: 50%;
+  background: var(--accent);
+  box-shadow: 0 0 0 4px var(--accent-bg);
+}
+
+a.chip:hover {
+  border-color: var(--border-hover);
+  color: var(--text-h);
 }

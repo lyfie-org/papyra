@@ -69,6 +69,7 @@ const canonical = new URL(Astro.url.pathname, Astro.site).href;
               ? 'dark'
               : 'light';
         document.documentElement.setAttribute('data-theme', theme);
+        document.documentElement.classList.add('js');
       })();
     </script>
   </head>
@@ -79,5 +80,19 @@ const canonical = new URL(Astro.url.pathname, Astro.site).href;
       <slot />
     </main>
     <Footer />
+    <script>
+      // Reveal [data-reveal] blocks as they scroll in (see site.css).
+      const io = new IntersectionObserver(
+        (entries) => {
+          for (const e of entries) {
+            if (!e.isIntersecting) continue;
+            e.target.classList.add('is-in');
+            io.unobserve(e.target);
+          }
+        },
+        { rootMargin: '0px 0px -8% 0px', threshold: 0.12 },
+      );
+      document.querySelectorAll('[data-reveal]').forEach((el) => io.observe(el));
+    </script>
   </body>
 </html>

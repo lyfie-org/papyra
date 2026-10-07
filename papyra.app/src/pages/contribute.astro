@@ -1,0 +1,57 @@
+---
+import Base from '../layouts/Base.astro';
+import Icon from '../components/Icon.astro';
+import { GITHUB_URL } from '../data/site';
+// The repository's own CONTRIBUTING.md, rendered at build time — GitHub shows the
+// same file next to every new issue and pull request, so the two never drift.
+import { Content } from '../../../CONTRIBUTING.md';
+---
+
+<Base
+  title="Contribute"
+  description="How to help Papyra: report bugs, suggest ideas, improve the docs, or send a pull request. Setup, project rules and the checks to run."
+>
+  <section class="section">
+    <div class="wrap wrap--narrow">
+      <p class="eyebrow">Open source</p>
+      <h1>Help build Papyra</h1>
+      <p class="lede contrib__lede">Bug reports, ideas, docs and code all move it forward.</p>
+      <p class="contrib__actions">
+        <a class="btn" href={`${GITHUB_URL}/issues/new`} rel="noopener noreferrer">
+          <Icon name="bug" size={16} />
+          Open an issue
+        </a>
+        <a class="btn btn--ghost" href={GITHUB_URL} rel="noopener noreferrer">
+          <Icon name="github" size={16} />
+          View the source
+        </a>
+      </p>
+
+      <div class="prose contrib">
+        <Content />
+      </div>
+    </div>
+  </section>
+</Base>
+
+<style>
+  .contrib__lede {
+    margin-bottom: var(--space-6);
+  }
+
+  .contrib__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-3);
+    margin-bottom: var(--space-10);
+  }
+
+  /* The file's own title duplicates the page heading above. */
+  .contrib :global(h1:first-child) {
+    display: none;
+  }
+
+  .contrib :global(h1:first-child + p) {
+    margin-top: 0;
+  }
+</style>
