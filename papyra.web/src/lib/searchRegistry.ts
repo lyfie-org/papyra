@@ -15,6 +15,7 @@ import type { Note } from '../types/note';
 import type { TagEntry } from '../hooks/useTags';
 import type { SmartCollection } from '../hooks/useCollections';
 import { searchSettings, settingsHref } from './settingsIndex';
+import { locateHref, noteLocation } from './locateNote';
 
 export type ResultSource = 'note' | 'todo' | 'inbox' | 'settings' | 'page' | 'tag' | 'collection';
 
@@ -29,6 +30,11 @@ export interface SearchResult {
   to: string;
   snippet?: string;
   secure?: boolean;
+  /**
+   * A note result can also be *shown in place*: its page, with the card scrolled
+   * to and pulsed. `to` opens the note; this says where it lives.
+   */
+  locate?: { to: string; label: string };
   /** Sorts within a group; groups themselves keep `GROUP_ORDER`. */
   rank: number;
 }
@@ -50,11 +56,15 @@ export const GROUP_LABEL: Record<ResultSource, string> = {
   collection: 'Collections',
 };
 
-/** The breadcrumb prefix for a note-shaped result, from its `kind`. */
-function noteBreadcrumb(kind: Note['kind']): string[] {
-  if (kind === 'todo') return ['To Do'];
-  if (kind === 'inbox') return ['Inbox'];
-  return ['Note'];
+/**
+ * The trail above a note-shaped result. A note on the Notes desk, a to-do list
+ * and the inbox are named by what they are; one that lives somewhere else says so
+ * first — "Archive › Note" — since opening it shows it over whatever page you are
+ * on, which reads as if it belonged there.
+ */
+function noteBreadcrumb(kind: Note['kind'], where: string): string[] {
+  const what = kind === 'todo' ? 'To Do' : kind === 'inbox' ? 'Inbox' : 'Note';
+  return where === 'Archive' || where === 'Vault' || where === 'Trash' ? [where, what] : [what];
 }
 
 function sourceForKind(kind: Note['kind']): ResultSource {
@@ -66,12 +76,16 @@ export function noteResult(
   hit: { id: string; title: string; snippet?: string; secure?: boolean },
   kind: Note['kind'],
   rank: number,
+  /** What the cache knows about where the note lives. */
+  state?: Pick<Note, 'archived' | 'trashed' | 'secure'>,
 ): SearchResult {
+  const where = noteLocation({ kind, archived: !!state?.archived, trashed: !!state?.trashed, secure: !!(state?.secure ?? hit.secure) });
   return {
     key: `note:${hit.id}`,
     source: sourceForKind(kind),
     title: hit.title || 'Untitled',
-    breadcrumb: noteBreadcrumb(kind),
+    breadcrumb: noteBreadcrumb(kind, where.label),
+    locate: kind === 'inbox' ? undefined : { to: locateHref(hit.id, where), label: where.label },
     // The inbox note lives at its own page, not in the note editor.
     to: kind === 'inbox' ? '/inbox' : `/note/${encodeURIComponent(hit.id)}`,
     snippet: hit.snippet,

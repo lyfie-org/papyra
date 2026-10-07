@@ -13,6 +13,23 @@ describe('searchRegistry', () => {
     expect(noteResult(hit('c', 'Inbox'), 'inbox', 0).breadcrumb).toEqual(['Inbox']);
   });
 
+  it('says where a note lives when it is not on the Notes desk', () => {
+    const on = (kind: 'note' | 'todo', state: { archived?: boolean; trashed?: boolean; secure?: boolean }) =>
+      noteResult(hit('a', 'Info'), kind, 0, { archived: false, trashed: false, secure: false, ...state });
+    expect(on('note', { archived: true }).breadcrumb).toEqual(['Archive', 'Note']);
+    expect(on('todo', { archived: true }).breadcrumb).toEqual(['Archive', 'To Do']);
+    expect(on('note', { secure: true }).breadcrumb).toEqual(['Vault', 'Note']);
+    expect(on('note', {}).breadcrumb).toEqual(['Note']);
+  });
+
+  it('offers to show a note in the page it lives on, not the inbox', () => {
+    const state = { archived: true, trashed: false, secure: false };
+    expect(noteResult(hit('a b', 'Info'), 'note', 0, state).locate)
+      .toEqual({ to: '/archive?locate=a%20b', label: 'Archive' });
+    expect(noteResult(hit('a', 'Info'), 'todo', 0).locate?.to).toBe('/todo?locate=a');
+    expect(noteResult(hit('c', 'Inbox'), 'inbox', 0).locate).toBeUndefined();
+  });
+
   it('sends the inbox to its own page, not the note editor', () => {
     expect(noteResult(hit('c', 'Inbox'), 'inbox', 0).to).toBe('/inbox');
     expect(noteResult(hit('a b', 'Info'), 'note', 0).to).toBe('/note/a%20b');

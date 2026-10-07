@@ -29,6 +29,7 @@ import { useServerVersion, versionLabel } from '../lib/serverVersion';
 import { useToast } from '../lib/toastContext';
 import VaultOpenPill from '../components/VaultOpenPill';
 import { useVaultOpen } from '../hooks/useVault';
+import { useLocateEffect } from '../lib/locateNote';
 
 // Settings deliberately lives with Trash at the foot of the rail, not in this
 // list — the top group is "places your notes are", the bottom group is app
@@ -170,15 +171,6 @@ export default function WorkspaceLayout() {
 
         <div className="workspace__nav-actions">
           <VaultOpenPill />
-          <button
-            type="button"
-            className="workspace__theme-toggle"
-            onClick={() => setHelpOpen(true)}
-            aria-label="How Papyra works"
-            title="How Papyra works"
-          >
-            <CircleQuestionMark size={18} />
-          </button>
           {/* The assistant is held back for a later release — see lib/features.ts. */}
           {AI_ENABLED && (
             <button
@@ -203,7 +195,7 @@ export default function WorkspaceLayout() {
               aria-expanded={menuOpen}
               onClick={() => setMenuOpen(o => !o)}
             >
-              <Avatar name={user?.name || user?.username} size={38} />
+              <Avatar name={user?.name || user?.username} size={36} />
             </button>
             {menuOpen && (
               <div className="workspace__avatar-menu" role="menu">
@@ -220,6 +212,9 @@ export default function WorkspaceLayout() {
                 </button>
                 <button type="button" role="menuitem" onClick={() => go('/settings')}>
                   <Settings size={15} /> Settings
+                </button>
+                <button type="button" role="menuitem" onClick={() => { setMenuOpen(false); setHelpOpen(true); }}>
+                  <CircleQuestionMark size={15} /> How Papyra works
                 </button>
                 <div className="workspace__avatar-sep" />
                 <button type="button" role="menuitem" onClick={() => void logout()}>
@@ -319,6 +314,7 @@ Papyra ${versionText}${server.stale ? ' — reload to finish updating' : ''} —
 
         <main className="workspace__desk">
           <OriginTracker />
+          <LocateNote />
           <DeskScrollReset />
           {/* A crash in one page or one note stays there: the shell, the
               sidebar and the way out keep working. */}
@@ -361,6 +357,12 @@ function OriginTracker() {
   return null;
 }
 
+// Scrolls to and pulses the card a search result asked to be shown (?locate=).
+function LocateNote() {
+  useLocateEffect();
+  return null;
+}
+
 // A new page starts at its top. The desk is one scroller shared by every page,
 // so it kept the last page's offset: leave Settings half-way down and Notes
 // opened half-way down too. The location here is the page behind any open note
@@ -371,6 +373,7 @@ function DeskScrollReset() {
   params.delete('open'); // ?open= overlays a shared note; the page underneath stays put
   params.delete('comment'); // ?comment= jumps to a thread in the open note
   params.delete('s');    // Settings' jump-to-section scrolls on its own
+  params.delete('locate'); // a search's "take me to note" scrolls to the card itself
   const page = `${location.pathname}?${params.toString()}`;
   const ref = useRef<HTMLSpanElement | null>(null);
   useLayoutEffect(() => {

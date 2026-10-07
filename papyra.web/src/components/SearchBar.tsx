@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { Search, X } from 'lucide-react';
+import { Crosshair, Search, X } from 'lucide-react';
 import { useNotes } from '../hooks/useNotes';
 import { useSyncState } from '../hooks/useSync';
 import { useAuth } from '../hooks/useAuth';
@@ -148,9 +148,12 @@ export default function SearchBar() {
   const results: SearchResult[] = useMemo(() => {
     const q = query.trim();
     if (!q) return [];
-    const kinds = new Map(cached.map(n => [n.id, n.kind]));
+    const byId = new Map(cached.map(n => [n.id, n]));
     return orderResults([
-      ...noteHits.map(hit => noteResult(hit, kinds.get(hit.id) ?? 'note', hit.rank)),
+      ...noteHits.map(hit => {
+        const n = byId.get(hit.id);
+        return noteResult(hit, n?.kind ?? 'note', hit.rank, n);
+      }),
       ...settingsResults(q, isAdmin),
       ...tagResults(tags ?? [], q),
       ...collectionResults(collections ?? [], q),
@@ -195,6 +198,15 @@ export default function SearchBar() {
     close();
     setQuery('');
     navigate(hit.to);
+  }
+
+  // Goes to the page the note lives on and pulses its card (lib/locateNote.ts),
+  // instead of opening it over whatever page this happens to be.
+  function locateHit(hit: SearchResult) {
+    if (!hit.locate) return;
+    close();
+    setQuery('');
+    navigate(hit.locate.to);
   }
 
   function onKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
@@ -276,21 +288,37 @@ export default function SearchBar() {
               {(i === 0 || results[i - 1].source !== hit.source) && (
                 <p className="search__group" aria-hidden="true">{GROUP_LABEL[hit.source]}</p>
               )}
-              <button
-                id={`search-opt-${i}`}
-                type="button"
-                role="option"
-                aria-selected={i === activeIndex}
-                className={`search__hit${i === activeIndex ? ' search__hit--active' : ''}`}
-                onMouseEnter={() => setActive(i)}
-                onClick={() => openHit(hit)}
-              >
-                <span className="search__hit-crumb">{hit.breadcrumb.join(' › ')}</span>
-                <span className="search__hit-title"><Highlighted text={hit.title} query={query} /></span>
-                {hit.secure
-                  ? <span className="search__hit-snippet search__hit-snippet--locked">Locked note</span>
-                  : hit.snippet && <span className="search__hit-snippet"><Highlighted text={hit.snippet} query={query} /></span>}
-              </button>
+              {/* The row is the option; "Show" sits beside it, not inside — a
+                  button may not nest another. */}
+              <div className={`search__row${i === activeIndex ? ' search__row--active' : ''}`}
+                onMouseEnter={() => setActive(i)}>
+                <button
+                  id={`search-opt-${i}`}
+                  type="button"
+                  role="option"
+                  aria-selected={i === activeIndex}
+                  className={`search__hit${i === activeIndex ? ' search__hit--active' : ''}`}
+                  onClick={() => openHit(hit)}
+                >
+                  <span className="search__hit-crumb">{hit.breadcrumb.join(' › ')}</span>
+                  <span className="search__hit-title"><Highlighted text={hit.title} query={query} /></span>
+                  {hit.secure
+                    ? <span className="search__hit-snippet search__hit-snippet--locked">Locked note</span>
+                    : hit.snippet && <span className="search__hit-snippet"><Highlighted text={hit.snippet} query={query} /></span>}
+                </button>
+                {hit.locate && (
+                  <button
+                    type="button"
+                    className="search__locate"
+                    title={`Show it in ${hit.locate.label}`}
+                    aria-label={`Show “${hit.title}” in ${hit.locate.label}`}
+                    onClick={() => locateHit(hit)}
+                  >
+                    <Crosshair size={14} aria-hidden="true" />
+                    <span className="search__locate-text">Show</span>
+                  </button>
+                )}
+              </div>
             </li>
           ))}
           </ul>

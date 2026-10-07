@@ -26,6 +26,8 @@ import { useReportHeight } from '../hooks/useReportHeight';
 import { useSharedPin, type IncomingShare } from '../hooks/useShares';
 import SharedNoteCard from './SharedNoteCard';
 import { useSelection } from '../hooks/useSelection';
+import { useTouchDevice } from '../hooks/useTouchDevice';
+import { useLocateId } from '../lib/locateNote';
 import { useToast } from '../lib/toastContext';
 import { useRevealMore } from '../hooks/useRevealMore';
 import '../components/NoteGrid.css';
@@ -256,15 +258,22 @@ export default function DraggableNoteGrid({
   const selection = useSelection(ordered);
   const sharedPin = useSharedPin();
 
+  // Always record a height; only the re-pack waits out a drag (re-packing
+  // mid-drag would jitter). Dropping the reading instead meant a drag that never
+  // got to end — a touch scroll that began as one — froze every height at the
+  // EST_H guess, and the cards piled on top of one another.
   const onMeasure = useCallback((id: string, h: number) => {
-    if (dragging.current) return; // heights are frozen mid-drag
     if (h > 0 && heights.get(id) !== h) {
       heights.set(id, h);
-      forceTick(t => t + 1); // re-pack with the real height
+      if (!dragging.current) forceTick(t => t + 1); // re-pack with the real height
     }
   }, [heights]);
 
   const { cols, colW } = columnsFor(width);
+  // A note search asked to be shown: its card must be mounted even past the
+  // first screenful (see locateNote.ts).
+  const locateId = useLocateId();
+  const locateAt = locateId ? allOrdered.indexOf(locateId) : -1;
 
   // Only what's on screen plus a screenful more is mounted; scrolling near the
   // end reveals the next batch. Packing is sequential, so a prefix of the list
@@ -272,12 +281,16 @@ export default function DraggableNoteGrid({
   // each resize frame (the sidebar sliding open, a window drag) re-render and
   // re-measure hundreds of them.
   const total = items.length;
-  const { shown: budget, sentinelRef } = useRevealMore(total, cols);
+  const { shown: budget, sentinelRef } = useRevealMore(total, cols, locateAt + 1);
   const pinnedShown = pinned.length > budget ? pinned.slice(0, budget) : pinned;
   const othersShown = others.slice(0, Math.max(0, budget - pinned.length));
   const shownIds = new Set([...pinnedShown, ...othersShown].map(i => i.id));
 
-  const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
+  // On a touch screen the desk is read and scrolled, not rearranged: no sensor
+  // means no drag can start, so a swipe is always a scroll.
+  const touch = useTouchDevice();
+  const pointerSensor = useSensor(PointerSensor, { activationConstraint: { distance: 8 } });
+  const sensors = useSensors(touch ? undefined : pointerSensor);
 
   // Section id lists, minus everything being carried; the gap goes in the target section.
   const carried = useMemo(() => new Set(group), [group]);
@@ -372,6 +385,7 @@ export default function DraggableNoteGrid({
 
   function reset() {
     dragging.current = false; pointerStart.current = null;
+    forceTick(t => t + 1); // heights read during the drag take effect now
     setActiveId(null); setOrigin(null); setDrop(null); setStartBox(null); setGroup([]); setDrag(null);
   }
 

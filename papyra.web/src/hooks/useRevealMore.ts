@@ -23,11 +23,13 @@ function scrollParent(el: HTMLElement | null): HTMLElement | null {
  * Each growth re-observes the sentinel, so a batch that still leaves it on
  * screen (tall window, short cards) pulls the next one at once.
  */
-export function useRevealMore(total: number, cols: number) {
+export function useRevealMore(total: number, cols: number, need = 0) {
   const batch = Math.max(12, cols * (Math.ceil((typeof window === 'undefined' ? 900 : window.innerHeight) / ROW_PX) + 2));
   const [batches, setBatches] = useState(1);
   const [sentinel, setSentinel] = useState<HTMLElement | null>(null);
-  const shown = Math.min(total, batches * batch);
+  // `need`: how many must be mounted regardless — "take me to this note" has to
+  // find its card even when it sits past the first screenful.
+  const shown = Math.min(total, Math.max(batches * batch, need));
 
   useEffect(() => {
     if (!sentinel || shown >= total || typeof IntersectionObserver === 'undefined') return;

@@ -7,6 +7,7 @@ import NoteCard, { type CardVariant } from './NoteCard';
 import SelectTick from './SelectTick';
 import BulkBar from './BulkBar';
 import { useRevealMore } from '../hooks/useRevealMore';
+import { useLocateId } from '../lib/locateNote';
 import './NoteGrid.css';
 
 // Responsive column counts keyed by max viewport width (px). ~250px min col.
@@ -83,16 +84,19 @@ const Cell = memo(function Cell({ note, variant, conflicts, onResolveConflict, s
   );
 });
 
-function MasonrySection({ notes, variant, conflictsByParent, onResolveConflict, selectable, selection }: {
+function MasonrySection({ notes, variant, conflictsByParent, onResolveConflict, selectable, selection, locateId }: {
   notes: Note[];
   variant: CardVariant;
   conflictsByParent?: Map<string, Conflict[]>;
   onResolveConflict?: (conflictId: string) => void;
   selectable: boolean;
   selection: Selection;
+  /** A note search asked to be shown: keep it (and what precedes it) mounted. */
+  locateId: string | null;
 }) {
   // Mount a screenful or two and reveal more on scroll (see useRevealMore).
-  const { shown, sentinelRef } = useRevealMore(notes.length, 4);
+  const at = locateId ? notes.findIndex(n => n.id === locateId) : -1;
+  const { shown, sentinelRef } = useRevealMore(notes.length, 4, at + 1);
   return (
     <>
     <Masonry
@@ -135,6 +139,7 @@ export default function NoteGrid({
     : [[], slice], [slice, variant]);
   const ordered = useMemo(() => [...pinned, ...standard].map(n => n.id), [pinned, standard]);
   const selection = useSelection(ordered);
+  const locateId = useLocateId();
   const byId = useMemo(() => new Map(slice.map(n => [n.id, n])), [slice]);
 
   if (slice.length === 0) {
@@ -143,7 +148,7 @@ export default function NoteGrid({
 
   const section = (list: Note[]) => (
     <MasonrySection notes={list} variant={variant} conflictsByParent={conflictsByParent}
-      onResolveConflict={onResolveConflict} selectable={selectable} selection={selection} />
+      onResolveConflict={onResolveConflict} selectable={selectable} selection={selection} locateId={locateId} />
   );
 
   return (

@@ -101,7 +101,7 @@ function NoteCard({ note, variant = 'active', conflictId, conflictCount, onResol
   }
 
   const card = (
-    <article className={className} style={style}>
+    <article className={className} style={style} data-note-id={note.id}>
       {/* Keep-style pin: hangs off the top-right corner, half over the card. Only
           on active notes; always shown while pinned, else revealed on hover. */}
       {variant === 'active' && (

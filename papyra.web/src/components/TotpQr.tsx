@@ -1,22 +1,8 @@
-import { useMemo, useState, useSyncExternalStore } from 'react';
+import { useMemo, useState } from 'react';
 import qrcode from 'qrcode-generator';
 import { Check, Copy, ExternalLink } from 'lucide-react';
+import { useTouchDevice } from '../hooks/useTouchDevice';
 import './TotpQr.css';
-
-// A touch device is almost always the phone the authenticator lives on: its own
-// screen can't be scanned, so there the tap target leads and the QR is tucked away.
-const COARSE = '(pointer: coarse)';
-function useTouchDevice(): boolean {
-  return useSyncExternalStore(
-    notify => {
-      const mq = window.matchMedia(COARSE);
-      mq.addEventListener('change', notify);
-      return () => mq.removeEventListener('change', notify);
-    },
-    () => window.matchMedia(COARSE).matches,
-    () => false,
-  );
-}
 
 /**
  * The authenticator-app enrolment card: a QR code to scan, the same link as a

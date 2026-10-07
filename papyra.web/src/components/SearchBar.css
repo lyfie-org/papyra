@@ -145,11 +145,21 @@
   .search__scrim { animation: none; }
 }
 
+.search__row {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  border-radius: var(--radius-sm);
+  transition: background var(--dur-fast) var(--ease);
+}
+.search__row--active { background: var(--accent-bg); }
+
 .search__hit {
   display: flex;
   flex-direction: column;
   gap: var(--space-1);
-  width: 100%;
+  flex: 1 1 auto;
+  min-width: 0;
   padding: var(--space-2) var(--space-3);
   border: 0;
   border-radius: var(--radius-sm);
@@ -159,13 +169,35 @@
   transition: background var(--dur-fast) var(--ease);
 }
 
-.search__hit--active { background: var(--accent-bg); }
+.search__hit--active { background: transparent; }
 
 /* The accent tint lifts the row enough that muted text drops to 3.75:1 in dark
    mode. Promote the secondary lines to the heading colour while a row is
    active — they carry meaning (which page a hit lives on), so they need AA. */
 .search__hit--active .search__hit-crumb,
 .search__hit--active .search__hit-snippet { color: var(--text-h); }
+
+/* "Show": go to the page the note lives on and pulse its card, instead of
+   opening it over this page. Its own control beside the row, never inside it. */
+.search__locate {
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: 32px;
+  margin-right: var(--space-2);
+  padding: 0 var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  color: var(--text-h);
+  font: 500 var(--fs-2xs) / 1 var(--sans);
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease);
+}
+.search__locate:hover { background: var(--accent-bg); border-color: var(--accent-border); }
+.search__locate:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (pointer: coarse) { .search__locate { min-height: 40px; } }
 
 /* Group heading — "Notes", "Settings". Sits inside the list item that starts a
    run of one source, so the flat keyboard order is untouched. */
@@ -234,4 +266,13 @@ li:first-child .search__group { padding-top: var(--space-1); }
 @media (max-width: 860px) {
   .search { flex-basis: 200px; }
   .search__kbd { display: none; }
+}
+
+/* On a phone the field takes whatever the bar leaves it — it was a fixed 200px
+   basis that got squeezed to a clipped "Searc" by the buttons beside it. */
+@media (max-width: 620px) {
+  .search { flex: 1 1 0; max-width: none; }
+  .search__field { padding: 0 var(--space-2); gap: var(--space-1); }
+  .search__input { text-overflow: ellipsis; }
+  .search__results { position: fixed; top: 70px; left: var(--space-2); right: var(--space-2); max-height: calc(100dvh - 90px - var(--keyboard-inset, 0px)); }
 }

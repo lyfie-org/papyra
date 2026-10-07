@@ -108,7 +108,7 @@ function TodoCard({ note }: { note: Note }) {
   }
 
   return (
-    <article className={className} style={style} onClick={openFromCard}>
+    <article className={className} style={style} onClick={openFromCard} data-note-id={note.id}>
       {/* The same corner pin as a note card: shown on hover, always when pinned. */}
       <button
         type="button"
