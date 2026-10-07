@@ -3,6 +3,7 @@ import { Image } from 'astro:assets';
 import Base from '../layouts/Base.astro';
 import Icon from '../components/Icon.astro';
 import Clip from '../components/Clip.astro';
+import Vine from '../components/Vine.astro';
 import HeroShowcase from '../components/HeroShowcase.astro';
 import CodeBlock from '../components/CodeBlock.astro';
 import logo from '../assets/papyra_logo.png';
@@ -136,14 +137,19 @@ const when = (m: (typeof JOURNEY)[number]) =>
   <!-- ------------------------------------------------------------ hero -->
   <section class="hero">
     <div class="hero__glow" aria-hidden="true"></div>
-    <div class="wrap wrap--wide hero__grid">
+    <div class="wrap hero__grid">
     <div class="hero__copy">
-      <a class="chip hero__chip" href="#journey">
+      <p class="chip hero__chip">
         <span class="chip__dot"></span>
         Papyra 1.0 · Free and open source
-        <Icon name="arrow-right" size={14} />
-      </a>
-      <h1 class="hero__title">Your notes deserve a <span>beautiful</span> home.</h1>
+      </p>
+      <h1 class="hero__title">
+        <span class="sr-only">Your thoughts deserve a beautiful home.</span>
+        <span aria-hidden="true">
+          Your <span class="hero__typed" data-typed data-words="thoughts,ideas,notes,plans,recipes,memories,journals">thoughts</span><br />deserve
+          a<br />beautiful home.
+        </span>
+      </h1>
       <p class="hero__lede">
         A calm, self-hosted notes app — as easy as sticky notes, as deep as a wiki. Every note
         stays a plain Markdown file on your own server.
@@ -179,8 +185,9 @@ const when = (m: (typeof JOURNEY)[number]) =>
 
   <!-- -------------------------------------------------------- showcase -->
   <section class="section" id="features">
-    <div class="wrap wrap--wide">
-      <header class="intro" data-reveal>
+    <div class="wrap wrap--wide features" data-vine-root>
+      <Vine />
+      <header class="intro" data-reveal data-vine-start>
         <p class="eyebrow">Made for writing</p>
         <h2>Calm on the surface.<br />Powerful underneath.</h2>
       </header>
@@ -200,17 +207,17 @@ const when = (m: (typeof JOURNEY)[number]) =>
                   </a>
                 )}
               </div>
-              <Clip class="row__clip" name={row.clip} label={row.alt} />
+              <Clip class="row__clip" name={row.clip} label={row.alt} vine />
             </article>
           ))
         }
       </div>
 
-      <div class="theme-band" data-reveal>
+      <div class="theme-band" data-reveal data-vine-anchor>
         <div class="theme-band__copy">
           <p class="eyebrow">Day and night</p>
           <h3>Easy on the eyes.</h3>
-          <p>Warm paper by day. Warm graphite by night.</p>
+          <p>Warm paper by day. Calm graphite by night.</p>
         </div>
         <Clip
           class="theme-band__clip"
@@ -264,7 +271,7 @@ const when = (m: (typeof JOURNEY)[number]) =>
         }
       </div>
       <p class="imports__foot" data-reveal>
-        Re-import any time — Papyra never duplicates a note.
+        Re-import any time — Papyra never duplicates a note.{' '}
         <a href="/docs/importing/">How importing works</a>
       </p>
     </div>
@@ -295,7 +302,6 @@ const when = (m: (typeof JOURNEY)[number]) =>
             I’m a home-labber. Keeping my own data alive is hard enough — I have zero interest in
             storing yours.
           </blockquote>
-          <figcaption>— Rahul, who made Papyra</figcaption>
         </figure>
       </div>
       <ul class="shields">
@@ -354,11 +360,29 @@ const when = (m: (typeof JOURNEY)[number]) =>
   <section class="section section--tint" id="journey">
     <div class="wrap wrap--narrow">
       <header class="intro" data-reveal>
-        <p class="eyebrow">The journey</p>
-        <h2>First commit to 1.0 in four months.</h2>
+        <p class="eyebrow">Roadmap</p>
+        <h2>Where Papyra has been, and where it’s going.</h2>
       </header>
 
       <ol class="journey" data-journey>
+        {
+          [...NEXT].reverse().map((n) => (
+            <li class:list={['journey__item', 'journey__item--soon', { 'journey__item--next': n.next }]}>
+              <span class="journey__date">Coming soon</span>
+              <span class="journey__node" aria-hidden="true">
+                <Icon name={n.next ? 'sparkles' : 'history'} size={12} />
+              </span>
+              <div class="journey__card">
+                <h3>
+                  <Icon name={n.icon} size={17} />
+                  {n.title}
+                </h3>
+                <p>{n.text}</p>
+                {n.next && <span class="journey__tag journey__tag--next">Next up</span>}
+              </div>
+            </li>
+          ))
+        }
         {
           JOURNEY.map((m, i) => (
             <li class:list={['journey__item', { 'journey__item--current': m.current }]} data-hidden={i >= SHOWN ? '' : undefined}>
@@ -395,27 +419,6 @@ const when = (m: (typeof JOURNEY)[number]) =>
         </button>
         <a href="/changelog/">Full changelog</a>
       </div>
-
-      <div class="horizon" data-reveal>
-        <h3>On the horizon</h3>
-        <p class="horizon__note">Plans, not promises.</p>
-        <ul class="horizon__list">
-          {
-            NEXT.map((n) => (
-              <li>
-                <Icon name={n.icon} size={18} />
-                <span>
-                  <strong>{n.title}</strong>
-                  {n.text}
-                </span>
-              </li>
-            ))
-          }
-        </ul>
-        <p class="horizon__ask">
-          Want something else? <a href={`${GITHUB_URL}/issues/new`} rel="noopener noreferrer">Ask for it</a>.
-        </p>
-      </div>
     </div>
   </section>
 
@@ -427,7 +430,7 @@ const when = (m: (typeof JOURNEY)[number]) =>
         <h2>Up in a minute.</h2>
         <p>
           Save one file, run one command, open your browser. The first account you create is the
-          admin.{pullsLabel && ` Pulled ${pullsLabel} times from Docker Hub so far.`}
+          admin.
         </p>
         <ul class="ticks">
           <li><Icon name="check" size={16} />Runs on amd64 and arm64 — a NAS, a Pi, a VPS</li>
@@ -519,29 +522,41 @@ const when = (m: (typeof JOURNEY)[number]) =>
     </div>
   </section>
 
-  <!-- ------------------------------------------------------------- end -->
-  <section class="section section--end">
-    <div class="wrap">
-      <div class="finale" data-reveal>
-        <Image class="finale__logo" src={logo} alt="" width={64} height={64} densities={[1, 2]} />
-        <h2>Give your notes a calm home.</h2>
-        <div class="hero__actions">
-          <a class="btn btn--lg" href="/demo/">
-            <Icon name="play" size={16} />
-            Try the live demo
-          </a>
-          <a class="btn btn--ghost btn--lg" href="/docs/install/">Install Papyra</a>
-        </div>
-        <a class="finale__star" href={GITHUB_URL} rel="noopener noreferrer">
-          <Icon name="star" size={15} />
-          Enjoying it? Leave a star on GitHub
-        </a>
-      </div>
-    </div>
-  </section>
 </Base>
 
 <script>
+  // The hero's changing word: type it, hold it, backspace it fast, type the
+  // next. Paused while the tab is hidden; off entirely for reduced motion
+  // (the first word simply stays). Screen readers get the fixed sentence.
+  const typed = document.querySelector<HTMLElement>('[data-typed]');
+  if (typed && !window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    const words = (typed.dataset.words ?? '').split(',').filter(Boolean);
+    const wait = (ms: number) => new Promise((r) => window.setTimeout(r, ms));
+    const visible = () =>
+      document.hidden ? new Promise<void>((r) => document.addEventListener('visibilitychange', () => r(), { once: true })) : null;
+    (async () => {
+      let i = 0;
+      for (;;) {
+        await wait(2400);
+        await visible();
+        typed.setAttribute('data-busy', '');
+        const word = words[i];
+        for (let n = word.length; n >= 0; n -= 1) {
+          typed.textContent = word.slice(0, n);
+          await wait(38);
+        }
+        i = (i + 1) % words.length;
+        const next = words[i];
+        await wait(160);
+        for (let n = 1; n <= next.length; n += 1) {
+          typed.textContent = next.slice(0, n);
+          await wait(85 + Math.random() * 45);
+        }
+        typed.removeAttribute('data-busy');
+      }
+    })();
+  }
+
   const list = document.querySelector<HTMLElement>('[data-journey]');
   const toggle = document.querySelector<HTMLButtonElement>('[data-journey-toggle]');
   if (list && toggle) {
@@ -588,7 +603,7 @@ const when = (m: (typeof JOURNEY)[number]) =>
   .hero__grid {
     position: relative;
     display: grid;
-    grid-template-columns: minmax(0, 0.82fr) minmax(0, 1.18fr);
+    grid-template-columns: minmax(0, 0.8fr) minmax(0, 1.2fr);
     gap: clamp(var(--space-8), 4vw, var(--space-12));
     align-items: center;
   }
@@ -605,15 +620,64 @@ const when = (m: (typeof JOURNEY)[number]) =>
   }
 
   .hero__title {
-    font-size: clamp(40px, 3.4vw + 16px, 72px);
+    font-size: clamp(40px, 3vw + 16px, 66px);
     line-height: 1.02;
     letter-spacing: -0.035em;
     max-width: 11ch;
     margin-bottom: var(--space-5);
   }
 
-  .hero__title span {
+  /* The word that changes: typed, held, backspaced, retyped (script below),
+     in a slow drift through the palette's greens, with a blinking caret. */
+  .hero__typed {
     color: var(--accent-text);
+    background: linear-gradient(100deg, var(--accent-text) 0%, var(--accent) 35%, var(--accent-text) 60%, var(--accent) 100%) 0 0 / 220% 100%;
+    -webkit-background-clip: text;
+    background-clip: text;
+    -webkit-text-fill-color: transparent;
+  }
+
+  .hero__typed::after {
+    content: '';
+    display: inline-block;
+    width: 0.06em;
+    height: 0.82em;
+    margin-left: 0.06em;
+    vertical-align: -0.04em;
+    background: var(--accent);
+    border-radius: 1px;
+  }
+
+  @media (prefers-reduced-motion: no-preference) {
+    .hero__typed {
+      animation: hero-ink 7s var(--ease-inout) infinite alternate;
+    }
+
+    .hero__typed::after {
+      animation: hero-caret 1.05s steps(1) infinite;
+    }
+
+    .hero__typed[data-busy]::after {
+      animation: none;
+    }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    .hero__typed::after {
+      display: none;
+    }
+  }
+
+  @keyframes hero-ink {
+    to {
+      background-position: 100% 0;
+    }
+  }
+
+  @keyframes hero-caret {
+    50% {
+      opacity: 0;
+    }
   }
 
   .hero__lede {
@@ -641,11 +705,13 @@ const when = (m: (typeof JOURNEY)[number]) =>
     color: var(--text);
   }
 
-  /* The window runs off the right edge on wide screens — the hero clips it. */
+  /* The copy lines up with the navigation; the window is allowed past it, out
+     to the page's edge, so the app inside is big enough to read. */
   .hero__shot {
     position: relative;
     min-width: 0;
-    margin-right: calc(-1 * clamp(0px, 7vw, 9rem));
+    padding-left: var(--space-4);
+    margin-right: calc(-1 * clamp(0px, (100vw - 68rem) / 2, 10rem));
   }
 
   @media (max-width: 69.99rem) {
@@ -671,8 +737,9 @@ const when = (m: (typeof JOURNEY)[number]) =>
     }
 
     .hero__shot {
+      padding-left: 0;
       margin-right: 0;
-      margin-top: var(--space-4);
+      margin-top: var(--space-10);
     }
   }
 
@@ -722,6 +789,17 @@ const when = (m: (typeof JOURNEY)[number]) =>
   }
 
   /* -------------------------------------------------------- showcase */
+  /* The vine (Vine.astro) is drawn in this box, behind everything in it. */
+  .features {
+    position: relative;
+  }
+
+  .features > :not(.vine) {
+    position: relative;
+    z-index: 1;
+  }
+
+
   .rows {
     display: grid;
     gap: clamp(var(--space-12), 9vw, 8rem);
@@ -1064,62 +1142,6 @@ const when = (m: (typeof JOURNEY)[number]) =>
     font-weight: 500;
   }
 
-  /* ---------------------------------------------------------- horizon */
-  .horizon {
-    margin-top: var(--space-12);
-    padding: var(--space-6);
-    border: 1.5px dashed var(--border-hover);
-    border-radius: var(--radius-lg);
-  }
-
-  .horizon h3 {
-    font-size: var(--fs-xl);
-    margin: 0;
-  }
-
-  .horizon__note {
-    margin: var(--space-1) 0 var(--space-5);
-    font-size: var(--fs-xs);
-    color: var(--text);
-  }
-
-  .horizon__list {
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: var(--space-4) var(--space-6);
-  }
-
-  .horizon__list li {
-    display: flex;
-    gap: var(--space-3);
-    align-items: flex-start;
-    font-size: var(--fs-xs);
-    line-height: 1.5;
-    color: var(--text);
-  }
-
-  .horizon__list :global(svg) {
-    flex: none;
-    margin-top: 2px;
-    color: var(--accent);
-  }
-
-  .horizon__list strong {
-    display: block;
-    font-size: var(--fs-sm);
-    font-weight: 500;
-    color: var(--text-h);
-  }
-
-  .horizon__ask {
-    margin: var(--space-5) 0 0;
-    font-size: var(--fs-sm);
-    color: var(--text);
-  }
-
   /* ---------------------------------------------------------- journey */
   .journey {
     --date-w: 7.5rem;
@@ -1231,6 +1253,40 @@ const when = (m: (typeof JOURNEY)[number]) =>
 
   .journey__tag:hover {
     color: var(--text-h);
+  }
+
+  /* Plans: dashed, quieter — not yet on the line of things that shipped. */
+  .journey__item--soon .journey__date {
+    color: var(--accent-text);
+  }
+
+  .journey__item--soon .journey__node {
+    border-style: dashed;
+    color: var(--text);
+  }
+
+  .journey__item--soon .journey__card {
+    border-style: dashed;
+    background: color-mix(in srgb, var(--surface) 55%, transparent);
+  }
+
+  .journey__item--next .journey__node {
+    border-style: solid;
+    color: var(--accent-text);
+    box-shadow: 0 0 0 5px var(--accent-bg);
+  }
+
+  .journey__item--next .journey__card {
+    border-style: solid;
+    border-color: var(--accent-border);
+    background:
+      radial-gradient(24rem 8rem at 0% 0%, var(--accent-bg), transparent 70%),
+      var(--surface);
+  }
+
+  .journey__tag--next {
+    font-family: var(--sans);
+    font-weight: 600;
   }
 
   .journey__more {
@@ -1421,56 +1477,6 @@ const when = (m: (typeof JOURNEY)[number]) =>
     color: var(--text);
   }
 
-  /* ----------------------------------------------------------- finale */
-  .section--end {
-    padding-bottom: 0;
-  }
-
-  .finale {
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    text-align: center;
-    padding: clamp(var(--space-10), 7vw, 6rem) var(--space-6);
-    border: 1px solid var(--accent-border);
-    border-radius: calc(var(--radius-lg) * 2);
-    background:
-      radial-gradient(40rem 20rem at 50% 0%, var(--accent-bg), transparent 70%),
-      var(--surface);
-    box-shadow: var(--shadow-card);
-  }
-
-  .finale :global(.finale__logo) {
-    border-radius: var(--radius-md);
-    margin-bottom: var(--space-5);
-  }
-
-  .finale h2 {
-    font-size: clamp(30px, 3.4vw + 12px, 52px);
-    margin-bottom: var(--space-8);
-  }
-
-  .finale__star {
-    display: inline-flex;
-    flex-wrap: wrap;
-    justify-content: center;
-    text-align: center;
-    align-items: center;
-    gap: var(--space-2);
-    margin-top: var(--space-6);
-    font-size: var(--fs-sm);
-    color: var(--text);
-    text-decoration: none;
-  }
-
-  .finale__star:hover {
-    color: var(--accent-text);
-  }
-
-  .finale__star :global(svg) {
-    color: var(--accent);
-  }
-
   @media (prefers-reduced-motion: reduce) {
     .helps__item:hover {
       transform: none;
@@ -1521,8 +1527,7 @@ const when = (m: (typeof JOURNEY)[number]) =>
       margin: 0;
     }
 
-    .shields,
-    .horizon__list {
+    .shields {
       grid-template-columns: minmax(0, 1fr);
     }
 
@@ -1535,10 +1540,6 @@ const when = (m: (typeof JOURNEY)[number]) =>
       width: 44px;
       height: 44px;
       margin-bottom: var(--space-3);
-    }
-
-    .horizon {
-      padding: var(--space-5);
     }
 
     .warning {

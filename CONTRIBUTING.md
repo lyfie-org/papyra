@@ -17,6 +17,12 @@ request genuinely shapes it.
 Found a security problem? Please don't open a public issue — report it privately
 through [GitHub's security advisories](https://github.com/lyfie-org/papyra/security/advisories/new).
 
+## Building on Papyra
+
+Want to script your notes, connect another tool or build a plugin? Everything
+the web app does goes through a documented REST API, with personal API keys and
+signed webhooks: see the [API reference](https://papyra.app/api/).
+
 ## Before you write code
 
 For anything bigger than a small fix, **open an issue first** so we can agree on

@@ -1,0 +1,168 @@
+---
+// Thin sage lines that join the feature section into one path: from the
+// heading down to the first clip, from each clip to the next, and on to the
+// last block. Each link is its own smooth S-curve — it leaves the bottom of one
+// block straight down and arrives at the top of the next straight down — so
+// there are no kinks where two curves meet. A small dot marks each end.
+//
+// Pure decoration (aria-hidden), drawn by script from the real positions of the
+// blocks ([data-vine-start], then each [data-vine-anchor] inside the nearest
+// [data-vine-root]) and grown as you scroll. Wide screens only: on a phone
+// the copy sits between the clips and there is no clear lane for a line. With
+// reduced motion the lines are simply drawn in full.
+---
+
+<svg class="vine" data-vine aria-hidden="true" focusable="false">
+  <g data-vine-links></g>
+</svg>
+
+<script>
+  const NS = 'http://www.w3.org/2000/svg';
+
+  for (const svg of document.querySelectorAll<SVGSVGElement>('[data-vine]')) {
+    const root = svg.closest<HTMLElement>('[data-vine-root]');
+    if (!root) continue;
+    const group = svg.querySelector<SVGGElement>('[data-vine-links]')!;
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)');
+    const wide = window.matchMedia('(min-width: 56rem)');
+
+    interface Link {
+      path: SVGPathElement;
+      start: SVGCircleElement;
+      end: SVGCircleElement;
+      length: number;
+      y0: number;
+      y1: number;
+    }
+    let links: Link[] = [];
+
+    /** Box relative to the root, ignoring transforms (reveal animations). */
+    const box = (el: HTMLElement) => {
+      let x = 0;
+      let y = 0;
+      let node: HTMLElement | null = el;
+      while (node && node !== root) {
+        x += node.offsetLeft;
+        y += node.offsetTop;
+        node = node.offsetParent as HTMLElement | null;
+      }
+      return { x, y, w: el.offsetWidth, h: el.offsetHeight };
+    };
+
+    const dot = (x: number, y: number) => {
+      const c = document.createElementNS(NS, 'circle');
+      c.setAttribute('cx', String(x));
+      c.setAttribute('cy', String(y));
+      c.setAttribute('r', '4');
+      c.setAttribute('class', 'vine__dot');
+      return c;
+    };
+
+    function layout() {
+      group.replaceChildren();
+      links = [];
+      if (!wide.matches) return;
+      const W = root.offsetWidth;
+      const H = root.offsetHeight;
+      svg.setAttribute('viewBox', `0 0 ${W} ${H}`);
+      svg.setAttribute('width', String(W));
+      svg.setAttribute('height', String(H));
+
+      const blocks = [
+        root.querySelector<HTMLElement>('[data-vine-start]'),
+        ...root.querySelectorAll<HTMLElement>('[data-vine-anchor]'),
+      ].filter((b): b is HTMLElement => !!b);
+
+      for (let i = 0; i < blocks.length - 1; i += 1) {
+        const a = box(blocks[i]);
+        const b = box(blocks[i + 1]);
+        const x0 = a.x + a.w / 2;
+        const y0 = a.y + a.h + 10;
+        const x1 = b.x + b.w / 2;
+        const y1 = b.y - 10;
+        if (y1 <= y0) continue;
+        // Vertical tangents at both ends: a clean S, never a cusp.
+        const k = (y1 - y0) * 0.55;
+        const path = document.createElementNS(NS, 'path');
+        path.setAttribute('d', `M ${x0} ${y0} C ${x0} ${y0 + k}, ${x1} ${y1 - k}, ${x1} ${y1}`);
+        path.setAttribute('class', 'vine__line');
+        const start = dot(x0, y0);
+        const end = dot(x1, y1);
+        group.append(path, start, end);
+        const length = path.getTotalLength();
+        path.style.strokeDasharray = `${length}`;
+        path.style.strokeDashoffset = `${length}`;
+        links.push({ path, start, end, length, y0, y1 });
+      }
+      draw();
+    }
+
+    function draw() {
+      if (!links.length) return;
+      const top = root.getBoundingClientRect().top;
+      // The line's tip follows a point two-thirds of the way down the screen.
+      const reach = reduce.matches ? Infinity : window.innerHeight * 0.66 - top;
+      for (const link of links) {
+        const t = Math.max(0, Math.min(1, (reach - link.y0) / (link.y1 - link.y0)));
+        link.path.style.strokeDashoffset = `${link.length * (1 - t)}`;
+        link.start.classList.toggle('is-on', t > 0);
+        link.end.classList.toggle('is-on', t >= 1);
+      }
+    }
+
+    let ticking = false;
+    window.addEventListener(
+      'scroll',
+      () => {
+        if (ticking) return;
+        ticking = true;
+        requestAnimationFrame(() => {
+          draw();
+          ticking = false;
+        });
+      },
+      { passive: true },
+    );
+    new ResizeObserver(() => layout()).observe(root);
+    wide.addEventListener('change', layout);
+    // Clip posters and fonts can shift the layout after first paint.
+    window.addEventListener('load', layout);
+    layout();
+  }
+</script>
+
+<style>
+  .vine {
+    position: absolute;
+    inset: 0;
+    z-index: 0;
+    pointer-events: none;
+    overflow: visible;
+  }
+
+  .vine :global(.vine__line) {
+    fill: none;
+    stroke: var(--accent);
+    stroke-width: 2;
+    stroke-linecap: round;
+    opacity: 0.85;
+  }
+
+  .vine :global(.vine__dot) {
+    fill: var(--bg);
+    stroke: var(--accent);
+    stroke-width: 2;
+    opacity: 0;
+    transition: opacity 400ms var(--ease);
+  }
+
+  .vine :global(.vine__dot.is-on) {
+    opacity: 1;
+  }
+
+  @media (max-width: 55.99rem) {
+    .vine {
+      display: none;
+    }
+  }
+</style>

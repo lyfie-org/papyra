@@ -32,7 +32,9 @@ const OUT = join(ROOT, 'src/assets/shots');
  * the repository. Add a viewport when a page needs it.
  */
 const VIEWPORTS = {
-  desktop: { width: 1440, height: 900 },
+  // Smaller than a typical laptop on purpose: the hero shows these at ~760px,
+  // and a tighter viewport keeps the app's own text readable there.
+  desktop: { width: 1200, height: 750 },
   mobile: { width: 390, height: 844 },
 };
 
@@ -44,9 +46,9 @@ const SHOTS = [
   { name: 'desk', path: '/', wait: '.note-card', viewports: ['desktop', 'mobile'], stage: DESK },
   {
     name: 'focus',
-    path: '/note/sourdough',
+    path: '/note/reading-list',
     wait: '[contenteditable="true"]',
-    viewports: ['desktop'],
+    viewports: ['desktop', 'mobile'],
     stage: DESK,
     then: (page) => page.getByRole('button', { name: 'Focus mode' }).click(),
   },
@@ -54,7 +56,7 @@ const SHOTS = [
     name: 'search',
     path: '/',
     wait: '.note-card',
-    viewports: ['desktop'],
+    viewports: ['desktop', 'mobile'],
     stage: DESK,
     then: async (page) => {
       await page.locator('.search__input').click();

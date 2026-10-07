@@ -11,7 +11,7 @@ const isCurrent = (href: string) => (href === '/' ? path === '/' : path.startsWi
 
 <header class="site-header" data-header>
   <div class="wrap site-header__inner">
-    <a class="site-header__brand" href="/">
+    <a class="site-header__brand" href="/" data-brand>
       <Image src={logo} alt="" width={30} height={30} densities={[1, 2]} loading="eager" />
       <span>Papyra</span>
     </a>
@@ -47,6 +47,16 @@ const isCurrent = (href: string) => (href === '/' ? path === '/' : path.startsWi
 <script>
   // On phones the header is two rows tall. Slide it away while reading down the
   // page and bring it back the moment you scroll up (CSS does the moving).
+  // The logo is "home": from another page it navigates there; on the home
+  // page itself it glides back to the top (and drops any #section from the URL).
+  document.querySelector<HTMLAnchorElement>('[data-brand]')?.addEventListener('click', (e) => {
+    if (location.pathname !== '/' || e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+    e.preventDefault();
+    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    window.scrollTo({ top: 0, behavior: reduce ? 'auto' : 'smooth' });
+    if (location.hash) history.replaceState(null, '', '/');
+  });
+
   const header = document.querySelector<HTMLElement>('[data-header]');
   if (header) {
     let last = window.scrollY;

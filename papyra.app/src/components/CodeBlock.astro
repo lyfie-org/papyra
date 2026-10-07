@@ -1,9 +1,10 @@
 ---
 // A code sample with an optional label and a copy button.
 //
-// Astro ships Shiki for fenced code inside MDX; this component is for code passed
-// as a prop from .astro pages, where highlighting would mean shipping a
-// highlighter to the client for no real gain. Plain, monospaced, high-contrast.
+// Highlighted at build time by Shiki (Astro's <Code>), with the same
+// token-mapped css-variables theme as fenced code in the docs — no highlighter
+// reaches the browser. Long lines wrap rather than scroll: a command is easier
+// to read whole, and Copy always copies the original text.
 interface Props {
   code: string;
   lang?: string;
@@ -12,6 +13,8 @@ interface Props {
   /** Hide the copy button for samples that are illustrative rather than runnable. */
   copyable?: boolean;
 }
+
+import { Code } from 'astro:components';
 
 const { code, lang = 'text', label, copyable = true } = Astro.props;
 const trimmed = code.replace(/\s+$/, '');
@@ -30,7 +33,7 @@ const trimmed = code.replace(/\s+$/, '');
       </div>
     )
   }
-  <pre><code set:text={trimmed} /></pre>
+  <Code code={trimmed} lang={lang as never} theme="css-variables" wrap />
 </div>
 
 <style>
@@ -84,20 +87,18 @@ const trimmed = code.replace(/\s+$/, '');
     border-color: var(--accent-border);
   }
 
-  .code pre {
+  .code :global(pre) {
     margin: 0;
     padding: var(--space-4);
-    overflow-x: auto;
-    background: transparent;
+    background: transparent !important;
+    overflow-wrap: anywhere;
   }
 
-  .code code {
+  .code :global(code) {
     padding: 0;
     background: none;
     font-size: var(--fs-xs);
     line-height: 1.65;
-    color: var(--text-h);
-    white-space: pre;
   }
 </style>
 

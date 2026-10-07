@@ -4,6 +4,7 @@ import mdx from '@astrojs/mdx';
 import react from '@astrojs/react';
 import sitemap from '@astrojs/sitemap';
 import rehypeTableScroll from './src/lib/rehype-table-scroll.mjs';
+import rehypeExternalLinks from './src/lib/rehype-external-links.mjs';
 
 export default defineConfig({
   site: 'https://papyra.app',
@@ -24,12 +25,13 @@ export default defineConfig({
   markdown: {
     // Tables scroll inside their own box so a wide one never makes the page
     // scroll sideways on a phone.
-    rehypePlugins: [rehypeTableScroll],
-    // Shiki runs at build time and inlines the colours, so no highlighter is
-    // shipped to the browser. Two themes, switched by the site's own
-    // data-theme attribute rather than a media query.
+    rehypePlugins: [rehypeTableScroll, rehypeExternalLinks],
+    // Shiki runs at build time, so no highlighter is shipped to the browser.
+    // The css-variables theme emits var(--astro-code-*) instead of colours;
+    // site.css maps those onto the design tokens, so code follows light/dark
+    // like everything else.
     shikiConfig: {
-      themes: { light: 'github-light', dark: 'github-dark' },
+      theme: 'css-variables',
       wrap: false,
     },
   },

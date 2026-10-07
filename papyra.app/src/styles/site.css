@@ -18,7 +18,20 @@
     0 30px 70px -28px color-mix(in srgb, var(--scrim) 42%, transparent);
 }
 
+/* Materials in the hero mock-ups, fixed in both themes because they are
+   objects, not surfaces: the phone's blue, and a Mac window's traffic lights. */
+:root {
+  --phone-metal-hi: #d6d0c7;
+  --phone-metal: #9d978e;
+  --phone-metal-lo: #827c73;
+  --phone-glare: rgb(255 255 255 / 0.16);
+  --mac-close: #ff5f57;
+  --mac-min: #febc2e;
+  --mac-max: #28c840;
+}
+
 [data-theme='dark'] {
+  --phone-glare: rgb(255 255 255 / 0.07);
   --shadow-frame:
     0 1px 2px color-mix(in srgb, var(--scrim) 40%, transparent),
     0 30px 80px -24px color-mix(in srgb, var(--scrim) 85%, transparent);
@@ -174,6 +187,20 @@ code {
   line-height: 1.5;
   color: var(--text);
   max-width: 42ch;
+}
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+/* Jumping to a heading must not land it under the sticky header. */
+.prose :is(h2, h3) {
+  scroll-margin-top: 90px;
 }
 
 .skip-link {
@@ -453,22 +480,29 @@ a.card:hover {
   margin: var(--space-8) 0;
 }
 
-/* Shiki dual-theme. Astro inlines both palettes as CSS variables on every token
-   and leaves the choice to the page; the light one is the default, and this
-   flips the whole block in dark mode. Keyed off data-theme, not a media query,
-   so it follows the site's own toggle rather than the OS. */
-[data-theme='dark'] .prose .astro-code,
-[data-theme='dark'] .prose .astro-code span {
-  color: var(--shiki-dark) !important;
-  font-style: var(--shiki-dark-font-style) !important;
-  font-weight: var(--shiki-dark-font-weight) !important;
-  text-decoration: var(--shiki-dark-text-decoration) !important;
+/* Code colours. Shiki's css-variables theme (astro.config.mjs) writes these
+   variables instead of colours; mapping them onto the design tokens means
+   every code block — docs and commands alike — flips with light/dark. */
+:root {
+  --astro-code-foreground: var(--text-h);
+  --astro-code-background: transparent;
+  --astro-code-token-function: var(--accent-text);
+  --astro-code-token-keyword: var(--accent-text);
+  --astro-code-token-string: var(--warn);
+  --astro-code-token-string-expression: var(--warn);
+  --astro-code-token-constant: var(--danger);
+  --astro-code-token-parameter: var(--danger);
+  --astro-code-token-comment: color-mix(in srgb, var(--text) 80%, transparent);
+  --astro-code-token-punctuation: var(--text);
+  --astro-code-token-link: var(--tint-link);
 }
 
-/* The block takes the dark background; its spans stay transparent, or each
-   token draws its own box over the line. */
-[data-theme='dark'] .prose .astro-code {
-  background-color: var(--shiki-dark-bg) !important;
+.astro-code {
+  background-color: var(--code-bg) !important;
+}
+
+.astro-code .line > span[style*='--astro-code-token-comment'] {
+  font-style: italic;
 }
 
 /* Inline-code chrome must not leak onto a highlighted block's <code>. */

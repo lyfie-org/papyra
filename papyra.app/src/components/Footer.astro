@@ -1,6 +1,8 @@
 ---
+import { Image } from 'astro:assets';
 import Icon from './Icon.astro';
-import { CREATOR_URL, DOCKER_HUB_URL, GITHUB_URL, LICENSE, LUTHOR_URL, LYFIE_URL } from '../data/site';
+import lyfieLogo from '../assets/lyfie_logo.png';
+import { DOCKER_HUB_URL, GITHUB_URL, LICENSE, LYFIE_URL } from '../data/site';
 
 const year = new Date().getFullYear();
 
@@ -10,7 +12,7 @@ const columns = [
     links: [
       { href: '/#features', label: 'Features' },
       { href: '/demo/', label: 'Live demo' },
-      { href: '/#journey', label: 'Journey' },
+      { href: '/#journey', label: 'Roadmap' },
       { href: '/changelog/', label: 'Changelog' },
     ],
   },
@@ -44,8 +46,8 @@ const columns = [
         A calm, beautiful home for your notes — on your own server, in plain Markdown.
       </p>
       <p class="site-footer__family">
-        A <a href={LYFIE_URL} rel="noopener">Lyfie</a> project, written with{' '}
-        <a href={LUTHOR_URL} rel="noopener">luthor</a>.
+        Built with <Icon name="heart" size={13} class="site-footer__heart" /> by{' '}
+        <a href={LYFIE_URL}>Lyfie</a>.
       </p>
       <p class="site-footer__icons">
         <a href={GITHUB_URL} rel="noopener noreferrer" aria-label="Papyra on GitHub">
@@ -53,6 +55,12 @@ const columns = [
         </a>
         <a href={DOCKER_HUB_URL} rel="noopener noreferrer" aria-label="Papyra on Docker Hub">
           <Icon name="docker" size={18} />
+        </a>
+        <a href="/demo/" aria-label="Try the Papyra demo">
+          <Icon name="play" size={17} />
+        </a>
+        <a href={LYFIE_URL} aria-label="Lyfie, the people behind Papyra">
+          <Image src={lyfieLogo} alt="" width={20} height={20} densities={[1, 2]} />
         </a>
       </p>
     </div>
@@ -81,7 +89,7 @@ const columns = [
       the {LICENSE}
     </p>
     <p>
-      Vibe-coded by <a href={CREATOR_URL} rel="noopener">Rahul</a>, with AI doing most of the typing.
+      Partly vibe-coded — life’s too short to scroll through forums.
     </p>
   </div>
 </footer>
@@ -119,6 +127,12 @@ const columns = [
     font-size: var(--fs-xs);
     color: var(--text);
     margin: 0 0 var(--space-4);
+  }
+
+  .site-footer__family :global(.site-footer__heart) {
+    color: var(--danger);
+    fill: currentColor;
+    vertical-align: -2px;
   }
 
   .site-footer__legal a,

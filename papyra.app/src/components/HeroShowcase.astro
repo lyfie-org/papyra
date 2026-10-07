@@ -1,44 +1,52 @@
 ---
 import { Image } from 'astro:assets';
 
-// The hero's product shot: a browser window cycling through three real screens
-// of the app, with the phone layout tucked in front. Screens come from
-// scripts/shoot.mjs (the demo build, staged), in both themes; CSS shows the one
-// matching the page, and the hidden theme's images are never fetched.
+// The hero's product shot: a browser window and a phone, cycling together
+// through six real screens of the app. Dashboard, search and focus come from the
+// in-browser demo (scripts/shoot.mjs); collaboration, comments and history need a
+// real server and two accounts, so they are captured from a throwaway instance
+// (blog/launch/capture/hero.mjs). Both themes exist for every screen; CSS shows
+// the one matching the page, and the hidden theme's images are never fetched.
 //
-// Tabs under the window double as the slide controls and a progress indicator.
-// It advances on its own only while on screen, and not at all for readers who
+// Tabs under the window are the slide controls and the progress indicator. It
+// advances on its own only while on screen, and not at all for readers who
 // prefer reduced motion.
 
 const shots = import.meta.glob<{ default: ImageMetadata }>('../assets/shots/*.png', { eager: true });
 const shot = (name: string, device: string, theme: string) => {
   const mod = shots[`../assets/shots/${name}-${device}-${theme}.png`];
-  if (!mod) throw new Error(`Missing shot ${name}-${device}-${theme}.png — run: pnpm --filter papyra-app run shoot`);
+  if (!mod) throw new Error(`Missing shot ${name}-${device}-${theme}.png — run scripts/shoot.mjs or blog/launch/capture/hero.mjs`);
   return mod.default;
 };
 
 const slides = [
-  { name: 'desk', label: 'Your desk', alt: 'The Papyra desk: colourful note cards in a masonry grid, pinned notes on top' },
-  { name: 'focus', label: 'Focus mode', alt: 'A note open in focus mode, with nothing on screen but the writing' },
-  { name: 'search', label: 'Search', alt: 'Search open over the desk, with every match for “pricing” highlighted' },
+  { name: 'desk', label: 'Dashboard', alt: 'The Papyra dashboard: colourful note cards with tags and pins, in a masonry grid' },
+  { name: 'collab', label: 'Collaboration', alt: 'Two people editing the same note at once, each with a named cursor' },
+  { name: 'comments', label: 'Comments', alt: 'Comments threaded beside highlighted sentences in a note' },
+  { name: 'history', label: 'History', alt: 'Version history: a timeline of saved versions and what changed, line by line' },
+  { name: 'search', label: 'Global Search', alt: 'Global search over notes, to-dos and collections, with every match highlighted' },
+  { name: 'focus', label: 'Focus', alt: 'A note open in focus mode, with nothing on screen but the writing' },
 ];
 
-const sizes = '(min-width: 80rem) 1100px, 92vw';
-const widths = [640, 960, 1280, 1600, 2200];
+const THEMES = ['light', 'dark'] as const;
+const sizes = '(min-width: 80rem) 760px, 92vw';
+const widths = [640, 960, 1280, 1600];
 ---
 
 <div class="showcase" data-showcase>
   <div class="showcase__stage">
     <div class="showcase__window">
       <div class="showcase__bar" aria-hidden="true">
-        <span></span><span></span><span></span>
+        <span class="showcase__dot showcase__dot--close"></span>
+        <span class="showcase__dot showcase__dot--min"></span>
+        <span class="showcase__dot showcase__dot--max"></span>
         <span class="showcase__url">notes.your-server.home</span>
       </div>
       <div class="showcase__screens">
         {
           slides.map((s, i) => (
             <div class="showcase__screen" data-slide={i} data-active={i === 0 ? '' : undefined}>
-              {(['light', 'dark'] as const).map((theme) => (
+              {THEMES.map((theme) => (
                 <Image
                   class={`themed themed--${theme}`}
                   src={shot(s.name, 'desktop', theme)}
@@ -56,10 +64,35 @@ const widths = [640, 960, 1280, 1600, 2200];
     </div>
 
     <div class="showcase__phone" aria-hidden="true">
-      {(['light', 'dark'] as const).map((theme) => (
-        <Image class={`themed themed--${theme}`} src={shot('desk', 'mobile', theme)} alt="" widths={[220, 440]} sizes="220px" loading="lazy" />
-      ))}
+      <div class="showcase__phone-screen">
+        <div class="showcase__status">
+          <span class="showcase__time">9:41</span>
+          <span class="showcase__camera"></span>
+          <span class="showcase__icons">
+            <svg viewBox="0 0 18 12"><rect x="0" y="8" width="3" height="4" rx="0.8"></rect><rect x="5" y="5.5" width="3" height="6.5" rx="0.8"></rect><rect x="10" y="3" width="3" height="9" rx="0.8"></rect><rect x="15" y="0" width="3" height="12" rx="0.8"></rect></svg>
+            <svg viewBox="0 0 16 12"><path d="M8 11.5 5.6 9a3.4 3.4 0 0 1 4.8 0Z"></path><path d="M3.2 6.6a6.8 6.8 0 0 1 9.6 0l-1.3 1.3a5 5 0 0 0-7 0Z"></path><path d="M.8 4.2a10.2 10.2 0 0 1 14.4 0l-1.3 1.3a8.4 8.4 0 0 0-11.8 0Z"></path></svg>
+            <span class="showcase__battery"><span></span></span>
+          </span>
+        </div>
+        {
+          slides.map((s, i) => (
+            <div class="showcase__screen" data-slide={i} data-active={i === 0 ? '' : undefined}>
+              {THEMES.map((theme) => (
+                <Image
+                  class={`themed themed--${theme}`}
+                  src={shot(s.name, 'mobile', theme)}
+                  alt=""
+                  widths={[240, 480]}
+                  sizes="240px"
+                  loading={i === 0 ? 'eager' : 'lazy'}
+                />
+              ))}
+            </div>
+          ))
+        }
+      </div>
     </div>
+
   </div>
 
   <div class="showcase__tabs" role="tablist" aria-label="App screens">
@@ -77,6 +110,7 @@ const widths = [640, 960, 1280, 1600, 2200];
 <script>
   const DWELL = 5200;
   for (const root of document.querySelectorAll<HTMLElement>('[data-showcase]')) {
+    // Window and phone each hold one screen per slide; they move together.
     const screens = [...root.querySelectorAll<HTMLElement>('[data-slide]')];
     const tabs = [...root.querySelectorAll<HTMLButtonElement>('[data-tab]')];
     const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
@@ -85,8 +119,8 @@ const widths = [640, 960, 1280, 1600, 2200];
     let onScreen = false;
 
     const show = (next: number) => {
-      index = (next + screens.length) % screens.length;
-      screens.forEach((s, i) => s.toggleAttribute('data-active', i === index));
+      index = (next + tabs.length) % tabs.length;
+      screens.forEach((s) => s.toggleAttribute('data-active', Number(s.dataset.slide) === index));
       tabs.forEach((t, i) => t.setAttribute('aria-selected', String(i === index)));
       root.style.setProperty('--dwell', `${DWELL}ms`);
       schedule();
@@ -109,12 +143,15 @@ const widths = [640, 960, 1280, 1600, 2200];
       tabs[index].focus();
     });
 
-    new IntersectionObserver(([entry]) => {
-      onScreen = entry.isIntersecting;
-      // Restart the meter from zero when it comes back into view.
-      if (onScreen) show(index);
-      else schedule();
-    }, { threshold: 0.1 }).observe(root);
+    new IntersectionObserver(
+      ([entry]) => {
+        onScreen = entry.isIntersecting;
+        // Restart the meter from zero when it comes back into view.
+        if (onScreen) show(index);
+        else schedule();
+      },
+      { threshold: 0.1 },
+    ).observe(root);
   }
 </script>
 
@@ -127,30 +164,25 @@ const widths = [640, 960, 1280, 1600, 2200];
 
   .showcase__stage {
     position: relative;
-    padding-left: clamp(0px, 5vw, 4.5rem);
-  }
-
-  /* Beside the headline, the window turns slightly toward the reader and
-     squares up when you reach for it. */
-  @media (min-width: 70rem) and (prefers-reduced-motion: no-preference) {
-    .showcase__stage {
-      transform: perspective(2400px) rotateY(-9deg) rotateX(3deg);
-      transform-origin: 0 50%;
-      transition: transform 900ms var(--ease);
-    }
-
-    .showcase:hover .showcase__stage,
-    .showcase:focus-within .showcase__stage {
-      transform: perspective(2400px) rotateY(-2deg) rotateX(1deg);
-    }
+    padding-right: clamp(2.5rem, 6vw, 5rem);
   }
 
   .showcase__window {
+    position: relative;
     border-radius: var(--radius-lg);
     overflow: hidden;
     border: 1px solid var(--border);
     background: var(--surface);
     box-shadow: var(--shadow-frame);
+    transform-origin: 0 50%;
+  }
+
+  /* Beside the headline, the window turns slightly toward the reader. It stays
+     put: no hover effect. The phone stands upright in front. */
+  @media (min-width: 70rem) {
+    .showcase__window {
+      transform: perspective(2400px) rotateY(-6deg) rotateX(1.5deg);
+    }
   }
 
   .showcase__bar {
@@ -163,11 +195,24 @@ const widths = [640, 960, 1280, 1600, 2200];
     background: color-mix(in srgb, var(--surface) 70%, var(--bg));
   }
 
-  .showcase__bar > span:not(.showcase__url) {
-    width: 10px;
-    height: 10px;
+  /* Close, minimise, expand — the colours everyone knows from a Mac. */
+  .showcase__dot {
+    width: 12px;
+    height: 12px;
     border-radius: 50%;
-    background: var(--border);
+    box-shadow: inset 0 0 0 0.5px color-mix(in srgb, var(--scrim) 22%, transparent);
+  }
+
+  .showcase__dot--close {
+    background: var(--mac-close);
+  }
+
+  .showcase__dot--min {
+    background: var(--mac-min);
+  }
+
+  .showcase__dot--max {
+    background: var(--mac-max);
   }
 
   .showcase__url {
@@ -196,8 +241,7 @@ const widths = [640, 960, 1280, 1600, 2200];
     opacity: 1;
   }
 
-  .showcase__screen :global(img),
-  .showcase__phone :global(img) {
+  .showcase__screen :global(img) {
     width: 100%;
     height: 100%;
     object-fit: cover;
@@ -217,40 +261,138 @@ const widths = [640, 960, 1280, 1600, 2200];
     display: block !important;
   }
 
+  /* A phone: one blue, a hint of sheen, a thin bezel, and a status bar so the
+     app sits under it the way it would on a real screen. */
   .showcase__phone {
     position: absolute;
-    left: 0;
-    bottom: -10%;
-    width: clamp(120px, 19%, 220px);
-    aspect-ratio: 390 / 844;
-    padding: 7px;
-    border-radius: 30px;
-    /* --scrim is a fixed near-black in both themes: a phone bezel. */
-    background: var(--scrim);
-    box-shadow: var(--shadow-frame);
+    right: 0;
+    bottom: -9%;
+    width: clamp(96px, 20%, 200px);
+    aspect-ratio: 390 / 870;
+    padding: 3px;
+    border-radius: 22px;
+    /* Brushed warm steel: one tone, a faint sheen along the left edge. */
+    background: linear-gradient(100deg, var(--phone-metal-hi), var(--phone-metal) 18%, var(--phone-metal) 82%, var(--phone-metal-lo));
+    box-shadow:
+      inset 0 0 0 1px color-mix(in srgb, var(--phone-metal-hi) 70%, transparent),
+      var(--shadow-frame);
   }
 
-  .showcase__phone :global(img) {
-    border-radius: 23px;
+  .showcase__phone-screen {
+    position: relative;
+    display: flex;
+    flex-direction: column;
+    width: 100%;
+    height: 100%;
+    overflow: hidden;
+    border-radius: 19px;
+    background: var(--bg);
+  }
+
+  /* Light across the glass: one soft diagonal band, barely there. */
+  .showcase__phone-screen::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    pointer-events: none;
+    background: linear-gradient(
+      118deg,
+      transparent 0 28%,
+      var(--phone-glare) 38%,
+      transparent 48% 100%
+    );
+  }
+
+  .showcase__phone-screen .showcase__screen {
+    top: 6%;
+  }
+
+  .showcase__status {
+    position: relative;
+    z-index: 1;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    height: 6%;
+    padding: 0 9% 0 11%;
+    background: var(--bg);
+    color: var(--text-h);
+    font: 600 clamp(6px, 0.55vw, 9px) / 1 var(--sans);
+  }
+
+  .showcase__camera {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 7px;
+    height: 7px;
+    border-radius: 50%;
+    background: var(--scrim);
+    transform: translate(-50%, -50%);
+  }
+
+  .showcase__icons {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+  }
+
+  .showcase__icons svg {
+    height: 0.9em;
+    fill: currentColor;
+  }
+
+  .showcase__battery {
+    position: relative;
+    display: inline-block;
+    width: 1.9em;
+    height: 0.95em;
+    padding: 1px;
+    border: 1px solid currentColor;
+    border-radius: 3px;
+    opacity: 0.9;
+  }
+
+  .showcase__battery::after {
+    content: '';
+    position: absolute;
+    right: -3px;
+    top: 30%;
+    width: 1.5px;
+    height: 40%;
+    border-radius: 0 1px 1px 0;
+    background: currentColor;
+  }
+
+  .showcase__battery span {
+    display: block;
+    width: 78%;
+    height: 100%;
+    border-radius: 1.5px;
+    background: currentColor;
   }
 
   .showcase__tabs {
     display: flex;
+    flex-wrap: wrap;
     justify-content: center;
-    gap: var(--space-2);
-    margin-top: clamp(var(--space-8), 6vw, var(--space-12));
+    gap: var(--space-1);
+    margin-top: clamp(var(--space-8), 5vw, var(--space-10));
+    padding-right: clamp(2.5rem, 6vw, 5rem);
   }
 
   .showcase__tab {
     display: grid;
     gap: var(--space-2);
-    min-width: 7.5rem;
+    min-width: 0;
     padding: var(--space-2) var(--space-3);
     border: none;
     border-radius: var(--radius-sm);
     background: transparent;
     font: 500 var(--fs-xs) / 1.2 var(--sans);
     color: var(--text);
+    white-space: nowrap;
     cursor: pointer;
     transition: color var(--dur-fast) var(--ease);
   }
@@ -293,23 +435,50 @@ const widths = [640, 960, 1280, 1600, 2200];
   }
 
   @media (max-width: 40rem) {
+    .showcase__stage,
+    .showcase__tabs {
+      padding-right: 0;
+    }
+
     .showcase__stage {
-      padding-left: 0;
+      padding-bottom: var(--space-6);
     }
 
     .showcase__phone {
-      display: none;
+      right: var(--space-2);
+      bottom: -4%;
+      width: 27%;
+      padding: 2px;
+      border-radius: 14px;
+    }
+
+    .showcase__phone-screen {
+      border-radius: 12px;
+    }
+
+    .showcase__camera {
+      width: 4px;
+      height: 4px;
+    }
+
+    .showcase__status {
+      font-size: 5px;
     }
 
     .showcase__url {
-      transform: none;
+      display: none;
+    }
+
+    .showcase__tabs {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      margin-top: var(--space-6);
     }
 
     .showcase__tab {
       min-width: 0;
-      flex: 1;
-      padding-inline: var(--space-1);
-      white-space: nowrap;
+      white-space: normal;
+      text-align: left;
     }
   }
 </style>
