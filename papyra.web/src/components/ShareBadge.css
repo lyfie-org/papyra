@@ -42,7 +42,7 @@
 }
 
 .share-badge:hover .share-badge__detail,
-.share-badge:focus-visible .share-badge__detail {
+.share-badge:focus .share-badge__detail {
   visibility: visible;
   opacity: 1;
 }

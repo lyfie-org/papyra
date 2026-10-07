@@ -12,6 +12,10 @@
 .dnd-card:active {
   cursor: grabbing;
 }
+/* Touch screens don't drag cards (see DraggableNoteGrid). */
+@media (hover: none), (pointer: coarse) {
+  .dnd-card, .dnd-card:active { cursor: auto; }
+}
 
 /* The lifted card shown under the cursor during a drag — fixed size, no morph. */
 .dnd-card--overlay {
