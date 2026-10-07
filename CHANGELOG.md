@@ -6,6 +6,11 @@ a Docker Hub tag and a GitHub Release.
 
 <!-- new releases are inserted directly below this line -->
 
+## [0.3.7] - 2026-10-07
+
+- fix: show where search hits live, stop PWA card pile-up, touch-friendly cards (ac38629)
+- chore: cleanup docker compose instructions (ddc25b7)
+
 ## [0.3.6] - 2026-10-06
 
 - feat: smoother first sign-in and a PWA that catches up on resume (2f7286a)
