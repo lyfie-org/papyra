@@ -177,17 +177,11 @@ const widths = [640, 960, 1280, 1600];
     transform-origin: 0 50%;
   }
 
-  /* Beside the headline, the window turns slightly toward the reader and
-     squares up when you reach for it. The phone stays upright in front. */
-  @media (min-width: 70rem) and (prefers-reduced-motion: no-preference) {
+  /* Beside the headline, the window turns slightly toward the reader. It stays
+     put: no hover effect. The phone stands upright in front. */
+  @media (min-width: 70rem) {
     .showcase__window {
-      transform: perspective(2400px) rotateY(-8deg) rotateX(2deg);
-      transition: transform 900ms var(--ease);
-    }
-
-    .showcase:hover .showcase__window,
-    .showcase:focus-within .showcase__window {
-      transform: perspective(2400px) rotateY(-2deg) rotateX(1deg);
+      transform: perspective(2400px) rotateY(-6deg) rotateX(1.5deg);
     }
   }
 
@@ -277,9 +271,10 @@ const widths = [640, 960, 1280, 1600];
     aspect-ratio: 390 / 870;
     padding: 3px;
     border-radius: 22px;
-    background: linear-gradient(160deg, var(--phone-metal-hi), var(--phone-metal) 45%);
+    /* Brushed warm steel: one tone, a faint sheen along the left edge. */
+    background: linear-gradient(100deg, var(--phone-metal-hi), var(--phone-metal) 18%, var(--phone-metal) 82%, var(--phone-metal-lo));
     box-shadow:
-      inset 0 0 0 1px color-mix(in srgb, var(--phone-metal-hi) 60%, transparent),
+      inset 0 0 0 1px color-mix(in srgb, var(--phone-metal-hi) 70%, transparent),
       var(--shadow-frame);
   }
 
@@ -292,6 +287,21 @@ const widths = [640, 960, 1280, 1600];
     overflow: hidden;
     border-radius: 19px;
     background: var(--bg);
+  }
+
+  /* Light across the glass: one soft diagonal band, barely there. */
+  .showcase__phone-screen::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    z-index: 2;
+    pointer-events: none;
+    background: linear-gradient(
+      118deg,
+      transparent 0 28%,
+      var(--phone-glare) 38%,
+      transparent 48% 100%
+    );
   }
 
   .showcase__phone-screen .showcase__screen {
