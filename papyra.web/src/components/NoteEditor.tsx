@@ -50,8 +50,7 @@ import { COLLAB_HEADER, SNAPSHOT_HEADER, keepDraftVersion } from '../lib/notesAp
 import { reviewRevision } from '../lib/reviewRevision';
 import NoteComments, { CommentsButton } from './comments/NoteComments';
 import { useComments } from '../hooks/useComments';
-import { useEditorHygiene } from '../hooks/useEditorHygiene';
-import { repairEmphasis } from '../lib/markdownSafeFormats';
+import { useReleaseSelectionOnLeave } from '../hooks/useReleaseSelectionOnLeave';
 import { fillsSheet } from '../lib/sheetHold';
 
 /*
@@ -205,7 +204,7 @@ export default function NoteEditor({ note, isDraft = false }: { note: Note; isDr
   useEffect(() => (sheetRef.current ? pauseOffscreenVideos(sheetRef.current) : undefined), []);
   useEffect(() => (sheetRef.current ? keepMediaToolbarsInView(sheetRef.current) : undefined), []);
   // Markdown-safe formatting, and no focus theft from the title (see the hook).
-  useEditorHygiene(lexicalEditor, sheetRef);
+  useReleaseSelectionOnLeave(lexicalEditor, sheetRef);
   const [title, setTitle] = useState(note.title);
   // Mirror the title in a ref so the debounced save reads the live value, not a
   // value captured in the closure of the render that scheduled it.
@@ -723,7 +722,7 @@ export default function NoteEditor({ note, isDraft = false }: { note: Note; isDr
 
   // Put one version (or the live note, for null) into the canvas.
   const previewVersion = useCallback((version: HistoryVersion | null) => {
-    editorRef.current?.setMarkdown(version ? repairEmphasis(version.body) : latestBody.current);
+    editorRef.current?.setMarkdown(version ? version.body : latestBody.current);
     settleMarkdown(editorRef.current?.getLexicalEditor());
     setPreviewTitle(version ? version.title : null);
   }, []);
@@ -1018,9 +1017,7 @@ export default function NoteEditor({ note, isDraft = false }: { note: Note; isDr
             lexical?.getRootElement()?.setAttribute('aria-label', 'Note body');
             // defaultContent loads as plain text, so parse the markdown into the
             // visual surface explicitly — otherwise the body renders as raw source.
-            // repairEmphasis: formatting an older save wrote unreadably (see
-            // lib/markdownSafeFormats) opens as the formatting it meant.
-            methods.setMarkdown(repairEmphasis(body));
+            methods.setMarkdown(body);
             // Both loads land on the undo stack, so the first Ctrl+Z after an edit
             // walked back past the note itself into that plain-text load — the
             // whole note flattened into one paragraph of raw `1. … ^id` source,
