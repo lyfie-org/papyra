@@ -46,6 +46,12 @@
   transition: background-color var(--dur-slow) var(--ease-inout);
 }
 
+/* Opening a note that will fill the sheet: full height from the first frame
+   (see lib/sheetHold). Taller than any cap, so max-height decides. */
+.note-editor--full {
+  height: 100vh;
+}
+
 .note-editor__scroll {
   position: relative; /* offsetParent for the TOC's heading offset measurements */
   flex: 1 1 auto;

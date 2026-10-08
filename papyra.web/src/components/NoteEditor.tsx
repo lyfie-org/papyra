@@ -52,6 +52,7 @@ import NoteComments, { CommentsButton } from './comments/NoteComments';
 import { useComments } from '../hooks/useComments';
 import { useEditorHygiene } from '../hooks/useEditorHygiene';
 import { repairEmphasis } from '../lib/markdownSafeFormats';
+import { fillsSheet } from '../lib/sheetHold';
 
 /*
  * luthor ≤2.9.7 serializes a just-adopted document without the Papyra preset's
@@ -174,6 +175,21 @@ export default function NoteEditor({ note, isDraft = false }: { note: Note; isDr
   // not a dependency: a new adapter would rebuild the editor's extensions.
   // Attachments' sizes and thumbnails known before the editor draws them.
   const mediaReady = useMediaMetaReady(note.body, OWN_MEDIA);
+  // A long note opens at full height rather than growing into it once the
+  // editor has loaded (see lib/sheetHold). Released when the editor is ready,
+  // or after a while whatever happens (an offline room, a locked note).
+  const [holdHeight, setHoldHeight] = useState(
+    () => !note.secure && typeof window !== 'undefined' && fillsSheet(note.body, window.innerHeight),
+  );
+  const releaseHeight = useCallback(() => {
+    // After the frame that lays out the loaded body.
+    requestAnimationFrame(() => requestAnimationFrame(() => setHoldHeight(false)));
+  }, []);
+  useEffect(() => {
+    if (!holdHeight) return;
+    const t = setTimeout(() => setHoldHeight(false), 4000);
+    return () => clearTimeout(t);
+  }, [holdHeight]);
   const getLiveEditor = useCallback(() => editorRef.current?.getLexicalEditor() ?? null, []);
   // eslint-disable-next-line react-hooks/refs -- called only from the mounted editor's toolbar, never while NoteEditor renders
   const adapter = useMemo(() => createPapyraEditorAdapter({
@@ -823,7 +839,7 @@ export default function NoteEditor({ note, isDraft = false }: { note: Note; isDr
     >
     <section
       ref={sheetRef}
-      className={`note-editor${colored ? ` note-editor--colored${tintInkClass(note.color, theme)}` : ''}${focus ? ' note-editor--focus' : ''}${history ? ` note-editor--history note-editor--history-${historyView}` : ''}`}
+      className={`note-editor${colored ? ` note-editor--colored${tintInkClass(note.color, theme)}` : ''}${focus ? ' note-editor--focus' : ''}${history ? ` note-editor--history note-editor--history-${historyView}` : ''}${holdHeight ? ' note-editor--full' : ''}`}
       style={style}
       role="dialog"
       aria-modal="true"
@@ -953,6 +969,7 @@ export default function NoteEditor({ note, isDraft = false }: { note: Note; isDr
                   lexical?.getRootElement()?.setAttribute('aria-label', 'Note body');
                   // Nothing to type into until the room has sent the note.
                   lexical?.setEditable(room.synced);
+                  releaseHeight();
                 }}
               />
             </LexicalCollaboration>
@@ -1054,6 +1071,7 @@ export default function NoteEditor({ note, isDraft = false }: { note: Note; isDr
             // never touched. The draft is clean by definition here: the editor was
             // just built from this body and nothing has been typed.
             reset({ title: titleRef.current, body: normalised });
+            releaseHeight();
           }}
         />
         )}
