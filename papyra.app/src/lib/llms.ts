@@ -84,7 +84,7 @@ export async function llmsIndex(): Promise<string> {
     '## Optional',
     '',
     `- [Everything above in one file](${SITE_URL}/llms-full.txt)`,
-    `- [Changelog](${SITE_URL}/changelog/): every release`,
+    `- [Releases](${GITHUB_URL}/releases): every release, with notes`,
     `- [API reference](${SITE_URL}/api/): the REST API`,
     `- [Contributing](${SITE_URL}/contribute/): how to help`,
     `- [Lyfie](${LYFIE_URL}): the organisation behind Papyra`,

@@ -21,7 +21,7 @@ on:
     paths:
       - 'papyra.app/**'
       - 'papyra.web/**'
-      # The changelog page reads these from the repo root (src/lib/changelog.mjs).
+      # The home page reads the current version from the repo root (src/lib/changelog.mjs).
       - 'CHANGELOG.md'
       # The contribute page renders this from the repo root.
       - 'CONTRIBUTING.md'

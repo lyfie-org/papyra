@@ -13,7 +13,7 @@ const columns = [
       { href: '/#features', label: 'Features' },
       { href: '/demo/', label: 'Live demo' },
       { href: '/#journey', label: 'Roadmap' },
-      { href: '/changelog/', label: 'Changelog' },
+      { href: `${GITHUB_URL}/releases`, label: 'Releases', external: true },
     ],
   },
   {
@@ -72,7 +72,11 @@ const columns = [
           <ul>
             {col.links.map((link) => (
               <li>
-                <a href={link.href} rel={'external' in link ? 'noopener noreferrer' : undefined}>
+                <a
+                  href={link.href}
+                  target={'external' in link ? '_blank' : undefined}
+                  rel={'external' in link ? 'noopener noreferrer' : undefined}
+                >
                   {link.label}
                 </a>
               </li>
