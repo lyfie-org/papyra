@@ -22,6 +22,17 @@ describe('parseBlocks', () => {
     expect(child.items).toHaveLength(2);
   });
 
+  it('reads formatted table cells, escaped pipes and <br> as the editor writes them', () => {
+    const md = ['| **Col** A | `x \\| y` |', '| --- | --- |', '| one<br>two | *it* |'].join('\n');
+    expect(parseBlocks(md).blocks[0]).toEqual({
+      t: 'p',
+      lines: [
+        [{ t: 'strong', c: [{ t: 'text', v: 'Col' }] }, { t: 'text', v: ' A  ·  ' }, { t: 'code', v: 'x | y' }],
+        [{ t: 'text', v: 'one two  ·  ' }, { t: 'em', c: [{ t: 'text', v: 'it' }] }],
+      ],
+    });
+  });
+
   it('nests three levels of bullets and returns to the right level', () => {
     const md = ['- a', '    - b', '        - c', '    - d', '- e'].join('\n');
     const list = parseBlocks(md).blocks[0] as ListBlock;

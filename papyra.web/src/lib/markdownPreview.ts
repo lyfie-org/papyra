@@ -89,6 +89,8 @@ const QUOTE = /^\s{0,3}>\s?(.*)$/;
 const FENCE = /^\s{0,3}(```|~~~)/;
 const EMBED_LINE = /^\s*!\[\[([^\]]+)\]\]\s*$/;
 const TABLE_RULE = /^\s*\|?\s*:?-{2,}/;
+/** `\|` after protectEscapes. */
+const ESCAPED_PIPE = protectEscapes('\\|');
 
 /** Width of leading whitespace, tabs counted as 4 (luthor nests lists by 4). */
 function indentOf(s: string): number {
@@ -195,7 +197,11 @@ export function parseBlocks(md: string, maxLines = 14): { blocks: Block[]; trunc
       const rows: Inline[][] = [];
       while (i < lines.length && lines[i].trim().startsWith('|') && !full()) {
         if (!TABLE_RULE.test(lines[i])) {
-          const cells = lines[i].trim().replace(/^\||\|$/g, '').split('|').map((c) => c.trim()).filter(Boolean);
+          // Cells hold inline markdown (bold, code, links). An escaped pipe is
+          // a plain `|` there — code spans included, as GFM reads it — and
+          // `<br>` is the line break it stands for.
+          const cells = lines[i].trim().replace(/^\||\|$/g, '').split('|')
+            .map((c) => c.replaceAll(ESCAPED_PIPE, '|').replace(/<br\s*\/?>/gi, ' ').trim()).filter(Boolean);
           rows.push(parseInline(cells.join('  ·  ')));
           used++;
         }
