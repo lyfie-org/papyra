@@ -6,6 +6,11 @@ a Docker Hub tag and a GitHub Release.
 
 <!-- new releases are inserted directly below this line -->
 
+## [0.3.10] - 2026-10-08
+
+- chore: bump @lyfie/luthor to 2.11.6 (web + collab) (e7a99c1)
+- feat: admin Logs page, readable table controls, pasted tables on note paper, embed toolbars (c81ec30)
+
 ## [0.3.9] - 2026-10-08
 
 - chore: bump @lyfie/luthor to 2.11.5; drop the markdown-safe-formats stopgap (479b7e6)
