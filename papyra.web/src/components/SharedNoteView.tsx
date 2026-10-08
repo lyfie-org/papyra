@@ -22,6 +22,8 @@ import { pauseOffscreenVideos } from '../lib/videoVisibility';
 import { keepMediaToolbarsInView } from '../lib/mediaToolbarPlacement';
 import { renderPdfExpansion } from '../lib/pdfPreview';
 import { useToast } from '../lib/toastContext';
+import { repairEmphasis } from '../lib/markdownSafeFormats';
+import { useEditorHygiene } from '../hooks/useEditorHygiene';
 import './NoteToolbar.css';
 import './SharedNoteView.css';
 
@@ -129,6 +131,7 @@ export default function SharedNoteView({
   useInPlaceWikilinks(articleRef, noop);
   useEffect(() => (articleRef.current ? pauseOffscreenVideos(articleRef.current) : undefined), []);
   useEffect(() => (articleRef.current ? keepMediaToolbarsInView(articleRef.current) : undefined), []);
+  useEditorHygiene(lexical, articleRef);
 
   const colored = !!note.color;
   const canEdit = !live && note.access === 'edit' && !!onSave;
@@ -345,7 +348,7 @@ export default function SharedNoteView({
               defaultEditorView="visual"
               defaultContent={note.body}
               adapter={adapter}
-              onReady={(m) => { m.setMarkdown(note.body); }}
+              onReady={(m) => { m.setMarkdown(repairEmphasis(note.body)); }}
             />
           ) : <CollabJoining body={note.body} />}
         </div>
@@ -366,7 +369,7 @@ export default function SharedNoteView({
         onReady={(m) => {
           editorRef.current = m;
           setLexical(m.getLexicalEditor() ?? null);
-          m.setMarkdown(note.body);
+          m.setMarkdown(repairEmphasis(note.body));
           const read = m.getMarkdown();
           baseline.current = hasBridgePlaceholder(read) ? note.body : read;
         }}
