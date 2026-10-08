@@ -24,11 +24,14 @@ import ErrorScreen from './components/ErrorScreen.tsx';
 import { crashActions } from './lib/errorActions.ts';
 import ServerErrorNotices from './components/ServerErrorNotices.tsx';
 import { installServerErrorWatch } from './lib/errorReport.ts';
+import { installClientErrorLog } from './lib/clientLog.ts';
 import { installSelectionGuards } from './lib/selectionGuards.ts';
 import { installResumeRefresh } from './lib/resume.ts';
 
 // Before anything fetches: a server 500 anywhere surfaces its reference.
 installServerErrorWatch();
+// Browser crashes reach the admin's Settings → Logs (scrubbed; see clientLog).
+installClientErrorLog();
 // Selection menus: hidden mid-drag, docked above the keyboard on a phone.
 installSelectionGuards();
 

@@ -222,6 +222,65 @@
   background-color: color-mix(in srgb, var(--note-tint) 55%, var(--tint-lift));
 }
 
+/* Table controls (the bar over a table while the caret is in a cell). luthor
+   paints it with the editor surface — transparent on a tinted note, so the
+   buttons floated bare over the text — and inks a hovered or pressed button
+   with that same surface, which made its icon vanish into a solid sage block.
+   Dress it like the attachment toolbar instead: opaque floating paper, quiet
+   flat buttons, an ink wash for hover and for the pressed header toggle, and
+   red only for "Delete table". */
+.luthor-preset-papyra .luthor-table-bubble-menu {
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--luthor-border);
+  border-radius: var(--radius-md);
+  background: var(--luthor-floating-bg);
+  box-shadow: var(--shadow);
+}
+.luthor-preset-papyra .luthor-table-bubble-checkbox {
+  height: auto;
+  padding: 0;
+}
+.luthor-preset-papyra .luthor-table-bubble-button {
+  height: 28px;
+  min-width: 28px;
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: transparent;
+  color: var(--luthor-fg);
+  transition: background-color var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+.luthor-preset-papyra .luthor-table-bubble-button-icon { width: 28px; }
+.luthor-preset-papyra .luthor-table-bubble-button:hover {
+  border-color: transparent;
+  background: var(--luthor-toolbar-button-hover-bg, var(--luthor-muted));
+  color: var(--luthor-fg);
+}
+.luthor-preset-papyra .luthor-table-bubble-button-active,
+.luthor-preset-papyra .luthor-table-bubble-button-active:hover {
+  border-color: transparent;
+  background: var(--luthor-toolbar-button-active-bg, var(--luthor-muted));
+  color: var(--luthor-toolbar-button-active-fg, var(--luthor-fg));
+}
+/* Set apart from the row/column tools: it removes the whole table. */
+.luthor-preset-papyra .luthor-table-bubble-button-danger {
+  margin-left: var(--space-1);
+}
+.luthor-preset-papyra .luthor-table-bubble-button-danger:hover {
+  border-color: transparent;
+  background: color-mix(in srgb, var(--danger) 14%, transparent);
+  color: var(--danger);
+}
+/* On a tint the theme's red can sink below AA; the note's own ink holds. */
+.luthor-preset-papyra--colored .luthor-table-bubble-button-danger:hover {
+  background: var(--papyra-toolbar-active-surface);
+  color: var(--tint-ink);
+}
+.luthor-preset-papyra .luthor-table-bubble-button:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
+}
+
 /* Toolbar dropdowns (block type, font, size…). luthor marks the chosen option
    with a solid accent bar inked in the editor surface colour — which a coloured
    note makes transparent, so the label vanished into a blank green bar. Mark it

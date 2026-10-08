@@ -12,7 +12,7 @@ import { useTheme } from '../hooks/useTheme';
 import { createPapyraEditorAdapter, OWN_MEDIA } from '../lib/papyraEditorAdapter';
 import { useMediaMetaReady } from '../lib/mediaMeta';
 import { tintInkClass } from '../lib/noteColors';
-import { PAPYRA_TOOLBAR_LAYOUT, createToolbarItems } from '../lib/editorToolbar';
+import { PAPYRA_EDITOR_FEATURES, PAPYRA_TOOLBAR_LAYOUT, createToolbarItems } from '../lib/editorToolbar';
 import { putNote } from '../lib/notesApi';
 import { patchNoteInCache } from '../lib/notesCache';
 import { patchDraft } from '../lib/noteDrafts';
@@ -51,6 +51,7 @@ import { reviewRevision } from '../lib/reviewRevision';
 import NoteComments, { CommentsButton } from './comments/NoteComments';
 import { useComments } from '../hooks/useComments';
 import { useReleaseSelectionOnLeave } from '../hooks/useReleaseSelectionOnLeave';
+import { usePlainTableCells } from '../hooks/usePlainTableCells';
 import { fillsSheet } from '../lib/sheetHold';
 
 /*
@@ -205,6 +206,8 @@ export default function NoteEditor({ note, isDraft = false }: { note: Note; isDr
   useEffect(() => (sheetRef.current ? keepMediaToolbarsInView(sheetRef.current) : undefined), []);
   // Markdown-safe formatting, and no focus theft from the title (see the hook).
   useReleaseSelectionOnLeave(lexicalEditor, sheetRef);
+  // Pasted tables lose their cell colours and sit on the note's paper.
+  usePlainTableCells(lexicalEditor);
   const [title, setTitle] = useState(note.title);
   // Mirror the title in a ref so the debounced save reads the live value, not a
   // value captured in the closure of the render that scheduled it.
@@ -943,6 +946,7 @@ export default function NoteEditor({ note, isDraft = false }: { note: Note; isDr
                 luthor's PapyraEditor doesn't add it. */}
             <LexicalCollaboration>
               <PapyraEditor
+                featureFlags={PAPYRA_EDITOR_FEATURES}
                 // A new session (reconnect, access change) is a new Yjs doc: a
                 // fresh editor.
                 key={`${note.id}-live-${room.generation}`}
@@ -984,6 +988,7 @@ export default function NoteEditor({ note, isDraft = false }: { note: Note; isDr
             (read-only: its edits belong to the room). */}
         {(!collabLive || history || (room.status === 'offline' && !room.collaboration)) && (
         <PapyraEditor
+          featureFlags={PAPYRA_EDITOR_FEATURES}
           key={`${note.id}-${editorKey}${collabLive ? '-ro' : ''}`}
           readOnly={collabLive}
           initialTheme={theme}

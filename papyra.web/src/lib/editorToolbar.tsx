@@ -12,6 +12,14 @@ import { pickFile } from './pickFile';
 const ICON = { size: 16, strokeWidth: 2 } as const;
 
 /**
+ * Editor features Papyra turns on over the papyra preset's defaults. The
+ * preset ships YouTube and web-page embeds off: the insert menu could still add
+ * them, but a selected one got no toolbar — no alignment, caption, link, move
+ * or remove. Both round-trip through markdown (`![[youtube:url|WxH]]`).
+ */
+export const PAPYRA_EDITOR_FEATURES = { youTubeEmbed: true, iframeEmbed: true } as const;
+
+/**
  * Eight controls instead of twenty-odd: the block style picker, then groups
  * that open a small row of their tools (a group lights up while something
  * inside it is on), then Papyra's note-linking and insert menu.
