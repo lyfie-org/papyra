@@ -6,6 +6,14 @@ a Docker Hub tag and a GitHub Release.
 
 <!-- new releases are inserted directly below this line -->
 
+## [0.3.9] - 2026-10-08
+
+- chore: bump @lyfie/luthor to 2.11.5; drop the markdown-safe-formats stopgap (479b7e6)
+- fix(editor): open long notes at full height instead of growing into it (c418ec8)
+- feat(site): drop changelog page; version tags link to GitHub releases (c5fd66b)
+- fix(cards): read escaped pipes and <br> in table cells (1fba0d2)
+- fix(editor): keep pasted formatting saveable and stop the title losing focus (5d09f3d)
+
 ## [0.3.8] - 2026-10-07
 
 - chore: bump @lyfie/luthor to 2.11.3; drop the list-bullet override (e08d643)
