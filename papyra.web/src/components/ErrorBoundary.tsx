@@ -1,5 +1,6 @@
 import { Component, type ErrorInfo as ReactErrorInfo, type ReactNode } from 'react';
 import { clientErrorInfo, type ErrorInfo } from '../lib/errorReport';
+import { reportClientError } from '../lib/clientLog';
 
 interface Props {
   /** What to draw instead: gets the failure and a way to try rendering again. */
@@ -28,6 +29,7 @@ export default class ErrorBoundary extends Component<Props, State> {
   componentDidCatch(error: unknown, react: ReactErrorInfo) {
     console.error('[papyra] render crash', error);
     this.setState({ info: clientErrorInfo(error, react.componentStack) });
+    reportClientError(error, react.componentStack);
   }
 
   private reset = () => this.setState({ info: null });

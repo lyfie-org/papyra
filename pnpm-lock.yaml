@@ -130,6 +130,9 @@ importers:
       '@lexical/react':
         specifier: 0.40.0
         version: 0.40.0(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(yjs@13.6.33)
+      '@lexical/table':
+        specifier: 0.40.0
+        version: 0.40.0
       '@lexical/yjs':
         specifier: 0.40.0
         version: 0.40.0(yjs@13.6.33)

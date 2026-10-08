@@ -23,6 +23,8 @@ import { keepMediaToolbarsInView } from '../lib/mediaToolbarPlacement';
 import { renderPdfExpansion } from '../lib/pdfPreview';
 import { useToast } from '../lib/toastContext';
 import { useReleaseSelectionOnLeave } from '../hooks/useReleaseSelectionOnLeave';
+import { usePlainTableCells } from '../hooks/usePlainTableCells';
+import { PAPYRA_EDITOR_FEATURES } from '../lib/editorToolbar';
 import './NoteToolbar.css';
 import './SharedNoteView.css';
 
@@ -131,6 +133,7 @@ export default function SharedNoteView({
   useEffect(() => (articleRef.current ? pauseOffscreenVideos(articleRef.current) : undefined), []);
   useEffect(() => (articleRef.current ? keepMediaToolbarsInView(articleRef.current) : undefined), []);
   useReleaseSelectionOnLeave(lexical, articleRef);
+  usePlainTableCells(lexical);
 
   const colored = !!note.color;
   const canEdit = !live && note.access === 'edit' && !!onSave;
@@ -317,6 +320,7 @@ export default function SharedNoteView({
                   luthor's PapyraEditor doesn't add it. */}
               <LexicalCollaboration>
                 <PapyraEditor
+                  featureFlags={PAPYRA_EDITOR_FEATURES}
                   // A new session (reconnect, access change) is a new Yjs doc.
                   key={`live-${room.generation}`}
                   initialTheme={editorTheme}
@@ -340,6 +344,7 @@ export default function SharedNoteView({
           ) : room.status === 'offline' ? (
             // Never reached the room: the last text we have, read-only.
             <PapyraEditor
+              featureFlags={PAPYRA_EDITOR_FEATURES}
               key="offline"
               initialTheme={editorTheme}
               colored={colored}
@@ -355,6 +360,7 @@ export default function SharedNoteView({
 
       {!live && mediaReady && (
       <PapyraEditor
+        featureFlags={PAPYRA_EDITOR_FEATURES}
         // Re-mounted when access changes, so an approval turns the page
         // editable in place. Theme and tint apply without a remount.
         key={canEdit ? 'edit' : 'view'}

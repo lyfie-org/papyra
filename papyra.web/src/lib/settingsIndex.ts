@@ -96,6 +96,7 @@ export const SETTINGS_INDEX: SettingsEntry[] = [
 
   { tab: 'jobs', tabLabel: 'Jobs', adminOnly: true, keywords: ['background', 'housekeeping', 'maintenance', 'tasks'] },
   { tab: 'jobs', tabLabel: 'Jobs', section: 'scheduled-jobs', sectionLabel: 'Housekeeping', adminOnly: true, keywords: ['empty trash', 'cleanup', 'sweep', 'run now', 'schedule', 'rebuild search', 'reindex', 'missing notes'] },
+  { tab: 'logs', tabLabel: 'Logs', section: 'log-retention', sectionLabel: 'Logs', adminOnly: true, keywords: ['errors', 'log', 'warnings', 'diagnostics', 'debug', 'report a bug', 'issue', 'retention', 'activity'] },
   { tab: 'jobs', tabLabel: 'Jobs', section: 'always-on-jobs', sectionLabel: 'Always running', adminOnly: true, keywords: ['watcher', 'mentions', 'webhooks', 'search index'] },
 
   { tab: 'about', tabLabel: 'About', keywords: ['version', 'licence', 'license'] },

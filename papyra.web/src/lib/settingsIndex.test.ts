@@ -3,6 +3,7 @@ import { describe, it, expect } from 'vitest';
 // describes what SettingsPage actually renders.
 import settingsPage from '../pages/SettingsPage.tsx?raw';
 import aboutPanel from '../components/AboutPanel.tsx?raw';
+import logsPanel from '../components/LogsPanel.tsx?raw';
 import deleteAccount from '../components/DeleteAccountSection.tsx?raw';
 import authenticator from '../components/AuthenticatorSection.tsx?raw';
 import sessions from '../components/SessionsSection.tsx?raw';
@@ -45,7 +46,7 @@ describe('settingsIndex', () => {
       ...[...src.matchAll(/<Setting(?:Group|Row)[^>]*?id="([a-z-]+)"/gs)].map(m => m[1]),
     ];
     const ids = new Set([
-      ...anchors(settingsPage), ...anchors(account), ...anchors(sso), ...anchors(authenticator), ...anchors(sessions),
+      ...anchors(settingsPage), ...anchors(logsPanel), ...anchors(account), ...anchors(sso), ...anchors(authenticator), ...anchors(sessions),
       // The About tab is its own component.
       ...[...aboutPanel.matchAll(/<h2 id="([a-z-]+)"/g)].map(m => m[1]),
       ...[...deleteAccount.matchAll(/<h2 id="([a-z-]+)"/g)].map(m => m[1]),

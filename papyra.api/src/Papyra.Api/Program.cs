@@ -147,6 +147,13 @@ builder.Services.AddSingleton<VaultObserver>();
 // looking" has an answer that is not the server log.
 builder.Services.AddSingleton<JobRegistry>();
 
+// The instance's own rolling log for Settings → Logs: every ILogger call is
+// scrubbed of personal data (LogScrubber) and kept as hourly files under
+// .papyra/logs, expired by the retention the admin picks.
+builder.Services.AddSingleton<ActivityLogStore>();
+builder.Services.AddSingleton<ILoggerProvider, ActivityLoggerProvider>();
+builder.Services.AddHostedService<LogCleanupJob>();
+
 builder.Services.AddHostedService<ColdBootDiffService>();
 builder.Services.AddHostedService<LockedNoteSweepService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<VaultObserver>());
@@ -471,6 +478,7 @@ builder.Services.AddSingleton<EmailSender>();
 const string UserSearchRateLimit = "user-search";
 const string AuthRateLimit = "auth";
 const string PreviewRateLimit = "previews";
+const string ClientLogRateLimit = "client-logs";
 
 // The mention typeahead is the one endpoint on which any tenant can ask about
 // accounts other than their own, so it gets a per-account budget: comfortably
@@ -490,6 +498,17 @@ builder.Services.AddRateLimiter(options =>
                 PermitLimit = 30,
                 Window = TimeSpan.FromSeconds(10),
                 QueueLimit = 0, // shed instead of queueing: a stale suggestion is useless
+            }));
+
+    // Browser errors sent to the instance log: a crash loop must not fill it.
+    options.AddPolicy(ClientLogRateLimit, ctx =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            ctx.User.FindFirstValue(ClaimTypes.NameIdentifier) ?? ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 10,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0,
             }));
 
     // Credential endpoints, keyed on the caller's address — the blunt half of the
@@ -723,7 +742,10 @@ app.Use(async (context, next) =>
     catch (Exception ex)
     {
         var errorId = ErrorPages.NewErrorId();
-        app.Logger.LogError(ex, "Unhandled error {ErrorId} on {Method} {Path}", errorId, context.Request.Method, context.Request.Path.Value);
+        // The route template ("/api/notes/{id}") says where without saying whose;
+        // the concrete path is for the host's console only (Settings → Logs drops it).
+        var route = (context.GetEndpoint() as RouteEndpoint)?.RoutePattern.RawText ?? "(no route)";
+        app.Logger.LogError(ex, "Unhandled error {ErrorId} on {Method} {Route} ({Path})", errorId, context.Request.Method, route, context.Request.Path.Value);
         if (context.Response.HasStarted) throw;
         await ErrorPages.WriteAsync(context, ErrorPages.For(context, ex, errorId, errorDetails, serverVersion));
     }
@@ -2642,6 +2664,61 @@ jobsApi.MapPost("/{id}/run", async (string id, JobRegistry jobs, CancellationTok
         finishedUtc = run.FinishedUtc,
     });
 });
+
+// ── Logs ──────────────────────────────────────────────────────────────────────
+// Admin-only: what the instance has been doing and what went wrong, scrubbed of
+// anything personal so an entry can be pasted straight into a public issue.
+var logsApi = app.MapGroup("/api/logs").RequireAuthorization(p => p.RequireRole("Admin")).WithTags("Admin");
+
+logsApi.MapGet("/", async (AppDbContext db, ActivityLogStore store, string? level, DateTime? before, int? limit, CancellationToken ct) =>
+{
+    if (level is not null && level is not ("error" or "warning" or "info"))
+        return Results.BadRequest(new { error = "Unknown level." });
+    var hours = await LogRetention.ReadHours(db, ct);
+    var take = Math.Clamp(limit ?? 100, 1, 500);
+    var (entries, hasMore) = await store.ReadAsync(
+        DateTime.UtcNow.AddHours(-hours), level, before?.ToUniversalTime(), take, ct);
+    return Results.Ok(new { retentionHours = hours, entries, hasMore });
+});
+
+logsApi.MapPut("/retention", async (LogRetentionWrite body, AppDbContext db, ActivityLogStore store, CancellationToken ct) =>
+{
+    if (!LogRetention.Allowed.Contains(body.Hours))
+        return Results.BadRequest(new { error = "Choose one of the listed periods." });
+    var row = await db.Settings.FindAsync([LogRetention.Key], ct);
+    if (row is null) db.Settings.Add(new AppSetting { Key = LogRetention.Key, Value = body.Hours.ToString() });
+    else row.Value = body.Hours.ToString();
+    await db.SaveChangesAsync(ct);
+    // A shorter window applies now, not at the next hourly sweep.
+    store.Sweep(DateTime.UtcNow.AddHours(-body.Hours));
+    return Results.Ok(new { retentionHours = body.Hours });
+});
+
+logsApi.MapDelete("/", (ActivityLogStore store) =>
+{
+    store.Clear();
+    return Results.NoContent();
+});
+
+// Any signed-in browser reports its own crashes here (render errors, uncaught
+// exceptions); they land in the admin's log as "Browser". Scrubbed like the
+// server's: the route is a pattern, the message and frames are patterns too.
+app.MapPost("/api/logs/client", (ClientLogReport body, ActivityLogStore store) =>
+{
+    var message = LogScrubber.Scrub(body.Message ?? "");
+    if (message.Length == 0) return Results.BadRequest(new { error = "Nothing to log." });
+    if (message.Length > 1_000) message = message[..1_000] + "…";
+    // Client routes are patterns ("/note/:id"); anything else is dropped.
+    var route = body.Route is { Length: <= 120 } r && System.Text.RegularExpressions.Regex.IsMatch(r, "^/[a-z0-9/:_-]*$") ? r : null;
+    var stack = string.Join("\n\n", new[] { body.Stack, body.ComponentStack }
+        .Where(t => !string.IsNullOrWhiteSpace(t))
+        .Select(t => LogScrubber.Scrub(t!.Length > 6_000 ? t[..6_000] : t)));
+    store.Add(new ActivityLogEntry(
+        ActivityLogStore.NewId(), DateTime.UtcNow, "error", "Browser",
+        route is null ? message : $"{message} (on {route})",
+        stack.Length == 0 ? null : new ActivityLogException(body.Type is { Length: <= 80 } t && System.Text.RegularExpressions.Regex.IsMatch(t, "^[A-Za-z][A-Za-z0-9_.]*$") ? t : "Error", message, stack)));
+    return Results.Accepted();
+}).RequireAuthorization().RequireRateLimiting(ClientLogRateLimit).WithTags("Admin");
 
 // ── Admin user management ──────────────────────────────────────────────────────
 // Role-gated provisioning for the settings Admin tab. Provisioned users get their
@@ -7355,6 +7432,9 @@ public sealed record NoteWrite(
     string? Kind = null,
     // Nullable on purpose: omitted means "leave the existing lock state alone".
     bool? Secure = null);
+
+public sealed record LogRetentionWrite(int Hours);
+public sealed record ClientLogReport(string? Message, string? Type, string? Stack, string? ComponentStack, string? Route);
 
 // An editor's unsaved draft, kept as a version (POST /api/notes/{id}/snapshots).
 public sealed record DraftVersion(string? Title, string? Body);
