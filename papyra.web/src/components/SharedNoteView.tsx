@@ -22,6 +22,7 @@ import { pauseOffscreenVideos } from '../lib/videoVisibility';
 import { keepMediaToolbarsInView } from '../lib/mediaToolbarPlacement';
 import { renderPdfExpansion } from '../lib/pdfPreview';
 import { useToast } from '../lib/toastContext';
+import { useReleaseSelectionOnLeave } from '../hooks/useReleaseSelectionOnLeave';
 import './NoteToolbar.css';
 import './SharedNoteView.css';
 
@@ -129,6 +130,7 @@ export default function SharedNoteView({
   useInPlaceWikilinks(articleRef, noop);
   useEffect(() => (articleRef.current ? pauseOffscreenVideos(articleRef.current) : undefined), []);
   useEffect(() => (articleRef.current ? keepMediaToolbarsInView(articleRef.current) : undefined), []);
+  useReleaseSelectionOnLeave(lexical, articleRef);
 
   const colored = !!note.color;
   const canEdit = !live && note.access === 'edit' && !!onSave;

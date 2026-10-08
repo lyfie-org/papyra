@@ -399,7 +399,13 @@ const when = (m: (typeof JOURNEY)[number]) =>
                 </h3>
                 <p>{m.text}</p>
                 {m.version && (
-                  <a class="journey__tag" href={m.version === '1.0' ? `${GITHUB_URL}/releases` : `/changelog/#v${m.version}`}>
+                  <a
+                    class="journey__tag"
+                    href={`${GITHUB_URL}/releases/tag/v${m.version === '1.0' ? '1.0.0' : m.version}`}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    aria-label={`Release v${m.version} on GitHub`}
+                  >
                     v{m.version}
                   </a>
                 )}
@@ -417,7 +423,7 @@ const when = (m: (typeof JOURNEY)[number]) =>
         <button type="button" class="btn btn--ghost" data-journey-toggle aria-expanded="false">
           Show all {JOURNEY.length} milestones
         </button>
-        <a href="/changelog/">Full changelog</a>
+        <a href={`${GITHUB_URL}/releases`} target="_blank" rel="noopener noreferrer">All releases</a>
       </div>
     </div>
   </section>
