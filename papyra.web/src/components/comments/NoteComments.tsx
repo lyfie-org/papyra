@@ -9,6 +9,8 @@ import { useToast } from '../../lib/toastContext';
 import type { CommentThread, useComments } from '../../hooks/useComments';
 import './comments.css';
 
+const NO_ANCHORS = new Map<number, Range>();
+
 type Api = ReturnType<typeof useComments>;
 
 const HOVER_SHOW_MS = 180;
@@ -74,7 +76,7 @@ export default function NoteComments({
 }) {
   const data = api.data;
   const { toast } = useToast();
-  const [anchors, setAnchors] = useState<Map<number, Range>>(new Map());
+  const [foundAnchors, setAnchors] = useState<Map<number, Range>>(NO_ANCHORS);
   // The note text the anchors were found in — so "not found" is only believed
   // once the note has actually rendered (a live note syncs after mount).
   const [anchoredText, setAnchoredText] = useState<string | null>(null);
@@ -91,10 +93,13 @@ export default function NoteComments({
   const threads = useMemo(() => data?.threads ?? [], [data]);
   const open = threads.filter(t => !t.resolved);
   const rail = focusMode && railBox !== null;
+  // No note to look in, or nothing to look for: nothing is anchored (derived
+  // here, not cleared from the effect below).
+  const anchors = rootEl && threads.length > 0 ? foundAnchors : NO_ANCHORS;
 
   // ── Find every open thread's passage; again whenever the note changes ─────
   useEffect(() => {
-    if (!rootEl || threads.length === 0) { setAnchors(new Map()); return; }
+    if (!rootEl || threads.length === 0) return;
     let timer: number | undefined;
     const run = () => {
       const index = buildTextIndex(rootEl);
@@ -303,7 +308,9 @@ export default function NoteComments({
     opened.current = openThreadId;
     if (range) {
       range.startContainer.parentElement?.scrollIntoView({ block: 'center', behavior: 'smooth' });
-      setActive(openThreadId);
+      // Opened once the scroll has started, not inside this effect's commit.
+      const id = openThreadId;
+      queueMicrotask(() => setActive(id));
     } else {
       onPanelOpen();
     }

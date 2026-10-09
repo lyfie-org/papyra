@@ -18,6 +18,38 @@ describe('toEmbedResolution', () => {
     expect(src.searchParams.get('output')).toBe('embed');
   });
 
+  // Real share links (2026-10), and where the server's redirect-following landed.
+  it('embeds a real maps.app.goo.gl pin share at its coordinates', () => {
+    const r = toEmbedResolution({
+      ...base,
+      url: 'https://maps.app.goo.gl/GqVdG8He3DA1De4w6',
+      finalUrl: 'https://www.google.com/maps/place/30.956911,34.790920/data=!4m6!3m5!1s0!7e2!8m2!3d30.956910699999998!4d34.7909201!18m1!1e1?utm_source=mstt_1&entry=gps',
+      frameable: false,
+    });
+    expect(r.type).toBe('iframe');
+    if (r.type !== 'iframe') return;
+    const src = new URL(r.src);
+    expect(src.searchParams.get('q')).toBe('30.956911,34.790920');
+    expect(src.searchParams.get('ll')).toBe('30.956910699999998,34.7909201');
+    expect(src.searchParams.get('z')).toBe('15'); // street level, not the whole world
+    expect(src.searchParams.get('output')).toBe('embed');
+  });
+
+  it('embeds a real maps.apple/p/ share as the same place', () => {
+    const r = toEmbedResolution({
+      ...base,
+      url: 'https://maps.apple/p/U8rE9v8n8iVZjr',
+      finalUrl: 'https://maps.apple.com/place?address=Apple%20Inc.,%201%20Apple%20Park%20Way,%20Cupertino,%20CA%2095014,%20United%20States&coordinate=37.334859,-122.009040&name=Apple%20Park&place-id=I7C250D2CDCB364A&map=h',
+      frameable: false,
+    });
+    expect(r.type).toBe('iframe');
+    if (r.type !== 'iframe') return;
+    const src = new URL(r.src);
+    expect(src.searchParams.get('q')).toBe('Apple Park');
+    expect(src.searchParams.get('ll')).toBe('37.334859,-122.00904');
+    expect(src.searchParams.get('z')).toBe('15');
+  });
+
   it("sees through a consent page to where the short link was going", () => {
     const r = toEmbedResolution({
       ...base,

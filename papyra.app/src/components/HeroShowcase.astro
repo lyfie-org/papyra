@@ -2,8 +2,8 @@
 import { Image } from 'astro:assets';
 
 // The hero's product shot: a browser window and a phone, cycling together
-// through six real screens of the app. Dashboard, search and focus come from the
-// in-browser demo (scripts/shoot.mjs); collaboration, comments and history need a
+// through seven real screens of the app. Dashboard, search, focus and slash
+// commands come from the in-browser demo (scripts/shoot.mjs); collaboration, comments and history need a
 // real server and two accounts, so they are captured from a throwaway instance
 // (blog/launch/capture/hero.mjs). Both themes exist for every screen; CSS shows
 // the one matching the page, and the hidden theme's images are never fetched.
@@ -25,6 +25,7 @@ const slides = [
   { name: 'comments', label: 'Comments', alt: 'Comments threaded beside highlighted sentences in a note' },
   { name: 'history', label: 'History', alt: 'Version history: a timeline of saved versions and what changed, line by line' },
   { name: 'search', label: 'Global Search', alt: 'Global search over notes, to-dos and collections, with every match highlighted' },
+  { name: 'slash', label: 'Slash commands', alt: 'Typing / in a note opens a menu of headings, lists, tables, pictures and embeds' },
   { name: 'focus', label: 'Focus', alt: 'A note open in focus mode, with nothing on screen but the writing' },
 ];
 
@@ -479,6 +480,11 @@ const widths = [640, 960, 1280, 1600];
       min-width: 0;
       white-space: normal;
       text-align: left;
+    }
+
+    /* A lone tab on the last row sits in the middle, not hanging left. */
+    .showcase__tab:last-child:nth-child(3n + 1) {
+      grid-column: 2;
     }
   }
 </style>

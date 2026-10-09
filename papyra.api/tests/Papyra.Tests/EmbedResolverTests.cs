@@ -1,5 +1,8 @@
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.Extensions.Logging.Abstractions;
+using System.Net.Http.Json;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.Extensions.DependencyInjection;
 using Papyra.Api.Storage;
 
 namespace Papyra.Tests;
@@ -141,5 +144,52 @@ public sealed class EmbedResolverTests
         Assert.Null(await WebArchiverService.ProbeAsync("http://127.0.0.1/", NullLogger.Instance, CancellationToken.None));
         Assert.Null(await WebArchiverService.ProbeAsync("http://169.254.169.254/latest/meta-data", NullLogger.Instance, CancellationToken.None));
         Assert.Null(await WebArchiverService.FetchJsonAsync("https://localhost/o", NullLogger.Instance, CancellationToken.None));
+    }
+}
+
+public sealed class EmbedResolveEndpointTests
+{
+    [Fact]
+    public async Task SignedInOnly_ValidatesTheLink_AndHasItsOwnRateLimit()
+    {
+        var dir = Path.Combine(Path.GetTempPath(), "papyra-embed-" + Guid.NewGuid().ToString("N"));
+        Directory.CreateDirectory(dir);
+        var factory = new Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactory<Program>().WithWebHostBuilder(b =>
+        {
+            b.UseEnvironment("Development");
+            b.UseSetting("Papyra:DataDir", dir);
+        });
+        try
+        {
+            // No network: every probe lands on a page that refuses framing.
+            var service = factory.Services.GetRequiredService<EmbedResolverService>();
+            service.Probe = (url, _) => Task.FromResult<WebArchiverService.PageProbe?>(new(
+                new Uri(url.Replace("short.example", "long.example")), "DENY", null, "text/html", "<head><title>T</title></head>"));
+
+            var admin = factory.CreateClient();
+            await admin.PostSetupAsync(new SetupRequest(Username: "admin", Name: "Admin", Email: "a@b.c", Password: "hunter2!"));
+
+            var anonymous = factory.CreateClient();
+            Assert.Equal(System.Net.HttpStatusCode.Unauthorized,
+                (await anonymous.GetAsync("/api/embed/resolve?url=https://short.example/a")).StatusCode);
+            Assert.Equal(System.Net.HttpStatusCode.BadRequest, (await admin.GetAsync("/api/embed/resolve")).StatusCode);
+
+            var ok = await admin.GetFromJsonAsync<System.Text.Json.JsonElement>("/api/embed/resolve?url=https://short.example/a");
+            Assert.Equal("https://long.example/a", ok.GetProperty("finalUrl").GetString());
+            Assert.False(ok.GetProperty("frameable").GetBoolean());
+
+            // 30 a minute for embeds — and link previews keep their own budget.
+            var statuses = new List<System.Net.HttpStatusCode>();
+            for (var i = 0; i < 31; i++)
+                statuses.Add((await admin.GetAsync($"/api/embed/resolve?url=https://short.example/{i}")).StatusCode);
+            Assert.Contains((System.Net.HttpStatusCode)429, statuses);
+            Assert.NotEqual((System.Net.HttpStatusCode)429, (await admin.GetAsync("/api/link-preview?url=https://x.invalid/")).StatusCode);
+        }
+        finally
+        {
+            factory.Dispose();
+            Microsoft.Data.Sqlite.SqliteConnection.ClearAllPools();
+            try { Directory.Delete(dir, recursive: true); } catch (IOException) { }
+        }
     }
 }

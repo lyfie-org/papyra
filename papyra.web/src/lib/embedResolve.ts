@@ -35,12 +35,30 @@ export function unwrapInterstitial(url: string): string {
   return url;
 }
 
+/**
+ * A pin with no zoom of its own (a shared pin's landing link) opens on the whole
+ * world. STOPGAP: luthor's toEmbeddableUrl does this itself after 2.11.7 —
+ * remove once Papyra is on that release (the tests below keep passing).
+ */
+function withPinZoom(src: string): string {
+  try {
+    const u = new URL(src);
+    if (u.hostname === 'www.google.com' && u.pathname === '/maps' && u.searchParams.has('ll') && !u.searchParams.has('z')) {
+      u.searchParams.set('z', '15');
+      return u.toString();
+    }
+  } catch {
+    /* not a URL: leave it */
+  }
+  return src;
+}
+
 /** Turn the server's findings into what the editor should place. */
 export function toEmbedResolution(data: ServerEmbedResolution): PapyraEmbedResolution {
   const title = data.title ?? undefined;
   // A short link that landed somewhere well-known (maps.app.goo.gl → Google Maps).
   const known = toEmbeddableUrl(unwrapInterstitial(data.finalUrl));
-  if (known) return { type: 'iframe', src: known.src, title: known.title ?? title, width: known.width, height: known.height };
+  if (known) return { type: 'iframe', src: withPinZoom(known.src), title: known.title ?? title, width: known.width, height: known.height };
   if (data.embedSrc) {
     return { type: 'iframe', src: data.embedSrc, title, width: data.width ?? undefined, height: data.height ?? undefined };
   }

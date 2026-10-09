@@ -54,6 +54,26 @@ export function placeBarVertically(natural: number, height: number, frame: { top
   return max < min ? min : Math.min(Math.max(natural, min), max);
 }
 
+/**
+ * A document card is small and sits alone on its line, so its bar goes beside
+ * it — right, else left — level with the card, covering nothing (above or below
+ * it covered the line or the card next to it). Returns the bar's viewport
+ * left/top, or null when neither side has room (then it goes above/below).
+ */
+export function placeBarBeside(
+  bar: { width: number; height: number },
+  card: { left: number; right: number; top: number; bottom: number },
+  bounds: { left: number; right: number; top: number; bottom: number },
+): { left: number; top: number } | null {
+  const top = Math.round(card.top + (card.bottom - card.top - bar.height) / 2);
+  if (top < bounds.top + EDGE || top + bar.height > bounds.bottom - EDGE) return null;
+  const right = card.right + GAP;
+  if (right + bar.width <= bounds.right) return { left: Math.round(right), top };
+  const left = card.left - GAP - bar.width;
+  if (left >= bounds.left) return { left: Math.round(left), top };
+  return null;
+}
+
 export function keepMediaToolbarsInView(root: HTMLElement): () => void {
   if (typeof ResizeObserver === 'undefined' || typeof MutationObserver === 'undefined') return () => {};
   let frame = 0;
@@ -75,6 +95,18 @@ export function keepMediaToolbarsInView(root: HTMLElement): () => void {
       bar.style.removeProperty(SHIFT_Y);
       bar.style.removeProperty('max-width');
       let rect = bar.getBoundingClientRect();
+
+      const card = bar.closest('.luthor-media--host-card')?.querySelector('.luthor-media__frame');
+      if (card) {
+        const beside = placeBarBeside(rect, card.getBoundingClientRect(), {
+          left: min, right: max, top: view.top, bottom: view.bottom,
+        });
+        if (beside) {
+          bar.style.setProperty(SHIFT, `${Math.round(beside.left - rect.left)}px`);
+          bar.style.setProperty(SHIFT_Y, `${Math.round(beside.top - rect.top)}px`);
+          continue;
+        }
+      }
       if (rect.width > max - min) {
         bar.style.maxWidth = `${Math.max(0, max - min)}px`;
         rect = bar.getBoundingClientRect();

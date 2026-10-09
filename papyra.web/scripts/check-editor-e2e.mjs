@@ -437,6 +437,16 @@ async function checkMedia(page) {
   }
   await page.keyboard.press('Escape');
   await preview.waitFor({ state: 'detached', timeout: 3000 });
+  // Selected, its bar sits beside the card (level with it), covering nothing.
+  await pdfCard.click();
+  const docBar = page.locator('.luthor-media--host-card .luthor-media__toolbar');
+  await docBar.waitFor({ timeout: 3000 });
+  await page.waitForTimeout(300);
+  const [barBox, cardBox] = [await docBar.boundingBox(), await pdfCard.boundingBox()];
+  check(!!barBox && !!cardBox && (barBox.x >= cardBox.x + cardBox.width - 1 || barBox.x + barBox.width <= cardBox.x + 1)
+    && barBox.y < cardBox.y + cardBox.height && barBox.y + barBox.height > cardBox.y,
+    `media: a document's toolbar is not beside its card (${JSON.stringify({ barBox, cardBox })})`);
+  check(/PDF · \d/.test(await docBar.locator('[data-media-label="papyra.file-info"]').textContent() ?? ''), 'media: the document toolbar has no type · size');
   const viewRes = await page.request.get(`${ORIGIN}/api/media/view/${pdfName}`);
   check(viewRes.headers()['x-frame-options'] === 'SAMEORIGIN' && /frame-ancestors 'self'/.test(viewRes.headers()['content-security-policy'] ?? ''),
     'media: the PDF view route is not framable by Papyra itself');

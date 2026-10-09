@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { placeBarVertically } from './mediaToolbarPlacement';
+import { placeBarBeside, placeBarVertically } from './mediaToolbarPlacement';
 
 // A note panel shows 100–600; a 40px attachment bar.
 const view = { top: 100, bottom: 600 };
@@ -21,5 +21,23 @@ describe('placeBarVertically', () => {
 
   it('a card at the very top gets its bar below it instead of above', () => {
     expect(placeBarVertically(56, 40, { top: 102, bottom: 180 }, view)).toBe(186);
+  });
+});
+
+describe('placeBarBeside', () => {
+  const sheet = { left: 100, right: 900, top: 100, bottom: 600 };
+  const bar = { width: 420, height: 34 };
+
+  it('puts a document card\'s bar to its right, level with it', () => {
+    expect(placeBarBeside(bar, { left: 110, right: 230, top: 200, bottom: 290 }, sheet)).toEqual({ left: 236, top: 228 });
+  });
+
+  it('to its left when a right-aligned card has no room on the right', () => {
+    expect(placeBarBeside(bar, { left: 770, right: 890, top: 200, bottom: 290 }, sheet)).toEqual({ left: 344, top: 228 });
+  });
+
+  it('nowhere beside it on a narrow sheet, or when the card is at the edge of the view', () => {
+    expect(placeBarBeside(bar, { left: 440, right: 560, top: 200, bottom: 290 }, sheet)).toBeNull();
+    expect(placeBarBeside(bar, { left: 110, right: 230, top: 90, bottom: 115 }, sheet)).toBeNull();
   });
 });
