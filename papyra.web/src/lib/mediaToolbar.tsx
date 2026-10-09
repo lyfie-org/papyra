@@ -1,8 +1,10 @@
-import { ArrowDown, ArrowUp, Download, Replace, ScanText } from 'lucide-react';
+import { ArrowDown, ArrowUp, Download, Eye, PenLine, Replace, ScanText } from 'lucide-react';
 import { $getSelection, $isNodeSelection, type LexicalEditor, type LexicalNode } from 'lexical';
-import type { MediaToolbarContext, MediaToolbarItem } from '@lyfie/luthor-headless';
+import { formatBytes, type MediaToolbarContext, type MediaToolbarItem } from '@lyfie/luthor-headless';
 import { pickFile } from './pickFile';
 import type { PapyraMediaMeta } from './mediaMeta';
+import { fileTypeOf } from './fileTypes';
+import { openDocument } from './documentPreview';
 
 // Papyra's buttons on a selected attachment, after luthor's built-ins (align,
 // caption, remove — its size presets, alt text and open-in-tab are hidden in
@@ -28,6 +30,47 @@ interface Deps {
 export function createMediaToolbarItems({ upload, readOnly, getEditor, notify }: Deps) {
   return (ctx: MediaToolbarContext): MediaToolbarItem[] => {
     const items: MediaToolbarItem[] = [];
+    // A document (a PDF, a spreadsheet…): what it is and how big, then open
+    // it here and name it — its card shows only the icon and that name.
+    const isDocument = ctx.kind === 'pdf' || ctx.kind === 'file';
+    if (isDocument) {
+      const type = fileTypeOf(ctx.target);
+      items.push({
+        id: 'papyra.file-info',
+        variant: 'label',
+        label: [type.label, formatBytes(ctx.meta?.size)].filter(Boolean).join(' · '),
+        onSelect: () => {},
+      });
+      if (type.preview && ctx.url) {
+        items.push({
+          id: 'papyra.preview',
+          label: 'Preview',
+          icon: <Eye {...ICON} />,
+          onSelect: () => openDocument({ url: ctx.url, target: ctx.target, fragment: ctx.fragment, name: ctx.alt || ctx.target }),
+        });
+      }
+      if (!readOnly && ctx.requestInput) {
+        const ask = ctx.requestInput;
+        items.push({
+          id: 'papyra.rename',
+          label: 'Rename',
+          icon: <PenLine {...ICON} />,
+          onSelect: () => {
+            void ask({
+              title: 'Rename',
+              submitLabel: 'Save',
+              fields: [{ name: 'name', label: 'Name shown in the note', value: ctx.alt || ctx.target, placeholder: ctx.target }],
+            }).then((values) => {
+              if (!values) return;
+              // The file keeps its stored name; the note shows this one
+              // (`![[q3.pdf|Q3 report]]`). Back to the file's name clears it.
+              const name = values.name.trim();
+              ctx.update({ alt: name && name !== ctx.target ? name : null });
+            });
+          },
+        });
+      }
+    }
     if (!readOnly) {
       items.push({
         id: 'papyra.replace',

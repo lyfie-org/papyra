@@ -269,6 +269,7 @@ builder.Services.AddSingleton<ExportTicketStore>();
 builder.Services.AddSingleton<BlockAnchorCleanup>();
 builder.Services.AddSingleton<AccountDeletion>();
 builder.Services.AddSingleton<LinkPreviewService>();
+builder.Services.AddSingleton<EmbedResolverService>();
 builder.Services.AddSingleton<ImportService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<ImportService>());
 
@@ -6373,6 +6374,20 @@ app.MapGet("/api/link-preview", async (string? url, LinkPreviewService previews,
     if (string.IsNullOrWhiteSpace(url) || url.Length > 2048) return Results.BadRequest();
     var preview = await previews.GetAsync(url.Trim(), ct);
     return preview is null ? Results.NoContent() : Results.Ok(preview);
+})
+.RequireAuthorization()
+.RequireRateLimiting(PreviewRateLimit);
+
+// ── Embed a link ──────────────────────────────────────────────────────────────
+// "Embed a link" with whatever link someone has: where a short link lands,
+// whether the site allows being framed, and its oEmbed player if it has one
+// (see EmbedResolverService). The browser maps the well-known services itself;
+// this is for the rest. Server-fetched, SSRF-guarded, signed-in, rate-limited.
+app.MapGet("/api/embed/resolve", async (string? url, EmbedResolverService embeds, CancellationToken ct) =>
+{
+    if (string.IsNullOrWhiteSpace(url) || url.Length > 2048) return Results.BadRequest();
+    var resolution = await embeds.ResolveAsync(url.Trim(), ct);
+    return resolution is null ? Results.NoContent() : Results.Ok(resolution);
 })
 .RequireAuthorization()
 .RequireRateLimiting(PreviewRateLimit);

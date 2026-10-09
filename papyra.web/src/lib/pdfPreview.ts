@@ -1,6 +1,4 @@
-import type { ReactNode } from 'react';
-import type { FileExpansionContext } from '@lyfie/luthor-headless';
-import PdfPreview from '../components/PdfPreview';
+// How a PDF attachment is read in place (see components/DocumentPreview).
 
 /** Browsers whose framed PDF is a still of page 1, or no viewer at all. */
 export function inlinePdfSupported(nav: Navigator = navigator): boolean {
@@ -19,11 +17,4 @@ export function pdfViewUrl(url: string, fragment: string): string {
   const cut = path.lastIndexOf('/');
   const page = /(?:^|&)page=(\d{1,5})(?:&|$)/.exec(fragment)?.[1];
   return `${path.slice(0, cut)}/view${path.slice(cut)}${page ? `#page=${page}` : ''}`;
-}
-
-/** The adapter's `renderFileExpansion`: PDFs get a preview, other files nothing. */
-export function renderPdfExpansion(ctx: FileExpansionContext): ReactNode {
-  const isPdf = ctx.kind === 'pdf' || /\.pdf$/i.test(ctx.target);
-  if (!isPdf || !ctx.url) return null;
-  return <PdfPreview url={ctx.url} fragment={ctx.fragment} target={ctx.target} />;
 }

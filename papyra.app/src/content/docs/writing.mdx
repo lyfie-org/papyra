@@ -1,0 +1,87 @@
+---
+title: Writing, embeds and attachments
+summary: Slash commands, embedding any link — a map, a song, a page — and how pictures and documents look in a note and in its Markdown file.
+group: In depth
+order: 1
+---
+
+Everything you add to a note is plain Markdown in its file. This page covers the
+quick ways to add things, and what each one writes.
+
+## Slash commands
+
+Type `/` at the start of a line (or after a space) and a menu of blocks opens
+under the caret — or above it, near the bottom of the note. Keep typing to
+filter it; arrow keys move, <kbd>Enter</kbd> inserts, <kbd>Esc</kbd> closes.
+
+| Type | To add |
+| --- | --- |
+| `/h1`, `/h2`, `/h3` | A heading |
+| `/bullet`, `/numbered`, `/check` | A list or a checklist |
+| `/quote`, `/code`, `/table`, `/rule` | A quote, a code block, a table, a divider |
+| `/image` | A picture from a link |
+| `/embed` | Any link: a map, video, song, document or web page |
+| `/youtube` | A YouTube video |
+| `/media` | Upload a picture, recording or video |
+| `/link`, `/date` | Link another note, insert today's date |
+
+The menu always fits inside the note: it scrolls when there are more commands
+than room.
+
+## Embedding a link
+
+**Insert → Embed a link** (or `/embed`) takes the link you already have. You
+don't need to hunt for an "embed URL":
+
+- **Maps** — a Google Maps link (a place, a search, directions, or a
+  `maps.app.goo.gl` share link) shows that place on a map. An **Apple Maps**
+  share link shows the same place too, and so does an OpenStreetMap link.
+- **Video and music** — YouTube, Vimeo, Loom, Dailymotion, TikTok, Twitch,
+  Spotify and SoundCloud links play in the note, at their player's own shape.
+- **Work** — Google Docs, Sheets, Slides and Drive files, Figma, Miro, Canva,
+  CodePen and CodeSandbox links show their live preview.
+- **Any other page** is shown in place when the site allows it. Many sites
+  refuse to be shown inside another one; for those, Papyra adds a **link card**
+  instead (the page's title, summary and picture) and tells you so.
+
+Short links are followed and pages are checked by **your** server, through the
+same guarded fetcher as link previews: public addresses only, nothing on your
+network.
+
+Select an embed to align it, resize it by its edge, move it, or change its link.
+Its alignment is saved with it:
+
+```markdown
+![[iframe:https://www.google.com/maps?q=Nikkawahama+Beach&output=embed|640x400]] <!-- align:right -->
+```
+
+## Pictures
+
+Drop, paste or upload a picture and it appears straight away — the upload shows
+its progress over the picture itself, and the picture never blinks out while the
+stored copy loads. A picture from a link shows a soft loading frame until it
+arrives, and a small card with **Retry** if it can't.
+
+Size and alignment are part of the file:
+
+```markdown
+![[beach.jpg|640]] <!-- align:center --> <!-- caption:The beach at dusk -->
+![A gif|240](https://media.example.com/party.gif) <!-- align:right -->
+```
+
+## Documents
+
+A PDF, a spreadsheet, a slide deck, an archive — any file that isn't a picture
+or a recording — sits in the note like it does on your desktop: its icon and its
+name. Click it once to see what it is and how big, then **Preview** (PDFs open
+in your browser's viewer; text, CSV and code files as text), **Rename**,
+**Download**, **Replace** or move it. Double-click to open it.
+
+**Rename** changes only the name shown in the note — the file keeps its stored
+name, and the name you chose is its alias in the Markdown:
+
+```markdown
+![[q3-report-411e00.pdf|Q3 report]]
+```
+
+A new upload is shown under the name it had on your computer.

@@ -5,6 +5,7 @@ import './HelpSheet.css';
 
 const SHORTCUTS: Array<[string, string]> = [
   ['⌘K / Ctrl+K', 'Search every note'],
+  ['/', 'In a note: add a heading, list, table, picture, map or any link'],
   ['Esc', 'Leave the note body (Tab indents there); again to close the note, a panel, or focus mode'],
   ['Enter', 'Add the tag / to-do item you just typed'],
   ['⌘⇧L / Ctrl+Shift+L', 'Lock your vault (while it’s open)'],
@@ -23,6 +24,10 @@ const CONCEPTS: Array<[string, string]> = [
   [
     'It keeps working offline',
     'With the server unreachable, Papyra still opens, still shows your notes, and still takes edits — they queue on this device and upload by themselves once the server is back. The dot at the bottom of the sidebar tells you how many are waiting.',
+  ],
+  [
+    'Type / for anything',
+    'A slash at the start of a line opens a menu of everything a note can hold — headings, lists, checklists, tables, pictures, and embeds. Keep typing to narrow it (“/table”, “/embed”). Embed takes any link you have: a Google or Apple Maps place, a video, a song, a document, a web page.',
   ],
   [
     'Link notes with [[double brackets]]',

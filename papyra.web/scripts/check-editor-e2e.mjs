@@ -408,8 +408,9 @@ async function checkMedia(page) {
     `media: the toolbar still moves with reduced motion on (${JSON.stringify(motion)})`);
   await page.emulateMedia({ reducedMotion: null });
 
-  // A PDF card previews in place at its page (S7), or — with no inline viewer
-  // (headless browsers) — offers the framable route in a new tab.
+  // A PDF is a desktop-style card (icon + name); a double-click previews it at
+  // its page over the note, or — with no inline viewer (headless browsers) —
+  // offers the framable route in a new tab.
   console.log('· media: PDF preview');
   const pdfUp = await page.request.post(`${ORIGIN}/api/media/upload?noteId=${MEDIA_NOTE}`, {
     multipart: { file: { name: 'report.pdf', mimeType: 'application/pdf', buffer: PDF } },
@@ -421,19 +422,29 @@ async function checkMedia(page) {
   await openNote(page, MEDIA_NOTE);
   const viewer = await page.evaluate(() => navigator.pdfViewerEnabled);
   const viewUrl = `/api/media/view/${pdfName}#page=2`;
+  const pdfCard = page.locator('.file-card').first();
+  await pdfCard.waitFor({ timeout: 5000 });
+  check(await pdfCard.locator('.file-icon__label').textContent() === 'PDF', 'media: the PDF card has no PDF icon');
+  await pdfCard.dblclick();
+  const preview = page.locator('.doc-preview');
+  await preview.waitFor({ timeout: 5000 });
   if (viewer) {
-    await page.getByRole('button', { name: 'Preview PDF' }).click();
-    const frame = page.locator('.pdf-preview__frame iframe');
+    const frame = preview.locator('iframe.doc-preview__frame');
     await frame.waitFor({ timeout: 5000 });
     check(await frame.getAttribute('src') === viewUrl, `media: PDF frame src ${await frame.getAttribute('src')}`);
   } else {
-    check(await page.getByRole('link', { name: /Open in new tab/ }).getAttribute('href') === viewUrl, 'media: no-viewer PDF card has no new-tab link to the view route');
+    check(await preview.getByRole('link', { name: /Open in new tab/ }).getAttribute('href') === viewUrl, 'media: no-viewer PDF preview has no new-tab link to the view route');
   }
+  await page.keyboard.press('Escape');
+  await preview.waitFor({ state: 'detached', timeout: 3000 });
   const viewRes = await page.request.get(`${ORIGIN}/api/media/view/${pdfName}`);
   check(viewRes.headers()['x-frame-options'] === 'SAMEORIGIN' && /frame-ancestors 'self'/.test(viewRes.headers()['content-security-policy'] ?? ''),
     'media: the PDF view route is not framable by Papyra itself');
   const cardScan = await new AxeBuilder({ page }).include('.luthor-media').withTags(['wcag2a', 'wcag2aa', 'wcag21aa', 'wcag22aa']).analyze();
-  for (const v of cardScan.violations) check(false, `media a11y (PDF card): ${v.id} — ${v.help}`);
+  for (const v of cardScan.violations) {
+    const where = v.nodes.map((n) => `${n.html.slice(0, 120)} ${JSON.stringify(n.any?.[0]?.data ?? {})}`).join(' | ');
+    check(false, `media a11y (PDF card): ${v.id} — ${v.help} — ${where}`);
+  }
 
   // Cards on the desk load thumbnails, never the originals.
   console.log('· media: cards');
@@ -727,8 +738,8 @@ try {
   // 8. Web page embed
   console.log('· step 8');
   await caretToEnd();
-  await insertMenu('Web page');
-  await page.getByLabel('Page link').fill('https://example.com/');
+  await insertMenu('Embed a link');
+  await page.getByLabel(/Paste any link/).fill('https://example.com/');
   await page.locator('.luthor-dialog').getByRole('button', { name: 'Embed', exact: true }).click();
   await settle();
   check(await bodyHas((b) => /!\[\[iframe:https:\/\/example\.com\/?[^\]]*\]\]/.test(b)), 'web page: body has no ![[iframe:https://example.com…]]');
@@ -782,7 +793,7 @@ try {
   check(!before.includes('blob:'), 'a blob: URL was written to disk');
 
   // Every uploaded file is served back.
-  for (const m of before.matchAll(/!\[\[([^\]:|]+\.(?:png|gif|pdf))\]\]/g)) {
+  for (const m of before.matchAll(/!\[\[([^\]:|]+\.(?:png|gif|pdf))(?:\|[^\]]*)?\]\]/g)) {
     const res = await page.request.get(`${ORIGIN}/api/media/${encodeURIComponent(m[1])}`);
     check(res.ok(), `media ${m[1]} is not served (${res.status()})`);
   }
@@ -819,6 +830,88 @@ ${reopened}`);
 
   console.log(JSON.stringify({ images: rendered.images.length, iframes: rendered.iframes.length }, null, 0));
 
+  // ── Alignment: every embed keeps it across a reopen; old exports heal ──────
+  // A right-aligned map came back centred, and a GIF aligned in an older build
+  // (written as GitHub's `<p align>` wrapper) reopened with
+  // "LUTHORALIGNSTART:center" showing as a link in the note.
+  console.log('· alignment');
+  const filler = Array.from({ length: 30 }, (_, i) => `Line ${i + 1}`).join('\n\n');
+  const aligned = [
+    `<p align="center">\n![](${ORIGIN}/${LINK_IMAGE})\n</p>`,
+    '',
+    '[[LUTHORALIGNSTART:right]]',
+    '',
+    `![leaked](${ORIGIN}/${LINK_IMAGE})`,
+    '',
+    '[[LUTHORALIGNEND]]',
+    '',
+    filler,
+    '',
+    '![[iframe:https://example.com/]] <!-- align:right -->',
+  ].join('\n');
+  await page.request.put(`${ORIGIN}/api/notes/${NOTE}`, {
+    data: { title: 'Insert paths', tags: [], color: null, pinned: false, archived: false, kind: 'note', body: aligned },
+  });
+  await page.reload();
+  await page.locator('.luthor-content-editable').waitFor();
+  await page.waitForTimeout(2000);
+  const alignView = await page.evaluate(() => {
+    const root = document.querySelector('.luthor-content-editable');
+    const frame = root.querySelector('iframe[src*="example.com"]');
+    const shell = frame?.closest('.luthor-media-embed-shell');
+    const r = shell?.getBoundingClientRect();
+    const col = root.getBoundingClientRect();
+    return {
+      leaked: /LUTHOR/i.test(root.textContent ?? ''),
+      images: [...root.querySelectorAll('figure.lexical-image')].map((f) => [...f.classList].find((c) => c.startsWith('align-'))),
+      mapRightGap: r ? Math.round(col.right - r.right) : null,
+      mapLeftGap: r ? Math.round(r.left - col.left) : null,
+    };
+  });
+  check(!alignView.leaked, 'alignment: internal LUTHORALIGN marker text shows in the note');
+  check(JSON.stringify(alignView.images) === JSON.stringify(['align-center', 'align-right']),
+    `alignment: old <p align>/marker pictures did not read back aligned (${JSON.stringify(alignView.images)})`);
+  check(alignView.mapRightGap !== null && alignView.mapRightGap < alignView.mapLeftGap,
+    `alignment: the right-aligned map did not open on the right (${JSON.stringify(alignView)})`);
+
+  // The map's toolbar, at the very foot of a scrolling note, stays where it
+  // can be seen (it used to open under the note's fold).
+  const mapShell = page.locator('.luthor-media-embed-shell:has(iframe[src*="example.com"])');
+  await mapShell.scrollIntoViewIfNeeded();
+  await page.evaluate(() => {
+    const shell = document.querySelector('.luthor-media-embed-shell:has(iframe[src*="example.com"])');
+    let scroller = shell?.parentElement;
+    while (scroller && !/(auto|scroll)/.test(getComputedStyle(scroller).overflowY)) scroller = scroller.parentElement;
+    if (scroller && shell) scroller.scrollTop += shell.getBoundingClientRect().top - (scroller.getBoundingClientRect().bottom - 140);
+  });
+  await page.waitForTimeout(300);
+  const shellBox = await mapShell.boundingBox();
+  await page.mouse.click(shellBox.x + 30, shellBox.y + 20);
+  const bar = page.locator('.luthor-floating-toolbar');
+  await bar.waitFor({ timeout: 3000 });
+  await page.waitForTimeout(300);
+  const barFit = await page.evaluate(() => {
+    const bar = document.querySelector('.luthor-floating-toolbar').getBoundingClientRect();
+    const shell = document.querySelector('.luthor-media-embed-shell:has(iframe[src*="example.com"])');
+    let scroller = shell?.parentElement;
+    while (scroller && !/(auto|scroll)/.test(getComputedStyle(scroller).overflowY)) scroller = scroller.parentElement;
+    const view = scroller ? scroller.getBoundingClientRect() : { top: 0, bottom: innerHeight };
+    return { top: bar.top, bottom: bar.bottom, viewTop: view.top, viewBottom: Math.min(view.bottom, innerHeight) };
+  });
+  check(barFit.top >= barFit.viewTop - 1 && barFit.bottom <= barFit.viewBottom + 1,
+    `alignment: the embed toolbar is cut off by the note's edge (${JSON.stringify(barFit)})`);
+  // An edit saves the body in today's form: every alignment kept, old markup gone.
+  await page.keyboard.press('Escape');
+  await caretToEnd();
+  await page.keyboard.type(' edited');
+  const healedOk = await bodyHas((b) => b.includes('edited')
+    && !/LUTHORALIGN|<p align/.test(b)
+    && /\) <!-- align:center -->/.test(b)
+    && /\) <!-- align:right -->/.test(b)
+    && b.includes('example.com/]] <!-- align:right -->'));
+  check(healedOk, `alignment: the saved body lost an alignment or kept old markup:
+${(await body()).slice(0, 400)}`);
+
   // ── Attachments: select, resize, upload pipeline (media overhaul S4–S6) ───
   await checkMedia(page);
 
@@ -845,4 +938,4 @@ if (failures.length) {
   for (const f of failures) console.error(`  ✗ ${f}`);
   process.exit(1);
 }
-console.log('check-editor: every insert path round-trips (upload, GIF, attach, drag & drop, paste, image link, YouTube, web page, link, /image, hand-written markdown); attachments select, resize, upload in order, cancel, refuse, keep posters, survive theme switches, PDFs preview in place, and cards use thumbnails ✓');
+console.log('check-editor: every insert path round-trips (upload, GIF, attach, drag & drop, paste, image link, YouTube, embedded link, link, /image, hand-written markdown); every embed keeps its alignment; attachments select, resize, upload in order, cancel, refuse, keep posters, survive theme switches, documents show as icons and PDFs preview, and cards use thumbnails ✓');
