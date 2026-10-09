@@ -137,4 +137,15 @@ describe('SearchBar', () => {
     type('smtp');
     expect(screen.queryByText(/Searching this device/)).toBeNull();
   });
+
+  it('Shift+Enter shows a note where it lives; the pointer-only "Show" button stays out of the listbox', () => {
+    const input = type('roast');
+    const option = screen.getAllByRole('option')[0];
+    expect(option.getAttribute('aria-keyshortcuts')).toBe('Shift+Enter');
+    // The listbox owns nothing but options (WCAG: aria-required-children).
+    const list = screen.getByRole('listbox');
+    expect(within(list).queryAllByRole('button')).toEqual([]);
+    fireEvent.keyDown(input, { key: 'Enter', shiftKey: true });
+    expect(navigate).toHaveBeenCalledWith(expect.stringContaining('?locate=n1'));
+  });
 });

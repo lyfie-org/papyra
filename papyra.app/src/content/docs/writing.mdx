@@ -35,11 +35,13 @@ don't need to hunt for an "embed URL":
 
 - **Maps** — a Google Maps link (a place, a search, directions, or a
   `maps.app.goo.gl` share link) shows that place on a map. An **Apple Maps**
-  share link shows the same place too, and so does an OpenStreetMap link.
+  share link (`maps.apple/p/…` or `maps.apple.com/…`) shows the same place too,
+  and so does an OpenStreetMap link. A dropped pin opens at street level.
 - **Video and music** — YouTube, Vimeo, Loom, Dailymotion, TikTok, Twitch,
   Spotify and SoundCloud links play in the note, at their player's own shape.
 - **Work** — Google Docs, Sheets, Slides and Drive files, Figma, Miro, Canva,
-  CodePen and CodeSandbox links show their live preview.
+  CodePen and CodeSandbox links show their live preview (to anyone the file is
+  shared with — a private Google Doc asks the reader to sign in).
 - **Any other page** is shown in place when the site allows it. Many sites
   refuse to be shown inside another one; for those, Papyra adds a **link card**
   instead (the page's title, summary and picture) and tells you so.
@@ -49,7 +51,8 @@ same guarded fetcher as link previews: public addresses only, nothing on your
 network.
 
 Select an embed to align it, resize it by its edge, move it, or change its link.
-Its alignment is saved with it:
+Its toolbar always stays where you can see it — above or below the embed, or
+inside it near the foot of a long note. Its alignment is saved with it:
 
 ```markdown
 ![[iframe:https://www.google.com/maps?q=Nikkawahama+Beach&output=embed|640x400]] <!-- align:right -->
@@ -73,9 +76,11 @@ Size and alignment are part of the file:
 
 A PDF, a spreadsheet, a slide deck, an archive — any file that isn't a picture
 or a recording — sits in the note like it does on your desktop: its icon and its
-name. Click it once to see what it is and how big, then **Preview** (PDFs open
-in your browser's viewer; text, CSV and code files as text), **Rename**,
-**Download**, **Replace** or move it. Double-click to open it.
+name. Click it once and its toolbar appears beside it: what it is and how big,
+then **Preview** (PDFs open in your browser's viewer; text, CSV and code files as
+text), **Rename**, **Download**, **Replace** or move it. Double-click to open it
+— a file the browser can't show (a Word or Excel file) opens in a new tab, where
+your browser downloads it.
 
 **Rename** changes only the name shown in the note — the file keeps its stored
 name, and the name you chose is its alias in the Markdown:

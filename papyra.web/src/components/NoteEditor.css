@@ -94,13 +94,14 @@
 /* Last edited, at the foot's right edge; the save state sits just before it. */
 .note-editor__edited {
   flex-shrink: 0;
+  /* Full strength: at this size a dimmed stamp fell under 4.5:1 in dark mode. */
   color: var(--text);
   font: 400 var(--fs-2xs) / 1.3 var(--sans);
-  opacity: 0.85;
   white-space: nowrap;
   cursor: default;
 }
-.note-editor--colored .note-editor__edited { color: var(--tint-ink-muted); opacity: 1; }
+/* Soft ink, not muted: muted measured 4.45:1 on a sage tint. */
+.note-editor--colored .note-editor__edited { color: var(--tint-ink-soft); }
 .note-editor__footer .note-editor__status:empty + .note-editor__edited { margin-left: auto; }
 
 /* Pin and focus mode, at the title row's right end. */
@@ -169,7 +170,6 @@
   color: var(--text);
   font-family: var(--mono);
   font-size: var(--fs-2xs);
-  opacity: 0.8;
   /* The label changes as a save lands; fade it rather than snapping. */
   transition: opacity var(--dur) var(--ease);
 }
@@ -187,9 +187,11 @@
 .note-editor--colored .note-editor__title {
   color: var(--tint-ink);
 }
-.note-editor--colored .note-editor__status,
 .note-editor--colored .note-toolbar__btn {
   color: var(--tint-ink-muted);
+}
+.note-editor--colored .note-editor__status {
+  color: var(--tint-ink-soft);
 }
 .note-editor--colored .note-toolbar__btn:hover {
   color: var(--tint-ink);

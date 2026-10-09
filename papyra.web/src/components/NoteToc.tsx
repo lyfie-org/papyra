@@ -1,4 +1,4 @@
-import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
 import './NoteToc.css';
 
 interface Head {
@@ -28,6 +28,12 @@ const GROW = 14;
  * ever "selected", so the highlight is always the one you are on — a Dock-style
  * swell put a sage "current section" label beside a different, bigger one.
  * Click to jump.
+ *
+ * The whole rail is one control (an "Outline" listbox, one tab stop): its rows
+ * are a few pixels tall, far under the 24px a target needs on its own (WCAG
+ * 2.5.8), so the rail is the target and the row under the pointer is the one a
+ * click takes you to. From the keyboard: Tab to it, ↑/↓ (Home/End) to pick a
+ * heading, Enter to jump, Esc to put it away.
  */
 export default function NoteToc({ scrollRef }: { scrollRef: React.RefObject<HTMLElement | null> }) {
   const [heads, setHeads] = useState<Head[]>([]);
@@ -35,6 +41,7 @@ export default function NoteToc({ scrollRef }: { scrollRef: React.RefObject<HTML
   const [focused, setFocused] = useState<number | null>(null);
   const [frame, setFrame] = useState({ top: TOP_CLEARANCE, height: 300 });
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const idPrefix = useId();
 
   // Read headings from the live editor DOM (Luthor renders real h1–h3).
   useEffect(() => {
@@ -107,32 +114,68 @@ export default function NoteToc({ scrollRef }: { scrollRef: React.RefObject<HTML
   const jump = (top: number) =>
     scrollRef.current?.scrollTo({ top: Math.max(0, top - 24), behavior: 'smooth' });
 
+  // Padding sits above the first row; take it off so y is in row space.
+  const rowAt = (e: React.PointerEvent | React.MouseEvent) =>
+    headAt(e.clientY - e.currentTarget.getBoundingClientRect().top - RAIL_PAD);
+
+  const onKeyDown = (e: React.KeyboardEvent) => {
+    const last = heads.length - 1;
+    const from = focused ?? active;
+    let next: number | null = null;
+    if (e.key === 'ArrowDown') next = Math.min(last, from + 1);
+    else if (e.key === 'ArrowUp') next = Math.max(0, from - 1);
+    else if (e.key === 'Home') next = 0;
+    else if (e.key === 'End') next = last;
+    else if (e.key === 'Enter' || e.key === ' ') {
+      e.preventDefault();
+      jump(heads[from].top);
+      return;
+    } else if (e.key === 'Escape' && focused !== null) {
+      e.preventDefault();
+      e.stopPropagation();
+      setFocused(null);
+      return;
+    }
+    if (next !== null) {
+      e.preventDefault();
+      setFocused(next);
+    }
+  };
+
+  const optionId = (i: number) => `${idPrefix}-toc-${i}`;
+
   return (
     <nav className="note-toc" aria-label="Outline">
       <div
         className={`note-toc__rail${open ? ' is-open' : ''}`}
         style={{ top: frame.top + Math.max(0, (frame.height - railHeight) / 2) }}
-        // Padding sits above the first row; take it off so y is in row space.
-        onPointerMove={(e) => setFocused(headAt(e.clientY - e.currentTarget.getBoundingClientRect().top - RAIL_PAD))}
-        onPointerLeave={() => setFocused(null)}
-        onBlur={(e) => { if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setFocused(null); }}
+        role="listbox"
+        tabIndex={0}
+        aria-label="Jump to a heading"
+        aria-activedescendant={focused !== null ? optionId(focused) : undefined}
+        onPointerMove={(e) => setFocused(rowAt(e))}
+        onPointerLeave={(e) => { if (!e.currentTarget.matches(':focus-visible')) setFocused(null); }}
+        onClick={(e) => jump(heads[rowAt(e)].top)}
+        onFocus={() => setFocused((f) => f ?? active)}
+        onBlur={() => setFocused(null)}
+        onKeyDown={onKeyDown}
       >
         {heads.map((h, i) => {
           const isFocused = i === focused;
           return (
-            <button
+            <div
               key={h.key}
-              type="button"
+              id={optionId(i)}
+              role="option"
+              aria-selected={isFocused}
+              aria-current={i === active ? 'location' : undefined}
               className={`note-toc__item note-toc__item--h${h.level}${i === active ? ' is-active' : ''}${isFocused ? ' is-focused' : ''}`}
               style={{ height: step + (isFocused ? GROW : 0) }}
-              onFocus={() => setFocused(i)}
-              onClick={() => jump(h.top)}
-              aria-current={i === active ? 'location' : undefined}
               title={open ? undefined : h.text}
             >
               <span className="note-toc__label">{h.text}</span>
               <span className="note-toc__dash" aria-hidden="true" />
-            </button>
+            </div>
           );
         })}
       </div>

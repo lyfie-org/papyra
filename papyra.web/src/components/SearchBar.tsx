@@ -217,6 +217,8 @@ export default function SearchBar() {
     if (!results.length) return;
     if (e.key === 'ArrowDown') { e.preventDefault(); setActive((activeIndex + 1) % results.length); }
     else if (e.key === 'ArrowUp') { e.preventDefault(); setActive((activeIndex - 1 + results.length) % results.length); }
+    // Shift+Enter: show it where it lives (the row's "Show" button, by keyboard).
+    else if (e.key === 'Enter' && e.shiftKey && results[activeIndex]?.locate) { e.preventDefault(); locateHit(results[activeIndex]); }
     else if (e.key === 'Enter') { e.preventDefault(); openHit(results[activeIndex]); }
   }
 
@@ -300,6 +302,8 @@ export default function SearchBar() {
                   type="button"
                   role="option"
                   aria-selected={i === activeIndex}
+                  aria-keyshortcuts={hit.locate ? 'Shift+Enter' : undefined}
+                  aria-description={hit.locate ? `Shift+Enter shows it in ${hit.locate.label}` : undefined}
                   className={`search__hit${i === activeIndex ? ' search__hit--active' : ''}`}
                   onClick={() => openHit(hit)}
                 >
@@ -309,9 +313,14 @@ export default function SearchBar() {
                     ? <span className="search__hit-snippet search__hit-snippet--locked">Locked note</span>
                     : hit.snippet && <span className="search__hit-snippet"><Highlighted text={hit.snippet} query={query} /></span>}
                 </button>
+                {/* A listbox may own only options, so this pointer shortcut is
+                    kept out of the accessibility tree; keyboard and screen-reader
+                    users reach the same action with Shift+Enter on the option. */}
                 {hit.locate && (
                   <button
                     type="button"
+                    tabIndex={-1}
+                    aria-hidden="true"
                     className="search__locate"
                     title={`Show it in ${hit.locate.label}`}
                     aria-label={`Show “${hit.title}” in ${hit.locate.label}`}
