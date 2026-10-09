@@ -6,6 +6,11 @@ a Docker Hub tag and a GitHub Release.
 
 <!-- new releases are inserted directly below this line -->
 
+## [0.4.1] - 2026-10-09
+
+- ci: gate WCAG 2.2 AA (check:a11y) on every web change (5b6d4bf)
+- chore: bump @lyfie/luthor to 2.11.8; WCAG 2.2 AA clean, SSRF connect-time guard, docs (8e6c374)
+
 ## [0.4.0] - 2026-10-09
 
 - chore: bump @lyfie/luthor to 2.11.7 (web + collab); embed + website follow-ups (3ed870a)
