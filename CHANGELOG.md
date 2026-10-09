@@ -6,6 +6,11 @@ a Docker Hub tag and a GitHub Release.
 
 <!-- new releases are inserted directly below this line -->
 
+## [0.4.0] - 2026-10-09
+
+- chore: bump @lyfie/luthor to 2.11.7 (web + collab); embed + website follow-ups (3ed870a)
+- feat(media): desktop-style document cards, embed any link, visible media toolbars (0074e4f)
+
 ## [0.3.10] - 2026-10-08
 
 - chore: bump @lyfie/luthor to 2.11.6 (web + collab) (e7a99c1)
