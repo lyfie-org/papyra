@@ -15,8 +15,11 @@
   flex-direction: column;
   align-items: flex-end;
   width: 28px;
+  /* At least the 24px a pointer target needs, even with one heading row. */
+  min-height: 24px;
   padding: 6px 0;
   border-radius: var(--radius-md);
+  cursor: pointer;
   pointer-events: auto;
   transition: width var(--dur) var(--ease), background-color var(--dur) var(--ease), box-shadow var(--dur) var(--ease);
 }
@@ -87,10 +90,10 @@
 }
 .note-toc__item.is-focused .note-toc__dash { opacity: 1; width: 22px; }
 
-.note-toc__item:focus-visible {
-  outline: 2px solid var(--accent);
-  outline-offset: -2px;
-  border-radius: var(--radius-sm);
+/* The rail is the one focusable control; the picked heading is magnified. */
+.note-toc__rail:focus-visible {
+  outline: 2px solid var(--border-focus);
+  outline-offset: 2px;
 }
 
 /* On a coloured note the rail is inked like the note. */

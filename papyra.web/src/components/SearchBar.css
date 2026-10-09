@@ -75,8 +75,10 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
+  /* Never squeezed under the 24px a touch target needs (WCAG 2.5.8). */
+  flex: none;
+  width: 28px;
+  height: 28px;
   padding: 0;
   border: 0;
   border-radius: var(--radius-pill);

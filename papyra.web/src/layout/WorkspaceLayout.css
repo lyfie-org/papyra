@@ -351,7 +351,8 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
-.workspace__version { flex: 0 0 auto; opacity: 0.8; }
+/* Full strength: dimmed, the version fell under 4.5:1 in both themes. */
+.workspace__version { flex: 0 0 auto; }
 .workspace__build-sep {
   flex: 0 0 auto;
   width: 1px;

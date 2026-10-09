@@ -135,9 +135,12 @@ writes them, so a vault opens unchanged in either app:
 | `![[photo.png\|480]]`, `![[photo.png\|480x320]]` | 480 px wide (and that tall) — what dragging a handle saves |
 | `![[photo.png\|A sunset\|480]]` | with alt text |
 | `![[photo.png]] <!-- align:center --> <!-- caption:Our first night -->` | centred, captioned (the editor's toolbar writes these) |
-| `![[report.pdf#page=3]]` | a file card; **Preview PDF** opens it in place at page 3 |
-| `![alt\|300](https://…)` | a web image, 300 px wide |
-| `![[youtube:https://…\|Talk\|640x360]]` | an embedded video with a caption |
+| `![[report.pdf#page=3]]` | a document as its desktop-style icon and name; **Preview** (or a double-click) opens it at page 3 |
+| `![[q3-411e00.pdf\|Q3 report]]` | the same, shown as "Q3 report" (**Rename** writes the alias; the file keeps its name) |
+| `![alt\|300](https://…) <!-- align:right -->` | a web image, 300 px wide, aligned right |
+| `![[youtube:https://…\|Talk\|640x360]] <!-- align:left -->` | an embedded video with a caption, aligned left |
+| `![[iframe:https://…\|800x600]] <!-- align:right -->` | an embedded page — **Embed a link** (or `/embed`) takes any link: a Google/Apple Maps place, a song, a video, a document or a page |
+| `![[card:https://…]]` | a link card (title, summary, picture) — what a site that refuses to be framed becomes |
 
 In a table, escape the pipe: `![[photo.png\|200]]`. A note is never rewritten
 just because it was opened — only what you change is saved.
@@ -181,6 +184,10 @@ docker compose up --build # → :8080
 # Editor + media end to end in real Chromium (own throwaway API; after `pnpm run build`
 # it also checks the performance budgets: 200-picture note, 300-card desk)
 pnpm --filter papyra-web run check:editor
+
+# Accessibility: axe-core (WCAG 2.2 AA) over every view, menu and dialog, light and
+# dark, desktop and phone, plus keyboard and caret/selection contrast — run in CI
+pnpm --filter papyra-web run check:a11y
 ```
 
 #### Tests

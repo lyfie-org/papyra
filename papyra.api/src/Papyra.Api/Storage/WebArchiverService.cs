@@ -284,10 +284,38 @@ public sealed partial class WebArchiverService : BackgroundService
             AllowAutoRedirect = false,
             ConnectTimeout = TimeSpan.FromSeconds(5),
             AutomaticDecompression = DecompressionMethods.All,
+            // The address is checked again at the moment of connecting, and the
+            // socket goes to that checked address — so a name that resolved to a
+            // public IP for HostIsPublicAsync can't be re-pointed at the LAN by
+            // the time the connection is made (DNS rebinding).
+            ConnectCallback = ConnectToPublicAddressAsync,
         };
         var client = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(15) };
         client.DefaultRequestHeaders.UserAgent.ParseAdd("PapyraWebArchiver/1.0");
         return client;
+    }
+
+    private static async ValueTask<Stream> ConnectToPublicAddressAsync(SocketsHttpConnectionContext context, CancellationToken ct)
+    {
+        var endpoint = context.DnsEndPoint;
+        var addresses = IPAddress.TryParse(endpoint.Host, out var literal)
+            ? [literal]
+            : await Dns.GetHostAddressesAsync(endpoint.Host, ct);
+        var allowed = addresses.Where(IsPubliclyRoutable).ToArray();
+        if (allowed.Length == 0 || allowed.Length != addresses.Length)
+            throw new HttpRequestException($"Refusing to connect to {endpoint.Host}: it resolves to a non-public address.");
+
+        var socket = new Socket(SocketType.Stream, ProtocolType.Tcp) { NoDelay = true };
+        try
+        {
+            await socket.ConnectAsync(allowed, endpoint.Port, ct);
+            return new NetworkStream(socket, ownsSocket: true);
+        }
+        catch
+        {
+            socket.Dispose();
+            throw;
+        }
     }
 
     private static bool IsRedirect(HttpStatusCode code) =>
