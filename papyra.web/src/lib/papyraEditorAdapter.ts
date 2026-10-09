@@ -9,7 +9,9 @@ import { mediaMetaStore, mediaUrl, toMediaMeta } from './mediaMeta';
 import { createMediaToolbarItems } from './mediaToolbar';
 import { checkMediaFile, loadMediaLimits } from './mediaLimits';
 import { prepareUpload, uploadForm } from './uploadPrep';
-import { renderPdfExpansion } from './pdfPreview';
+import { mediaKind } from './noteMedia';
+import { renderFileCard } from './renderFileCard';
+import { resolveCard, resolveEmbed } from './embedResolve';
 
 /** The owner's own attachments. */
 export const OWN_MEDIA = '/api/media';
@@ -75,7 +77,11 @@ export function createPapyraEditorAdapter(
     }
     const data = await res.json() as { filename: string } & Record<string, unknown>;
     meta.prime(data.filename, toMediaMeta(data));
-    return { filename: data.filename };
+    // A document keeps the name it was uploaded with on its card (the stored
+    // name carries a suffix that keeps it unique: `q3-report-411e00.pdf`).
+    const kind = mediaKind(prepared.file.name);
+    const isDocument = (kind === 'pdf' || kind === 'file') && !/^(image|video|audio)\//.test(prepared.file.type);
+    return { filename: data.filename, ...(isDocument ? { label: file.name } : {}) };
   };
 
   return {
@@ -85,8 +91,17 @@ export function createPapyraEditorAdapter(
     resolveMediaUrl: (filename, options) => mediaUrl(OWN_MEDIA, filename, options, meta.get(filename)),
     getMediaMeta: (filename) => meta.get(filename),
     subscribeMediaMeta: (listener) => meta.subscribe(listener),
-    // A PDF card previews in place (the browser's viewer, framed from /view).
-    renderFileExpansion: renderPdfExpansion,
+    // A document is its icon and name; it opens (PDFs in the browser's viewer,
+    // framed from /view; text as text) from its toolbar or a double-click.
+    renderFileCard,
+    // "Embed a link" with any link: short links followed, oEmbed players found,
+    // and a site that refuses framing placed as a link card instead.
+    resolveEmbed: async (url) => {
+      const found = await resolveEmbed(url);
+      if (found?.type === 'card') notify?.('That site doesn’t allow embedding — added it as a link card.');
+      return found;
+    },
+    resolveCard,
 
     uploadMedia,
     validateMedia: (file) => checkMediaFile(file),

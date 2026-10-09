@@ -154,6 +154,68 @@ public sealed partial class WebArchiverService : BackgroundService
         return null; // too many redirects
     }
 
+    /// <summary>What a page answered: where it ended up, and the headers that decide framing.</summary>
+    internal sealed record PageProbe(Uri FinalUri, string? FrameOptions, string? ContentSecurityPolicy, string? MediaType, string? Html);
+
+    /// <summary>
+    /// The SSRF-guarded fetch of a page for the embed resolver: follows up to
+    /// five redirects (short links chain), each re-validated, and returns where
+    /// it landed with its framing headers and — for HTML — the capped head of
+    /// the page. Null when it can't be reached safely.
+    /// </summary>
+    internal static async Task<PageProbe?> ProbeAsync(string url, ILogger logger, CancellationToken ct)
+    {
+        var current = url;
+        for (var hop = 0; hop <= 5; hop++)
+        {
+            if (!Uri.TryCreate(current, UriKind.Absolute, out var uri)) return null;
+            if (uri.Scheme != Uri.UriSchemeHttp && uri.Scheme != Uri.UriSchemeHttps) return null;
+            if (!await HostIsPublicAsync(uri, ct))
+            {
+                logger.LogWarning("Refusing to probe {Host}: resolves to a non-public address.", uri.Host);
+                return null;
+            }
+
+            using var req = new HttpRequestMessage(HttpMethod.Get, uri);
+            using var resp = await Http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct);
+            if (IsRedirect(resp.StatusCode) && resp.Headers.Location is { } loc)
+            {
+                current = new Uri(uri, loc).ToString(); // re-validated on the next loop
+                continue;
+            }
+
+            var frameOptions = resp.Headers.TryGetValues("X-Frame-Options", out var xfo) ? string.Join(",", xfo) : null;
+            var csp = resp.Headers.TryGetValues("Content-Security-Policy", out var policies) ? string.Join(";", policies) : null;
+            var mediaType = resp.Content.Headers.ContentType?.MediaType;
+            string? html = null;
+            if (resp.IsSuccessStatusCode && (mediaType is null || mediaType.Contains("html", StringComparison.OrdinalIgnoreCase)))
+            {
+                await using var stream = await resp.Content.ReadAsStreamAsync(ct);
+                html = await ReadCappedAsync(stream, ct);
+            }
+            return new PageProbe(uri, frameOptions, csp, mediaType, html);
+        }
+        return null; // too many redirects
+    }
+
+    /// <summary>The SSRF-guarded fetch of a small JSON document (an oEmbed answer).</summary>
+    internal static async Task<string?> FetchJsonAsync(string url, ILogger logger, CancellationToken ct)
+    {
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttps) return null;
+        if (!await HostIsPublicAsync(uri, ct))
+        {
+            logger.LogWarning("Refusing to fetch {Host}: resolves to a non-public address.", uri.Host);
+            return null;
+        }
+        using var req = new HttpRequestMessage(HttpMethod.Get, uri);
+        using var resp = await Http.SendAsync(req, HttpCompletionOption.ResponseHeadersRead, ct);
+        if (!resp.IsSuccessStatusCode) return null;
+        var mediaType = resp.Content.Headers.ContentType?.MediaType;
+        if (mediaType is not null && !mediaType.Contains("json", StringComparison.OrdinalIgnoreCase)) return null;
+        await using var stream = await resp.Content.ReadAsStreamAsync(ct);
+        return await ReadCappedAsync(stream, ct);
+    }
+
     private static async Task<bool> HostIsPublicAsync(Uri uri, CancellationToken ct)
     {
         IPAddress[] ips;

@@ -122,10 +122,19 @@ export function createToolbarItems(): ExtensiveToolbarItem[] {
           action: ({ runCommand }, url) => { if (url) runCommand('insertYouTubeEmbed', url); },
         },
         {
+          // Any link: a map (Google, Apple), a song, a design, a document, a
+          // page. The editor finds its embeddable form; a site that won't be
+          // framed becomes a link card.
           id: 'papyra.embed-web',
-          label: 'Web page',
+          label: 'Embed a link',
           icon: <Globe {...ICON} />,
-          input: { title: 'Embed a web page', label: 'Page link', placeholder: 'https://…', submitLabel: 'Embed', type: 'url' },
+          input: {
+            title: 'Embed a link',
+            label: 'Paste any link — a map, a song, a video, a document or a page',
+            placeholder: 'https://maps.app.goo.gl/…',
+            submitLabel: 'Embed',
+            type: 'url',
+          },
           action: ({ runCommand }, url) => { if (url) runCommand('insertIframeEmbed', url); },
         },
         {

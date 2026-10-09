@@ -26,6 +26,18 @@
   --warn-bg:     rgba(154, 100, 22, 0.12);
   --warn-border: rgba(154, 100, 22, 0.32);
 
+  /* Document icons: the band that says what kind of file it is. Earthy, and
+     dark enough for the white label on it (WCAG AA at 8.5px bold). */
+  --file-pdf:     #a8432f;
+  --file-doc:     #2f63a0;
+  --file-sheet:   #2e7a4c;
+  --file-slides:  #a5561a;
+  --file-archive: #7d5c2e;
+  --file-book:    #2f7378;
+  --file-text:    #6e6258;
+  --file-code:    #634f9c;
+  --file-label:   #fff;
+
   /* Ink for surfaces painted with a note's YAML colour. Those tints are always
      light pastels, in both themes, so the text on them is always dark — these
      three deliberately do NOT flip in dark mode. */
@@ -213,6 +225,16 @@
   --warn:        #e0a45c;
   --warn-bg:     rgba(224, 164, 92, 0.14);
   --warn-border: rgba(224, 164, 92, 0.30);
+
+  --file-pdf:     #e8887a;
+  --file-doc:     #86aee0;
+  --file-sheet:   #7fc79a;
+  --file-slides:  #e6a35f;
+  --file-archive: #c9a46a;
+  --file-book:    #7cc2c6;
+  --file-text:    #b8a690;
+  --file-code:    #ab9ce0;
+  --file-label:   #1c1917;
 
   --shadow-nav: 0 1px 4px rgba(0, 0, 0, 0.25);
   --shadow-card:

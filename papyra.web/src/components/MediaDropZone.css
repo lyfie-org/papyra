@@ -38,8 +38,17 @@
   flex-wrap: wrap;
   justify-content: center;
   overflow: visible;
-  /* Set by keepMediaToolbarsInView when the centred bar would leave the sheet. */
-  translate: var(--media-toolbar-shift, 0px) 0;
+  /* Set by keepMediaToolbarsInView when the centred bar would leave the sheet,
+     or be cut off by the note's scrolling edge. */
+  translate: var(--media-toolbar-shift, 0px) var(--media-toolbar-shift-y, 0px);
+}
+/* A document's type and size lead its bar, set off from the buttons. */
+:is(.note-editor__canvas, .shared-note__canvas) .luthor-media__tool-label[data-media-label="papyra.file-info"] {
+  order: -1;
+  margin-right: 2px;
+  padding-right: 10px;
+  border-right: 1px solid var(--border);
+  border-radius: 0;
 }
 /* Fewer, clearer buttons: no size presets (the drag handles size a picture),
    no alt text, no open-in-tab. luthor builds them; Papyra leaves them out. */

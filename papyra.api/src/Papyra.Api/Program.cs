@@ -269,6 +269,7 @@ builder.Services.AddSingleton<ExportTicketStore>();
 builder.Services.AddSingleton<BlockAnchorCleanup>();
 builder.Services.AddSingleton<AccountDeletion>();
 builder.Services.AddSingleton<LinkPreviewService>();
+builder.Services.AddSingleton<EmbedResolverService>();
 builder.Services.AddSingleton<ImportService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<ImportService>());
 
@@ -478,6 +479,7 @@ builder.Services.AddSingleton<EmailSender>();
 const string UserSearchRateLimit = "user-search";
 const string AuthRateLimit = "auth";
 const string PreviewRateLimit = "previews";
+const string EmbedRateLimit = "embeds";
 const string ClientLogRateLimit = "client-logs";
 
 // The mention typeahead is the one endpoint on which any tenant can ask about
@@ -535,6 +537,17 @@ builder.Services.AddRateLimiter(options =>
     // Link previews: per account, generous enough for a desk full of links
     // (cached server-side, so repeats are free), and apart from the sign-in
     // bucket so browsing notes can never lock anyone out of logging in.
+    // Embedding a link: someone pasting links into notes, one probe each (cached
+    // an hour). Its own bucket, so embeds never eat the link previews' budget.
+    options.AddPolicy(EmbedRateLimit, ctx =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            ctx.User.FindFirstValue(ClaimTypes.NameIdentifier) ?? ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            _ => new FixedWindowRateLimiterOptions
+            {
+                PermitLimit = 30,
+                Window = TimeSpan.FromMinutes(1),
+                QueueLimit = 0,
+            }));
     options.AddPolicy(PreviewRateLimit, ctx =>
         RateLimitPartition.GetFixedWindowLimiter(
             ctx.User.FindFirstValue(ClaimTypes.NameIdentifier) ?? ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown",
@@ -6376,6 +6389,20 @@ app.MapGet("/api/link-preview", async (string? url, LinkPreviewService previews,
 })
 .RequireAuthorization()
 .RequireRateLimiting(PreviewRateLimit);
+
+// ── Embed a link ──────────────────────────────────────────────────────────────
+// "Embed a link" with whatever link someone has: where a short link lands,
+// whether the site allows being framed, and its oEmbed player if it has one
+// (see EmbedResolverService). The browser maps the well-known services itself;
+// this is for the rest. Server-fetched, SSRF-guarded, signed-in, rate-limited.
+app.MapGet("/api/embed/resolve", async (string? url, EmbedResolverService embeds, CancellationToken ct) =>
+{
+    if (string.IsNullOrWhiteSpace(url) || url.Length > 2048) return Results.BadRequest();
+    var resolution = await embeds.ResolveAsync(url.Trim(), ct);
+    return resolution is null ? Results.NoContent() : Results.Ok(resolution);
+})
+.RequireAuthorization()
+.RequireRateLimiting(EmbedRateLimit);
 
 // ── Export all notes ──────────────────────────────────────────────────────────
 // Everything a person owns, as plain files — so it is guarded like the keys to

@@ -23,6 +23,7 @@ import ErrorBoundary from './components/ErrorBoundary.tsx';
 import ErrorScreen from './components/ErrorScreen.tsx';
 import { crashActions } from './lib/errorActions.ts';
 import ServerErrorNotices from './components/ServerErrorNotices.tsx';
+import DocumentPreviewHost from './components/DocumentPreview.tsx';
 import { installServerErrorWatch } from './lib/errorReport.ts';
 import { installClientErrorLog } from './lib/clientLog.ts';
 import { installSelectionGuards } from './lib/selectionGuards.ts';
@@ -82,6 +83,8 @@ createRoot(document.getElementById('root')!).render(
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
         <TopProgressBar />
+        {/* A document opened from a note (PDF, text), over whatever page. */}
+        <DocumentPreviewHost />
         <ToastProvider>
           <ServerErrorNotices />
           <ConfirmProvider>

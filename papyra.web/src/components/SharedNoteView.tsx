@@ -20,7 +20,7 @@ import { mediaMetaStore, mediaUrl, useMediaMetaReady } from '../lib/mediaMeta';
 import { createMediaToolbarItems } from '../lib/mediaToolbar';
 import { pauseOffscreenVideos } from '../lib/videoVisibility';
 import { keepMediaToolbarsInView } from '../lib/mediaToolbarPlacement';
-import { renderPdfExpansion } from '../lib/pdfPreview';
+import { renderFileCard } from '../lib/renderFileCard';
 import { useToast } from '../lib/toastContext';
 import { useReleaseSelectionOnLeave } from '../hooks/useReleaseSelectionOnLeave';
 import { usePlainTableCells } from '../hooks/usePlainTableCells';
@@ -119,7 +119,7 @@ export default function SharedNoteView({
       resolveMediaUrl: (filename, options) => mediaUrl(mediaBase, filename, options, meta.get(filename)),
       getMediaMeta: (filename) => meta.get(filename),
       subscribeMediaMeta: (listener) => meta.subscribe(listener),
-      renderFileExpansion: renderPdfExpansion,
+      renderFileCard,
       validateMedia: () => 'Attachments can’t be added to a shared note.',
       onUploadError: (error) => toast(error instanceof Error ? error.message : 'Couldn’t attach that file.'),
       uploadMedia: async () => { throw new Error('Attachments can’t be added to a shared note.'); },

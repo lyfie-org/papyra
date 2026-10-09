@@ -7,6 +7,7 @@
 //
 //   pnpm --filter papyra-app run build      # dist/ must exist first
 //   pnpm --filter papyra-app run shoot
+//   pnpm --filter papyra-app run shoot -- --only slash   # just some shots
 //
 // One-time, to fetch the browser binary:
 //   pnpm --filter papyra-app exec playwright install chromium
@@ -64,7 +65,42 @@ const SHOTS = [
       await page.waitForTimeout(900);
     },
   },
+  {
+    // The slash menu, opened on a fresh line of a real note.
+    name: 'slash',
+    path: '/note/reading-list',
+    wait: '[contenteditable="true"]',
+    viewports: ['desktop', 'mobile'],
+    stage: DESK,
+    then: async (page) => {
+      // The caret at the very end of the last paragraph (a click lands
+      // wherever the pointer is, and Ctrl+End is the editor's to interpret).
+      await page.locator('.luthor-content-editable').evaluate((el) => {
+        // On a phone, after the first paragraph: the short screen keeps the
+        // note's opening in view and the menu opens under the line.
+        const last = window.innerWidth < 600 ? el.firstElementChild : el.lastElementChild;
+        last?.scrollIntoView({ block: 'center' });
+        el.focus();
+        const range = document.createRange();
+        range.selectNodeContents(last ?? el);
+        range.collapse(false);
+        const selection = window.getSelection();
+        selection?.removeAllRanges();
+        selection?.addRange(range);
+      });
+      await page.waitForTimeout(200);
+      await page.keyboard.press('End');
+      await page.keyboard.press('Enter');
+      await page.keyboard.type('/', { delay: 40 });
+      await page.locator('.luthor-slash-menu').waitFor({ timeout: 5000 });
+      await page.waitForTimeout(400);
+    },
+  },
 ];
+
+// `--only a,b`: capture just those shots (the rest stay as committed).
+const onlyArg = process.argv.indexOf('--only');
+const ONLY = onlyArg > 0 ? new Set((process.argv[onlyArg + 1] ?? '').split(',').filter(Boolean)) : null;
 
 const PORT = 4399;
 
@@ -94,7 +130,7 @@ let count = 0;
 
 for (const theme of ['light', 'dark']) {
   for (const [label, size] of Object.entries(VIEWPORTS)) {
-    const wanted = SHOTS.filter((s) => s.viewports.includes(label));
+    const wanted = SHOTS.filter((s) => s.viewports.includes(label) && (!ONLY || ONLY.has(s.name)));
     if (wanted.length === 0) continue;
 
     const context = await browser.newContext({
