@@ -75,6 +75,7 @@ dotnet test papyra.api/tests/Papyra.Tests/Papyra.Tests.csproj
 # Web app (from papyra.web/)
 pnpm run build          # type-check + bundle — catches more than tsc --noEmit
 pnpm test
+pnpm run check:a11y     # WCAG 2.2 AA in real Chromium (CI fails on any violation)
 
 # Live-editing engine (from papyra.collab/)
 pnpm run typecheck && pnpm run lint && pnpm test

@@ -143,6 +143,52 @@ jobs:
       - name: Type-check & production build
         run: pnpm run build
 
+  # WCAG 2.2 AA, in a real browser: axe-core over every main view and open
+  # menu/dialog, light and dark, desktop and phone, plus keyboard reach and
+  # caret/selection contrast (scripts/check-a11y.mjs). Runs against the in-browser
+  # demo, so it needs no API. Its own job, beside the web one: it was only run by
+  # hand and had quietly drifted to 48 failures before it gated anything.
+  a11y:
+    name: Web — accessibility (WCAG 2.2 AA)
+    needs: changes
+    if: needs.changes.outputs.web == 'true'
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: papyra.web
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Setup pnpm workspace
+        uses: ./.github/actions/setup-pnpm
+        with:
+          install-args: --filter papyra-web...
+
+      # The browser download is cached per Playwright version; on a hit only the
+      # system libraries (apt) still need installing.
+      - name: Resolve Playwright version
+        id: playwright
+        run: echo "version=$(pnpm exec playwright --version | awk '{print $2}')" >> "$GITHUB_OUTPUT"
+
+      - name: Cache Playwright browsers
+        id: playwright-cache
+        uses: actions/cache@v6
+        with:
+          path: ~/.cache/ms-playwright
+          key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}-chromium
+
+      - name: Install Chromium
+        if: steps.playwright-cache.outputs.cache-hit != 'true'
+        run: pnpm exec playwright install --with-deps chromium
+
+      - name: Install Chromium system dependencies
+        if: steps.playwright-cache.outputs.cache-hit == 'true'
+        run: pnpm exec playwright install-deps chromium
+
+      - name: Accessibility check
+        run: pnpm run check:a11y
+
   collab:
     name: Collab server — type-check, lint, test & bundle
     needs: changes
@@ -239,7 +285,7 @@ jobs:
   # cancelled job does not.
   ci-ok:
     name: CI passed
-    needs: [changes, backend, frontend, collab, e2e-collab]
+    needs: [changes, backend, frontend, a11y, collab, e2e-collab]
     if: always()
     runs-on: ubuntu-latest
     steps:

@@ -184,6 +184,10 @@ docker compose up --build # → :8080
 # Editor + media end to end in real Chromium (own throwaway API; after `pnpm run build`
 # it also checks the performance budgets: 200-picture note, 300-card desk)
 pnpm --filter papyra-web run check:editor
+
+# Accessibility: axe-core (WCAG 2.2 AA) over every view, menu and dialog, light and
+# dark, desktop and phone, plus keyboard and caret/selection contrast — run in CI
+pnpm --filter papyra-web run check:a11y
 ```
 
 #### Tests
