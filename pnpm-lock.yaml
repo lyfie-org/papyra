@@ -70,11 +70,11 @@ importers:
         specifier: 0.40.0
         version: 0.40.0(yjs@13.6.33)
       '@lyfie/luthor':
-        specifier: ^2.11.8
-        version: 2.11.8(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(yjs@13.6.33)
+        specifier: ^2.11.9
+        version: 2.11.9(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(yjs@13.6.33)
       '@lyfie/luthor-headless':
-        specifier: ^2.11.8
-        version: 2.11.8(@lexical/code@0.40.0)(@lexical/html@0.40.0)(@lexical/link@0.40.0)(@lexical/list@0.40.0)(@lexical/markdown@0.40.0)(@lexical/react@0.40.0(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(yjs@13.6.33))(@lexical/rich-text@0.40.0)(@lexical/selection@0.40.0)(@lexical/table@0.40.0)(@lexical/utils@0.40.0)(@lexical/yjs@0.40.0(yjs@13.6.33))(lexical@0.40.0)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(yjs@13.6.33)
+        specifier: ^2.11.9
+        version: 2.11.9(@lexical/code@0.40.0)(@lexical/html@0.40.0)(@lexical/link@0.40.0)(@lexical/list@0.40.0)(@lexical/markdown@0.40.0)(@lexical/react@0.40.0(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(yjs@13.6.33))(@lexical/rich-text@0.40.0)(@lexical/selection@0.40.0)(@lexical/table@0.40.0)(@lexical/utils@0.40.0)(@lexical/yjs@0.40.0(yjs@13.6.33))(lexical@0.40.0)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(yjs@13.6.33)
       lexical:
         specifier: 0.40.0
         version: 0.40.0
@@ -137,11 +137,11 @@ importers:
         specifier: 0.40.0
         version: 0.40.0(yjs@13.6.33)
       '@lyfie/luthor':
-        specifier: ^2.11.8
-        version: 2.11.8(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(yjs@13.6.33)
+        specifier: ^2.11.9
+        version: 2.11.9(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(yjs@13.6.33)
       '@lyfie/luthor-headless':
-        specifier: 2.11.8
-        version: 2.11.8(@lexical/code@0.40.0)(@lexical/html@0.40.0)(@lexical/link@0.40.0)(@lexical/list@0.40.0)(@lexical/markdown@0.40.0)(@lexical/react@0.40.0(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(yjs@13.6.33))(@lexical/rich-text@0.40.0)(@lexical/selection@0.40.0)(@lexical/table@0.40.0)(@lexical/utils@0.40.0)(@lexical/yjs@0.40.0(yjs@13.6.33))(lexical@0.40.0)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(yjs@13.6.33)
+        specifier: 2.11.9
+        version: 2.11.9(@lexical/code@0.40.0)(@lexical/html@0.40.0)(@lexical/link@0.40.0)(@lexical/list@0.40.0)(@lexical/markdown@0.40.0)(@lexical/react@0.40.0(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(yjs@13.6.33))(@lexical/rich-text@0.40.0)(@lexical/selection@0.40.0)(@lexical/table@0.40.0)(@lexical/utils@0.40.0)(@lexical/yjs@0.40.0(yjs@13.6.33))(lexical@0.40.0)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(yjs@13.6.33)
       '@microsoft/signalr':
         specifier: ^10.0.0
         version: 10.0.0
@@ -1473,8 +1473,8 @@ packages:
   '@lifeomic/attempt@3.1.0':
     resolution: {integrity: sha512-QZqem4QuAnAyzfz+Gj5/+SLxqwCAw2qmt7732ZXodr6VDWGeYLG6w1i/vYLa55JQM9wRuBKLmXmiZ2P0LtE5rw==}
 
-  '@lyfie/luthor-headless@2.11.8':
-    resolution: {integrity: sha512-nPg7upWPVd+tF4l6+8je6H5cb+yCGdOFXh02mZ/EZAuinnbkIJcOUXWQG+k68Z7PLB/hoGxAGY5ksEMyglDO/A==}
+  '@lyfie/luthor-headless@2.11.9':
+    resolution: {integrity: sha512-Jtl+sPjXddhFyya44TmXgRRy9ZM4Wv8yCMkjmD3UX73/qRZtgrztzkkkfNEh9QcLLVKmf/mAYO8jLIX/VquDCQ==}
     peerDependencies:
       '@lexical/code': '>=0.40.0'
       '@lexical/html': '>=0.40.0'
@@ -1497,8 +1497,8 @@ packages:
       yjs:
         optional: true
 
-  '@lyfie/luthor@2.11.8':
-    resolution: {integrity: sha512-i+ZJY4o+h/8+ILWRaNA22ZbmBe1FPj0GUME4BIFgmKMENMnfcwXIs9rF/mEQ9QF6oCUTTJbHs5qkhweOM+2ZOQ==}
+  '@lyfie/luthor@2.11.9':
+    resolution: {integrity: sha512-EVskowBIZPGQmB1KvyN8eh9eyJzVrbFfdKSODJ5BAadSUjbLIkx5vIrR28pG4PE/kJ3HZ81lI8Wh+50L7A5oCA==}
     peerDependencies:
       react: ^18.0.0 || ^19.0.0
       react-dom: ^18.0.0 || ^19.0.0
@@ -4936,7 +4936,7 @@ snapshots:
 
   '@lifeomic/attempt@3.1.0': {}
 
-  '@lyfie/luthor-headless@2.11.8(@lexical/code@0.40.0)(@lexical/html@0.40.0)(@lexical/link@0.40.0)(@lexical/list@0.40.0)(@lexical/markdown@0.40.0)(@lexical/react@0.40.0(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(yjs@13.6.33))(@lexical/rich-text@0.40.0)(@lexical/selection@0.40.0)(@lexical/table@0.40.0)(@lexical/utils@0.40.0)(@lexical/yjs@0.40.0(yjs@13.6.33))(lexical@0.40.0)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(yjs@13.6.33)':
+  '@lyfie/luthor-headless@2.11.9(@lexical/code@0.40.0)(@lexical/html@0.40.0)(@lexical/link@0.40.0)(@lexical/list@0.40.0)(@lexical/markdown@0.40.0)(@lexical/react@0.40.0(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(yjs@13.6.33))(@lexical/rich-text@0.40.0)(@lexical/selection@0.40.0)(@lexical/table@0.40.0)(@lexical/utils@0.40.0)(@lexical/yjs@0.40.0(yjs@13.6.33))(lexical@0.40.0)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(yjs@13.6.33)':
     dependencies:
       '@lexical/code': 0.40.0
       '@lexical/html': 0.40.0
@@ -4956,7 +4956,7 @@ snapshots:
       '@lexical/yjs': 0.40.0(yjs@13.6.33)
       yjs: 13.6.33
 
-  '@lyfie/luthor@2.11.8(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(yjs@13.6.33)':
+  '@lyfie/luthor@2.11.9(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(yjs@13.6.33)':
     dependencies:
       '@lexical/code': 0.40.0
       '@lexical/html': 0.40.0
@@ -4969,7 +4969,7 @@ snapshots:
       '@lexical/table': 0.40.0
       '@lexical/utils': 0.40.0
       '@lexical/yjs': 0.40.0(yjs@13.6.33)
-      '@lyfie/luthor-headless': 2.11.8(@lexical/code@0.40.0)(@lexical/html@0.40.0)(@lexical/link@0.40.0)(@lexical/list@0.40.0)(@lexical/markdown@0.40.0)(@lexical/react@0.40.0(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(yjs@13.6.33))(@lexical/rich-text@0.40.0)(@lexical/selection@0.40.0)(@lexical/table@0.40.0)(@lexical/utils@0.40.0)(@lexical/yjs@0.40.0(yjs@13.6.33))(lexical@0.40.0)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(yjs@13.6.33)
+      '@lyfie/luthor-headless': 2.11.9(@lexical/code@0.40.0)(@lexical/html@0.40.0)(@lexical/link@0.40.0)(@lexical/list@0.40.0)(@lexical/markdown@0.40.0)(@lexical/react@0.40.0(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(yjs@13.6.33))(@lexical/rich-text@0.40.0)(@lexical/selection@0.40.0)(@lexical/table@0.40.0)(@lexical/utils@0.40.0)(@lexical/yjs@0.40.0(yjs@13.6.33))(lexical@0.40.0)(react-dom@19.2.6(react@19.2.6))(react@19.2.6)(yjs@13.6.33)
       lexical: 0.40.0
       react: 19.2.6
       react-dom: 19.2.6(react@19.2.6)

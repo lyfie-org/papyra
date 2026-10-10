@@ -32,6 +32,10 @@ const CONCEPTS: Array<[string, string]> = [
     'A slash at the start of a line opens a menu of everything a note can hold — headings, lists, checklists, tables, pictures, and embeds. Keep typing to narrow it (“/table”, “/embed”). Embed takes any link you have: a Google or Apple Maps place, a video, a song, a document, a web page.',
   ],
   [
+    'Drag pictures and embeds where you want them',
+    'Press on a picture, a file, a link card or an embed and drag it up or down the note; Esc cancels. Videos and maps move by the grip in their corner. Hover over an embed for a link that opens its page.',
+  ],
+  [
     'Link notes with [[double brackets]]',
     'Type [[ in the editor to link another note. Every note shows its “Linked mentions” underneath, so you can walk backwards through your own references.',
   ],
