@@ -40,6 +40,7 @@ export default function SharedWithMePage() {
 
       {openShare != null && (
         <SharedNoteModal
+          key={openShare}
           shareId={openShare}
           onClose={() => setParams((p) => { const next = new URLSearchParams(p); next.delete('open'); return next; }, { replace: true })}
         />

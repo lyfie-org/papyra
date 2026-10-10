@@ -69,7 +69,7 @@ type Status = 'idle' | 'saving' | 'saved' | 'error';
 // carets. Falls back to the save-as-you-type path above when the embedded
 // collab engine is off. Public links never pass it.
 export default function SharedNoteView({
-  note, onSave, onSaveTitle, onRequestEdit, mediaBase, collab, pin, onClose,
+  note, onSave, onSaveTitle, onRequestEdit, mediaBase, collab, pin, onClose, onOpenLink, actions,
 }: {
   note: SharedNote;
   onSave?: (body: string) => Promise<void>;
@@ -82,6 +82,13 @@ export default function SharedNoteView({
   pin?: { pinned: boolean; onToggle: () => void };
   /** Shown as a Close button at the foot (the modal). */
   onClose?: () => void;
+  /**
+   * A [[link]] in the note was followed (signed-in grantees: it opens the
+   * linked note when that one is shared with them too). Omitted, links are inert.
+   */
+  onOpenLink?: (target: string) => void;
+  /** What the viewer can do with the note (colour, share, tags, copy…), at its foot. */
+  actions?: React.ReactNode;
 }) {
   const theme = useResolvedTheme();
   const editorRef = useRef<PapyraEditorRef | null>(null);
@@ -111,6 +118,9 @@ export default function SharedNoteView({
   // note navigation are inert on a shared surface. Built once per share —
   // a new adapter would re-render every embed.
   const { toast } = useToast();
+  const openLinkRef = useRef(onOpenLink);
+  useEffect(() => { openLinkRef.current = onOpenLink; }, [onOpenLink]);
+  const followLink = useCallback((target: string) => openLinkRef.current?.(target), []);
   // Attachments' sizes and thumbnails known before the editor draws them.
   const mediaReady = useMediaMetaReady(note.body, mediaBase);
   const adapter = useMemo<PapyraEditorAdapter>(() => {
@@ -124,12 +134,12 @@ export default function SharedNoteView({
       onUploadError: (error) => toast(error instanceof Error ? error.message : 'Couldn’t attach that file.'),
       uploadMedia: async () => { throw new Error('Attachments can’t be added to a shared note.'); },
       mediaToolbarItems: createMediaToolbarItems({ upload: () => Promise.reject(new Error('read-only')), readOnly: true }),
-      openNote: () => {},
+      openNote: (ref) => { const target = (ref.title ?? ref.id ?? '').trim(); if (target) followLink(target); },
       searchNotes: async () => [],
     };
-  }, [mediaBase, toast]);
-  // Inert here too — without this Lexical would open the `#` href in a new tab.
-  useInPlaceWikilinks(articleRef, noop);
+  }, [mediaBase, toast, followLink]);
+  // In place — without this Lexical would open the `#` href in a new tab.
+  useInPlaceWikilinks(articleRef, onOpenLink ? followLink : noop);
   useEffect(() => (articleRef.current ? pauseOffscreenVideos(articleRef.current) : undefined), []);
   useEffect(() => (articleRef.current ? keepMediaToolbarsInView(articleRef.current) : undefined), []);
   useReleaseSelectionOnLeave(lexical, articleRef);
@@ -141,7 +151,10 @@ export default function SharedNoteView({
   // --tint-strength (muted in dark mode), and a coloured note keeps a light
   // editor for dark ink — the NoteEditor convention.
   const style = note.color ? ({ '--note-tint': note.color } as CSSProperties) : undefined;
-  const editorTheme = colored ? 'light' : theme;
+  // As in the owner's editor: the app theme, with `colored` light-locking it
+  // in place — so a colour picked (or changed by someone else) while the note
+  // is open repaints the editor without rebuilding it.
+  const editorTheme = theme;
 
   // What the server last holds. Starts as the editor's own serialization of the
   // loaded note (see onReady) so merely opening it never writes anything back.
@@ -333,6 +346,7 @@ export default function SharedNoteView({
                   onReady={(m) => {
                     editorRef.current = m;
                     const editor = m.getLexicalEditor() ?? null;
+                    editor?.getRootElement()?.setAttribute('aria-label', 'Note body');
                     setLexical(editor);
                     editor?.setEditable(liveEdit && room.synced);
                   }}
@@ -352,7 +366,7 @@ export default function SharedNoteView({
               defaultEditorView="visual"
               defaultContent={note.body}
               adapter={adapter}
-              onReady={(m) => { m.setMarkdown(note.body); }}
+              onReady={(m) => { m.getLexicalEditor()?.getRootElement()?.setAttribute('aria-label', 'Note body'); m.setMarkdown(note.body); }}
             />
           ) : <CollabJoining body={note.body} />}
         </div>
@@ -373,6 +387,7 @@ export default function SharedNoteView({
         onChange={onChange}
         onReady={(m) => {
           editorRef.current = m;
+          m.getLexicalEditor()?.getRootElement()?.setAttribute('aria-label', 'Note body');
           setLexical(m.getLexicalEditor() ?? null);
           m.setMarkdown(note.body);
           const read = m.getMarkdown();
@@ -380,8 +395,9 @@ export default function SharedNoteView({
         }}
       />
       )}
-      {((comments.data && collab) || onClose) && (
+      {((comments.data && collab) || onClose || actions) && (
         <footer className="shared-note__footer">
+          {actions && <div className="shared-note__actions">{actions}</div>}
           {comments.data && collab && (
             <CommentsButton count={comments.data.threads.filter(t => !t.resolved).length} pressed={commentsPanel}
               onClick={() => setCommentsPanel(o => !o)} />

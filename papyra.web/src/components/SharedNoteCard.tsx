@@ -1,10 +1,12 @@
 import type { CSSProperties } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Pin, Users } from 'lucide-react';
+import { Pin } from 'lucide-react';
 import { useSharedPin, type IncomingShare } from '../hooks/useShares';
 import { useResolvedTheme } from '../hooks/useTheme';
 import { tintInkClass } from '../lib/noteColors';
 import MarkdownPreview from './MarkdownPreview';
+import Avatar from './Avatar';
+import SharedNoteActions from './SharedNoteActions';
 import { dayLabel, fullStamp, useMinuteTick, useTimeZone } from '../lib/timeZone';
 import './NoteCard.css';
 import './SharedNoteCard.css';
@@ -12,8 +14,9 @@ import './SharedNoteCard.css';
 /**
  * A note someone else shared with you, drawn as one of your own cards — same
  * paint (the owner's colour, muted in dark mode exactly as on their desk), same
- * preview — with one quiet line saying whose it is and what you may do.
- * Opens over the current page via `?open=<shareId>`.
+ * preview, same actions on hover — with the owner's face at its foot, and
+ * "Can view" when you can only read it. Opens over the current page via
+ * `?open=<shareId>`.
  */
 export default function SharedNoteCard({ share, showSharedDate = false }: {
   share: IncomingShare;
@@ -28,17 +31,21 @@ export default function SharedNoteCard({ share, showSharedDate = false }: {
   const style = share.color ? ({ '--note-tint': share.color } as CSSProperties) : undefined;
   const className = `note-card shared-card${share.color ? ` note-card--colored${tintInkClass(share.color, theme)}` : ''}`;
   const title = share.title.trim() || 'Untitled';
-  const access = share.access === 'edit' ? 'Can edit' : share.requestPending ? 'Edit requested' : 'View only';
+  // Editing is the default for a note shared with you; only the exceptions are spelled out.
+  const access = share.access === 'edit' ? null : share.requestPending ? 'Edit requested' : 'Can view';
+  const owner = share.ownerName && share.ownerName !== share.owner ? `${share.ownerName} (@${share.owner})` : `@${share.owner}`;
+  const via = share.sharedBy ? `, via @${share.sharedBy}` : '';
   const next = new URLSearchParams(params);
   next.set('open', String(share.shareId));
   const pin = useSharedPin();
   const pinned = !!share.pinned;
+  const tags = share.tags ?? [];
 
   return (
     <Link
       to={{ search: next.toString() }}
       className="note-card__link"
-      aria-label={`${title}, shared with you by @${share.owner}, ${access.toLowerCase()}`}
+      aria-label={`${title}, shared with you by ${owner}${via}${access ? `, ${access.toLowerCase()}` : ', can edit'}`}
     >
       <article className={className} style={style}>
         {/* Your own pin for it — the owner's desk is unaffected. */}
@@ -53,16 +60,23 @@ export default function SharedNoteCard({ share, showSharedDate = false }: {
         </button>
         <h3 className="note-card__title">{title}</h3>
         {share.body.trim() && <MarkdownPreview body={share.body} />}
-        <p className="shared-card__foot" title={`Shared with you by @${share.owner}`}>
-          <Users size={13} aria-hidden="true" />
-          <span className="shared-card__owner">@{share.owner}</span>
-          <span className="shared-card__access">{access}</span>
+        {tags.length > 0 && (
+          <ul className="note-card__tags" aria-label="Your tags">
+            {tags.map((tag) => <li key={tag} className="note-card__tag">{tag}</li>)}
+          </ul>
+        )}
+        <p className="shared-card__foot" title={`Shared with you by ${owner}${via}`}>
+          <Avatar username={share.owner} name={share.ownerName} size={22} className="shared-card__face" />
+          {access && <span className="shared-card__access">{access}</span>}
         </p>
         {shared && (
           <p className="shared-card__when">
             <time dateTime={share.sharedUtc} title={fullStamp(share.sharedUtc!, zone)}>Shared {shared}</time>
           </p>
         )}
+        <div className="note-card__actions">
+          <SharedNoteActions share={share} variant="card" />
+        </div>
       </article>
     </Link>
   );

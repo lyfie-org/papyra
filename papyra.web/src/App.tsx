@@ -24,6 +24,7 @@ import { backgroundPage } from './lib/noteLink';
 import { RealLocationContext } from './lib/realLocation';
 import LoadingBar from './components/LoadingBar';
 import SharedWithMePage from './pages/SharedWithMePage';
+import OpenNoteLinkPage from './pages/OpenNoteLinkPage';
 import DeletionScheduledPage from './pages/DeletionScheduledPage';
 import NotFoundPage from './pages/NotFoundPage';
 import ErrorScreen from './components/ErrorScreen';
@@ -110,6 +111,8 @@ export default function App() {
         {/* Just the notes shared with you. They also sit on the Notes desk,
             behind its "Shared with me" filter. */}
         <Route path="shared-with-me" element={<SharedWithMePage />} />
+        {/* A copied link to a note: opens it for its owner or anyone it's shared with. */}
+        <Route path="n/:owner/:noteId" element={<OpenNoteLinkPage />} />
         <Route path="vault" element={<VaultPage />} />
         <Route path="archive" element={<ArchivePage />} />
         <Route path="trash" element={<TrashPage />} />

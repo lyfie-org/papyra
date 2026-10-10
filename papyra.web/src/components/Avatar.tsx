@@ -1,5 +1,6 @@
 import { useState } from 'react';
 import { useAvatarVersion } from '../lib/avatarVersion';
+import { initialsOf } from '../lib/initials';
 import './Avatar.css';
 
 interface Props {
@@ -14,8 +15,8 @@ interface Props {
 }
 
 /**
- * A person, as a circle. Their picture when they have one, the first letter of
- * their name when they don't.
+ * A person, as a circle. Their picture when they have one, their initials when
+ * they don't.
  *
  * One component everywhere so a face looks the same in the header, the roster,
  * the inbox and a shared note — and so "no picture" is a considered fallback
@@ -34,15 +35,15 @@ export default function Avatar({ username, name, size = 32, version = 0, classNa
   const v = version + globalVersion;
   const src = v ? `${base}?v=${v}` : base;
   const failed = failedSrc === src;
-  const initial = (name || username || '?').trim().charAt(0).toUpperCase();
+  const initials = initialsOf(name, username);
 
   return (
     <span
       className={`avatar${failed ? ' avatar--initial' : ''}${className ? ` ${className}` : ''}`}
-      style={{ width: size, height: size, fontSize: Math.round(size * 0.42) }}
+      style={{ width: size, height: size, fontSize: Math.round(size * (initials.length > 1 ? 0.36 : 0.42)) }}
     >
       {failed
-        ? <span aria-hidden="true">{initial}</span>
+        ? <span aria-hidden="true">{initials}</span>
         : (
           <img src={src} alt="" aria-hidden="true" onError={() => setFailedSrc(src)} />
         )}

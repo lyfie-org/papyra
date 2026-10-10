@@ -33,7 +33,11 @@ const CONCEPTS: Array<[string, string]> = [
   ],
   [
     'Drag pictures and embeds where you want them',
-    'Press on a picture, a file, a link card or an embed and drag it up or down the note; Esc cancels. Videos and maps move by the grip in their corner. Hover over an embed for a link that opens its page.',
+    'Press on a picture, a file, a link card or an embed and drag it up or down the note; Esc cancels. Videos and maps move by the grip beside their corner. Rest the pointer on an embed to preview its page; click the preview to open it.',
+  ],
+  [
+    'Notes shared with you work like your own',
+    'Pin them, give them your own tags, copy them, download them or copy their link from the card. With edit access you can also change a note’s colour (everyone sees it) and share it with someone else — it stays its owner’s note. Its [[links]] open the notes they point to when those are shared with you too. Sharing a note that links to others? The share dialog can send those along.',
   ],
   [
     'Link notes with [[double brackets]]',

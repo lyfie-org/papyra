@@ -43,8 +43,8 @@ interface Props {
   todosOnly?: boolean;
   /**
    * Notes other people shared with you, sorted in among your own: by when they
-   * were shared until you drag one, then where you put it. They live in someone
-   * else's vault, so they can't be selected for bulk actions here.
+   * were shared until you drag one, then where you put it. They can be selected
+   * with your own; the bulk bar offers them what applies to a shared note.
    */
   shared?: IncomingShare[];
   /** Say on each shared card when it was shared (the Shared with me page). */
@@ -155,15 +155,23 @@ const AbsCard = memo(function AbsCard({
   );
 });
 
-// A note shared with you, placed and dragged like AbsCard. Never part of a
-// selection: bulk actions (archive, trash, tag) act on your own vault.
+// A note shared with you, placed, dragged and selected like AbsCard. In a
+// selection the bulk bar offers it what applies to a shared note (your pin);
+// actions on your own vault (archive, delete, share) pass it by.
 const SharedAbsCard = memo(function SharedAbsCard({
   share, id, x: boxX, y: boxY, colW, cols, resizedAt, onMeasure, showSharedDate,
+  selected, selecting, onToggle, following, stackIndex, carrying,
 }: {
   share: IncomingShare; id: string; x: number; y: number; colW: number; cols: number;
   resizedAt: RefObject<number>;
   onMeasure: (id: string, h: number) => void;
   showSharedDate: boolean;
+  selected: boolean;
+  selecting: boolean;
+  onToggle: (id: string, shift: boolean) => void;
+  following: boolean;
+  stackIndex: number;
+  carrying: number;
 }) {
   const { listeners, setNodeRef, transform, isDragging } = useDraggable({ id });
   const elRef = useRef<HTMLDivElement | null>(null);
@@ -183,17 +191,30 @@ const SharedAbsCard = memo(function SharedAbsCard({
   const y = boxY + (isDragging && transform ? transform.y : 0);
   useFlipPosition(elRef, x, y, { cols, colW, frozen: isDragging, resizedAt });
 
+  const title = share.title.trim() || 'Untitled';
+  const cls = ['dnd-card selectable', selected && 'is-selected', following && 'is-following', isDragging && 'is-dragging']
+    .filter(Boolean).join(' ');
+
   return (
     <div
       ref={setRef}
-      className={`dnd-card${isDragging ? ' is-dragging' : ''}`}
+      className={cls}
       style={{
         position: 'absolute', top: 0, left: 0, width: colW,
         transform: `translate3d(${x}px, ${y}px, 0)`,
-        zIndex: isDragging ? 30 : 1,
+        zIndex: isDragging ? 30 : following ? 29 - stackIndex : 1,
       }}
+      // In selection mode the whole card is the checkbox, as on your own notes.
+      onClickCapture={selecting ? (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        onToggle(id, e.shiftKey);
+      } : undefined}
       {...listeners}
     >
+      <SelectTick title={title} selected={selected} selecting={selecting}
+        onToggle={(shift) => onToggle(id, shift)} />
+      {carrying > 1 && <span className="dnd-card__carry" aria-hidden="true">{carrying}</span>}
       <SharedNoteCard share={share} showSharedDate={showSharedDate} />
     </div>
   );
@@ -252,8 +273,9 @@ export default function DraggableNoteGrid({
   const others = useMemo(() => items.filter(i => !i.pinned).sort(byKey), [items]);
   const byId = useMemo(() => new Map(items.map(i => [i.id, i])), [items]);
   const allOrdered = useMemo(() => [...pinned, ...others].map(i => i.id), [pinned, others]);
-  // What selection and the bulk bar cover: your own notes only.
-  const ordered = useMemo(() => [...pinned, ...others].filter(i => i.kind === 'note').map(i => i.id), [pinned, others]);
+  // What selection and the bulk bar cover: every card on the desk, yours and
+  // those shared with you.
+  const ordered = allOrdered;
   const { width, resizedAt, sticky, recordColumns } = useGridWidth(wrapRef, items.length > 0);
   const selection = useSelection(ordered);
   const sharedPin = useSharedPin();
@@ -343,8 +365,7 @@ export default function DraggableNoteGrid({
     const ev = e.activatorEvent as PointerEvent;
     pointerStart.current = { x: ev.clientX ?? 0, y: ev.clientY ?? 0 };
     dragging.current = true;
-    // Dragging a selected card carries the whole selection with it (a shared
-    // card is never selected, so it always travels alone).
+    // Dragging a selected card carries the whole selection with it.
     const carry = selection.selected.has(id) && selection.selected.size > 1
       ? [id, ...ordered.filter(x => x !== id && selection.selected.has(x))]
       : [id];
@@ -488,7 +509,14 @@ export default function DraggableNoteGrid({
     if (item.kind === 'shared') {
       return (
         <SharedAbsCard key={item.id} id={item.id} share={item.share} colW={colW} cols={cols} resizedAt={resizedAt}
-          x={box?.x ?? 0} y={box?.y ?? 0} onMeasure={onMeasure} showSharedDate={showSharedDate} />
+          x={box?.x ?? 0} y={box?.y ?? 0} onMeasure={onMeasure} showSharedDate={showSharedDate}
+          selected={selection.selected.has(item.id)}
+          selecting={selection.active}
+          onToggle={onToggle}
+          following={following}
+          stackIndex={Math.max(0, stackIndex)}
+          carrying={item.id === activeId ? carrying : 0}
+        />
       );
     }
     const n = item.note;
@@ -559,6 +587,7 @@ export default function DraggableNoteGrid({
       {selection.active && (
         <BulkBar
           notes={[...pinned, ...others].flatMap(i => (i.kind === 'note' && selection.selected.has(i.id) ? [i.note] : []))}
+          shared={[...pinned, ...others].flatMap(i => (i.kind === 'shared' && selection.selected.has(i.id) ? [i.share] : []))}
           total={ordered.length}
           onClear={selection.clear}
           onSelectAll={selection.selectAll}

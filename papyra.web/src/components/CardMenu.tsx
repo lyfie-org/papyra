@@ -1,4 +1,3 @@
-import { useCallback, useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { createPortal } from 'react-dom';
 import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
@@ -9,15 +8,10 @@ import { patchNoteInCache } from '../lib/notesCache';
 import { vaultFetch } from '../lib/vault';
 import { useToast } from '../lib/toastContext';
 import { useSyncState } from '../hooks/useSync';
+import { usePopoverMenu } from '../hooks/usePopoverMenu';
+import { useAuth } from '../hooks/useAuth';
+import { noteLink } from '../hooks/useShares';
 import './CardMenu.css';
-
-// Room kept between the menu and the window edge.
-const EDGE = 8;
-
-function stop(e: React.SyntheticEvent) {
-  e.preventDefault();
-  e.stopPropagation();
-}
 
 /** A note as the .md file Papyra would write: YAML front matter, then the body. */
 function toMarkdown(note: Note): string {
@@ -56,84 +50,12 @@ export default function CardMenu({ note, onShare, onArchive, onDelete, triggerCl
   onDelete?: () => unknown;
   triggerClassName?: string;
 }) {
-  const [open, setOpen] = useState(false);
-  const [pos, setPos] = useState<{ top: number; left: number } | null>(null);
-  const triggerRef = useRef<HTMLButtonElement | null>(null);
-  const menuRef = useRef<HTMLDivElement | null>(null);
+  const { open, pos, triggerRef, menuRef, toggle, onMenuKey, run } = usePopoverMenu();
+  const auth = useAuth();
   const queryClient = useQueryClient();
   const navigate = useNavigate();
   const { toast } = useToast();
   const { online } = useSyncState();
-
-  const close = useCallback(() => { setOpen(false); setPos(null); }, []);
-
-  // Place after the menu has rendered (hidden) so its real size is known.
-  useLayoutEffect(() => {
-    if (!open) return;
-    const place = () => {
-      const t = triggerRef.current?.getBoundingClientRect();
-      const m = menuRef.current;
-      if (!t || !m) return;
-      const { offsetWidth: w, offsetHeight: h } = m;
-      const below = t.bottom + 4;
-      const above = t.top - 4 - h;
-      const top = below + h <= window.innerHeight - EDGE || above < EDGE
-        ? Math.min(below, window.innerHeight - EDGE - h)
-        : above;
-      const left = Math.min(Math.max(EDGE, t.right - w), window.innerWidth - EDGE - w);
-      setPos({ top: Math.max(EDGE, top), left });
-    };
-    place();
-    // A menu pinned to a point on screen has to go when that point moves.
-    const onMove = () => close();
-    window.addEventListener('resize', onMove);
-    window.addEventListener('scroll', onMove, true);
-    return () => {
-      window.removeEventListener('resize', onMove);
-      window.removeEventListener('scroll', onMove, true);
-    };
-  }, [open, close]);
-
-  // Outside click / Escape. Capture, so a click on a card that stops
-  // propagation still counts as "outside".
-  useEffect(() => {
-    if (!open) return;
-    const onDown = (e: PointerEvent) => {
-      const target = e.target as Node;
-      if (menuRef.current?.contains(target) || triggerRef.current?.contains(target)) return;
-      close();
-    };
-    const onKey = (e: KeyboardEvent) => {
-      if (e.key !== 'Escape') return;
-      e.preventDefault();
-      close();
-      triggerRef.current?.focus();
-    };
-    document.addEventListener('pointerdown', onDown, true);
-    document.addEventListener('keydown', onKey);
-    return () => {
-      document.removeEventListener('pointerdown', onDown, true);
-      document.removeEventListener('keydown', onKey);
-    };
-  }, [open, close]);
-
-  // Focus the first item on open, for keyboard users; arrows move between items.
-  useEffect(() => {
-    if (open && pos) menuRef.current?.querySelector<HTMLButtonElement>('[role="menuitem"]:not(:disabled)')?.focus();
-  }, [open, pos]);
-
-  function onMenuKey(e: React.KeyboardEvent) {
-    if (e.key !== 'ArrowDown' && e.key !== 'ArrowUp') return;
-    e.preventDefault();
-    const items = [...(menuRef.current?.querySelectorAll<HTMLButtonElement>('[role="menuitem"]:not(:disabled)') ?? [])];
-    const i = items.indexOf(document.activeElement as HTMLButtonElement);
-    const next = e.key === 'ArrowDown' ? (i + 1) % items.length : (i - 1 + items.length) % items.length;
-    items[next]?.focus();
-  }
-
-  function run(fn: () => unknown) {
-    return (e: React.MouseEvent) => { stop(e); close(); void fn(); };
-  }
 
   async function togglePin() {
     const pinned = !note.pinned;
@@ -190,7 +112,8 @@ export default function CardMenu({ note, onShare, onArchive, onDelete, triggerCl
   }
 
   async function copyLink() {
-    const url = `${window.location.origin}/note/${encodeURIComponent(note.id)}`;
+    // `/n/<you>/<id>`: opens the note for you, and for anyone you share it with.
+    const url = auth.user ? noteLink(auth.user.username, note.id) : `${window.location.origin}/note/${encodeURIComponent(note.id)}`;
     try {
       await navigator.clipboard.writeText(url);
       toast('Link copied — it opens for anyone signed in who can see this note.');
@@ -220,7 +143,7 @@ export default function CardMenu({ note, onShare, onArchive, onDelete, triggerCl
         title="More actions"
         aria-haspopup="menu"
         aria-expanded={open}
-        onClick={(e) => { stop(e); if (open) close(); else setOpen(true); }}
+        onClick={toggle}
       >
         <MoreHorizontal size={16} />
       </button>

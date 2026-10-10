@@ -39,6 +39,16 @@ describe('tintInk', () => {
     expect(tintInkClass('#dfe9df', 'light')).toBe('');
   });
 
+  it('judges every step of the ink, not only the darkest (a dimmed custom colour)', () => {
+    // #c9b8a8 in dark mode: --tint-ink clears 4.5:1 but the preview's softer
+    // step fell to ~4:1 — so it gets pure ink.
+    expect(tintInkClass('#c9b8a8', 'dark')).toContain('tint--high-ink');
+    // Every palette swatch still reads in its warm ink.
+    for (const s of NOTE_SWATCHES) for (const theme of ['light', 'dark'] as const) {
+      expect(tintInkClass(s.value, theme)).not.toContain('tint--high-ink');
+    }
+  });
+
   it('steps a mid-tone up to pure ink when neither warm ink reaches 4.5:1', () => {
     // #8a8f98 painted in dark mode: best warm ink is only 3.6:1; pure black
     // (4.7:1) edges out pure white (4.5:1).

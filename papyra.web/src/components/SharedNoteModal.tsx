@@ -1,7 +1,9 @@
 import { useEffect, useRef } from 'react';
+import { useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { X } from 'lucide-react';
-import { useIncomingShares, useRequestAccess, useSharedPin } from '../hooks/useShares';
+import { resolveSharedLink, useIncomingShares, useRequestAccess, useSharedPin } from '../hooks/useShares';
+import SharedNoteActions from './SharedNoteActions';
 import { useDialogFocus } from '../hooks/useDialogFocus';
 import { useToast } from '../lib/toastContext';
 import SharedNoteView, { type SharedNote } from './SharedNoteView';
@@ -22,8 +24,10 @@ export default function SharedNoteModal({ shareId, onClose }: { shareId: number;
   const { toast } = useToast();
   // Your own pin for it lives on the desk's list of shares.
   const { data: incoming } = useIncomingShares();
-  const pinned = !!incoming?.find((s) => s.shareId === shareId)?.pinned;
+  const entry = incoming?.find((s) => s.shareId === shareId);
+  const pinned = !!entry?.pinned;
   const sharedPin = useSharedPin();
+  const [, setParams] = useSearchParams();
 
   // Under ['shares', 'incoming'] so an approval pushed over the hub (which
   // invalidates that prefix) refetches the open note and flips it editable.
@@ -63,6 +67,22 @@ export default function SharedNoteModal({ shareId, onClose }: { shareId: number;
     void queryClient.invalidateQueries({ queryKey: ['shares', 'incoming'], exact: true });
   }
 
+  // A [[link]] to another of the owner's notes opens it here — when they shared
+  // that one with you too; otherwise say so (and who to ask).
+  async function openLink(target: string) {
+    const name = target.split('#')[0].trim();
+    if (!name) return;
+    try {
+      const found = await resolveSharedLink(shareId, name);
+      if (!found) {
+        toast(`“${name}” isn’t shared with you.${note?.owner ? ` Ask @${note.owner} to share it.` : ''}`);
+        return;
+      }
+      if (found.shareId === shareId) return;
+      setParams((p) => { const next = new URLSearchParams(p); next.set('open', String(found.shareId)); next.delete('comment'); return next; });
+    } catch (e) { toast((e as Error).message); }
+  }
+
   async function requestEdit() {
     try {
       await request.mutateAsync({ shareId, access: 'edit' });
@@ -86,6 +106,14 @@ export default function SharedNoteModal({ shareId, onClose }: { shareId: number;
             onRequestEdit={requestEdit}
             pin={{ pinned, onToggle: () => sharedPin.mutate({ shareId, pinned: !pinned }) }}
             onClose={onClose}
+            onOpenLink={(target) => void openLink(target)}
+            actions={entry ? (
+              <SharedNoteActions
+                variant="note"
+                // The open note is the freshest copy of its words and colour.
+                share={{ ...entry, title: note.title, body: note.body, color: note.color, access: note.access }}
+              />
+            ) : undefined}
             mediaBase={`/api/shares/incoming/${shareId}/media`}
             // Signed in: join the note's live room (classic saves if the
             // collab engine is off).

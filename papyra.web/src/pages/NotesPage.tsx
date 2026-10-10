@@ -60,8 +60,10 @@ export default function NotesPage() {
       if (n.trashed || n.archived || n.kind === 'todo' || n.kind === 'inbox') continue;
       for (const t of n.tags ?? []) seen.add(t);
     }
+    // Your own tags on notes shared with you count too.
+    for (const s of incoming ?? []) for (const t of s.tags ?? []) seen.add(t);
     return [...seen].sort((a, b) => a.localeCompare(b));
-  }, [notes]);
+  }, [notes, incoming]);
 
   const visibleNotes = useMemo(() => {
     let list = notes ?? [];
@@ -80,12 +82,18 @@ export default function NotesPage() {
   }, [notes, scope, selectedTags, activeRules]);
 
   // Shared notes show under All and under Shared with me — and under Pinned
-  // once you pin one (your own pin). Tags and collections are the owner's, so
-  // those filters narrow to your own notes.
+  // once you pin one (your own pin), and under a tag once you give them one
+  // (your own tags, not the owner's). Collections are rules over your own
+  // notes, so they narrow to those.
   const visibleShared = useMemo(() => {
-    if (selectedTags.length > 0 || activeRules) return [];
-    const list = incoming ?? [];
-    return scope === 'pinned' ? list.filter((s) => s.pinned) : list;
+    if (activeRules) return [];
+    let list = incoming ?? [];
+    if (scope === 'pinned') list = list.filter((s) => s.pinned);
+    if (selectedTags.length > 0) {
+      const want = new Set(selectedTags.map((t) => t.toLowerCase()));
+      list = list.filter((s) => (s.tags ?? []).some((t) => want.has(t.toLowerCase())));
+    }
+    return list;
   }, [scope, selectedTags, activeRules, incoming]);
 
   // A genuinely empty vault (not just an empty filter or an all-archived one)
@@ -197,7 +205,7 @@ export default function NotesPage() {
       )}
 
       {openShare != null && (
-        <SharedNoteModal shareId={openShare} onClose={() => setFilter((p) => { p.delete('open'); p.delete('comment'); })} />
+        <SharedNoteModal key={openShare} shareId={openShare} onClose={() => setFilter((p) => { p.delete('open'); p.delete('comment'); })} />
       )}
 
       {resolving && (

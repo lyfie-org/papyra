@@ -1,0 +1,33 @@
+/* The colour swatches open upward: on a card the actions sit at its foot, in
+   the open note at the foot of the sheet. */
+.shared-actions__palette {
+  position: relative;
+  display: inline-flex;
+}
+.shared-actions__palette .palette-picker {
+  top: auto;
+  bottom: calc(100% + 0.4rem);
+}
+/* In the open note the actions start at the left of its foot: open rightward. */
+.shared-actions__palette--note .palette-picker {
+  right: auto;
+  left: 0;
+}
+
+.shared-actions__dialog { max-width: 30rem; }
+
+.shared-actions__hint {
+  margin: 0 0 0.75rem;
+  color: var(--text);
+  font-size: 0.85rem;
+}
+
+.shared-actions__done {
+  list-style: none;
+  margin: 0.6rem 0 0;
+  padding: 0;
+  display: grid;
+  gap: 0.25rem;
+  color: var(--text-h);
+  font-size: 0.85rem;
+}

@@ -11,6 +11,7 @@ import { useConfirm } from '../lib/confirmContext';
 import { useSettings } from '../hooks/useSettings';
 import { useSyncState } from '../hooks/useSync';
 import BulkShareDialog from './BulkShareDialog';
+import { useSharedPin, type IncomingShare } from '../hooks/useShares';
 import './BulkBar.css';
 
 type Patch = Partial<Pick<Note, 'pinned' | 'archived' | 'trashed'>>;
@@ -44,9 +45,14 @@ const DONE: Record<BulkAction, (what: string) => string> = {
  * delete, which asks first — offers Undo. A server refusal puts the truth back
  * with a refetch and says so.
  */
-export default function BulkBar({ notes, total, onClear, onSelectAll, mode = 'active' }: {
-  /** The selected notes, in display order. */
+export default function BulkBar({ notes, shared = [], total, onClear, onSelectAll, mode = 'active' }: {
+  /** The selected notes of yours, in display order. */
   notes: Note[];
+  /**
+   * Selected notes shared with you. They take your own pin; archiving, sharing
+   * and deleting are for your own notes, and pass them by.
+   */
+  shared?: IncomingShare[];
   /** How many cards are on screen — for "Select all". */
   total: number;
   onClear: () => void;
@@ -62,9 +68,14 @@ export default function BulkBar({ notes, total, onClear, onSelectAll, mode = 'ac
   const [busy, setBusy] = useState(false);
 
   const ids = notes.map((n) => n.id);
-  const count = notes.length;
-  const noun = notes.every((n) => n.kind === 'todo') ? 'list' : 'note';
-  const allPinned = count > 0 && notes.every((n) => n.pinned);
+  const count = notes.length + shared.length;
+  const noun = notes.length > 0 && notes.every((n) => n.kind === 'todo') ? 'list' : 'note';
+  const allPinned = count > 0 && notes.every((n) => n.pinned) && shared.every((s) => !!s.pinned);
+  const sharedPin = useSharedPin();
+  // What an own-vault action says about the shared notes it left alone.
+  const passedBy = shared.length > 0
+    ? ` ${plural(shared.length, 'shared note')} ${shared.length === 1 ? 'stays' : 'stay'} as ${shared.length === 1 ? 'it is' : 'they are'}.`
+    : '';
   const offline = online ? undefined : 'Needs a connection';
 
   function patchCache(targets: string[], action: BulkAction) {
@@ -74,7 +85,7 @@ export default function BulkBar({ notes, total, onClear, onSelectAll, mode = 'ac
       : prev?.map((n) => (set.has(n.id) ? { ...n, ...PATCH[action] } : n))));
   }
 
-  async function run(action: BulkAction, targets: string[], opts: { undoable?: boolean } = {}) {
+  async function run(action: BulkAction, targets: string[], opts: { undoable?: boolean; also?: string } = {}) {
     patchCache(targets, action);
     try {
       const result = await bulkAction(targets, action);
@@ -85,7 +96,7 @@ export default function BulkBar({ notes, total, onClear, onSelectAll, mode = 'ac
       const tail = (missing ? ` ${plural(missing, noun)} couldn't be found.` : '')
         + (refused ? ` ${plural(refused, noun)} ${refused === 1 ? 'is' : 'are'} no longer in Trash, so ${refused === 1 ? 'it was' : 'they were'} kept.` : '');
       const undo = UNDO[action];
-      toast(head + tail, opts.undoable && undo && changed.length
+      toast(head + tail + (opts.also ?? ''), opts.undoable && undo && changed.length
         ? { label: 'Undo', onClick: () => void run(undo, changed) }
         : undefined);
     } catch (e) {
@@ -96,19 +107,36 @@ export default function BulkBar({ notes, total, onClear, onSelectAll, mode = 'ac
   }
 
   async function act(action: BulkAction, undoable = true) {
+    if (busy || ids.length === 0) return;
+    setBusy(true);
+    onClear();
+    try { await run(action, ids, { undoable, also: passedBy }); } finally { setBusy(false); }
+  }
+
+  // Pin or unpin everything selected: your notes, and your own pin on the ones
+  // shared with you (their owners' desks are untouched).
+  async function pinAll(pin: boolean) {
     if (busy || count === 0) return;
     setBusy(true);
     onClear();
-    try { await run(action, ids, { undoable }); } finally { setBusy(false); }
+    try {
+      for (const s of shared) if (!!s.pinned !== pin) sharedPin.mutate({ shareId: s.shareId, pinned: pin });
+      const sharedPart = shared.length ? `${plural(shared.length, 'shared note')}` : '';
+      if (ids.length) {
+        await run(pin ? 'pin' : 'unpin', ids, { undoable: true, also: sharedPart ? ` And ${sharedPart}.` : '' });
+      } else {
+        toast(`${pin ? 'Pinned' : 'Unpinned'} ${sharedPart}.`);
+      }
+    } finally { setBusy(false); }
   }
 
   async function remove() {
-    if (busy || count === 0) return;
+    if (busy || ids.length === 0) return;
     // "Delete immediately" retention means no Trash to come back from: ask once
     // for the lot, then delete for good.
     if (settings?.trashRetentionDays === 0) {
       const ok = await confirm({
-        title: `Delete ${plural(count, noun)}?`,
+        title: `Delete ${plural(ids.length, noun)}?`,
         body: 'Trash is set to remove notes immediately, so there is nothing to restore from. This cannot be undone.',
         confirmLabel: 'Delete',
         destructive: true,
@@ -117,14 +145,15 @@ export default function BulkBar({ notes, total, onClear, onSelectAll, mode = 'ac
       setBusy(true);
       onClear();
       patchCache(ids, 'trash');
+      // (Only your own notes are deleted; shared ones are their owners'.)
       const outcomes = await Promise.allSettled(ids.map(async (id) => {
         const res = await fetch(`/api/notes/${encodeURIComponent(id)}`, { method: 'DELETE' });
         if (!res.ok && res.status !== 404) throw new Error(String(res.status));
       }));
       const failed = outcomes.filter((o) => o.status === 'rejected').length;
       toast(failed
-        ? `Deleted ${count - failed} of ${plural(count, noun)}; ${failed} couldn't be deleted.`
-        : `Deleted ${plural(count, noun)} for good.`);
+        ? `Deleted ${ids.length - failed} of ${plural(ids.length, noun)}; ${failed} couldn't be deleted.`
+        : `Deleted ${plural(ids.length, noun)} for good.` + passedBy);
       await queryClient.invalidateQueries({ queryKey: ['notes'] });
       setBusy(false);
       return;
@@ -169,10 +198,15 @@ export default function BulkBar({ notes, total, onClear, onSelectAll, mode = 'ac
       {mode === 'active' && (
         <>
           {button(allPinned ? 'Unpin' : 'Pin', allPinned ? <PinOff size={17} /> : <Pin size={17} />,
-            () => void act(allPinned ? 'unpin' : 'pin'))}
-          {button('Archive', <Archive size={17} />, () => void act('archive'))}
-          {button('Share', <Share2 size={17} />, () => setSharing(notes))}
-          {button('Delete', <Trash2 size={17} />, () => void remove(), true)}
+            () => void pinAll(!allPinned))}
+          {/* Your own notes only: shared ones are their owners' to archive, share or delete. */}
+          {notes.length > 0 && (
+            <>
+              {button('Archive', <Archive size={17} />, () => void act('archive'))}
+              {button('Share', <Share2 size={17} />, () => setSharing(notes))}
+              {button('Delete', <Trash2 size={17} />, () => void remove(), true)}
+            </>
+          )}
         </>
       )}
       {mode === 'archived' && (

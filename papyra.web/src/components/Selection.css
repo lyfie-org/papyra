@@ -7,26 +7,33 @@
    the corner's own 12px radius, so it sits concentric with the curve and
    clears the title (which starts at the 16px padding). Shown on hover/focus,
    and on every card once a selection exists. The check is always drawn, faint
-   until selected, so the circle reads as "tap to select" rather than a dot. */
+   until selected, so the circle reads as "tap to select" rather than a dot.
+   The button itself is 24px (WCAG 2.2 target size): a transparent 4px border
+   around the 16px circle, which is drawn inside it (background and ring are
+   clipped to the padding box). */
 .select-tick {
   position: absolute;
-  top: 4px;
-  left: 4px;
+  top: 0;
+  left: 0;
   z-index: 3;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 16px;
-  height: 16px;
+  box-sizing: border-box;
+  width: 24px;
+  height: 24px;
   padding: 0;
+  border: 4px solid transparent;
+  background-clip: padding-box;
   /* One recipe on every card, drawn from the card's own ink: a faint wash,
      a ring and a faint check. A coloured card only swaps the ink (below), so an
      unselected tick never looks filled — which on a dark-mode tint read as
      "already selected". Selected is the one sage fill. */
   --tick-ink: var(--text-h);
-  border: 1.5px solid color-mix(in srgb, var(--tick-ink) 42%, transparent);
+  --tick-ring: color-mix(in srgb, var(--tick-ink) 42%, transparent);
+  box-shadow: inset 0 0 0 1.5px var(--tick-ring);
   border-radius: 50%;
-  background: color-mix(in srgb, var(--tick-ink) 8%, transparent);
+  background-color: color-mix(in srgb, var(--tick-ink) 8%, transparent);
   color: color-mix(in srgb, var(--tick-ink) 50%, transparent);
   cursor: pointer;
   opacity: 0;
@@ -34,8 +41,8 @@
   transition:
     opacity var(--dur-fast) var(--ease),
     transform var(--dur-fast) var(--ease),
-    background var(--dur-fast) var(--ease),
-    border-color var(--dur-fast) var(--ease),
+    background-color var(--dur-fast) var(--ease),
+    box-shadow var(--dur-fast) var(--ease),
     color var(--dur-fast) var(--ease),
     translate var(--dur) var(--ease);
 }
@@ -68,7 +75,7 @@
 }
 
 .select-tick:hover {
-  border-color: color-mix(in srgb, var(--tick-ink) 70%, transparent);
+  --tick-ring: color-mix(in srgb, var(--tick-ink) 70%, transparent);
   color: var(--tick-ink);
 }
 
@@ -80,8 +87,8 @@
 
 .select-tick[aria-pressed="true"],
 .selectable .select-tick[aria-pressed="true"] {
-  border-color: var(--accent);
-  background: var(--accent);
+  --tick-ring: var(--accent);
+  background-color: var(--accent);
   color: var(--accent-fg);
   animation: select-tick-pop var(--dur) var(--ease);
 }
