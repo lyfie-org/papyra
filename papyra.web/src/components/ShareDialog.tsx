@@ -1,11 +1,17 @@
-import { useState, useRef } from 'react';
+import { useMemo, useState, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { Link2, Users, X, Trash2, Plus } from 'lucide-react';
+import { useQueryClient } from '@tanstack/react-query';
+import { Link2, Users, X, Trash2, Plus, Link as LinkIcon } from 'lucide-react';
 import type { Note } from '../types/note';
 import { useNoteShares, useCreateShare, useRevokeShare, type Share } from '../hooks/useShares';
+import { useNotes } from '../hooks/useNotes';
+import { useAuth } from '../hooks/useAuth';
+import { linkedNotes } from '../lib/linkedNotes';
+import { plural } from '../lib/bulk';
 import './ShareDialog.css';
 import { useDialogFocus } from '../hooks/useDialogFocus';
 import UserPicker from './UserPicker';
+import Avatar from './Avatar';
 
 // Link limits as a short list of sensible choices rather than a calendar and a
 // number spinner: nobody needs "expires 14 March" precision for a share link,
@@ -43,7 +49,23 @@ export default function ShareDialog({ note, onClose }: { note: Note; onClose: ()
   const [username, setUsername] = useState('');
   const [userAccess, setUserAccess] = useState<'view' | 'edit'>('view');
   const [error, setError] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [copied, setCopied] = useState<number | null>(null);
+  const queryClient = useQueryClient();
+  const { user: me } = useAuth();
+
+  // The notes this one links to. Sharing a note whose [[links]] lead nowhere
+  // for the other person is half a share: offer them too — all, or a choice.
+  const { data: allNotes } = useNotes();
+  const linked = useMemo(() => linkedNotes(note, allNotes ?? []), [note, allNotes]);
+  const [withLinked, setWithLinked] = useState(true);
+  const [skipped, setSkipped] = useState<Set<string>>(() => new Set());
+  const chosen = linked.filter((n) => !skipped.has(n.id));
+  const toggleLinked = (id: string) => setSkipped((cur) => {
+    const next = new Set(cur);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return next;
+  });
 
   const links = (shares ?? []).filter(s => s.kind === 'link');
   const people = (shares ?? []).filter(s => s.kind === 'user');
@@ -64,11 +86,27 @@ export default function ShareDialog({ note, onClose }: { note: Note; onClose: ()
 
   async function addPerson() {
     setError(null);
+    setNotice(null);
     const name = username.trim().replace(/^@/, '');
     if (!name) return;
     try {
       await create.mutateAsync({ kind: 'user', access: userAccess, granteeUsername: name });
       setUsername('');
+    } catch (e) { setError((e as Error).message); return; }
+    if (!withLinked || chosen.length === 0) return;
+    // The linked notes go with the same access, in one request.
+    try {
+      const res = await fetch('/api/shares/bulk', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ noteIds: chosen.map((n) => n.id), granteeUsername: name, access: userAccess }),
+      });
+      const data = await res.json().catch(() => null) as { shared?: number; results?: { status: string }[]; error?: string } | null;
+      if (!res.ok) throw new Error(data?.error ?? `Couldn’t share the linked notes (${res.status}).`);
+      const already = data?.results?.filter((r) => r.status === 'alreadyShared').length ?? 0;
+      setNotice(`Also shared ${plural(data?.shared ?? 0, 'linked note')} with @${name}`
+        + (already ? ` (${plural(already, 'was', 'were')} already shared).` : '.'));
+      void queryClient.invalidateQueries({ queryKey: ['shares'] });
     } catch (e) { setError((e as Error).message); }
   }
 
@@ -98,6 +136,7 @@ export default function ShareDialog({ note, onClose }: { note: Note; onClose: ()
         </header>
 
         {error && <p className="share__error" role="alert">{error}</p>}
+        {notice && <p className="share__notice" role="status">{notice}</p>}
 
         {/* People (internal user-to-user) */}
         <section className="share__section">
@@ -115,16 +154,44 @@ export default function ShareDialog({ note, onClose }: { note: Note; onClose: ()
             </select>
             <button type="button" className="share__btn" onClick={() => void addPerson()}><Plus size={15} /> Add</button>
           </div>
+          {linked.length > 0 && (
+            <fieldset className="share__linked">
+              <legend className="share__linked-head">
+                <label className="share__check">
+                  <input type="checkbox" checked={withLinked && chosen.length > 0}
+                    ref={(el) => { if (el) el.indeterminate = withLinked && chosen.length > 0 && chosen.length < linked.length; }}
+                    onChange={(e) => { setWithLinked(e.target.checked); if (e.target.checked) setSkipped(new Set()); }} />
+                  <LinkIcon size={14} aria-hidden="true" />
+                  Also share the {plural(linked.length, 'note')} it links to
+                </label>
+              </legend>
+              {withLinked && (
+                <ul className="share__linked-list">
+                  {linked.map((n) => (
+                    <li key={n.id}>
+                      <label className="share__check">
+                        <input type="checkbox" checked={!skipped.has(n.id)} onChange={() => toggleLinked(n.id)} />
+                        {n.title.trim() || 'Untitled'}
+                      </label>
+                    </li>
+                  ))}
+                </ul>
+              )}
+            </fieldset>
+          )}
           <ul className="share__people">
             <li className="share__person">
-              <span className="share__avatar" aria-hidden="true">O</span>
+              <Avatar username={me?.username} name={me?.name} size={28} />
               <span className="share__person-name">You (owner)</span>
               <span className="share__access">Owner</span>
             </li>
             {people.map(s => (
               <li className="share__person" key={s.id}>
-                <span className="share__avatar" aria-hidden="true">{(s.grantee ?? '?').charAt(0).toUpperCase()}</span>
-                <span className="share__person-name">{s.grantee}</span>
+                <Avatar username={s.grantee ?? undefined} size={28} />
+                <span className="share__person-name">
+                  {s.grantee}
+                  {s.sharedBy && <span className="share__by"> · added by @{s.sharedBy}</span>}
+                </span>
                 <span className="share__access">{s.access === 'edit' ? 'Can edit' : 'Can view'}</span>
                 <button type="button" className="share__revoke" aria-label="Revoke" onClick={() => void revoke.mutate(s.id)}>
                   <Trash2 size={14} />

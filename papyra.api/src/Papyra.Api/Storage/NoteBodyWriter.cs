@@ -6,10 +6,10 @@ using Papyra.Api.Models;
 namespace Papyra.Api.Storage;
 
 /// <summary>
-/// What a change decided: the new body and/or title (null keeps each), or a
-/// refusal to return.
+/// What a change decided: the new body, title and/or colour (null keeps each;
+/// an empty colour clears it), or a refusal to return.
 /// </summary>
-public readonly record struct NoteEdit(string? Body, IResult? Refusal = null, string? Title = null)
+public readonly record struct NoteEdit(string? Body, IResult? Refusal = null, string? Title = null, string? Color = null)
 {
     public static NoteEdit Keep => new(null);
     public static NoteEdit Refuse(IResult result) => new(null, result);
@@ -64,10 +64,11 @@ public sealed class NoteBodyWriter(
         if (edit.Refusal is not null) return (null, edit.Refusal);
         var newBody = edit.Body is not null && edit.Body != note.Body ? edit.Body : null;
         var newTitle = edit.Title is not null && edit.Title != note.Title ? edit.Title : null;
-        if (newBody is null && newTitle is null) return (note, null);
+        var colorChanged = edit.Color is not null && (edit.Color.Length == 0 ? null : edit.Color) != note.Color;
+        if (newBody is null && newTitle is null && !colorChanged) return (note, null);
 
-        // Only the body lives in the room; a title is front matter, written
-        // around it like the owner's own metadata save.
+        // Only the body lives in the room; a title or colour is front matter,
+        // written around it like the owner's own metadata save.
         if (newBody is not null && live == LiveRoomPolicy.Refuse
             && await CollabEndpoints.BodyWriteGuardAsync(collab, ownerUid, noteId, note.Body, newBody, ct) is { } busy)
             return (null, busy);
@@ -77,6 +78,7 @@ public sealed class NoteBodyWriter(
         await snapshots.CaptureAsync(noteSnapDir, path, ct);
 
         if (newBody is not null) note.Body = newBody;
+        if (colorChanged) note.Color = edit.Color!.Length == 0 ? null : edit.Color;
         if (newTitle is not null)
         {
             note.Title = newTitle;

@@ -649,6 +649,7 @@ async function checkCardsAndDrag(page) {
   await openNote(page, CARD_NOTE);
   await page.waitForTimeout(1500);
   const root = page.locator('.luthor-content-editable');
+  const para = (text) => root.locator('p', { hasText: text }).first();
   const order = () => page.evaluate(() => [...document.querySelector('.luthor-content-editable').children].map((el) => {
     if (el.querySelector('.luthor-saved-card')) return 'card';
     if (el.querySelector('iframe')) return 'map';
@@ -660,19 +661,29 @@ async function checkCardsAndDrag(page) {
   const popups = [];
   page.context().on('page', (p) => { popups.push(p); });
 
-  // Hover shows the way out to the page; the card itself is not followed.
+  // Hovering an embed — the whole card, the whole map — shows a preview of
+  // its page after a pause; the preview is the way to open it. No "Visit"
+  // button, no URL tooltip, and one arrow pointer over every kind of media.
   const card = page.locator('.luthor-saved-card-figure');
+  const preview = page.locator('.link-hover a.link-card');
   await card.scrollIntoViewIfNeeded();
-  await card.hover();
-  const open = card.locator('.luthor-embed-open');
-  await page.waitForTimeout(250);
-  check(await open.evaluate((el) => getComputedStyle(el).opacity === '1'), 'cards: the open link does not show on hover');
-  check(await open.getAttribute('href') === CARD, `cards: the open link goes to ${await open.getAttribute('href')}`);
-  check(await open.getAttribute('aria-label') === 'Open example.com in a new tab', 'cards: the open link has no useful name');
+  check(await page.locator('.luthor-embed-open').count() === 0, 'cards: the old "Visit" button is still there');
+  check(await page.locator('[title^="http"]').count() === 0, 'cards: something in the note shows a URL tooltip');
+  await card.locator('.luthor-saved-card').hover();
+  await preview.waitFor({ timeout: 3000 }).catch(() => {});
+  check(await preview.getAttribute('href').catch(() => null) === CARD, 'cards: hovering the card does not preview its page');
   const map = page.locator('.luthor-media-embed-shell:has(iframe)');
+  await para('Middle line').hover();
+  await page.waitForTimeout(400);
   await map.hover();
-  await page.waitForTimeout(250);
-  check(await map.locator('.luthor-embed-open').getAttribute('href') === 'https://example.com/', 'cards: the map has no open link to its page');
+  await page.waitForFunction(() => document.querySelector('.link-hover a.link-card')?.getAttribute('href') === 'https://example.com/', null, { timeout: 3000 }).catch(() => {});
+  check(await preview.getAttribute('href').catch(() => null) === 'https://example.com/', 'cards: hovering the map does not preview its page');
+  const cursors = await page.evaluate(() => [
+    '.luthor-saved-card', '.luthor-media-embed-shell:has(iframe)', 'figure.lexical-image .luthor-media-embed-shell',
+  ].map((sel) => getComputedStyle(document.querySelector(sel)).cursor));
+  check(cursors.every((c) => c === 'default'), `cards: media show mixed pointers (${cursors.join(', ')})`);
+  await para('Middle line').hover();
+  await page.waitForTimeout(400);
 
   console.log('· cards: select + toolbar');
   const cardBox = await card.locator('.luthor-saved-card').boundingBox();
@@ -682,6 +693,8 @@ async function checkCardsAndDrag(page) {
   await page.waitForTimeout(400);
   check(popups.length === 0, 'cards: a click on the card in an editable note opened the page');
   check(await card.evaluate((el) => el.classList.contains('is-selected')), 'cards: a click does not select the card');
+  await page.waitForTimeout(700);
+  check(await page.locator('.link-hover').count() === 0, 'cards: a selected card still shows the hover preview over its toolbar');
   for (const title of ['Align Left', 'Align Center', 'Align Right', 'Move Up', 'Move Down', 'Remove']) {
     check(await bar.getByTitle(title).count() === 1, `cards: the card's bar has no ${title}`);
   }
@@ -757,7 +770,6 @@ async function checkCardsAndDrag(page) {
     await page.waitForTimeout(400);
     return line;
   };
-  const para = (text) => root.locator('p', { hasText: text }).first();
 
   console.log('· drag: card');
   // Back in the text (Escape from the caption field would close the note).
@@ -828,17 +840,19 @@ ${(await bodyOf()).slice(0, 400)}`);
   check(await bodyOf() === saved, 'cards: reopening rewrote the body');
   check(await page.locator('.luthor-saved-card-figure figcaption').textContent() === 'Worth a read', 'cards: the caption was lost on reopen');
 
-  console.log('· cards: open link + remove');
+  console.log('· cards: preview opens the page + remove');
   await card.scrollIntoViewIfNeeded();
-  await card.hover();
-  await page.waitForTimeout(250);
+  await para('Top line').hover();
+  await page.waitForTimeout(400);
+  await card.locator('.luthor-saved-card').hover();
+  await preview.waitFor({ timeout: 3000 }).catch(() => {});
   const popup = page.waitForEvent('popup', { timeout: 5000 }).catch(() => null);
   const already = popups.length;
-  await card.locator('.luthor-embed-open').click();
+  await preview.click().catch(() => {});
   const opened = await popup;
   await page.waitForTimeout(500);
-  check(!!opened && popups.length - already === 1, `cards: the open link opened ${popups.length - already} tab(s), not one`);
-  check(!(await card.evaluate((el) => el.classList.contains('is-selected'))), 'cards: the open link also selected the card');
+  check(!!opened && popups.length - already === 1, `cards: clicking the preview opened ${popups.length - already} tab(s), not one`);
+  check(!(await card.evaluate((el) => el.classList.contains('is-selected'))), 'cards: clicking the preview also selected the card');
   for (const p of popups.splice(already)) await p.close().catch(() => {});
   const cb = await card.locator('.luthor-saved-card').boundingBox();
   await page.mouse.click(cb.x + cb.width / 2, cb.y + cb.height / 2);

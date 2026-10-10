@@ -4889,13 +4889,16 @@ notes.MapGet("/{id}/shares", async (string id, ClaimsPrincipal user, AppDbContex
     var uid = int.Parse(Uid(user));
     var rows = await db.Shares.Where(s => s.OwnerId == uid && s.NoteId == id)
         .OrderByDescending(s => s.CreatedUtc).ToListAsync(ct);
-    var granteeIds = rows.Where(s => s.GranteeUserId != null).Select(s => s.GranteeUserId!.Value).ToHashSet();
+    var granteeIds = rows.Where(s => s.GranteeUserId != null).Select(s => s.GranteeUserId!.Value)
+        .Concat(rows.Where(s => s.SharedByUserId != null).Select(s => s.SharedByUserId!.Value)).ToHashSet();
     var names = await db.Users.Where(u => granteeIds.Contains(u.Id))
         .ToDictionaryAsync(u => u.Id, u => u.Username, ct);
     return Results.Ok(rows.Select(s => new
     {
         s.Id, s.Kind, s.Access, s.Token, s.ExpiresUtc, s.MaxViews, s.ViewCount,
         grantee = s.GranteeUserId is { } g && names.TryGetValue(g, out var n) ? n : null,
+        // An editor shared it onward: the owner sees who.
+        sharedBy = s.SharedByUserId is { } by && names.TryGetValue(by, out var b) ? b : null,
     }));
 });
 
@@ -5120,8 +5123,10 @@ shares.MapGet("/incoming", async (
     var uid = int.Parse(Uid(user));
     var rows = await db.Shares.Where(s => s.GranteeUserId == uid && s.Kind == "user")
         .OrderByDescending(s => s.CreatedUtc).ToListAsync(ct);
-    var ownerNames = await db.Users.Where(u => rows.Select(r => r.OwnerId).Contains(u.Id))
-        .ToDictionaryAsync(u => u.Id, u => u.Username, ct);
+    var peopleIds = rows.Select(r => r.OwnerId)
+        .Concat(rows.Where(r => r.SharedByUserId != null).Select(r => r.SharedByUserId!.Value)).ToHashSet();
+    var people = await db.Users.Where(u => peopleIds.Contains(u.Id))
+        .ToDictionaryAsync(u => u.Id, u => new { u.Username, u.Name }, ct);
     // Asked-for-edit shares render "Requested" instead of the button again.
     var pending = (await db.AccessRequests
             .Where(r => r.RequesterUserId == uid && r.Status == "pending")
@@ -5139,7 +5144,11 @@ shares.MapGet("/incoming", async (
         result.Add(new
         {
             shareId = s.Id, noteId = s.NoteId, access = s.Access,
-            owner = ownerNames.GetValueOrDefault(s.OwnerId, "?"),
+            owner = people.GetValueOrDefault(s.OwnerId)?.Username ?? "?",
+            // For their face's initials on the card.
+            ownerName = people.GetValueOrDefault(s.OwnerId)?.Name,
+            // An editor passed it on to you (the owner still owns it).
+            sharedBy = s.SharedByUserId is { } by ? people.GetValueOrDefault(by)?.Username : null,
             title = note?.Title ?? string.Empty,
             // A short plain-text taste of the note so the card is recognisable
             // without opening it — the sharee may read all of it anyway.
@@ -5153,6 +5162,8 @@ shares.MapGet("/incoming", async (
             sharedUtc = DateTime.SpecifyKind(s.CreatedUtc, DateTimeKind.Utc),
             requestPending = pending.Contains((s.OwnerId, s.NoteId)),
             pinned = s.GranteePinned,
+            // Your own tags for it — the owner's are theirs.
+            tags = ShareTags.Read(s.GranteeTags),
         });
     }
     return Results.Ok(result);
@@ -5194,11 +5205,13 @@ shares.MapGet("/incoming/{shareId:int}", async (
     var requestPending = share.Access != "edit" && await db.AccessRequests.AnyAsync(
         r => r.RequesterUserId == uid && r.OwnerId == share.OwnerId && r.NoteId == share.NoteId
              && r.Status == "pending", ct);
+    var owner = await db.Users.Where(u => u.Id == share.OwnerId).Select(u => new { u.Username, u.Name }).FirstOrDefaultAsync(ct);
     return Results.Ok(new
     {
         note.Title, note.Body, note.Color, access = share.Access,
-        owner = await db.Users.Where(u => u.Id == share.OwnerId).Select(u => u.Username).FirstOrDefaultAsync(ct),
+        owner = owner?.Username, ownerName = owner?.Name,
         requestPending,
+        tags = ShareTags.Read(share.GranteeTags),
     });
 });
 
@@ -5215,6 +5228,152 @@ shares.MapPut("/incoming/{shareId:int}", async (
     if (share.Access != "edit") return Results.Forbid();
     return await ApplySharedEdit(share.OwnerId.ToString(), share.NoteId, body, db,
         state, storage, writeRing, search, snapshots, config, env, hub, vault, lf, collab, writeLocks, ct);
+});
+
+// Grantee: your own tags for a note shared with you. They organise your desk
+// (filters, search) and nobody else's — the owner's tags are untouched.
+shares.MapPut("/incoming/{shareId:int}/tags", async (
+    int shareId, SharedTagsWrite body, ClaimsPrincipal user, AppDbContext db, IHubContext<NotesHub> hub,
+    CancellationToken ct) =>
+{
+    var uid = int.Parse(Uid(user));
+    var share = await db.Shares.FirstOrDefaultAsync(s => s.Id == shareId && s.GranteeUserId == uid, ct);
+    if (share is null) return Results.NotFound();
+    var tags = ShareTags.Normalize(body.Tags);
+    if (tags is null) return Results.BadRequest(new { error = $"Use at most {ShareTags.MaxTags} tags of up to {ShareTags.MaxLength} characters." });
+    share.GranteeTags = tags.Count == 0 ? null : System.Text.Json.JsonSerializer.Serialize(tags);
+    await db.SaveChangesAsync(ct);
+    await hub.Clients.User(uid.ToString()).SendAsync("SharesChanged", ct);
+    return Results.Ok(new { tags });
+});
+
+// Grantee (editor): the note's colour. Colour belongs to the note, as in Keep —
+// everyone who has it sees the same one — so only someone who may edit it can
+// change it. A live room is no obstacle: colour is front matter, not body.
+shares.MapPut("/incoming/{shareId:int}/color", async (
+    int shareId, SharedColorWrite body, ClaimsPrincipal user, AppDbContext db, VaultState state,
+    MarkdownStorageService storage, WriteRing writeRing, SearchIndexService search,
+    SnapshotService snapshots, IConfiguration config, IHostEnvironment env,
+    IHubContext<NotesHub> hub, VaultObserverOptions vault, ILoggerFactory lf, ICollabEngine collab, NoteWriteLocks writeLocks,
+    CancellationToken ct) =>
+{
+    var uid = int.Parse(Uid(user));
+    var share = await db.Shares.FirstOrDefaultAsync(s => s.Id == shareId && s.GranteeUserId == uid, ct);
+    if (share is null) return Results.NotFound();
+    if (share.Access != "edit") return Results.Forbid();
+    var color = body.Color?.Trim() ?? string.Empty;
+    if (color.Length > 0 && !NoteColorValue.IsValid(color))
+        return Results.BadRequest(new { error = "That isn't a colour." });
+    var writer = new NoteBodyWriter(state, storage, writeRing, search, snapshots, config, env, hub,
+        collab, writeLocks, vault, lf);
+    var (_, refusal) = await writer.ChangeAsync(share.OwnerId.ToString(), share.NoteId, note =>
+        note.Secure
+            ? NoteEdit.Refuse(Results.Json(new { error = "The owner locked this note." }, statusCode: StatusCodes.Status410Gone))
+            : new NoteEdit(null, Color: color),
+        LiveRoomPolicy.Refuse, ct);
+    if (refusal is not null) return refusal;
+    // Every other sharee's card repaints.
+    var grantees = await db.Shares
+        .Where(s => s.OwnerId == share.OwnerId && s.NoteId == share.NoteId && s.Kind == "user" && s.GranteeUserId != null)
+        .Select(s => s.GranteeUserId!.Value.ToString()).Distinct().ToListAsync(ct);
+    await hub.Clients.Users(grantees).SendAsync("SharedNoteUpdated", new { ownerId = share.OwnerId, noteId = share.NoteId }, ct);
+    return Results.Ok(new { color = color.Length == 0 ? null : color });
+});
+
+// Grantee (editor): share the note onward with someone else, as the owner could.
+// It stays the owner's note — the new grant is the owner's to see and revoke —
+// and remembers who passed it on. An editor can give view or edit access; an
+// existing grant is reused (upgraded to edit if asked, never downgraded).
+shares.MapPost("/incoming/{shareId:int}/share", async (
+    int shareId, ReshareWrite body, ClaimsPrincipal user, AppDbContext db, VaultState state,
+    MarkdownStorageService storage, VaultObserverOptions vault, IHubContext<NotesHub> hub, EmailSender email,
+    HttpContext http, ILoggerFactory lf, CancellationToken ct) =>
+{
+    var uid = int.Parse(Uid(user));
+    var mine = await db.Shares.FirstOrDefaultAsync(s => s.Id == shareId && s.GranteeUserId == uid, ct);
+    if (mine is null) return Results.NotFound();
+    if (mine.Access != "edit") return Results.Json(new { error = "Only someone who can edit this note can share it." }, statusCode: StatusCodes.Status403Forbidden);
+    var access = body.Access?.Trim().ToLowerInvariant() == "edit" ? "edit" : "view";
+
+    var note = await storage.ReadAsync(OwnerNotePath(state, vault, lf, mine.OwnerId.ToString(), mine.NoteId), ct);
+    if (note is null || note.Trashed) return Results.NotFound();
+    if (note.Secure) return Results.Json(new { error = "The owner locked this note." }, statusCode: StatusCodes.Status410Gone);
+
+    var uname = body.GranteeUsername?.Trim().TrimStart('@');
+    if (string.IsNullOrWhiteSpace(uname)) return Results.BadRequest(new { error = "Who should it be shared with?" });
+    var grantee = await db.Users.FirstOrDefaultAsync(u => u.Username == uname, ct);
+    if (grantee is null) return Results.NotFound(new { error = $"There's no one called “{uname}” here." });
+    if (grantee.Id == uid) return Results.BadRequest(new { error = "You already have this note." });
+    if (grantee.Id == mine.OwnerId) return Results.BadRequest(new { error = $"@{grantee.Username} owns this note." });
+
+    var existing = await db.Shares.FirstOrDefaultAsync(
+        x => x.OwnerId == mine.OwnerId && x.NoteId == mine.NoteId && x.Kind == "user" && x.GranteeUserId == grantee.Id, ct);
+    if (existing is not null)
+    {
+        if (access == "edit" && existing.Access != "edit")
+        {
+            existing.Access = "edit";
+            await SettleAccessRequests(db, mine.OwnerId, mine.NoteId, grantee.Id, "edit", ct);
+            await db.SaveChangesAsync(ct);
+            await AnnounceShare(db, hub, email, http, grantee, user, mine.OwnerId, mine.NoteId, note.Title, "edit", "access_upgraded", ct, actorId: uid);
+            await hub.Clients.User(mine.OwnerId.ToString()).SendAsync("SharesChanged", ct);
+            return Results.Ok(new { status = "upgraded", grantee = grantee.Username, access = "edit" });
+        }
+        return Results.Ok(new { status = "alreadyShared", grantee = grantee.Username, access = existing.Access });
+    }
+
+    var share = new Share
+    {
+        NoteId = mine.NoteId, OwnerId = mine.OwnerId, Kind = "user", Access = access,
+        GranteeUserId = grantee.Id, SharedByUserId = uid, CreatedUtc = DateTime.UtcNow,
+    };
+    db.Shares.Add(share);
+    await SettleAccessRequests(db, mine.OwnerId, mine.NoteId, grantee.Id, access, ct);
+    await db.SaveChangesAsync(ct);
+    await AnnounceShare(db, hub, email, http, grantee, user, mine.OwnerId, mine.NoteId, note.Title, access, "shared", ct, actorId: uid);
+    // The owner's card ("shared with …") follows.
+    await hub.Clients.User(mine.OwnerId.ToString()).SendAsync("SharesChanged", ct);
+    return Results.Ok(new { status = "shared", grantee = grantee.Username, access });
+});
+
+// Grantee: follow a [[link]] in a note shared with you. It opens the linked note
+// only if its owner shared that one with you too (at whatever access they
+// chose). Not found and not shared answer alike — a link names a title the
+// reader can already see, nothing more.
+shares.MapGet("/incoming/{shareId:int}/link", async (
+    int shareId, string? target, ClaimsPrincipal user, AppDbContext db, VaultState state, CancellationToken ct) =>
+{
+    var uid = int.Parse(Uid(user));
+    var from = await db.Shares.FirstOrDefaultAsync(s => s.Id == shareId && s.GranteeUserId == uid, ct);
+    if (from is null) return Results.NotFound();
+    var wanted = target?.Trim();
+    if (string.IsNullOrEmpty(wanted)) return Results.BadRequest(new { error = "Which note?" });
+    var ownerUid = from.OwnerId.ToString();
+    var linked = state.Snapshot(ownerUid)
+        .Where(n => !n.Trashed && !n.Secure)
+        .FirstOrDefault(n => string.Equals(n.Title.Trim(), wanted, StringComparison.OrdinalIgnoreCase) || n.Id == wanted);
+    if (linked is null) return Results.NotFound(new { error = "not_shared" });
+    if (linked.Id == from.NoteId) return Results.Ok(new { shareId = from.Id, access = from.Access });
+    var to = await db.Shares.FirstOrDefaultAsync(
+        s => s.OwnerId == from.OwnerId && s.NoteId == linked.Id && s.Kind == "user" && s.GranteeUserId == uid, ct);
+    return to is null
+        ? Results.NotFound(new { error = "not_shared" })
+        : Results.Ok(new { shareId = to.Id, access = to.Access });
+});
+
+// Anyone signed in: where a copied link to a note leads for *them* — their own
+// note, or their share of someone else's. One link works for the owner and for
+// everyone it is shared with; anyone else gets nothing.
+shares.MapGet("/open", async (string? owner, string? noteId, ClaimsPrincipal user, AppDbContext db, CancellationToken ct) =>
+{
+    var uid = int.Parse(Uid(user));
+    if (string.IsNullOrWhiteSpace(owner) || string.IsNullOrWhiteSpace(noteId)) return Results.BadRequest();
+    var ownerId = await db.Users.Where(u => u.Username == owner).Select(u => (int?)u.Id).FirstOrDefaultAsync(ct);
+    if (ownerId is null) return Results.NotFound();
+    if (ownerId == uid) return Results.Ok(new { mine = true, noteId });
+    var share = await db.Shares.FirstOrDefaultAsync(
+        s => s.OwnerId == ownerId && s.NoteId == noteId && s.Kind == "user" && s.GranteeUserId == uid, ct);
+    return share is null ? Results.NotFound() : Results.Ok(new { mine = false, shareId = share.Id });
 });
 
 // ── Notifications (the bell) ─────────────────────────────────────────────────
@@ -6840,11 +6999,11 @@ static async Task SettleAccessRequests(AppDbContext db, int ownerId, string note
 static async Task AnnounceShare(
     AppDbContext db, IHubContext<NotesHub> hub, EmailSender email, HttpContext http, User recipient,
     ClaimsPrincipal sharer, int ownerId, string noteId, string? title, string access, string kind,
-    CancellationToken ct, int? requestId = null)
+    CancellationToken ct, int? requestId = null, int? actorId = null)
 {
     db.Notifications.Add(new Notification
     {
-        UserId = recipient.Id, Kind = kind, ActorUserId = ownerId, OwnerId = ownerId, NoteId = noteId,
+        UserId = recipient.Id, Kind = kind, ActorUserId = actorId ?? ownerId, OwnerId = ownerId, NoteId = noteId,
         Access = access, AccessRequestId = requestId, CreatedUtc = DateTime.UtcNow,
     });
     await db.SaveChangesAsync(ct);
@@ -7661,6 +7820,9 @@ public sealed record ShareWrite(
 // Body-only edit payload for a shared note (sharees can't touch frontmatter).
 public sealed record SharedBodyWrite(string? Body, string? Title = null);
 public sealed record SharedPinWrite(bool Pinned);
+public sealed record SharedTagsWrite(List<string>? Tags);
+public sealed record SharedColorWrite(string? Color);
+public sealed record ReshareWrite(string? GranteeUsername, string? Access);
 public sealed record AccessRequestWrite(int? ShareId, int? InboxId, string? Access, int? NotificationId = null);
 public sealed record AccessDecision(string? Access);
 

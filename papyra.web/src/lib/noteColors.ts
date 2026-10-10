@@ -66,6 +66,20 @@ const DARK_SURFACE: RGB = [0x28, 0x23, 0x1e];
 const DARK_TINT_STRENGTH = 0.78;
 const DARK_INK: RGB = [0x3d, 0x2c, 0x1e]; // --tint-ink
 const LIGHT_INK: RGB = [0xf0, 0xe6, 0xd3]; // .tint--light-ink --tint-ink
+// The softer steps of each ink that cards and notes also write in (the body
+// preview, dates, meta): an ink only works if all of its steps clear AA. Dark
+// mode writes secondary text in -soft (its -muted is too faint on a dimmed
+// tint), light mode in -muted.
+const DARK_SOFT: RGB = [0x4a, 0x35, 0x26];
+const DARK_MUTED: RGB = [0x5c, 0x46, 0x36];
+const LIGHT_SOFT: RGB = [0xe6, 0xd9, 0xc4];
+const LIGHT_MUTED: RGB = [0xd9, 0xcb, 0xb6];
+const steps = (ink: 'dark' | 'light', theme: 'light' | 'dark'): RGB[] => (ink === 'dark'
+  ? [DARK_INK, DARK_SOFT, ...(theme === 'light' ? [DARK_MUTED] : [])]
+  : [LIGHT_INK, LIGHT_SOFT, ...(theme === 'light' ? [LIGHT_MUTED] : [])]);
+/** The contrast of an ink's weakest step on a surface. */
+const weakest = (painted: RGB, ink: 'dark' | 'light', theme: 'light' | 'dark') =>
+  Math.min(...steps(ink, theme).map((s) => contrast(painted, s)));
 
 type RGB = [number, number, number];
 
@@ -128,7 +142,7 @@ function paintedRgb(color: string | null | undefined, theme: 'light' | 'dark'): 
 export function tintInk(color: string | null | undefined, theme: 'light' | 'dark'): 'dark' | 'light' {
   const painted = paintedRgb(color, theme);
   if (!painted) return 'dark';
-  return contrast(painted, LIGHT_INK) > contrast(painted, DARK_INK) ? 'light' : 'dark';
+  return weakest(painted, 'light', theme) > weakest(painted, 'dark', theme) ? 'light' : 'dark';
 }
 
 /**
@@ -139,9 +153,13 @@ export function tintInk(color: string | null | undefined, theme: 'light' | 'dark
 export function tintInkClass(color: string | null | undefined, theme: 'light' | 'dark'): string {
   const painted = paintedRgb(color, theme);
   if (!painted) return '';
-  const best = Math.max(contrast(painted, LIGHT_INK), contrast(painted, DARK_INK));
-  if (best >= 4.5) {
-    return contrast(painted, LIGHT_INK) > contrast(painted, DARK_INK) ? ' tint--light-ink' : '';
+  // Every step of the ink (body, preview, dates) has to clear 4.5:1, not only
+  // the darkest: a mid-tone custom colour passed on --tint-ink while its
+  // preview, in --tint-ink-soft, fell to ~4:1.
+  const light = weakest(painted, 'light', theme);
+  const dark = weakest(painted, 'dark', theme);
+  if (Math.max(light, dark) >= 4.5) {
+    return light > dark ? ' tint--light-ink' : '';
   }
   // Pure ink: pick black or white on its own merits — near the middle the
   // winner can differ from the warm pair's.

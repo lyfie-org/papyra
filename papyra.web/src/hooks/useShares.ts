@@ -10,6 +10,8 @@ export interface Share {
   maxViews: number | null;
   viewCount: number;
   grantee: string | null;
+  /** An editor shared it onward: who (the owner sees who added the grant). */
+  sharedBy?: string | null;
 }
 
 export interface IncomingShare {
@@ -30,6 +32,12 @@ export interface IncomingShare {
   requestPending: boolean;
   /** Pinned on the caller's own desk (the owner's pin is theirs). */
   pinned?: boolean;
+  /** The owner's display name, for their initials. */
+  ownerName?: string | null;
+  /** An editor passed it on to you (the owner still owns it). */
+  sharedBy?: string | null;
+  /** Your own tags for it — the owner's are theirs. */
+  tags?: string[];
 }
 
 
@@ -193,4 +201,84 @@ export function useAnswerAccessRequest() {
       void queryClient.invalidateQueries({ queryKey: ['shares'] });
     },
   });
+}
+
+/** Patch one share in the desk's list, at once; a failure puts it back. */
+function useIncomingPatch<V>(
+  write: (vars: V) => Promise<unknown>,
+  patch: (vars: V) => { shareId: number; change: Partial<IncomingShare> },
+) {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: write,
+    onMutate: async (vars: V) => {
+      await queryClient.cancelQueries({ queryKey: ['shares', 'incoming'], exact: true });
+      const before = queryClient.getQueryData<IncomingShare[]>(['shares', 'incoming']);
+      const { shareId, change } = patch(vars);
+      queryClient.setQueryData<IncomingShare[]>(['shares', 'incoming'],
+        (list) => list?.map((s) => (s.shareId === shareId ? { ...s, ...change } : s)));
+      return { before };
+    },
+    onError: (_err, _vars, context) => {
+      if (context?.before) queryClient.setQueryData(['shares', 'incoming'], context.before);
+    },
+    onSettled: () => {
+      void queryClient.invalidateQueries({ queryKey: ['shares', 'incoming'] });
+    },
+  });
+}
+
+async function send(url: string, method: string, body: unknown): Promise<unknown> {
+  const res = await fetch(url, { method, headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(body) });
+  if (!res.ok) {
+    const data = await res.json().catch(() => null);
+    throw new Error(data?.error ?? `Request failed: ${res.status}`);
+  }
+  return res.json().catch(() => null);
+}
+
+/** Your own tags for a note shared with you. The owner's tags are untouched. */
+export function useSharedTags() {
+  return useIncomingPatch(
+    ({ shareId, tags }: { shareId: number; tags: string[] }) => send(`/api/shares/incoming/${shareId}/tags`, 'PUT', { tags }),
+    ({ shareId, tags }) => ({ shareId, change: { tags } }),
+  );
+}
+
+/**
+ * The note's colour, changed by someone who can edit it. Colour belongs to the
+ * note (as in Keep): the owner and everyone it's shared with see the same one.
+ */
+export function useSharedColor() {
+  return useIncomingPatch(
+    ({ shareId, color }: { shareId: number; color: string | null }) =>
+      send(`/api/shares/incoming/${shareId}/color`, 'PUT', { color: color ?? '' }),
+    ({ shareId, color }) => ({ shareId, change: { color } }),
+  );
+}
+
+export type ReshareResult = { status: 'shared' | 'upgraded' | 'alreadyShared'; grantee: string; access: 'view' | 'edit' };
+
+/** Someone who can edit a shared note passes it on. It stays the owner's note. */
+export function useReshare() {
+  return useMutation({
+    mutationFn: ({ shareId, granteeUsername, access }: { shareId: number; granteeUsername: string; access: 'view' | 'edit' }) =>
+      send(`/api/shares/incoming/${shareId}/share`, 'POST', { granteeUsername, access }) as Promise<ReshareResult>,
+  });
+}
+
+/**
+ * Where a [[link]] in a note shared with you leads: the linked note, if its
+ * owner shared that one with you too — otherwise null.
+ */
+export async function resolveSharedLink(shareId: number, target: string): Promise<{ shareId: number; access: 'view' | 'edit' } | null> {
+  const res = await fetch(`/api/shares/incoming/${shareId}/link?target=${encodeURIComponent(target)}`);
+  if (res.status === 404) return null;
+  if (!res.ok) throw new Error(`Couldn’t follow that link (${res.status}).`);
+  return res.json();
+}
+
+/** One link to a note, for anyone who holds it: `/n/<owner>/<id>`. */
+export function noteLink(owner: string, noteId: string): string {
+  return `${window.location.origin}/n/${encodeURIComponent(owner)}/${encodeURIComponent(noteId)}`;
 }

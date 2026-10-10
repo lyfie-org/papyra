@@ -4,6 +4,7 @@ import { render, screen, fireEvent, cleanup, act } from '@testing-library/react'
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { MemoryRouter, Route, Routes, useLocation } from 'react-router-dom';
 import type { Note } from '../types/note';
+import type { IncomingShare } from '../hooks/useShares';
 import DraggableNoteGrid from './DraggableNoteGrid';
 
 // The grid end of multi-select, driven the way a person would: the tick, then
@@ -143,5 +144,43 @@ describe('DraggableNoteGrid — selection', () => {
     renderGrid(notes);
     expect(screen.getByText('Note n')).toBeTruthy();
     expect(screen.queryByText('List t')).toBeNull();
+  });
+
+  it('a note shared with you is selected like your own; the bar offers it only what applies', () => {
+    const share: IncomingShare = {
+      shareId: 7, noteId: 'x', owner: 'ada', ownerName: 'Ada Lovelace', title: 'Their note', access: 'view',
+      excerpt: '', body: 'theirs', color: null, updatedUtc: null, requestPending: false, pinned: false, tags: [],
+    };
+    client.setQueryData(['notes'], [mk('a')]);
+    client.setQueryData(['noteOrder'], {});
+    client.setQueryData(['settings'], { trashRetentionDays: 30 });
+    client.setQueryData(['shares', 'summary'], []);
+    client.setQueryData(['shares', 'incoming'], [share]);
+    render(
+      <QueryClientProvider client={client}>
+        <MemoryRouter initialEntries={['/']}>
+          <Routes>
+            <Route path="*" element={<><DraggableNoteGrid notes={[mk('a')]} shared={[share]} /><Where /></>} />
+          </Routes>
+        </MemoryRouter>
+      </QueryClientProvider>,
+    );
+    // The owner's face, not their username; "Can view" for a read-only share.
+    expect(screen.queryByText('@ada')).toBeNull();
+    expect(screen.getByText('Can view')).toBeTruthy();
+
+    fireEvent.click(tick('Their note'));
+    expect(bar()?.getAttribute('aria-label')).toBe('1 note selected');
+    // Only shared notes selected: pin, but no archive, share or delete of someone else's note.
+    expect(screen.getByRole('button', { name: 'Pin' })).toBeTruthy();
+    expect(screen.queryByRole('button', { name: 'Archive' })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Delete' })).toBeNull();
+
+    // With one of yours as well, your own-vault actions come back.
+    fireEvent.click(screen.getByText('Note a'));
+    expect(bar()?.getAttribute('aria-label')).toBe('2 notes selected');
+    expect(screen.getByRole('button', { name: 'Archive' })).toBeTruthy();
+    // Selection mode never opens the shared note either.
+    expect(screen.getByTestId('where').textContent).toBe('/');
   });
 });

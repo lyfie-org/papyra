@@ -29,4 +29,12 @@ public class Share
     // User shares only: the grantee pinned it on their own desk. The owner's
     // `pinned` front matter is theirs; this is the other person's.
     public bool GranteePinned { get; set; }
+
+    // User shares only: the grantee's own tags for it, as a JSON array. They
+    // organise their desk; the owner's `tags` front matter stays the owner's.
+    public string? GranteeTags { get; set; }
+
+    // User shares only: who granted it, when not the owner — an editor who
+    // shared the note onward. Null for the owner's own grants.
+    public int? SharedByUserId { get; set; }
 }

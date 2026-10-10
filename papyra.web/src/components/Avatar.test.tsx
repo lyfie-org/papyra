@@ -2,6 +2,7 @@
 import { afterEach, describe, expect, it } from 'vitest';
 import { act, cleanup, fireEvent, render } from '@testing-library/react';
 import Avatar from './Avatar';
+import { initialsOf } from '../lib/initials';
 import { bumpAvatarVersion } from '../lib/avatarVersion';
 
 afterEach(cleanup);
@@ -28,5 +29,16 @@ describe('Avatar', () => {
     expect(srcs).toHaveLength(2); // the failed one retried with the new version
     expect(srcs.every((s) => /\?v=\d+$/.test(s!))).toBe(true);
     expect(srcs[1]).toMatch(/^\/api\/auth\/avatar\/bea\?v=/);
+  });
+
+  it('shows first- and last-name initials when there is no picture', () => {
+    const { container } = render(<Avatar username="ada" name="Ada Byron Lovelace" />);
+    fireEvent.error(container.querySelector('img')!);
+    expect(container.textContent).toBe('AL');
+    expect(initialsOf('Bea', 'bea')).toBe('B');
+    expect(initialsOf('  zoë   ångström ', 'z')).toBe('ZÅ');
+    expect(initialsOf('Ada (work) Lovelace')).toBe('AL');
+    expect(initialsOf(null, '@swastika')).toBe('S');
+    expect(initialsOf('', '')).toBe('?');
   });
 });

@@ -47,6 +47,8 @@
   border-top: 1px solid var(--border);
 }
 .shared-note__footer .note-close { margin-left: auto; }
+/* The viewer's actions (colour, share, tags, copy…), like an owned note's rail. */
+.shared-note__actions { display: inline-flex; align-items: center; gap: var(--space-1); }
 .shared-note--colored .shared-note__footer { border-top-color: var(--tint-scrim); }
 .shared-note--colored .note-toolbar__btn { color: var(--tint-ink-muted); }
 .shared-note--colored .note-toolbar__btn:hover,
