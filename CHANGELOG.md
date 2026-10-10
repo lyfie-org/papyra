@@ -6,6 +6,10 @@ a Docker Hub tag and a GitHub Release.
 
 <!-- new releases are inserted directly below this line -->
 
+## [0.4.2] - 2026-10-10
+
+- feat(editor): link-card toolbar, embed open links, drag media to move (c22ba91)
+
 ## [0.4.1] - 2026-10-09
 
 - ci: gate WCAG 2.2 AA (check:a11y) on every web change (5b6d4bf)
