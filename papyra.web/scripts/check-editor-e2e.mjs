@@ -604,10 +604,262 @@ async function checkPerf(browser) {
   await context.close();
 }
 
+// A link card is an embed like any other: selected by a click (not followed),
+// aligned, captioned, resized, moved and removed from its bar; every embed shows
+// an "open" link to its page on hover; and any block of media moves by dragging.
+const CARD_NOTE = 'e2e-cards';
+async function checkCardsAndDrag(page) {
+  console.log('· cards: setup');
+  const CARD = 'https://example.com/post';
+  const bodyOf = () => noteBody(page, CARD_NOTE);
+  // Uploads too: a document card and a picture (Papyra's own attachments).
+  const upload = async (name, mimeType, buffer) => (await (await page.request.post(`${ORIGIN}/api/media/upload?noteId=${CARD_NOTE}`, {
+    multipart: { file: { name, mimeType, buffer } },
+  })).json()).filename;
+  const docName = await upload('plan.pdf', 'application/pdf', PDF);
+  const pngName = await upload('dot.png', 'image/png', PNG);
+  await page.request.put(`${ORIGIN}/api/notes/${CARD_NOTE}`, {
+    data: {
+      title: 'Cards and drag', tags: [], color: null, pinned: false, archived: false, kind: 'note',
+      body: [
+        'Top line',
+        '',
+        `![[card:${CARD}|Example post]]`,
+        '',
+        'Middle line',
+        '',
+        '![[iframe:https://example.com/]]',
+        '',
+        'Bottom line',
+        '',
+        `![[${docName}]]`,
+        '',
+        `![[${pngName}|200]]`,
+        '',
+        `![](${ORIGIN}/${LINK_IMAGE})`,
+        '',
+        'Last line',
+      ].join('\n'),
+    },
+  });
+  // Tall enough that every block is on screen at once: a drop point off
+  // screen would be reached only by the drag's autoscroll.
+  const viewport = page.viewportSize();
+  await page.setViewportSize({ width: 1280, height: 1800 });
+  await openNote(page, CARD_NOTE);
+  await page.waitForTimeout(1500);
+  const root = page.locator('.luthor-content-editable');
+  const order = () => page.evaluate(() => [...document.querySelector('.luthor-content-editable').children].map((el) => {
+    if (el.querySelector('.luthor-saved-card')) return 'card';
+    if (el.querySelector('iframe')) return 'map';
+    if (el.querySelector('figure.lexical-image')) return 'picture';
+    if (el.querySelector('.file-card')) return 'doc';
+    if (el.querySelector('.luthor-media--image')) return 'upload';
+    return el.textContent.trim();
+  }).filter(Boolean));
+  const popups = [];
+  page.context().on('page', (p) => { popups.push(p); });
+
+  // Hover shows the way out to the page; the card itself is not followed.
+  const card = page.locator('.luthor-saved-card-figure');
+  await card.scrollIntoViewIfNeeded();
+  await card.hover();
+  const open = card.locator('.luthor-embed-open');
+  await page.waitForTimeout(250);
+  check(await open.evaluate((el) => getComputedStyle(el).opacity === '1'), 'cards: the open link does not show on hover');
+  check(await open.getAttribute('href') === CARD, `cards: the open link goes to ${await open.getAttribute('href')}`);
+  check(await open.getAttribute('aria-label') === 'Open example.com in a new tab', 'cards: the open link has no useful name');
+  const map = page.locator('.luthor-media-embed-shell:has(iframe)');
+  await map.hover();
+  await page.waitForTimeout(250);
+  check(await map.locator('.luthor-embed-open').getAttribute('href') === 'https://example.com/', 'cards: the map has no open link to its page');
+
+  console.log('· cards: select + toolbar');
+  const cardBox = await card.locator('.luthor-saved-card').boundingBox();
+  await page.mouse.click(cardBox.x + cardBox.width / 2, cardBox.y + cardBox.height / 2);
+  const bar = page.locator('.luthor-floating-toolbar');
+  await bar.waitFor({ timeout: 3000 });
+  await page.waitForTimeout(400);
+  check(popups.length === 0, 'cards: a click on the card in an editable note opened the page');
+  check(await card.evaluate((el) => el.classList.contains('is-selected')), 'cards: a click does not select the card');
+  for (const title of ['Align Left', 'Align Center', 'Align Right', 'Move Up', 'Move Down', 'Remove']) {
+    check(await bar.getByTitle(title).count() === 1, `cards: the card's bar has no ${title}`);
+  }
+  await bar.getByTitle('Align Right').click();
+  await bar.getByLabel('Card caption').fill('Worth a read');
+  await bar.getByLabel('Card caption').press('Enter');
+  const aligned = await waitForBody(page, CARD_NOTE, (b) => /\|Example post\|\d+\]\] <!-- align:right --> <!-- caption:Worth a read -->/.test(b));
+  check(aligned, `cards: align + caption did not save:\n${(await bodyOf()).slice(0, 300)}`);
+  check(await card.locator('figcaption').textContent() === 'Worth a read', 'cards: the caption does not show under the card');
+  const geo = await page.evaluate(() => {
+    const fig = document.querySelector('.luthor-saved-card-figure').getBoundingClientRect();
+    const col = document.querySelector('.luthor-content-editable').getBoundingClientRect();
+    return { right: Math.round(col.right - fig.right), left: Math.round(fig.left - col.left), width: Math.round(fig.width), col: Math.round(col.width) };
+  });
+  check(geo.width < geo.col - 20 && geo.right < geo.left, `cards: a right-aligned card is not narrowed to the right (${JSON.stringify(geo)})`);
+
+  console.log('· cards: resize');
+  const handle = card.locator('.luthor-media-embed-resize-handle-width');
+  const hb = await handle.boundingBox();
+  check(!!hb, 'cards: the selected card has no resize handle');
+  if (hb) {
+    const before = (await card.boundingBox()).width;
+    await page.mouse.move(hb.x + hb.width / 2, hb.y + hb.height / 2);
+    await page.mouse.down();
+    // Right-aligned: its left edge stays, so pull the right one in.
+    await page.mouse.move(hb.x + hb.width / 2 - 60, hb.y + hb.height / 2, { steps: 6 });
+    await page.mouse.up();
+    await page.waitForTimeout(300);
+    const after = (await card.boundingBox()).width;
+    check(Math.abs(after - before) > 40, `cards: dragging the edge did not resize the card (${before} → ${after})`);
+    const resized = await waitForBody(page, CARD_NOTE, (b) => {
+      const m = /\|Example post\|(\d+)\]\]/.exec(b);
+      return m && Math.abs(Number(m[1]) - after) <= 2;
+    });
+    check(resized, `cards: the new width was not saved (${Math.round(after)} px):\n${(await bodyOf()).slice(0, 200)}`);
+  }
+
+  console.log('· cards: move from the bar');
+  await bar.getByTitle('Move Down').click();
+  await page.waitForTimeout(300);
+  check(JSON.stringify((await order()).slice(0, 3)) === JSON.stringify(['Top line', 'Middle line', 'card']),
+    `cards: Move Down did not move the card (${JSON.stringify(await order())})`);
+  await bar.getByTitle('Move Up').click();
+  await page.waitForTimeout(300);
+
+  // Drag the block by its body and drop it next to another.
+  // From the top of the note, so the drop point isn't at the scroll area's
+  // edge (where a drag scrolls the note — by design — and keeps going).
+  const toTop = () => page.evaluate(() => {
+    let el = document.querySelector('.luthor-content-editable');
+    while (el && !/(auto|scroll)/.test(getComputedStyle(el).overflowY)) el = el.parentElement;
+    if (el) el.scrollTop = 0;
+    window.scrollTo(0, 0);
+  });
+  const dragTo = async (from, toLocator, where = 'above', { escape = false } = {}) => {
+    await toTop();
+    await page.waitForTimeout(100);
+    const a = await from.boundingBox();
+    const t = await toLocator.boundingBox();
+    const ty = where === 'above' ? t.y + 2 : t.y + t.height - 2;
+    const sx = a.x + a.width / 2;
+    const sy = a.y + Math.min(a.height / 2, 40);
+    await page.mouse.move(sx, sy);
+    await page.mouse.down();
+    await page.mouse.move(sx, sy + 12, { steps: 3 });
+    await page.mouse.move(sx, ty, { steps: 12 });
+    const line = await page.evaluate(() => {
+      const el = document.querySelector('.luthor-block-drop-indicator');
+      return el ? { shown: getComputedStyle(el).display !== 'none', top: el.getBoundingClientRect().top } : null;
+    });
+    if (escape) await page.keyboard.press('Escape');
+    await page.mouse.up();
+    await page.waitForTimeout(400);
+    return line;
+  };
+  const para = (text) => root.locator('p', { hasText: text }).first();
+
+  console.log('· drag: card');
+  // Back in the text (Escape from the caption field would close the note).
+  await para('Top line').click();
+  const line = await dragTo(card.locator('.luthor-saved-card'), para('Top line'), 'above');
+  check(line?.shown, 'drag: no drop line while dragging the card');
+  check((await order())[0] === 'card', `drag: the card did not land above "Top line" (${JSON.stringify(await order())})`);
+  check(popups.length === 0, 'drag: releasing a dragged card opened its page');
+  check(await card.evaluate((el) => el.classList.contains('is-selected')), 'drag: the moved card is not selected');
+  check(await page.evaluate(() => !document.querySelector('.luthor-block-drop-indicator')), 'drag: the drop line stayed after the drop');
+  const draggedSaved = await waitForBody(page, CARD_NOTE, (b) => b.trimStart().startsWith('![[card:'));
+  check(draggedSaved, `drag: the new order was not saved:\n${(await bodyOf()).slice(0, 200)}`);
+
+  console.log('· drag: undo');
+  await page.keyboard.press('Control+z');
+  await page.waitForTimeout(400);
+  check((await order())[0] === 'Top line', `drag: one undo did not put the card back (${JSON.stringify(await order())})`);
+  await page.keyboard.press('Control+y');
+  await page.waitForTimeout(400);
+  check((await order())[0] === 'card', `drag: redo did not move it again (${JSON.stringify(await order())})`);
+
+  console.log('· drag: escape cancels');
+  const before = JSON.stringify(await order());
+  await dragTo(card.locator('.luthor-saved-card'), para('Last line'), 'below', { escape: true });
+  check(JSON.stringify(await order()) === before, `drag: Escape did not cancel the move (${JSON.stringify(await order())})`);
+
+  console.log('· drag: map + picture');
+  await dragTo(map, para('Last line'), 'below');
+  const afterMap = await order();
+  check(afterMap[afterMap.length - 1] === 'map', `drag: the map did not move to the end (${JSON.stringify(afterMap)})`);
+  const picture = root.locator('figure.lexical-image .luthor-media-embed-shell');
+  await dragTo(picture, para('Middle line'), 'above');
+  const afterPicture = await order();
+  check(afterPicture.indexOf('picture') === afterPicture.indexOf('Middle line') - 1,
+    `drag: the picture did not land above "Middle line" (${JSON.stringify(afterPicture)})`);
+
+  console.log('· drag: by the grip');
+  await toTop();
+  await map.hover();
+  const grip = map.locator('.luthor-block-drag-grip');
+  await page.waitForTimeout(250);
+  check(await grip.evaluate((el) => getComputedStyle(el).opacity === '1'), 'drag: the map shows no grip on hover');
+  await dragTo(grip, para('Top line'), 'below');
+  const afterGrip = await order();
+  check(afterGrip.indexOf('map') === afterGrip.indexOf('Top line') + 1, `drag: the grip did not move the map (${JSON.stringify(afterGrip)})`);
+
+  console.log('· drag: attachments');
+  await dragTo(root.locator('.file-card').first(), para('Top line'), 'above');
+  const afterDoc = await order();
+  check(afterDoc.indexOf('doc') === afterDoc.indexOf('Top line') - 1, `drag: the document card did not land above "Top line" (${JSON.stringify(afterDoc)})`);
+  check(popups.length === 0, 'drag: releasing a dragged document opened it');
+  await dragTo(root.locator('.luthor-media--image .luthor-media__frame').first(), para('Middle line'), 'below');
+  const afterUpload = await order();
+  check(afterUpload.indexOf('upload') === afterUpload.indexOf('Middle line') + 1,
+    `drag: the uploaded picture did not land below "Middle line" (${JSON.stringify(afterUpload)})`);
+  const savedOrder = await waitForBody(page, CARD_NOTE, (b) => b.indexOf(docName) < b.indexOf('Top line')
+    && b.indexOf(pngName) > b.indexOf('Middle line') && b.indexOf(pngName) < b.indexOf('Bottom line'));
+  check(savedOrder, `drag: the attachments' new places were not saved:
+${(await bodyOf()).slice(0, 400)}`);
+
+  console.log('· cards: reopen');
+  await settle(page);
+  const saved = await bodyOf();
+  await page.reload();
+  await root.waitFor();
+  await page.waitForTimeout(2000);
+  check(JSON.stringify(await order()) === JSON.stringify(afterUpload), `cards: the order changed on reopen (${JSON.stringify(await order())})`);
+  check(await bodyOf() === saved, 'cards: reopening rewrote the body');
+  check(await page.locator('.luthor-saved-card-figure figcaption').textContent() === 'Worth a read', 'cards: the caption was lost on reopen');
+
+  console.log('· cards: open link + remove');
+  await card.scrollIntoViewIfNeeded();
+  await card.hover();
+  await page.waitForTimeout(250);
+  const popup = page.waitForEvent('popup', { timeout: 5000 }).catch(() => null);
+  const already = popups.length;
+  await card.locator('.luthor-embed-open').click();
+  const opened = await popup;
+  await page.waitForTimeout(500);
+  check(!!opened && popups.length - already === 1, `cards: the open link opened ${popups.length - already} tab(s), not one`);
+  check(!(await card.evaluate((el) => el.classList.contains('is-selected'))), 'cards: the open link also selected the card');
+  for (const p of popups.splice(already)) await p.close().catch(() => {});
+  const cb = await card.locator('.luthor-saved-card').boundingBox();
+  await page.mouse.click(cb.x + cb.width / 2, cb.y + cb.height / 2);
+  await bar.waitFor({ timeout: 3000 });
+  await bar.getByTitle('Remove').click();
+  const removed = await waitForBody(page, CARD_NOTE, (b) => !b.includes('![[card:'));
+  check(removed, 'cards: Remove did not delete the card');
+  await page.setViewportSize(viewport);
+}
+
+async function settle(page) {
+  await page.waitForTimeout(1500);
+  await page.getByText('Saved to local disk').waitFor({ timeout: 15_000 }).catch(() => {});
+  await page.waitForTimeout(500);
+}
+
 let browser;
 let page;
 // E2E_SHOTS=<dir>: on a failure, keep a screenshot and the note body there.
 const SHOTS = process.env.E2E_SHOTS;
+const ONLY = process.env.E2E_ONLY;
 try {
   await waitFor(`http://localhost:${API_PORT}/health`, api, 'API');
   await waitFor(`${ORIGIN}/`, web, 'Vite');
@@ -690,6 +942,9 @@ try {
 
   await page.goto(`${ORIGIN}/note/${NOTE}`);
   await page.locator('.luthor-toolbar').waitFor({ timeout: 30_000 });
+
+  // E2E_ONLY=cards: just the link-card / drag section (a quick loop while working on it).
+  if (!ONLY) {
 
   // 1. Toolbar → Insert → Upload image (PNG) → ![[…png]]
   console.log('· step 1');
@@ -922,11 +1177,18 @@ ${reopened}`);
   check(healedOk, `alignment: the saved body lost an alignment or kept old markup:
 ${(await body()).slice(0, 400)}`);
 
-  // ── Attachments: select, resize, upload pipeline (media overhaul S4–S6) ───
-  await checkMedia(page);
+  }
 
-  // ── Performance budgets on a media-heavy vault (media overhaul S9) ─────────
-  await checkPerf(browser);
+  // ── Link cards and moving media by dragging ─────────────────────────────────
+  await checkCardsAndDrag(page);
+
+  if (!ONLY) {
+    // ── Attachments: select, resize, upload pipeline (media overhaul S4–S6) ───
+    await checkMedia(page);
+
+    // ── Performance budgets on a media-heavy vault (media overhaul S9) ─────────
+    await checkPerf(browser);
+  }
 } catch (err) {
   failures.push(`harness: ${err.message}`);
   if (SHOTS && page) {
@@ -948,4 +1210,8 @@ if (failures.length) {
   for (const f of failures) console.error(`  ✗ ${f}`);
   process.exit(1);
 }
-console.log('check-editor: every insert path round-trips (upload, GIF, attach, drag & drop, paste, image link, YouTube, embedded link, link, /image, hand-written markdown); every embed keeps its alignment; attachments select, resize, upload in order, cancel, refuse, keep posters, survive theme switches, documents show as icons and PDFs preview, and cards use thumbnails ✓');
+if (ONLY) {
+  console.log(`check-editor (${ONLY} only) ✓`);
+  process.exit(0);
+}
+console.log('check-editor: every insert path round-trips (upload, GIF, attach, drag & drop, paste, image link, YouTube, embedded link, link, /image, hand-written markdown); every embed keeps its alignment; link cards align, caption, resize and move; media drags to a new place; attachments select, resize, upload in order, cancel, refuse, keep posters, survive theme switches, documents show as icons and PDFs preview, and cards use thumbnails ✓');
