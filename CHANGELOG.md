@@ -6,6 +6,11 @@ a Docker Hub tag and a GitHub Release.
 
 <!-- new releases are inserted directly below this line -->
 
+## [0.4.3] - 2026-10-10
+
+- chore: bump @lyfie/luthor to 2.11.10 — tidier link cards, Visit link, short block picker (840cba4)
+- feat(editor): text styles in the toolbar, short block picker, tidier link cards (ba1a8f5)
+
 ## [0.4.2] - 2026-10-10
 
 - feat(editor): link-card toolbar, embed open links, drag media to move (c22ba91)
