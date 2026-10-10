@@ -6,6 +6,11 @@ a Docker Hub tag and a GitHub Release.
 
 <!-- new releases are inserted directly below this line -->
 
+## [0.4.4] - 2026-10-10
+
+- chore: bump @lyfie/luthor to 2.11.11 — whole-embed previews, quieter grip, one cursor (cdf434d)
+- feat(sharing): organise shared notes, share linked notes, links that follow shares (2bf7221)
+
 ## [0.4.3] - 2026-10-10
 
 - chore: bump @lyfie/luthor to 2.11.10 — tidier link cards, Visit link, short block picker (840cba4)
