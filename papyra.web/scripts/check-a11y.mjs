@@ -133,10 +133,15 @@ const FLOWS = [
     await page.getByRole('button', { name: 'Insert', exact: true }).click();
     await page.getByRole('button', { name: 'YouTube video' }).waitFor();
   } },
-  { name: 'text-style group open', toolbar: true, run: async (page) => {
+  { name: 'lists group open', toolbar: true, run: async (page) => {
     await openNote(page, 'welcome');
-    await page.getByRole('button', { name: 'Text style' }).click();
+    await page.getByRole('button', { name: 'Lists' }).click();
     await page.locator('.luthor-toolbar-group-menu').waitFor();
+  } },
+  { name: 'block style list open', toolbar: true, run: async (page) => {
+    await openNote(page, 'welcome');
+    await page.locator('.luthor-toolbar .luthor-select-trigger').first().click();
+    await page.locator('.luthor-select-dropdown').waitFor();
   } },
   { name: 'embed dialog open', toolbar: true, run: async (page) => {
     await openNote(page, 'welcome');

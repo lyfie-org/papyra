@@ -1,5 +1,5 @@
 import {
-  AtSign, Bold, Brackets, CalendarDays, Globe, ImagePlus, ImageUp, LayoutList, List, Paperclip, Plus, SquarePlay,
+  AtSign, Brackets, CalendarDays, Globe, ImagePlus, ImageUp, LayoutList, List, Paperclip, Plus, SquarePlay,
 } from 'lucide-react';
 import type { ToolbarLayout } from '@lyfie/luthor';
 import type { ExtensiveToolbarItem } from '@lyfie/luthor/presets/extensive';
@@ -20,17 +20,17 @@ const ICON = { size: 16, strokeWidth: 2 } as const;
 export const PAPYRA_EDITOR_FEATURES = { youTubeEmbed: true, iframeEmbed: true } as const;
 
 /**
- * Eight controls instead of twenty-odd: the block style picker, then groups
- * that open a small row of their tools (a group lights up while something
- * inside it is on), then Papyra's note-linking and insert menu.
+ * A dozen controls instead of twenty-odd: the block style picker (shown short,
+ * "H2"), the four text styles, the link, then groups that open a small row of
+ * their tools (a group lights up while something inside it is on), then
+ * Papyra's note-linking and insert menu.
  */
 export const PAPYRA_TOOLBAR_LAYOUT: ToolbarLayout = {
   sections: [
     { items: ['blockFormat'] },
-    {
-      items: ['bold', 'italic', 'strikethrough', 'code'],
-      group: { id: 'style', label: 'Text style', icon: <Bold {...ICON} /> },
-    },
+    // Bold, italic, strikethrough and inline code sit in the bar itself: the
+    // ones used most, one click each.
+    { items: ['bold', 'italic', 'strikethrough', 'code'] },
     { items: ['link'] },
     {
       items: ['unorderedList', 'orderedList', 'checkList', 'indentList', 'outdentList'],

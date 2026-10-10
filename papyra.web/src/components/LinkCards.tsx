@@ -56,14 +56,14 @@ export function LinkCard({ url, compact = false }: { url: string; compact?: bool
       window.open(url, '_blank', 'noopener,noreferrer');
     };
     return (
-      <span className={className} role="link" tabIndex={0} title={url} onClick={open}
+      <span className={className} role="link" tabIndex={0} onClick={open}
         onKeyDown={(e) => { if (e.key === 'Enter') open(e); }}>
         {inner}
       </span>
     );
   }
   return (
-    <a className={className} href={url} target="_blank" rel="noopener noreferrer" title={url}>
+    <a className={className} href={url} target="_blank" rel="noopener noreferrer">
       {inner}
     </a>
   );
