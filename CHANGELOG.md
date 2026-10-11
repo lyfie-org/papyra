@@ -6,6 +6,10 @@ a Docker Hub tag and a GitHub Release.
 
 <!-- new releases are inserted directly below this line -->
 
+## [0.4.5] - 2026-10-11
+
+- chore: bump @lyfie/luthor to 2.11.12 — one-column embed bar with ✓ fields (357f2aa)
+
 ## [0.4.4] - 2026-10-10
 
 - chore: bump @lyfie/luthor to 2.11.11 — whole-embed previews, quieter grip, one cursor (cdf434d)
