@@ -218,6 +218,11 @@ html.is-mouse-selecting :is(.luthor-floating-toolbar, .comment-bubble) {
     transform: none !important;
     justify-content: center;
   }
+  /* A picture's or page's bar with its link/caption fields: a steady width
+     between the gutters rather than shrink-wrapping its widest field. */
+  .luthor-floating-toolbar--media:has(.luthor-floating-toolbar-fields) {
+    width: min(26rem, 100vw - 2 * var(--space-3));
+  }
   /* luthor's editor is its own stacking context, so the open note's footer
      (z-index 3, a later sibling) would paint over a bar docked at the bottom:
      while one is up, lift the scroll area that holds it. */

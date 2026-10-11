@@ -61,6 +61,23 @@
   top: auto;
   bottom: calc(100% + 6px);
 }
+/* The drag grip beside a media block: just its dots — no tab, no border. A
+   hover washes it in its own ink so it still reads as something to grab. */
+:is(.note-editor__canvas, .shared-note__canvas) .luthor-block-drag-grip,
+:is(.note-editor__canvas, .shared-note__canvas) .luthor-block-drag-grip:hover {
+  border-color: transparent;
+  background: transparent;
+}
+:is(.note-editor__canvas, .shared-note__canvas) .luthor-block-drag-grip:hover {
+  background: color-mix(in srgb, currentColor 12%, transparent);
+}
+/* Moving a block by dragging is a pointer thing: on a phone (or any narrow
+   sheet) the grip only crowds the media's edge — Move up/down on its bar do
+   the same job. */
+@media (max-width: 640px), (hover: none) and (pointer: coarse) {
+  :is(.note-editor__canvas, .shared-note__canvas) .luthor-block-drag-grip { display: none; }
+}
+
 /* A caption written the old way — an italic line right under the picture —
    set small and centred beneath it. */
 .note-editor__canvas .luthor-file-embed-shell + p:has(> .luthor-text-italic:only-child) {
