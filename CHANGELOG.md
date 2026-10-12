@@ -6,6 +6,10 @@ a Docker Hub tag and a GitHub Release.
 
 <!-- new releases are inserted directly below this line -->
 
+## [0.4.7] - 2026-10-12
+
+- feat: editable smart collections, job chips, trash countdown, branded icons (cfc83f0)
+
 ## [0.4.6] - 2026-10-12
 
 - feat(ui): hover tooltips for icon-only buttons; vine draws when its block is in view (a34059c)
