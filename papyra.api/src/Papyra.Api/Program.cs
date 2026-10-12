@@ -4278,26 +4278,45 @@ collections.MapGet("/", async (ClaimsPrincipal user, AppDbContext db, Cancellati
         .ToListAsync(ct));
 });
 
-collections.MapPost("/", async (SmartCollectionWrite body, ClaimsPrincipal user, AppDbContext db, CancellationToken ct) =>
+// Validate the rules round-trip before persisting so a collection can't be saved broken.
+// Null when the write is good; otherwise the 400 to send back.
+IResult? CollectionWriteError(SmartCollectionWrite body)
 {
-    var name = body.Name?.Trim();
-    if (string.IsNullOrWhiteSpace(name)) return Results.BadRequest(new { error = "Name is required." });
-
-    // Validate the rules round-trip before persisting so a collection can't be saved broken.
+    if (string.IsNullOrWhiteSpace(body.Name)) return Results.BadRequest(new { error = "Name is required." });
     SmartRules? rules;
     try { rules = JsonSerializer.Deserialize<SmartRules>(body.RulesJson ?? "", JsonOpts); }
     catch (JsonException) { return Results.BadRequest(new { error = "rulesJson is not valid JSON." }); }
     if (rules?.Conditions is null || rules.Conditions.Count == 0)
         return Results.BadRequest(new { error = "At least one condition is required." });
+    return null;
+}
+
+collections.MapPost("/", async (SmartCollectionWrite body, ClaimsPrincipal user, AppDbContext db, CancellationToken ct) =>
+{
+    if (CollectionWriteError(body) is { } bad) return bad;
 
     var collection = new SmartCollection
     {
         UserId = int.Parse(Uid(user)),
-        Name = name,
+        Name = body.Name!.Trim(),
         RulesJson = body.RulesJson!,
         CreatedUtc = DateTime.UtcNow,
     };
     db.SmartCollections.Add(collection);
+    await db.SaveChangesAsync(ct);
+    return Results.Ok(new { collection.Id, collection.Name, collection.RulesJson, collection.CreatedUtc });
+});
+
+// Rename it or change its rules — the id (and so any ?collection= link) stays.
+collections.MapPut("/{id:int}", async (int id, SmartCollectionWrite body, ClaimsPrincipal user, AppDbContext db, CancellationToken ct) =>
+{
+    if (CollectionWriteError(body) is { } bad) return bad;
+
+    var uid = int.Parse(Uid(user));
+    var collection = await db.SmartCollections.FirstOrDefaultAsync(c => c.Id == id && c.UserId == uid, ct);
+    if (collection is null) return Results.NotFound();
+    collection.Name = body.Name!.Trim();
+    collection.RulesJson = body.RulesJson!;
     await db.SaveChangesAsync(ct);
     return Results.Ok(new { collection.Id, collection.Name, collection.RulesJson, collection.CreatedUtc });
 });

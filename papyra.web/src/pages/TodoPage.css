@@ -165,13 +165,16 @@
   gap: var(--space-2);
   margin-top: 8px;
 }
+/* The add row reads the same on plain paper as on a tinted card (below): a
+   dashed ink outline round a lifted fill, and a neutral ink "+" — so it's
+   recognisably one control whatever colour the list is. */
 .todo-card__add-input {
   flex: 1;
   min-width: 0;
   padding: var(--space-1) var(--space-3);
-  border: 1px dashed var(--border);
+  border: 1px dashed color-mix(in srgb, var(--text) 65%, transparent);
   border-radius: var(--radius-sm);
-  background: transparent;
+  background: color-mix(in srgb, var(--text-h) 11%, transparent);
   color: var(--text-h);
   font-family: var(--sans);
   font-size: var(--fs-xs);
@@ -185,13 +188,13 @@
   flex-shrink: 0;
   border: none;
   border-radius: var(--radius-sm);
-  background: var(--accent-bg);
-  color: var(--accent-text);
+  background: color-mix(in srgb, var(--text-h) 14%, transparent);
+  color: var(--text-h);
   cursor: pointer;
 }
 .todo-card__add-btn:hover {
-  background: var(--accent);
-  color: var(--accent-fg);
+  background: var(--text-h);
+  color: var(--surface);
 }
 
 /* A tinted to-do card is painted with the note's (always light) YAML colour, so
@@ -283,6 +286,5 @@
   background: var(--tint-ink);
   color: color-mix(in srgb, var(--note-tint) 60%, var(--tint-lift));
 }
-/* Plain paper: a touch more presence than a dashed hairline. */
-.todo-card__add-input::placeholder { color: var(--text); opacity: 0.9; }
+.todo-card__add-input::placeholder { color: var(--text); opacity: 1; }
 .todo-card__add-input:focus { border-style: solid; }

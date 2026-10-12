@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowRight, Layers, Plus, Tag, Tags, Trash2, X } from 'lucide-react';
+import { ArrowRight, Layers, Pencil, Plus, Tag, Tags, Trash2, X } from 'lucide-react';
 import EmptyState from '../components/EmptyState';
 import RuleBuilder from '../components/RuleBuilder';
 import { useCollections, useDeleteCollection } from '../hooks/useCollections';
@@ -34,6 +34,7 @@ export default function CollectionsPage() {
   const deleteTag = useDeleteTag();
 
   const [building, setBuilding] = useState(false);
+  const [editing, setEditing] = useState<number | null>(null);
   const [newTag, setNewTag] = useState<string | null>(null);
   const [newTagColour, setNewTagColour] = useState<string>(TAG_COLOURS[0]);
 
@@ -91,7 +92,7 @@ export default function CollectionsPage() {
       <div className="collections__section-head">
         <h2 className="collections__subhead"><Layers size={16} /> Smart collections</h2>
         {!building && (
-          <button type="button" className="collections__new" onClick={() => setBuilding(true)}>
+          <button type="button" className="collections__new" onClick={() => { setEditing(null); setBuilding(true); }}>
             <Plus size={15} /> New collection
           </button>
         )}
@@ -111,7 +112,15 @@ export default function CollectionsPage() {
 
       {cards.length > 0 && (
         <ul className="collections__grid">
-          {cards.map((c) => (
+          {cards.map((c) => (editing === c.id && c.rules ? (
+            <li key={c.id} className="collection-card collection-card--editing">
+              <RuleBuilder
+                collection={{ id: c.id, name: c.name, rules: c.rules }}
+                onSaved={() => setEditing(null)}
+                onCancel={() => setEditing(null)}
+              />
+            </li>
+          ) : (
             <li key={c.id} className="collection-card">
               <button
                 type="button"
@@ -133,16 +142,28 @@ export default function CollectionsPage() {
                   <ArrowRight size={15} aria-hidden="true" />
                 </span>
               </button>
-              <button
-                type="button"
-                className="collection-card__del"
-                aria-label={`Delete ${c.name}`}
-                onClick={() => void dropCollection(c.id, c.name)}
-              >
-                <Trash2 size={14} />
-              </button>
+              <span className="collection-card__tools">
+                {c.rules && (
+                  <button
+                    type="button"
+                    className="collection-card__tool"
+                    aria-label={`Edit ${c.name}`}
+                    onClick={() => { setBuilding(false); setEditing(c.id); }}
+                  >
+                    <Pencil size={14} />
+                  </button>
+                )}
+                <button
+                  type="button"
+                  className="collection-card__tool collection-card__tool--del"
+                  aria-label={`Delete ${c.name}`}
+                  onClick={() => void dropCollection(c.id, c.name)}
+                >
+                  <Trash2 size={14} />
+                </button>
+              </span>
             </li>
-          ))}
+          )))}
         </ul>
       )}
 

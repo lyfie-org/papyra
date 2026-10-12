@@ -50,13 +50,13 @@ const columns = [
         <a href={LYFIE_URL}>Lyfie</a>.
       </p>
       <p class="site-footer__icons">
-        <a href={GITHUB_URL} rel="noopener noreferrer" aria-label="Papyra on GitHub" title="Papyra on GitHub">
+        <a class="is-github" href={GITHUB_URL} rel="noopener noreferrer" aria-label="Papyra on GitHub" title="Papyra on GitHub">
           <Icon name="github" size={18} />
         </a>
-        <a href={DOCKER_HUB_URL} rel="noopener noreferrer" aria-label="Papyra on Docker Hub" title="Papyra on Docker Hub">
+        <a class="is-docker" href={DOCKER_HUB_URL} rel="noopener noreferrer" aria-label="Papyra on Docker Hub" title="Papyra on Docker Hub">
           <Icon name="docker" size={18} />
         </a>
-        <a href="/demo/" aria-label="Try the Papyra demo" title="Try the Papyra demo">
+        <a class="is-demo" href="/demo/" aria-label="Try the Papyra demo" title="Try the Papyra demo">
           <Icon name="play" size={17} />
         </a>
         <a href={LYFIE_URL} aria-label="Lyfie, the people behind Papyra" title="Lyfie, the people behind Papyra">
@@ -171,9 +171,14 @@ const columns = [
   }
 
   .site-footer__icons a:hover {
-    border-color: var(--accent-border);
-    color: var(--text-h);
+    border-color: var(--border-hover);
   }
+
+  /* Each mark in its own colour, like the Lyfie blossom beside them. */
+  .site-footer__icons .is-github { color: var(--brand-github); }
+  .site-footer__icons .is-docker { color: var(--brand-docker); }
+  .site-footer__icons .is-demo { color: var(--accent-text); }
+  .site-footer__icons .is-demo :global(svg) { fill: currentColor; }
 
   .site-footer__col h2 {
     font: 500 var(--fs-xs) / 1 var(--sans);

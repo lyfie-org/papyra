@@ -39,6 +39,22 @@ export function useCreateCollection() {
   });
 }
 
+export function useUpdateCollection() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (input: { id: number; name: string; rules: SmartRules }) => {
+      const res = await fetch(`/api/collections/${input.id}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ name: input.name, rulesJson: JSON.stringify(input.rules) }),
+      });
+      if (!res.ok) throw new Error(`PUT /api/collections/${input.id} failed: ${res.status}`);
+      return res.json();
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: KEY }),
+  });
+}
+
 export function useDeleteCollection() {
   const queryClient = useQueryClient();
   return useMutation({

@@ -72,10 +72,10 @@ export default function AboutPanel() {
       </section>
 
       <nav className="about__links" aria-label="Papyra links">
-        <a href={SITE_URL} target="_blank" rel="noopener noreferrer"><BookOpen size={15} aria-hidden="true" /> Docs &amp; guides</a>
-        <a href={`${GITHUB_URL}/releases`} target="_blank" rel="noopener noreferrer"><ExternalLink size={15} aria-hidden="true" /> What’s new</a>
-        <a href={`${GITHUB_URL}/issues`} target="_blank" rel="noopener noreferrer"><Bug size={15} aria-hidden="true" /> Report a bug</a>
-        <a href={GITHUB_URL} target="_blank" rel="noopener noreferrer"><GitHubMark size={15} /> Source code</a>
+        <a className="is-docs" href={SITE_URL} target="_blank" rel="noopener noreferrer"><BookOpen size={15} aria-hidden="true" /> Docs &amp; guides</a>
+        <a className="is-news" href={`${GITHUB_URL}/releases`} target="_blank" rel="noopener noreferrer"><ExternalLink size={15} aria-hidden="true" /> What’s new</a>
+        <a className="is-bug" href={`${GITHUB_URL}/issues`} target="_blank" rel="noopener noreferrer"><Bug size={15} aria-hidden="true" /> Report a bug</a>
+        <a className="is-github" href={GITHUB_URL} target="_blank" rel="noopener noreferrer"><GitHubMark size={15} /> Source code</a>
       </nav>
 
       <dl className="settings__details about__details">

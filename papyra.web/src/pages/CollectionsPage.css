@@ -63,6 +63,9 @@
 .collection-card {
   position: relative;
 }
+/* Editing: the rule builder takes the card's place, across the whole row. */
+.collection-card--editing { grid-column: 1 / -1; }
+.collection-card--editing .rule-builder { margin-bottom: 0; }
 
 .collection-card__open {
   display: flex;
@@ -90,7 +93,7 @@
 }
 
 .collection-card__name {
-  padding-right: 1.8rem; /* room for the delete button */
+  padding-right: 3.8rem; /* room for the edit + delete buttons */
   font-family: var(--heading);
   font-size: var(--fs-lg);
   line-height: 1.25;
@@ -150,10 +153,14 @@
   color: var(--text);
 }
 
-.collection-card__del {
+.collection-card__tools {
   position: absolute;
   top: var(--space-3);
   right: var(--space-3);
+  display: flex;
+  gap: 0.2rem;
+}
+.collection-card__tool {
   display: grid;
   place-items: center;
   width: 1.8rem;
@@ -166,10 +173,11 @@
   opacity: 0;
   transition: opacity var(--dur) var(--ease);
 }
-.collection-card:hover .collection-card__del,
-.collection-card:focus-within .collection-card__del { opacity: 1; }
-.collection-card__del:hover { background: var(--danger-bg); color: var(--danger); }
-@media (hover: none) { .collection-card__del { opacity: 1; } }
+.collection-card:hover .collection-card__tool,
+.collection-card:focus-within .collection-card__tool { opacity: 1; }
+.collection-card__tool:hover { background: color-mix(in srgb, var(--text) 12%, transparent); color: var(--text-h); }
+.collection-card__tool--del:hover { background: var(--danger-bg); color: var(--danger); }
+@media (hover: none) { .collection-card__tool { opacity: 1; } }
 
 /* ── Tags ───────────────────────────────────────────────────────────── */
 .collections__tags {
@@ -282,7 +290,7 @@
 
 .collections__new:focus-visible,
 .collection-card__open:focus-visible,
-.collection-card__del:focus-visible,
+.collection-card__tool:focus-visible,
 .tag-pill__open:focus-visible,
 .tag-pill__del:focus-visible,
 .collections__swatch:focus-visible,

@@ -5,7 +5,7 @@ import {
   User as UserIcon, Palette, Database, Info, Camera,
   Sun, Moon, Monitor, Upload, Download, KeyRound, Copy, Trash2, Lock, ShieldAlert,
   Fingerprint, CheckCircle2, GitBranch, AlertTriangle, Bell, Mail, KeySquare, Send, UserPlus,
-  Sparkles, Play, Cog, LockOpen, Eye, LogOut, X, Users, ScrollText,
+  Sparkles, Play, Cog, LockOpen, Eye, LogOut, X, Users, ScrollText, Repeat, Clock, Hand,
 } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { useDismiss } from '../hooks/useDismiss';
@@ -1018,26 +1018,31 @@ function JobsTab() {
   const onDemand = (jobs ?? []).filter(j => j.kind === 'manual');
   const alwaysOn = (jobs ?? []).filter(j => j.kind === 'continuous');
 
-  const lastRunMeta = (job: Job) => (
-    <>
-      {job.lastRun && (
-        <>
-          <span aria-hidden="true">·</span>
-          <span className={job.lastRun.ok ? undefined : 'jobs__failed'}>
-            {job.lastRun.ok
-              ? `Last run ${agoPhrase(job.lastRun.finishedUtc)}${job.lastRun.summary ? `: ${job.lastRun.summary}` : ' — nothing needed doing'}`
-              : `Failed ${agoPhrase(job.lastRun.finishedUtc)}: ${job.lastRun.error}`}
+  // When it runs and how it last went, as chips you can take in at a glance;
+  // what the last run actually did follows as plain text.
+  const lastRunMeta = (job: Job) => {
+    const last = job.lastRun;
+    if (!last) {
+      return job.running ? null : (
+        <span className="jobs__chip"><Clock size={12} aria-hidden="true" /> Hasn’t run since the server started</span>
+      );
+    }
+    const at = new Date(last.finishedUtc).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
+    const outcome = last.ok ? (last.summary || 'nothing needed doing') : last.error;
+    return (
+      <>
+        <span className={`jobs__chip ${last.ok ? 'jobs__chip--ok' : 'jobs__chip--failed'}`} title={at}>
+          {last.ok ? <CheckCircle2 size={12} aria-hidden="true" /> : <AlertTriangle size={12} aria-hidden="true" />}
+          {last.ok ? 'Last run' : 'Failed'} {agoPhrase(last.finishedUtc)}
+        </span>
+        {outcome && (
+          <span className={`jobs__outcome${last.ok ? '' : ' jobs__failed'}`}>
+            {outcome.charAt(0).toUpperCase() + outcome.slice(1)}
           </span>
-        </>
-      )}
-      {!job.lastRun && !job.running && (
-        <>
-          <span aria-hidden="true">·</span>
-          <span>Hasn’t run since the server started</span>
-        </>
-      )}
-    </>
-  );
+        )}
+      </>
+    );
+  };
 
   const runButton = (job: Job) => (
     <button
@@ -1061,10 +1066,13 @@ function JobsTab() {
             <div className="jobs__text">
               <p className="jobs__name">{job.name}</p>
               <p className="jobs__desc">{job.description}</p>
-              <p className="jobs__meta">
-                <span>Runs {job.intervalSeconds ? everyPhrase(job.intervalSeconds) : 'on its own schedule'}</span>
+              <div className="jobs__meta">
+                <span className="jobs__chip jobs__chip--when">
+                  <Repeat size={12} aria-hidden="true" />
+                  Runs {job.intervalSeconds ? everyPhrase(job.intervalSeconds) : 'on its own schedule'}
+                </span>
                 {lastRunMeta(job)}
-              </p>
+              </div>
             </div>
             {runButton(job)}
           </li>
@@ -1081,10 +1089,12 @@ function JobsTab() {
                 <div className="jobs__text">
                   <p className="jobs__name">{job.name}</p>
                   <p className="jobs__desc">{job.description}</p>
-                  <p className="jobs__meta">
-                    <span>When you ask</span>
+                  <div className="jobs__meta">
+                    <span className="jobs__chip jobs__chip--when">
+                      <Hand size={12} aria-hidden="true" /> When you ask
+                    </span>
                     {lastRunMeta(job)}
-                  </p>
+                  </div>
                 </div>
                 {runButton(job)}
               </li>

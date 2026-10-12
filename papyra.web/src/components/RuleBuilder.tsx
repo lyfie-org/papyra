@@ -1,6 +1,6 @@
 import { useMemo, useState } from 'react';
 import { Check, Plus, X } from 'lucide-react';
-import { useCreateCollection } from '../hooks/useCollections';
+import { useCreateCollection, useUpdateCollection } from '../hooks/useCollections';
 import { useTags } from '../hooks/useTags';
 import { useNotes } from '../hooks/useNotes';
 import { NOTE_SWATCHES, swatchFor, swatchName } from '../lib/noteColors';
@@ -22,13 +22,22 @@ const FIELDS: { id: SmartField; label: string }[] = [
  * Every condition offers the values that actually exist — the tags in use, the
  * colours a note can be, pinned or not, note or to-do — rather than a blank box
  * that asks for a hex code or the word "true". Only "text contains" is typed.
+ *
+ * Given an existing collection it edits that one in place instead — same id, so
+ * any link to it keeps working.
  */
-export default function RuleBuilder({ onSaved, onCancel }: { onSaved?: () => void; onCancel?: () => void }) {
+export default function RuleBuilder({ collection, onSaved, onCancel }: {
+  collection?: { id: number; name: string; rules: SmartRules };
+  onSaved?: () => void;
+  onCancel?: () => void;
+}) {
   const create = useCreateCollection();
+  const updateCollection = useUpdateCollection();
+  const saving = create.isPending || updateCollection.isPending;
   const { data: tags } = useTags();
   const { data: notes } = useNotes();
-  const [name, setName] = useState('');
-  const [match, setMatch] = useState<SmartRules['match']>('all');
+  const [name, setName] = useState(collection?.name ?? '');
+  const [match, setMatch] = useState<SmartRules['match']>(collection?.rules.match ?? 'all');
   const [error, setError] = useState<string | null>(null);
 
   const tagNames = useMemo(() => (tags ?? []).map((t) => t.name), [tags]);
@@ -56,7 +65,9 @@ export default function RuleBuilder({ onSaved, onCancel }: { onSaved?: () => voi
     }
   };
 
-  const [conditions, setConditions] = useState<SmartRule[]>(() => [{ field: 'tag', value: '' }]);
+  const [conditions, setConditions] = useState<SmartRule[]>(
+    () => collection?.rules.conditions.map((c) => ({ ...c })) ?? [{ field: 'tag', value: '' }],
+  );
   // Seed the first tag once the tag list arrives, without clobbering a choice.
   const shown = conditions.map((c) => (c.field === 'tag' && !c.value && tagNames[0] ? { ...c, value: tagNames[0] } : c));
 
@@ -76,9 +87,14 @@ export default function RuleBuilder({ onSaved, onCancel }: { onSaved?: () => voi
     if (!name.trim()) { setError('Give the collection a name.'); return; }
     if (usable.length === 0) { setError('Add at least one condition.'); return; }
     try {
-      await create.mutateAsync({ name: name.trim(), rules: { match, conditions: usable } });
-      setName('');
-      setConditions([{ field: 'tag', value: '' }]);
+      const rules = { match, conditions: usable };
+      if (collection) {
+        await updateCollection.mutateAsync({ id: collection.id, name: name.trim(), rules });
+      } else {
+        await create.mutateAsync({ name: name.trim(), rules });
+        setName('');
+        setConditions([{ field: 'tag', value: '' }]);
+      }
       onSaved?.();
     } catch {
       setError('Couldn’t save the collection.');
@@ -95,7 +111,7 @@ export default function RuleBuilder({ onSaved, onCancel }: { onSaved?: () => voi
           maxLength={60}
           onChange={(e) => setName(e.target.value)}
           aria-label="Collection name"
-          autoFocus
+          autoFocus={!collection}
         />
         <div className="rule-builder__seg" role="radiogroup" aria-label="Match">
           {(['all', 'any'] as const).map((m) => (
@@ -125,14 +141,16 @@ export default function RuleBuilder({ onSaved, onCancel }: { onSaved?: () => voi
           </select>
 
           {c.field === 'tag' && (
-            tagNames.length > 0 ? (
+            tagNames.length > 0 || c.value ? (
               <select
                 className="rule-builder__value"
                 value={c.value}
                 onChange={(e) => update(i, { value: e.target.value })}
                 aria-label="Tag"
               >
-                {tagNames.map((t) => <option key={t} value={t}>{t}</option>)}
+                {/* A saved rule can name a tag no note carries any more — keep it choosable. */}
+                {(c.value && !tagNames.includes(c.value) ? [c.value, ...tagNames] : tagNames)
+                  .map((t) => <option key={t} value={t}>{t}</option>)}
               </select>
             ) : (
               <span className="rule-builder__empty">No tags yet — add one to a note first.</span>
@@ -218,8 +236,8 @@ export default function RuleBuilder({ onSaved, onCancel }: { onSaved?: () => voi
         {onCancel && (
           <button type="button" className="rule-builder__cancel" onClick={onCancel}>Cancel</button>
         )}
-        <button type="submit" className="rule-builder__save" disabled={create.isPending}>
-          {create.isPending ? 'Saving…' : 'Save collection'}
+        <button type="submit" className="rule-builder__save" disabled={saving}>
+          {saving ? 'Saving…' : collection ? 'Save changes' : 'Save collection'}
         </button>
       </div>
       {error && <p className="rule-builder__error" role="alert">{error}</p>}
