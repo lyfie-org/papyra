@@ -38,6 +38,11 @@
   --file-code:    #634f9c;
   --file-label:   #fff;
 
+  /* Other projects' marks, in their own colours (GitHub's is ink on paper).
+     Both clear 3:1 against --surface for a non-text glyph. */
+  --brand-github: #181717;
+  --brand-docker: #1d63ed;
+
   /* Ink for surfaces painted with a note's YAML colour. Those tints are always
      light pastels, in both themes, so the text on them is always dark — these
      three deliberately do NOT flip in dark mode. */
@@ -235,6 +240,9 @@
   --file-text:    #b8a690;
   --file-code:    #ab9ce0;
   --file-label:   #1c1917;
+
+  --brand-github: #f0f6fc;
+  --brand-docker: #5b93f2;
 
   --shadow-nav: 0 1px 4px rgba(0, 0, 0, 0.25);
   --shadow-card:

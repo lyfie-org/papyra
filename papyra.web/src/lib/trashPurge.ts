@@ -1,9 +1,9 @@
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 export interface PurgeInfo {
-  /** Short line for the card: "Deletes forever on 31 Dec". */
+  /** Short line for the card: "Deletes forever in 13 days". */
   label: string;
-  /** The full date and time, for the tooltip. */
+  /** The date itself, for the tooltip: "Deletes forever on Thu, Oct 29, 2026, after 3:00 PM". */
   title: string;
   /** Three days or less to go — the card says it louder. */
   soon: boolean;
@@ -27,19 +27,17 @@ export function purgeInfo(
   const trashed = new Date(trashedAt);
   if (Number.isNaN(trashed.getTime())) return null;
   const at = new Date(trashed.getTime() + retentionDays * DAY_MS);
-  const left = at.getTime() - now.getTime();
-  const title = `Erased for good after ${at.toLocaleString(undefined, { dateStyle: 'full', timeStyle: 'short' })}`;
-  if (left <= 0) return { label: 'Deletes forever soon', title, soon: true };
+  const day = at.toLocaleDateString(undefined, { weekday: 'short', day: 'numeric', month: 'short', year: 'numeric' });
+  const time = at.toLocaleTimeString(undefined, { hour: 'numeric', minute: '2-digit' });
+  const title = `Deletes forever on ${day}, after ${time}`;
+  if (at.getTime() <= now.getTime()) return { label: 'Deletes forever soon', title, soon: true };
 
-  const days = Math.ceil(left / DAY_MS);
-  const tomorrow = new Date(now);
-  tomorrow.setDate(now.getDate() + 1);
-  const date = at.toDateString() === now.toDateString()
-    ? 'today'
-    : at.toDateString() === tomorrow.toDateString()
-      ? 'tomorrow'
-      : `on ${at.toLocaleDateString(undefined, at.getFullYear() === now.getFullYear()
-        ? { day: 'numeric', month: 'short' }
-        : { day: 'numeric', month: 'short', year: 'numeric' })}`;
-  return { label: `Deletes forever ${date}`, title, soon: days <= 3 };
+  // Whole calendar days, so "in 2 days" means the day after tomorrow however late it is.
+  const days = Math.round((startOfDay(at) - startOfDay(now)) / DAY_MS);
+  const when = days <= 0 ? 'today' : days === 1 ? 'tomorrow' : `in ${days} days`;
+  return { label: `Deletes forever ${when}`, title, soon: days <= 3 };
+}
+
+function startOfDay(d: Date): number {
+  return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
 }

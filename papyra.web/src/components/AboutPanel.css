@@ -147,6 +147,12 @@
   transition: border-color var(--dur-fast) var(--ease);
 }
 .about__links a:hover { border-color: var(--border-hover); }
+/* Each link's icon in its own colour, so the row scans by glyph. */
+.about__links a svg { flex: none; }
+.about__links .is-docs svg { color: var(--accent-text); }
+.about__links .is-news svg { color: var(--warn); }
+.about__links .is-bug svg { color: var(--danger); }
+.about__links .is-github svg { color: var(--brand-github); }
 
 .about__details dt { width: 8rem; flex: none; }
 

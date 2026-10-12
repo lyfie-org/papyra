@@ -581,6 +581,20 @@ const routes: Route[] = [
     },
   ],
   [
+    'PUT',
+    /^\/api\/collections\/(\d+)$/,
+    async ({ match, body }) => {
+      const input = (await body()) as { name: string; rulesJson: string };
+      return mutate((s) => {
+        const col = s.collections.find((c) => c.id === Number(match[1]));
+        if (!col) return json({ error: 'not found' }, 404);
+        col.name = input.name;
+        col.rulesJson = input.rulesJson;
+        return json(col);
+      });
+    },
+  ],
+  [
     'DELETE',
     /^\/api\/collections\/(\d+)$/,
     ({ match }) =>
