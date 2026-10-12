@@ -7,7 +7,8 @@
 //
 // Pure decoration (aria-hidden), drawn by script from the real positions of the
 // blocks ([data-vine-start], then each [data-vine-anchor] inside the nearest
-// [data-vine-root]) and grown as you scroll. Wide screens only: on a phone
+// [data-vine-root]) and grown as you scroll — each link once the block it
+// leads to is in full view, where the reader is looking. Wide screens only: on a phone
 // the copy sits between the clips and there is no clear lane for a line. With
 // reduced motion the lines are simply drawn in full.
 ---
@@ -31,8 +32,9 @@
       start: SVGCircleElement;
       end: SVGCircleElement;
       length: number;
-      y0: number;
-      y1: number;
+      /** The block the link leads to, relative to the root. */
+      top: number;
+      height: number;
     }
     let links: Link[] = [];
 
@@ -92,18 +94,24 @@
         const length = path.getTotalLength();
         path.style.strokeDasharray = `${length}`;
         path.style.strokeDashoffset = `${length}`;
-        links.push({ path, start, end, length, y0, y1 });
+        links.push({ path, start, end, length, top: b.y, height: b.h });
       }
       draw();
     }
 
     function draw() {
       if (!links.length) return;
-      const top = root.getBoundingClientRect().top;
-      // The line's tip follows a point two-thirds of the way down the screen.
-      const reach = reduce.matches ? Infinity : window.innerHeight * 0.66 - top;
+      const rootTop = root.getBoundingClientRect().top;
+      const vh = window.innerHeight;
       for (const link of links) {
-        const t = Math.max(0, Math.min(1, (reach - link.y0) / (link.y1 - link.y0)));
+        // Grown while the reader is already looking at the block it leads to:
+        // it starts once that block is fully on screen (or fills most of it,
+        // if taller) and finishes as the block reaches the middle — so the
+        // line draws in the upper half of the view, not down at the fold.
+        const top = rootTop + link.top;
+        const from = vh - Math.min(link.height, vh * 0.6);
+        const to = Math.min((vh - link.height) / 2, from - vh * 0.2);
+        const t = reduce.matches ? 1 : Math.max(0, Math.min(1, (from - top) / (from - to)));
         link.path.style.strokeDashoffset = `${link.length * (1 - t)}`;
         link.start.classList.toggle('is-on', t > 0);
         link.end.classList.toggle('is-on', t >= 1);

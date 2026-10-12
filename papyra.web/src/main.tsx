@@ -28,6 +28,7 @@ import { installServerErrorWatch } from './lib/errorReport.ts';
 import { installClientErrorLog } from './lib/clientLog.ts';
 import { installSelectionGuards } from './lib/selectionGuards.ts';
 import { installResumeRefresh } from './lib/resume.ts';
+import { installAutoTooltips } from './lib/autoTooltips.ts';
 
 // Before anything fetches: a server 500 anywhere surfaces its reference.
 installServerErrorWatch();
@@ -35,6 +36,8 @@ installServerErrorWatch();
 installClientErrorLog();
 // Selection menus: hidden mid-drag, docked above the keyboard on a phone.
 installSelectionGuards();
+// Icon-only buttons show their aria-label as a hover tooltip.
+installAutoTooltips();
 
 // Demo mode: stand up the in-browser fake server BEFORE React mounts, so the
 // very first request the app makes (the /api/auth/me session probe) is already

@@ -405,12 +405,13 @@ const when = (m: (typeof JOURNEY)[number]) =>
                     target="_blank"
                     rel="noopener noreferrer"
                     aria-label={`Release v${m.version} on GitHub`}
+                    title={`Release v${m.version} on GitHub`}
                   >
                     v{m.version}
                   </a>
                 )}
                 {m.commit && (
-                  <a class="journey__tag" href={`${GITHUB_URL}/commit/${m.commit}`} rel="noopener noreferrer" aria-label="The first commit on GitHub">
+                  <a class="journey__tag" href={`${GITHUB_URL}/commit/${m.commit}`} rel="noopener noreferrer" aria-label="The first commit on GitHub" title="The first commit on GitHub">
                     {m.commit.slice(0, 7)}
                   </a>
                 )}
