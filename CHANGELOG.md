@@ -6,6 +6,10 @@ a Docker Hub tag and a GitHub Release.
 
 <!-- new releases are inserted directly below this line -->
 
+## [0.4.6] - 2026-10-12
+
+- feat(ui): hover tooltips for icon-only buttons; vine draws when its block is in view (a34059c)
+
 ## [0.4.5] - 2026-10-11
 
 - chore: bump @lyfie/luthor to 2.11.12 — one-column embed bar with ✓ fields (357f2aa)
