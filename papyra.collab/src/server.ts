@@ -1,6 +1,7 @@
 // Hocuspocus wiring: auth by API-minted ticket, rooms backed by RoomRegistry,
 // plus a tiny internal HTTP surface the API uses to steer rooms (kick a
-// revoked user, close a trashed note, adopt an external file edit).
+// revoked user, close a trashed note, adopt an external file edit, merge an
+// API-key agent's edit).
 //
 // Listens on loopback only. Browsers reach /collab through the API's proxy;
 // internal routes additionally require the per-boot shared secret.
@@ -8,7 +9,7 @@ import type { IncomingMessage, ServerResponse } from 'node:http'
 import { timingSafeEqual } from 'node:crypto'
 import { Server, type Hocuspocus } from '@hocuspocus/server'
 import type { NotesApi } from './api'
-import { RoomRegistry, type Logger } from './rooms'
+import { RoomRegistry, type AgentEdit, type Logger } from './rooms'
 import { verifyTicket, type CollabTicket } from './ticket'
 
 export interface CollabServerOptions {
@@ -58,6 +59,20 @@ async function readJson(request: IncomingMessage): Promise<unknown> {
     chunks.push(chunk as Buffer)
   }
   return chunks.length ? JSON.parse(Buffer.concat(chunks).toString('utf8')) : {}
+}
+
+function parseAgentEdit(raw: unknown): AgentEdit | null {
+  const value = raw as { baseHash?: unknown; body?: unknown; agent?: Record<string, unknown> }
+  const agent = value.agent
+  if (typeof value.baseHash !== 'string' || typeof value.body !== 'string' || !agent) return null
+  const { contributor, uid, username, name } = agent
+  if (!Number.isSafeInteger(contributor) || !Number.isSafeInteger(uid)) return null
+  if (typeof username !== 'string' || typeof name !== 'string' || name.trim() === '') return null
+  return {
+    baseHash: value.baseHash,
+    body: value.body,
+    agent: { contributor: contributor as number, uid: uid as number, username, name: name.slice(0, 80) },
+  }
 }
 
 function closeWith(instance: Hocuspocus, documentName: string, reason: string, uid?: number) {
@@ -111,7 +126,7 @@ export function createCollabServer(options: CollabServerOptions) {
     }
 
     // /rooms/{room}[/action] — the room name is URL-encoded (note ids can hold ':' '/').
-    const match = /^\/rooms\/([^/]+)(?:\/(kick|close|external|flush|restore))?$/.exec(url.pathname)
+    const match = /^\/rooms\/([^/]+)(?:\/(kick|close|external|flush|restore|agent-edit))?$/.exec(url.pathname)
     if (!match || !instance) {
       json(response, 404, { error: 'not-found' })
       return
@@ -163,6 +178,15 @@ export function createCollabServer(options: CollabServerOptions) {
         ? await rooms.restore(documentName, current)
         : await rooms.external(documentName, current)
       json(response, 200, { applied })
+      return
+    }
+    if (action === 'agent-edit') {
+      const edit = parseAgentEdit(await readJson(request))
+      if (!edit) {
+        json(response, 400, { error: 'baseHash, body and agent required' })
+        return
+      }
+      json(response, 200, await rooms.agentEdit(documentName, edit))
       return
     }
     json(response, 404, { error: 'not-found' })

@@ -56,6 +56,47 @@ export interface RoomStats {
 /** A save slower than this is worth a log line. */
 const SLOW_SAVE_MS = 2000
 
+/** File versions a room remembers by hash, so an agent's read can be merged. */
+const KNOWN_VERSIONS = 64
+
+/** How long an agent stays in the room's presence after its last edit. */
+export const AGENT_PRESENCE_MS = 15_000
+
+/**
+ * Someone editing from outside the room — a script or AI agent on an API
+ * key. It shows in everyone's presence under `name` (the key's name).
+ */
+export interface AgentIdentity {
+  /** History attribution: a user id, or minus the API key's id. */
+  contributor: number
+  /** The account behind it. */
+  uid: number
+  username: string
+  name: string
+}
+
+/** A whole-body edit an agent made against the file version it read. */
+export interface AgentEdit {
+  /** Hash of the file the agent read (its If-Match). */
+  baseHash: string
+  body: string
+  agent: AgentIdentity
+}
+
+export type AgentEditResult =
+  /** Merged into the room and saved; `body`/`hash` are the file now. */
+  | { kind: 'applied'; body: string; hash: string; conflicted: boolean }
+  /** The agent read a version this room never held: re-read this one and redo the edit. */
+  | { kind: 'stale'; body: string; hash: string }
+  /** No room open for the note (anymore): write it the classic way. */
+  | { kind: 'not-live' }
+  | { kind: 'gone' }
+
+/** The slice of y-protocols' Awareness a room uses (Hocuspocus documents carry one). */
+interface PresenceAwareness {
+  setLocalState(state: Record<string, unknown> | null): void
+}
+
 interface Room {
   owner: number
   note: string
@@ -64,11 +105,22 @@ interface Room {
   base: string
   /** Hash of the file on disk that `base` corresponds to. */
   baseHash: string
+  /** Recent file versions (hash → body as on disk), oldest first: agents' merge ancestors. */
+  versions: Map<string, string>
   contributors: Set<number>
   /** Note deleted/trashed/locked: never save again. */
   gone: boolean
   /** Serializes store/external/close so they never interleave. */
   queue: Promise<unknown>
+  /** The server's own presence slot, shown while an agent edits. */
+  awareness?: PresenceAwareness
+  agentTimer?: ReturnType<typeof setTimeout>
+}
+
+function remember(room: Room, hash: string, body: string): void {
+  room.versions.delete(hash)
+  room.versions.set(hash, body)
+  while (room.versions.size > KNOWN_VERSIONS) room.versions.delete(room.versions.keys().next().value!)
 }
 
 function serial<T>(room: Room, task: () => Promise<T>): Promise<T> {
@@ -204,16 +256,20 @@ export class RoomRegistry {
     const meta = document.getMap<string>(ROOM_META)
     if (!useState || typeof meta.get(EPOCH_KEY) !== 'string') meta.set(EPOCH_KEY, randomUUID())
 
-    this.rooms.set(documentName, {
+    const room: Room = {
       owner: parsed.owner,
       note: parsed.note,
       collab,
       base: collab.getMarkdown(),
       baseHash: stored.hash,
+      versions: new Map(),
       contributors: new Set(),
       gone: false,
       queue: Promise.resolve(),
-    })
+      awareness: (document as Y.Doc & { awareness?: PresenceAwareness }).awareness,
+    }
+    remember(room, stored.hash, stored.body)
+    this.rooms.set(documentName, room)
     this.stats.opened += 1
     this.log.info(`[${documentName}] opened (${useState ? 'persisted state' : 'from file'})`)
   }
@@ -261,6 +317,7 @@ export class RoomRegistry {
         if (took > SLOW_SAVE_MS) this.log.warn(`[${documentName}] slow save: ${took}ms`)
         room.base = markdown
         room.baseHash = result.hash
+        remember(room, result.hash, markdown)
         room.contributors.clear()
         return
       }
@@ -301,9 +358,69 @@ export class RoomRegistry {
       applyMarkdownMinimal(room.collab, current.body)
       room.base = normalize(current.body)
       room.baseHash = current.hash
+      remember(room, current.hash, current.body)
       room.contributors.clear()
     })
     return true
+  }
+
+  /**
+   * An agent (API-key script) changed the note's body against the version
+   * it read. A three-way merge — that version, the room as it is now, the
+   * agent's text — keeps both sides' changes, applied in place so every
+   * caret stays put; then it is saved at once and the agent shows in the
+   * room's presence for a moment.
+   */
+  async agentEdit(documentName: string, edit: AgentEdit): Promise<AgentEditResult> {
+    const room = this.rooms.get(documentName)
+    if (!room || room.gone) return { kind: 'not-live' }
+    return serial(room, async (): Promise<AgentEditResult> => {
+      if (room.gone) return { kind: 'gone' }
+      const base = room.versions.get(edit.baseHash)
+      if (base === undefined) {
+        // Without the version it started from, its edit can't be told apart
+        // from deleting everyone else's: bring the file level with the room
+        // and have the agent start again from that.
+        await this.save(documentName, room)
+        if (room.gone) return { kind: 'gone' }
+        return { kind: 'stale', body: room.versions.get(room.baseHash) ?? room.base, hash: room.baseHash }
+      }
+
+      const merged = mergeMarkdown(normalize(base), room.collab.getMarkdown(), normalize(edit.body))
+      if (merged.conflicted) {
+        this.log.warn(`[${documentName}] agent "${edit.agent.name}" and the room changed the same blocks; kept both`)
+      }
+      applyMarkdownMinimal(room.collab, merged.markdown)
+      room.contributors.add(edit.agent.contributor)
+      this.showAgent(room, edit.agent)
+      await this.save(documentName, room)
+      if (room.gone) return { kind: 'gone' }
+      return {
+        kind: 'applied',
+        body: room.versions.get(room.baseHash) ?? room.base,
+        hash: room.baseHash,
+        conflicted: merged.conflicted,
+      }
+    })
+  }
+
+  /** Put the agent in the room's presence (the server's own slot) for a short while. */
+  private showAgent(room: Room, agent: AgentIdentity): void {
+    const awareness = room.awareness
+    if (!awareness) return
+    awareness.setLocalState({
+      name: agent.name,
+      focusing: false,
+      anchorPos: null,
+      focusPos: null,
+      awarenessData: { uid: agent.uid, username: agent.username, agent: true },
+    })
+    if (room.agentTimer) clearTimeout(room.agentTimer)
+    room.agentTimer = setTimeout(() => {
+      room.agentTimer = undefined
+      awareness.setLocalState(null)
+    }, AGENT_PRESENCE_MS)
+    room.agentTimer.unref?.()
   }
 
   private reconcile(documentName: string, room: Room, current: StoredNote): void {
@@ -316,6 +433,7 @@ export class RoomRegistry {
     // The file on disk is the new common ancestor.
     room.base = normalize(current.body)
     room.baseHash = current.hash
+    remember(room, current.hash, current.body)
   }
 
   /** Stop saving and disconnect everyone (note deleted, trashed or locked). */
@@ -340,6 +458,7 @@ export class RoomRegistry {
   dispose(documentName: string): void {
     const room = this.rooms.get(documentName)
     if (!room) return
+    if (room.agentTimer) clearTimeout(room.agentTimer)
     room.collab.dispose()
     this.rooms.delete(documentName)
   }

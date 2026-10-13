@@ -18,10 +18,13 @@ const log = {
 // Yjs warns whenever @lexical/yjs reads a shared type before it is attached
 // to a doc — which the binding does by design while hydrating a room. It is
 // harmless and would otherwise print on every room open; drop only that line.
+// On a colour terminal lib0 wraps it in ANSI codes, so match it with those stripped.
 const YJS_PREMATURE_ACCESS = 'Invalid access: Add Yjs type to a document before reading data.'
+// eslint-disable-next-line no-control-regex
+const ANSI = /\x1b\[[0-9;]*m/g
 const warn = console.warn.bind(console)
 console.warn = (...args: unknown[]) => {
-  if (args[0] === YJS_PREMATURE_ACCESS) return
+  if (args.map((arg) => (typeof arg === 'string' ? arg.replace(ANSI, '') : '')).join('').trim() === YJS_PREMATURE_ACCESS) return
   warn(...args)
 }
 

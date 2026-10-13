@@ -95,3 +95,15 @@
   .collab-presence__spin { animation: none; }
   .collab-presence__person { transition: none; }
 }
+
+/* An API-key agent editing through the engine: a bot glyph in the face's place. */
+.collab-presence__person--agent {
+  display: grid;
+  place-items: center;
+  width: 26px;
+  height: 26px;
+  cursor: default;
+  background: var(--surface);
+  color: var(--text-h);
+}
+.collab-presence__person--agent:hover { transform: none; }

@@ -1,6 +1,6 @@
 import { useEffect, useState, type CSSProperties, type RefObject } from 'react';
 import type { HocuspocusProvider } from '@hocuspocus/provider';
-import { CloudOff, Loader2 } from 'lucide-react';
+import { Bot, CloudOff, Loader2 } from 'lucide-react';
 import Avatar from './Avatar';
 import type { CollabAwarenessData, CollabStatus } from '../hooks/useCollabRoom';
 import { LABEL_IDLE_MS } from '../hooks/useCollabCursorLabels';
@@ -15,6 +15,8 @@ interface Peer {
   username: string | null;
   name: string;
   color: string;
+  /** A script or AI agent on an API key (the room's server slot), not a person's tab. */
+  agent: boolean;
   lastActive: number;
   /** Serialized caret position, to notice movement. */
   pos: string;
@@ -59,6 +61,7 @@ function readPeers(provider: HocuspocusProvider, previous: Map<number, Peer>): M
       username: state.awarenessData?.username ?? null,
       name: state.name,
       color: state.color ?? 'var(--text)',
+      agent: state.awarenessData?.agent === true,
       lastActive: !before || before.pos !== pos ? now : before.lastActive,
       pos,
     });
@@ -109,8 +112,9 @@ export default function CollabPresence({
   const people = new Map<string, Peer>();
   const shown = provider ? peers : new Map<number, Peer>();
   shown.forEach((peer) => {
-    if (peer.uid !== null && peer.uid === selfUid) return; // my other tabs
-    const key = peer.uid !== null ? `u${peer.uid}` : `c${peer.clientId}`;
+    // My other tabs fold away; my agents (same account) still show.
+    if (!peer.agent && peer.uid !== null && peer.uid === selfUid) return;
+    const key = peer.agent ? `a${peer.clientId}` : peer.uid !== null ? `u${peer.uid}` : `c${peer.clientId}`;
     const existing = people.get(key);
     if (!existing || peer.lastActive > existing.lastActive) people.set(key, peer);
   });
@@ -131,6 +135,22 @@ export default function CollabPresence({
           {list.map((peer) => {
             const editing = now - peer.lastActive < EDITING_WINDOW_MS;
             const label = `${peer.name} — ${editing ? 'editing' : 'idle'}`;
+            // An agent has no caret to jump to: a badge, not a button.
+            if (peer.agent) {
+              return (
+                <li key={peer.clientId}>
+                  <span
+                    className="collab-presence__person collab-presence__person--agent"
+                    style={{ '--collab-ring': peer.color } as CSSProperties}
+                    title={`${peer.name} — agent, editing`}
+                    role="img"
+                    aria-label={`${peer.name}, an agent, is editing`}
+                  >
+                    <Bot size={15} aria-hidden="true" />
+                  </span>
+                </li>
+              );
+            }
             return (
               <li key={peer.clientId}>
                 <button

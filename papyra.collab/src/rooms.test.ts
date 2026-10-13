@@ -2,7 +2,7 @@ import { describe, expect, it, vi } from 'vitest'
 import * as Y from 'yjs'
 import { createPapyraHeadlessCollab } from '@lyfie/luthor/presets/papyra-collab'
 import { createMemoryNotesApi } from './memoryApi'
-import { applyMarkdownMinimal, EPOCH_KEY, ROOM_META, RoomRegistry } from './rooms'
+import { AGENT_PRESENCE_MS, applyMarkdownMinimal, EPOCH_KEY, ROOM_META, RoomRegistry } from './rooms'
 
 const ROOM = '7:note'
 const quiet = { info: () => {}, warn: () => {}, error: vi.fn() }
@@ -168,6 +168,75 @@ describe('RoomRegistry', () => {
     const current = api.writeExternally(ROOM, 'A\n\nB1')
     await Promise.all([rooms.store(ROOM), rooms.external(ROOM, current), rooms.store(ROOM)])
     expect(api.notes.get(ROOM)!.body).toBe('A1\n\nB1')
+  })
+})
+
+describe('agent edits', () => {
+  const agent = { contributor: -4, uid: 7, username: 'rahul', name: 'claude-japan' }
+  const presenceDoc = () => {
+    const states: Array<Record<string, unknown> | null> = []
+    const doc = Object.assign(new Y.Doc(), { awareness: { setLocalState: (s: Record<string, unknown> | null) => states.push(s) } })
+    return { doc, states }
+  }
+
+  it('merges against the version the agent read, keeping unsaved typing', async () => {
+    const { api, rooms, doc, peer } = setup('Day 1\n\nDay 2\n\nDay 3')
+    await rooms.load(ROOM, doc)
+    const read = api.current(ROOM)
+    edit(doc, 'Day 1 (typed live)\n\nDay 2\n\nDay 3') // not saved yet
+
+    const result = await rooms.agentEdit(ROOM, { baseHash: read.hash, body: 'Day 1\n\nDay 2\n\nDay 3 — Kyoto', agent })
+    const merged = 'Day 1 (typed live)\n\nDay 2\n\nDay 3 — Kyoto'
+    expect(result).toMatchObject({ kind: 'applied', body: merged, conflicted: false })
+    expect(peer().getMarkdown()).toBe(merged)
+    expect(api.notes.get(ROOM)!.body).toBe(merged)
+    expect(api.saves.at(-1)!.contributors).toContain(-4)
+  })
+
+  it('still merges when the room saved between the read and the write', async () => {
+    const { api, rooms, doc, peer } = setup('A\n\nB')
+    await rooms.load(ROOM, doc)
+    const read = api.current(ROOM)
+    edit(doc, 'A typed\n\nB')
+    await rooms.store(ROOM) // the file moved on past what the agent read
+
+    const result = await rooms.agentEdit(ROOM, { baseHash: read.hash, body: 'A\n\nB by agent', agent })
+    expect(result.kind).toBe('applied')
+    expect(peer().getMarkdown()).toBe('A typed\n\nB by agent')
+  })
+
+  it('sends an agent that read an unknown version back to re-read, after saving the room', async () => {
+    const { api, rooms, doc } = setup('One')
+    await rooms.load(ROOM, doc)
+    edit(doc, 'One, typed')
+
+    const result = await rooms.agentEdit(ROOM, { baseHash: 'nope', body: 'Clobber', agent })
+    expect(result).toEqual({ kind: 'stale', body: 'One, typed', hash: api.current(ROOM).hash })
+    expect(api.notes.get(ROOM)!.body).toBe('One, typed')
+  })
+
+  it('reports a note with no room as not live', async () => {
+    const { rooms } = setup('x')
+    expect(await rooms.agentEdit(ROOM, { baseHash: 'h', body: 'y', agent })).toEqual({ kind: 'not-live' })
+  })
+
+  it('shows the agent in presence for a while, then clears it', async () => {
+    vi.useFakeTimers()
+    try {
+      const api = createMemoryNotesApi({ [ROOM]: 'Hi' })
+      const rooms = new RoomRegistry({ api, log: quiet, closeRoom: vi.fn() })
+      const { doc, states } = presenceDoc()
+      await rooms.load(ROOM, doc)
+      await rooms.agentEdit(ROOM, { baseHash: api.current(ROOM).hash, body: 'Hi there', agent })
+      expect(states.at(-1)).toMatchObject({
+        name: 'claude-japan',
+        awarenessData: { uid: 7, username: 'rahul', agent: true },
+      })
+      vi.advanceTimersByTime(AGENT_PRESENCE_MS + 1)
+      expect(states.at(-1)).toBeNull()
+    } finally {
+      vi.useRealTimers()
+    }
   })
 })
 

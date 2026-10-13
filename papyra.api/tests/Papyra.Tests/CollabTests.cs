@@ -9,6 +9,7 @@ using Microsoft.AspNetCore.TestHost;
 using Microsoft.Data.Sqlite;
 using Microsoft.Extensions.DependencyInjection;
 using Papyra.Api.Collab;
+using Papyra.Api.Storage;
 
 namespace Papyra.Tests;
 
@@ -63,6 +64,18 @@ public sealed class CollabTests
         {
             Calls.Enqueue($"restore {ownerUid}:{noteId}");
             return Task.CompletedTask;
+        }
+
+        /// <summary>Recorded agent edits; the test answers each through <see cref="OnAgentEdit"/>.</summary>
+        public ConcurrentQueue<(string Room, string BaseHash, string Body, CollabAgent Agent)> AgentEdits { get; } = new();
+        public Func<string, string, string, CollabAgent, Task<AgentEditOutcome?>>? OnAgentEdit { get; set; }
+
+        public Task<AgentEditOutcome?> AgentEditAsync(string ownerUid, string noteId, string baseHash, string body,
+            CollabAgent agent, CancellationToken ct = default)
+        {
+            AgentEdits.Enqueue(($"{ownerUid}:{noteId}", baseHash, body, agent));
+            return OnAgentEdit?.Invoke($"{ownerUid}:{noteId}", baseHash, body, agent)
+                   ?? Task.FromResult<AgentEditOutcome?>(new AgentEditOutcome(AgentEditOutcome.NotLive, null, null, false));
         }
     }
 
@@ -355,6 +368,172 @@ public sealed class CollabTests
             // No room → classic writes behave exactly as before.
             engine.ActiveRooms.Clear();
             Assert.Equal(HttpStatusCode.OK, (await WriteAsync(owner, "n1", "Solo again")).StatusCode);
+        }
+        finally { Cleanup(factory, dir); }
+    }
+
+    // ── Agents (API keys) editing a live note ──────────────────────────────────
+
+    private static async Task<(HttpClient Client, int KeyId)> KeyClientAsync(
+        WebApplicationFactory<Program> factory, HttpClient owner, string name)
+    {
+        var res = await owner.PostAsJsonAsync("/api/keys", new ApiKeyWrite(name, await TestAuth.CodeAsync(owner)));
+        Assert.Equal(HttpStatusCode.OK, res.StatusCode);
+        var key = await res.Content.ReadFromJsonAsync<JsonElement>();
+        var client = factory.CreateClient();
+        client.DefaultRequestHeaders.Add("X-API-Key", key.GetProperty("token").GetString());
+        return (client, key.GetProperty("id").GetInt32());
+    }
+
+    private static Task<HttpResponseMessage> AgentWriteAsync(HttpClient client, string id, string body, string? etag,
+        string title = "Plan")
+    {
+        var request = new HttpRequestMessage(HttpMethod.Put, $"/api/notes/{id}")
+        {
+            Content = JsonContent.Create(new NoteWrite(Title: title, Tags: null, Color: null, Pinned: false,
+                Archived: false, Body: body, Kind: null, Secure: null)),
+        };
+        if (etag is not null) request.Headers.TryAddWithoutValidation("If-Match", etag);
+        return client.SendAsync(request);
+    }
+
+    private static async Task<string> ETagAsync(HttpClient client, string id)
+    {
+        var res = await client.GetAsync($"/api/notes/{id}");
+        Assert.Equal(HttpStatusCode.OK, res.StatusCode);
+        return res.Headers.ETag!.ToString();
+    }
+
+    /// <summary>Stand in for the engine: save <paramref name="merged"/> through its data path, crediting the agent.</summary>
+    private static Func<string, string, string, CollabAgent, Task<AgentEditOutcome?>> SavesThrough(
+        WebApplicationFactory<Program> factory, int ownerId, string noteId, string merged) =>
+        async (_, _, _, agent) =>
+        {
+            var engine = factory.CreateClient();
+            var url = $"/internal/collab/notes/{ownerId}/{noteId}";
+            var loaded = await (await engine.SendAsync(Internal(HttpMethod.Get, url))).Content.ReadFromJsonAsync<JsonElement>();
+            var saved = await engine.SendAsync(Internal(HttpMethod.Put, url, new CollabSaveRequest(
+                merged, loaded.GetProperty("hash").GetString()!, Convert.ToBase64String([1]), [agent.Contributor])));
+            Assert.Equal(HttpStatusCode.OK, saved.StatusCode);
+            return new AgentEditOutcome(AgentEditOutcome.Applied, merged, CollabHash.Of(merged), false);
+        };
+
+    [Fact]
+    public async Task AnAgentEditNamingWhatItReadIsMergedIntoTheLiveRoom()
+    {
+        var (factory, dir, engine) = NewApp(unthrottled: true);
+        try
+        {
+            var owner = await OwnerAsync(factory);
+            var ownerId = await MyIdAsync(owner);
+            await WriteAsync(owner, "n1", "Day 1", title: "Japan");
+            var (agent, keyId) = await KeyClientAsync(factory, owner, "claude-japan");
+            var etag = await ETagAsync(agent, "n1");
+            Assert.Equal($"\"{CollabHash.Of("Day 1")}\"", etag);
+
+            engine.ActiveRooms[$"{ownerId}:n1"] = true;
+            // No If-Match: still refused, with a hint at the way that works.
+            var blind = await AgentWriteAsync(agent, "n1", "Day 1\n\nDay 2", etag: null, title: "Japan");
+            Assert.Equal(HttpStatusCode.Conflict, blind.StatusCode);
+            Assert.Contains("If-Match", (await blind.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("hint").GetString());
+
+            // With it: handed to the room as the key, merged with what's typed there.
+            engine.OnAgentEdit = SavesThrough(factory, ownerId, "n1", "Day 1 (typed live)\n\nDay 2");
+            var merged = await AgentWriteAsync(agent, "n1", "Day 1\n\nDay 2", etag, title: "Japan trip");
+            Assert.Equal(HttpStatusCode.OK, merged.StatusCode);
+            var (room, baseHash, body, who) = Assert.Single(engine.AgentEdits);
+            Assert.Equal((room, baseHash, body), ($"{ownerId}:n1", CollabHash.Of("Day 1"), "Day 1\n\nDay 2"));
+            Assert.Equal(new CollabAgent(-keyId, ownerId, "owner", "claude-japan"), who);
+
+            // The response and the file carry the room's merge; metadata from the write still lands.
+            var note = await merged.Content.ReadFromJsonAsync<JsonElement>();
+            Assert.Equal("Day 1 (typed live)\n\nDay 2", note.GetProperty("body").GetString());
+            Assert.Equal("Japan trip", note.GetProperty("title").GetString());
+            Assert.Equal(LiveAgentEdits.ETag("Day 1 (typed live)\n\nDay 2"), merged.Headers.ETag!.ToString());
+
+            // A stale read comes back 412 with the version to redo it against.
+            engine.OnAgentEdit = (_, _, _, _) =>
+                Task.FromResult<AgentEditOutcome?>(new AgentEditOutcome(AgentEditOutcome.Stale, "Now", CollabHash.Of("Now"), false));
+            var stale = await AgentWriteAsync(agent, "n1", "x", "\"old\"", title: "Japan trip");
+            Assert.Equal(HttpStatusCode.PreconditionFailed, stale.StatusCode);
+            var staleBody = await stale.Content.ReadFromJsonAsync<JsonElement>();
+            Assert.Equal("stale", staleBody.GetProperty("code").GetString());
+            Assert.Equal(LiveAgentEdits.ETag("Now"), staleBody.GetProperty("etag").GetString());
+
+            // History credits the key: "Owner via claude-japan".
+            Assert.Equal(HttpStatusCode.OK, (await factory.CreateClient().SendAsync(Internal(HttpMethod.Put, $"/internal/collab/notes/{ownerId}/n1",
+                new CollabSaveRequest("Day 1 (typed live)\n\nDay 2\n\nDay 3", CollabHash.Of("Day 1 (typed live)\n\nDay 2"),
+                    Convert.ToBase64String([1]), [ownerId])))).StatusCode);
+            var editors = (await owner.GetFromJsonAsync<JsonElement>("/api/notes/n1/snapshots")).EnumerateArray()
+                .SelectMany(v => v.GetProperty("editors").EnumerateArray().Select(e => e.GetString())).ToList();
+            Assert.Contains("Owner via claude-japan", editors);
+        }
+        finally { Cleanup(factory, dir); }
+    }
+
+    [Fact]
+    public async Task IfMatchGuardsOrdinaryWritesToo()
+    {
+        var (factory, dir, engine) = NewApp();
+        try
+        {
+            var owner = await OwnerAsync(factory);
+            await WriteAsync(owner, "n1", "v1");
+            var (agent, _) = await KeyClientAsync(factory, owner, "script");
+            var etag = await ETagAsync(agent, "n1");
+            await WriteAsync(owner, "n1", "v2 by hand");
+
+            var stale = await AgentWriteAsync(agent, "n1", "v2 by script", etag);
+            Assert.Equal(HttpStatusCode.PreconditionFailed, stale.StatusCode);
+            Assert.Equal("v2 by hand", (await stale.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("body").GetString());
+
+            var fresh = await AgentWriteAsync(agent, "n1", "v3 by script", await ETagAsync(agent, "n1"));
+            Assert.Equal(HttpStatusCode.OK, fresh.StatusCode);
+            Assert.Empty(engine.AgentEdits); // no room: never went near the engine
+        }
+        finally { Cleanup(factory, dir); }
+    }
+
+    [Fact]
+    public async Task SectionPatchesEditByHeadingAndMergeIntoALiveRoom()
+    {
+        var (factory, dir, engine) = NewApp();
+        try
+        {
+            var owner = await OwnerAsync(factory);
+            var ownerId = await MyIdAsync(owner);
+            await WriteAsync(owner, "n1", "# Japan\n\n## Day 1\n\nTokyo\n\n## Day 2\n\nTBD");
+            var (agent, keyId) = await KeyClientAsync(factory, owner, "claude-japan");
+
+            var outline = await agent.GetFromJsonAsync<JsonElement>("/api/notes/n1/sections");
+            Assert.Equal(["Japan", "Day 1", "Day 2"], outline.EnumerateArray().Select(h => h.GetProperty("heading").GetString()).ToList());
+
+            // No room: written straight to the note.
+            var solo = await agent.PatchAsJsonAsync("/api/notes/n1/sections", new SectionPatch([
+                new SectionOp("replace", "Day 2", null, null, "Kyoto: Fushimi Inari at 7am"),
+                new SectionOp("append", null, null, null, "## Day 3\n\nNara"),
+            ]));
+            Assert.Equal(HttpStatusCode.OK, solo.StatusCode);
+            Assert.Equal("# Japan\n\n## Day 1\n\nTokyo\n\n## Day 2\n\nKyoto: Fushimi Inari at 7am\n\n## Day 3\n\nNara",
+                (await solo.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("body").GetString());
+
+            var missing = await agent.PatchAsJsonAsync("/api/notes/n1/sections",
+                new SectionPatch([new SectionOp("append", "Day 9", null, null, "x")]));
+            Assert.Equal(HttpStatusCode.UnprocessableEntity, missing.StatusCode);
+            Assert.Contains("Day 3", (await missing.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("error").GetString());
+
+            // Live: the room is saved first, then the patched text goes to it as the key.
+            engine.ActiveRooms[$"{ownerId}:n1"] = true;
+            var patched = "# Japan\n\n## Day 1\n\nTokyo\n\nShibuya at night\n\n## Day 2\n\nKyoto: Fushimi Inari at 7am\n\n## Day 3\n\nNara";
+            engine.OnAgentEdit = SavesThrough(factory, ownerId, "n1", patched);
+            var live = await agent.PatchAsJsonAsync("/api/notes/n1/sections",
+                new SectionPatch([new SectionOp("append", "## Day 1", null, null, "Shibuya at night")]));
+            Assert.Equal(HttpStatusCode.OK, live.StatusCode);
+            Assert.Contains($"flush {ownerId}:n1", engine.Calls);
+            var edit = Assert.Single(engine.AgentEdits);
+            Assert.Equal(patched, edit.Body);
+            Assert.Equal(-keyId, edit.Agent.Contributor);
+            Assert.Equal(patched, (await live.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("body").GetString());
         }
         finally { Cleanup(factory, dir); }
     }

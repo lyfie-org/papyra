@@ -903,7 +903,11 @@ if (app.Environment.IsDevelopment() && !string.IsNullOrWhiteSpace(devSignInAs))
     app.Use(async (context, next) =>
     {
         var remote = context.Connection.RemoteIpAddress;
-        if (context.User.Identity?.IsAuthenticated != true && (remote is null || IPAddress.IsLoopback(remote)))
+        // A request carrying an API key is that key's, so scripts can be tried
+        // against a dev server the browser is signed into by this bypass.
+        var keyed = context.Request.Headers.ContainsKey("X-API-Key")
+                    || context.Request.Headers.Authorization.ToString().StartsWith("Bearer ", StringComparison.Ordinal);
+        if (context.User.Identity?.IsAuthenticated != true && !keyed && (remote is null || IPAddress.IsLoopback(remote)))
         {
             var db = context.RequestServices.GetRequiredService<AppDbContext>();
             var user = await db.Users.FirstOrDefaultAsync(
@@ -960,6 +964,9 @@ app.Use(async (context, next) =>
                         new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
                         new Claim(ClaimTypes.Name, user.Username),
                         new Claim(ClaimTypes.Role, user.Role),
+                        // Which key: a live note's presence and history name it.
+                        new Claim(LiveAgentEdits.KeyIdClaim, key.Id.ToString()),
+                        new Claim(LiveAgentEdits.KeyNameClaim, key.Name),
                     ], "ApiKey"));
                 }
             }
@@ -3636,6 +3643,38 @@ notes.MapPut("/{id}", async (
     var closedRoom = prior is not null && note.Secure && !wasSecure && await collab.IsRoomActiveAsync(uid, id, ct);
     if (closedRoom) await collab.CloseAsync(uid, id, flush: true, ct);
 
+    // A body change that names the version it was made against (If-Match — a
+    // script or agent that read the note) to a note open live: merged into the
+    // room, so nobody's typing is lost and the agent shows in its presence.
+    // The room saves the body itself; this write then keeps it, like a live
+    // editor's metadata save. (Outside the write lock: the room's save takes it.)
+    var baseHash = LiveAgentEdits.IfMatch(http.Request);
+    var mergedLive = false;
+    if (baseHash is not null && prior is not null && !closedRoom && note.Body != prior.Body
+        && await collab.IsRoomActiveAsync(uid, id, ct))
+    {
+        var agent = await LiveAgentEdits.AgentAsync(user, http.RequestServices.GetRequiredService<AppDbContext>(), ct);
+        var outcome = await collab.AgentEditAsync(uid, id, baseHash, note.Body, agent, ct);
+        switch (outcome?.Kind)
+        {
+            case AgentEditOutcome.Applied:
+                mergedLive = true;
+                // The room's save moved the note on: diff side effects against that.
+                if (state.PathFor(uid, id) is { } livePath && state.TryGet(uid, livePath, out var saved) && saved is not null)
+                    prior = saved;
+                break;
+            case AgentEditOutcome.Stale:
+                return LiveAgentEdits.Stale(outcome.Body ?? string.Empty);
+            case AgentEditOutcome.Gone:
+                return Results.NotFound();
+            case AgentEditOutcome.NotLive:
+                break; // the room closed meanwhile: an ordinary (If-Match-checked) write
+            default:
+                return Results.Json(new { error = "Live editing is unavailable right now.", code = "collab_unavailable" },
+                    statusCode: StatusCodes.Status503ServiceUnavailable);
+        }
+    }
+
     // From here to the write, nothing else may write this note — a live room
     // saves its body in the background (see NoteWriteLocks).
     using var writeLock = await writeLocks.AcquireAsync(uid, id, ct);
@@ -3647,8 +3686,11 @@ notes.MapPut("/{id}", async (
         // copy, possibly just saved by the room — never a stale one.
         if (onDisk is not null && (http.Request.Headers.ContainsKey(CollabEndpoints.CollabClientHeader)
                                    || note.Body == prior.Body
-                                   || closedRoom))
+                                   || closedRoom
+                                   || mergedLive))
             note.Body = onDisk.Body;
+        else if (baseHash is not null && onDisk is not null && CollabHash.Of(onDisk.Body) != baseHash)
+            return LiveAgentEdits.Stale(onDisk.Body);
         else if (await CollabEndpoints.BodyWriteGuardAsync(collab, uid, id, onDisk?.Body, note.Body, ct) is { } busy)
             return busy;
     }
@@ -3701,8 +3743,118 @@ notes.MapPut("/{id}", async (
             webhooks.Enqueue(uid, WebhookEvents.TagAdded, WebhookPayload(WebhookEvents.TagAdded, note));
     }
 
+    if (!note.Secure) http.Response.Headers.ETag = LiveAgentEdits.ETag(note.Body);
     return Results.Ok(note);
 });
+
+// One note, read fresh from disk, with an ETag a later write can send back as
+// If-Match (see LiveAgentEdits). A note open live has what's typed saved first,
+// so the reader starts from the room's text.
+notes.MapGet("/{id}", async (
+    string id, ClaimsPrincipal user, HttpContext http, VaultState state, MarkdownStorageService storage,
+    ICollabEngine collab, CancellationToken ct) =>
+{
+    var uid = Uid(user);
+    if (state.PathFor(uid, id) is null) return Results.NotFound();
+    if (await collab.IsRoomActiveAsync(uid, id, ct)) await collab.FlushAsync(uid, id, ct);
+    var path = state.PathFor(uid, id);
+    var note = path is null ? null : await storage.ReadAsync(path, ct);
+    if (note is null) return Results.NotFound();
+    if (!note.Secure) http.Response.Headers.ETag = LiveAgentEdits.ETag(note.Body);
+    return Results.Ok(RedactSecure(note));
+})
+    .WithSummary("Get a note")
+    .WithDescription("The note as on disk (a live room's typing saved first). The ETag names this body: send it as If-Match on PUT to have the edit merged into a live room rather than refused.");
+
+notes.MapGet("/{id}/sections", (string id, ClaimsPrincipal user, VaultState state) =>
+{
+    var uid = Uid(user);
+    if (state.PathFor(uid, id) is not { } path || !state.TryGet(uid, path, out var note) || note is null)
+        return Results.NotFound();
+    if (note.Secure) return Results.Json(new { error = "Unlock required.", code = "locked" }, statusCode: StatusCodes.Status401Unauthorized);
+    return Results.Ok(NoteSections.Outline(note.Body));
+})
+    .WithSummary("List a note's sections")
+    .WithDescription("The note's headings in order (text, level, and occurrence among equal headings) — the names PATCH /sections ops address.");
+
+// Edit by heading instead of rewriting the body — see NoteSections. Applied to
+// the latest text (a live room's typing saved first), so it needs no If-Match;
+// open live, it is merged into the room like any agent edit.
+notes.MapPatch("/{id}/sections", async (
+    string id, SectionPatch body, ClaimsPrincipal user, HttpContext http, VaultState state,
+    MarkdownStorageService storage, WriteRing writeRing, SearchIndexService search, SnapshotService snapshots,
+    WebArchiverService archiver, MediaJobQueue mediaJobs, EmbeddingService embeddings, MentionDeliveryService mentions,
+    AppDbContext db, IHubContext<NotesHub> hub, ICollabEngine collab, NoteWriteLocks writeLocks,
+    VaultObserverOptions vault, IConfiguration config, IHostEnvironment env, ILoggerFactory lf, CancellationToken ct) =>
+{
+    var uid = Uid(user);
+    if (!PathGuard.IsValidNoteId(id)) return Results.NotFound();
+    var ops = body.Ops ?? [];
+
+    IResult Done(Note note)
+    {
+        http.Response.Headers.ETag = LiveAgentEdits.ETag(note.Body);
+        return Results.Ok(note);
+    }
+
+    // A save landing between our read and our write sends us round again.
+    for (var attempt = 0; attempt < 3; attempt++)
+    {
+        var live = await collab.IsRoomActiveAsync(uid, id, ct);
+        if (live) await collab.FlushAsync(uid, id, ct);
+        var path = state.PathFor(uid, id);
+        var current = path is null ? null : await storage.ReadAsync(path, ct);
+        if (current is null || current.Trashed) return Results.NotFound();
+        if (current.Secure)
+            return Results.Json(new { error = "Unlock required.", code = "locked" }, statusCode: StatusCodes.Status401Unauthorized);
+
+        var (patched, error) = NoteSections.Apply(current.Body, ops);
+        if (error is not null) return Results.UnprocessableEntity(new { error, code = "section_patch_invalid" });
+        if (patched == current.Body) return Done(current);
+        var baseHash = CollabHash.Of(current.Body);
+
+        if (live)
+        {
+            var outcome = await collab.AgentEditAsync(uid, id, baseHash, patched!, await LiveAgentEdits.AgentAsync(user, db, ct), ct);
+            switch (outcome?.Kind)
+            {
+                case AgentEditOutcome.Applied:
+                    return state.PathFor(uid, id) is { } livePath && state.TryGet(uid, livePath, out var saved) && saved is not null
+                        ? Done(saved)
+                        : Results.NotFound();
+                case AgentEditOutcome.Stale:
+                    continue;
+                case AgentEditOutcome.Gone:
+                    return Results.NotFound();
+                case AgentEditOutcome.NotLive:
+                    break;
+                default:
+                    return Results.Json(new { error = "Live editing is unavailable right now.", code = "collab_unavailable" },
+                        statusCode: StatusCodes.Status503ServiceUnavailable);
+            }
+        }
+
+        var writer = new NoteBodyWriter(state, storage, writeRing, search, snapshots, config, env, hub,
+            collab, writeLocks, vault, lf);
+        var (written, refusal) = await writer.ChangeAsync(uid, id, note =>
+            CollabHash.Of(note.Body) == baseHash ? new NoteEdit(patched) : NoteEdit.Refuse(LiveAgentEdits.Stale(note.Body)),
+            LiveRoomPolicy.Refuse, ct);
+        // Moved on (412) or a room opened (409 collab_active): start over.
+        if (refusal is IStatusCodeHttpResult { StatusCode: 409 or 412 }) continue;
+        if (refusal is not null) return refusal;
+        if (written is null) return Results.NotFound();
+
+        archiver.Enqueue(uid, id, written.Body);
+        mediaJobs.EnqueueNewRefs(uid, current.Body, written.Body);
+        embeddings.Enqueue(uid, id, written.Body);
+        mentions.Enqueue(uid, user.Identity?.Name ?? uid, id, written.Body, current.Body);
+        return Done(written);
+    }
+    return Results.Json(new { error = "The note kept changing. Try again.", code = "busy" },
+        statusCode: StatusCodes.Status409Conflict);
+})
+    .WithSummary("Edit a note by its sections")
+    .WithDescription("Ops (replace, append, prepend, insertAfter, insertBefore, delete) addressed by heading, applied in order. Merged into a live room when the note is open; 422 when a heading is missing or ambiguous.");
 
 notes.MapDelete("/{id}", async (
     string id,
@@ -4581,14 +4733,10 @@ notes.MapGet("/{id}/snapshots", async (
         ?? PathGuard.ResolveAndVerify(vault.UserNotesDir(uid), $"{id}.md", logger);
     var versions = snapshots.List(dir, live);
 
-    // Versions written by a live room carry who edited them ("edited by A, B").
+    // Versions written by a live room carry who edited them ("edited by A, B",
+    // or "A via key-name" for an API-key agent).
     var editors = versions.ToDictionary(v => v.Id, v => snapshots.ContributorsOf(dir, v.Id));
-    var uids = editors.Values.SelectMany(u => u).Distinct().ToList();
-    var names = uids.Count == 0
-        ? new Dictionary<int, string>()
-        : await db.Users.Where(u => uids.Contains(u.Id))
-            .Select(u => new { u.Id, u.Name, u.Username })
-            .ToDictionaryAsync(u => u.Id, u => string.IsNullOrWhiteSpace(u.Name) ? u.Username : u.Name, ct);
+    var names = await LiveAgentEdits.NamesAsync(db, editors.Values.SelectMany(u => u).Distinct().ToList(), ct);
     return Results.Ok(versions.Select(v => new
     {
         id = v.Id,
