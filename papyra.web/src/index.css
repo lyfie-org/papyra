@@ -156,6 +156,17 @@ textarea {
 :is(a, .luthor-link, .luthor-wikilink) *::selection {
   color: var(--selection-link);
 }
+/* A drag across table cells selects whole cells (PAPYRA_EDITOR_THEME): wash
+   each chosen cell in the selection colour and hide the browser's own text
+   highlight and caret inside the table, which would otherwise still trace the
+   text of the cell the drag started in. */
+.papyra-table-selection *::selection {
+  background: transparent;
+}
+.papyra-table-cell-selected {
+  caret-color: transparent;
+  background-image: linear-gradient(var(--selection-bg), var(--selection-bg));
+}
 .note-editor--colored,
 .note-card--colored,
 .shared-note--colored {

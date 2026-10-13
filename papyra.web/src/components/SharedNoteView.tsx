@@ -25,7 +25,7 @@ import { useToast } from '../lib/toastContext';
 import { useReleaseSelectionOnLeave } from '../hooks/useReleaseSelectionOnLeave';
 import { usePlainTableCells } from '../hooks/usePlainTableCells';
 import { useExitBlockShortcut } from '../hooks/useExitBlockShortcut';
-import { PAPYRA_EDITOR_FEATURES, PAPYRA_TOOLBAR_LAYOUT, createToolbarItems } from '../lib/editorToolbar';
+import { PAPYRA_EDITOR_FEATURES, PAPYRA_EDITOR_THEME, PAPYRA_TOOLBAR_LAYOUT, createToolbarItems } from '../lib/editorToolbar';
 import { useAlwaysShowEditorToolbar } from '../hooks/useEditorToolbar';
 import { createMediaUploader, searchUsers, uploadErrorMessage } from '../lib/papyraEditorAdapter';
 import { checkMediaFile, loadMediaLimits } from '../lib/mediaLimits';
@@ -407,6 +407,7 @@ export default function SharedNoteView({
               <LexicalCollaboration>
                 <PapyraEditor
                   featureFlags={PAPYRA_EDITOR_FEATURES}
+                  theme={PAPYRA_EDITOR_THEME}
                   // A new session (reconnect, access change) is a new Yjs doc.
                   key={`live-${room.generation}`}
                   initialTheme={editorTheme}
@@ -436,6 +437,7 @@ export default function SharedNoteView({
             // Never reached the room: the last text we have, read-only.
             <PapyraEditor
               featureFlags={PAPYRA_EDITOR_FEATURES}
+              theme={PAPYRA_EDITOR_THEME}
               key="offline"
               initialTheme={editorTheme}
               colored={colored}
@@ -452,6 +454,7 @@ export default function SharedNoteView({
       {!live && mediaReady && (
       <PapyraEditor
         featureFlags={PAPYRA_EDITOR_FEATURES}
+        theme={PAPYRA_EDITOR_THEME}
         // Re-mounted when access changes, so an approval turns the page
         // editable in place. Theme and tint apply without a remount.
         key={canEdit ? 'edit' : 'view'}

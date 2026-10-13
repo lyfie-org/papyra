@@ -12,7 +12,7 @@ import { useTheme } from '../hooks/useTheme';
 import { createPapyraEditorAdapter, OWN_MEDIA } from '../lib/papyraEditorAdapter';
 import { useMediaMetaReady } from '../lib/mediaMeta';
 import { tintInkClass } from '../lib/noteColors';
-import { PAPYRA_EDITOR_FEATURES, PAPYRA_TOOLBAR_LAYOUT, createToolbarItems } from '../lib/editorToolbar';
+import { PAPYRA_EDITOR_FEATURES, PAPYRA_EDITOR_THEME, PAPYRA_TOOLBAR_LAYOUT, createToolbarItems } from '../lib/editorToolbar';
 import { putNote } from '../lib/notesApi';
 import { patchNoteInCache } from '../lib/notesCache';
 import { patchDraft } from '../lib/noteDrafts';
@@ -951,6 +951,7 @@ export default function NoteEditor({ note, isDraft = false }: { note: Note; isDr
             <LexicalCollaboration>
               <PapyraEditor
                 featureFlags={PAPYRA_EDITOR_FEATURES}
+                theme={PAPYRA_EDITOR_THEME}
                 // A new session (reconnect, access change) is a new Yjs doc: a
                 // fresh editor.
                 key={`${note.id}-live-${room.generation}`}
@@ -993,6 +994,7 @@ export default function NoteEditor({ note, isDraft = false }: { note: Note; isDr
         {(!collabLive || history || (room.status === 'offline' && !room.collaboration)) && (
         <PapyraEditor
           featureFlags={PAPYRA_EDITOR_FEATURES}
+          theme={PAPYRA_EDITOR_THEME}
           key={`${note.id}-${editorKey}${collabLive ? '-ro' : ''}`}
           readOnly={collabLive}
           initialTheme={theme}
