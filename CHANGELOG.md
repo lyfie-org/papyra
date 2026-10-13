@@ -6,6 +6,10 @@ a Docker Hub tag and a GitHub Release.
 
 <!-- new releases are inserted directly below this line -->
 
+## [0.4.11] - 2026-10-13
+
+- feat: share smart collections — send to a person or copy/import as JSON (c19e4b7)
+
 ## [0.4.10] - 2026-10-13
 
 - fix(editor): show multi-cell table selection so rows, columns and whole tables can be dragged and copied (9f3a7d4)
