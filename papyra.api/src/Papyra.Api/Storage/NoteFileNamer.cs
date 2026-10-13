@@ -23,8 +23,9 @@ namespace Papyra.Api.Storage;
 ///   same title don't trade names back and forth on every save.</item>
 /// <item>A rename is one atomic <see cref="File.Move(string,string)"/> in the
 ///   note's own folder, marked in the <see cref="WriteRing"/> so the watcher
-///   doesn't mistake it for a delete and a new note. Links, history and shares
-///   all key on the id, so none of them notice.</item>
+///   doesn't mistake it for a delete and a new note. History and shares key on
+///   the id, so they don't notice; <c>[[Title]]</c> links name the title and are
+///   rewritten by <see cref="RenamePropagationService"/> when it changes.</item>
 /// <item>A locked note is the exception: its title is encrypted on disk, so its
 ///   file name can't carry it either. It gets a random <c>locked-…</c> name —
 ///   whatever it was called before, even a name a person chose — and goes back

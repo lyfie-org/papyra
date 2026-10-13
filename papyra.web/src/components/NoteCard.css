@@ -103,6 +103,8 @@
   letter-spacing: -0.005em;
   color: var(--text-h);
 }
+/* The fallback on an otherwise empty card reads as a placeholder, not a name. */
+.note-card__title.is-untitled { color: var(--text); font-style: italic; }
 
 .note-card__snippet {
   margin: 0;

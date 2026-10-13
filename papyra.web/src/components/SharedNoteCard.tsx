@@ -58,7 +58,9 @@ export default function SharedNoteCard({ share, showSharedDate = false }: {
         >
           <Pin size={15} fill={pinned ? 'currentColor' : 'none'} />
         </button>
-        <h3 className="note-card__title">{title}</h3>
+        {(share.title.trim() || !share.body.trim()) && (
+          <h3 className={`note-card__title${share.title.trim() ? '' : ' is-untitled'}`}>{title}</h3>
+        )}
         {share.body.trim() && <MarkdownPreview body={share.body} />}
         {tags.length > 0 && (
           <ul className="note-card__tags" aria-label="Your tags">

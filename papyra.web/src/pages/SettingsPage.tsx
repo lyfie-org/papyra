@@ -34,6 +34,7 @@ import { hasPlatformAuthenticator, isWebAuthnAvailable } from '../lib/webauthn';
 import { useAuth, type AuthUser } from '../hooks/useAuth';
 import { useNotes } from '../hooks/useNotes';
 import { useTheme, type ThemePreference } from '../hooks/useTheme';
+import { isValidTime } from '../lib/themeSchedule';
 import { setAlwaysShowEditorToolbar, useAlwaysShowEditorToolbar } from '../hooks/useEditorToolbar';
 import { clearSessionData } from '../lib/session';
 import { AI_ENABLED } from '../lib/features';
@@ -387,6 +388,35 @@ function ProfileTab({ user }: { user: AuthUser | null }) {
   );
 }
 
+// Light from one time, dark from another, by this device's clock. Either way
+// round: light can just as well run overnight.
+function ThemeScheduleFields() {
+  const { schedule, setSchedule } = useTheme();
+  const [draft, setDraft] = useState(schedule);
+  const same = draft.lightAt === draft.darkAt;
+
+  function change(next: typeof draft) {
+    setDraft(next);
+    if (isValidTime(next.lightAt) && isValidTime(next.darkAt) && next.lightAt !== next.darkAt) setSchedule(next);
+  }
+
+  return (
+    <div className="settings__schedule">
+      <label className="settings__field settings__field--inline">
+        <Sun size={16} aria-hidden="true" /> Light from
+        <input type="time" value={draft.lightAt} required
+          onChange={e => change({ ...draft, lightAt: e.target.value })} />
+      </label>
+      <label className="settings__field settings__field--inline">
+        <Moon size={16} aria-hidden="true" /> Dark from
+        <input type="time" value={draft.darkAt} required
+          onChange={e => change({ ...draft, darkAt: e.target.value })} />
+      </label>
+      {same && <p className="settings__error" role="alert">Pick two different times.</p>}
+    </div>
+  );
+}
+
 // ── Appearance ──────────────────────────────────────────────────────────────────
 function AppearanceTab() {
   const { preference, setPreference } = useTheme();
@@ -395,6 +425,7 @@ function AppearanceTab() {
     { id: 'light', label: 'Light', icon: Sun },
     { id: 'dark', label: 'Dark', icon: Moon },
     { id: 'system', label: 'System', icon: Monitor },
+    { id: 'schedule', label: 'Scheduled', icon: Clock },
   ];
   return (
     <div className="settings__panel">
@@ -413,6 +444,7 @@ function AppearanceTab() {
           </button>
         ))}
       </div>
+      {preference === 'schedule' && <ThemeScheduleFields />}
 
       <h2 id="formatting-toolbar" className="settings__subhead">Formatting toolbar</h2>
       <p className="settings__hint">Formatting tools above each note.</p>

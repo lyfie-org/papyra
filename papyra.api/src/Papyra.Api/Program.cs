@@ -207,6 +207,9 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<WebhookDispatcherS
 
 // Phase 15.2: @mention → a block reference in the mentioned user's inbox.
 builder.Services.AddSingleton<MentionDeliveryService>();
+// Links follow a note's new title; mentions follow a person's new username.
+builder.Services.AddSingleton<RenamePropagationService>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<RenamePropagationService>());
 builder.Services.AddHostedService(sp => sp.GetRequiredService<MentionDeliveryService>());
 
 // Native git sync of the notes vault. Singleton so the manual-trigger endpoint runs
@@ -1438,8 +1441,8 @@ auth.MapPost("/setup", async (
     var zone = body.TimeZone?.Trim();
     if (!string.IsNullOrEmpty(zone) && !TimeZoneInfo.TryFindSystemTimeZoneById(zone, out _))
         return Results.BadRequest(new { error = "That isn’t a time zone this server recognises.", field = "timeZone" });
-    if (body.Theme is not (null or "light" or "dark" or "system"))
-        return Results.BadRequest(new { error = "Theme is light, dark or system.", field = "theme" });
+    if (body.Theme is not null && !ThemeChoice.IsValid(body.Theme))
+        return Results.BadRequest(new { error = ThemeChoice.Problem, field = "theme" });
 
     // A staged restore is addressed by the id /setup/restore handed out — a GUID,
     // parsed as one so it can never name a path.
@@ -2147,7 +2150,7 @@ webauthn.MapPut("/credentials/{id:int}", async (int id, RenameRequest body, Clai
 // state, not the notes vault).
 auth.MapPut("/profile", async (
     ProfileRequest body, HttpContext http, ClaimsPrincipal principal, AppDbContext db, EmailSender mail,
-    LoginThrottle throttle, TotpService totp, CancellationToken ct) =>
+    LoginThrottle throttle, TotpService totp, RenamePropagationService renames, CancellationToken ct) =>
 {
     var id = int.Parse(Uid(principal));
     var user = await db.Users.FindAsync([id], ct);
@@ -2156,9 +2159,10 @@ auth.MapPut("/profile", async (
     // Username: optional in the payload (older clients never send it). Renaming
     // is safe because everything a user owns is keyed by their numeric id — the
     // vault dir, shares, keys, the avatar — and the avatar-by-username lookup
-    // reads the live row. What does not follow a rename is text: an `@oldname`
-    // already typed into someone's note stays as written.
+    // reads the live row. Text follows too: `@oldname` mentions in every note
+    // and comment are rewritten in the background (RenamePropagationService).
     var renamed = false;
+    string? oldUsername = null;
     var previousEmail = user.Email;
     if (body.Username is not null)
     {
@@ -2172,6 +2176,7 @@ auth.MapPut("/profile", async (
             var lower = wanted.ToLower();
             if (await db.Users.AnyAsync(u => u.Id != id && u.Username.ToLower() == lower, ct))
                 return Results.Conflict(new { error = "That username is taken.", field = "username" });
+            oldUsername = user.Username;
             user.Username = wanted;
             renamed = true;
         }
@@ -2251,8 +2256,8 @@ auth.MapPut("/profile", async (
 
     if (body.Theme is not null)
     {
-        if (body.Theme is not ("light" or "dark" or "system"))
-            return Results.BadRequest(new { error = "Theme is light, dark or system.", field = "theme" });
+        if (!ThemeChoice.IsValid(body.Theme))
+            return Results.BadRequest(new { error = ThemeChoice.Problem, field = "theme" });
         user.Theme = body.Theme;
     }
 
@@ -2267,6 +2272,8 @@ auth.MapPut("/profile", async (
     }
 
     await db.SaveChangesAsync(ct);
+    // Saved: now `@old` mentions everywhere follow the new name.
+    if (oldUsername is not null) renames.UsernameChanged(oldUsername, user.Username);
 
     // The session cookie carries the username as a claim; re-issue it so the new
     // name is what the rest of this session sees. Only for a cookie session — an
@@ -2968,7 +2975,7 @@ admin.MapDelete("/{id:int}", async (int id, ClaimsPrincipal me, AppDbContext db,
 // the address it's leaving, and their open tabs re-read who they are.
 admin.MapPut("/{id:int}/profile", async (
     int id, AdminProfileRequest body, ClaimsPrincipal me, AppDbContext db, EmailSender email,
-    IHubContext<NotesHub> hub, CancellationToken ct) =>
+    IHubContext<NotesHub> hub, RenamePropagationService renames, CancellationToken ct) =>
 {
     // Your own email change asks for a code (PUT /profile); this door must not skip it.
     if (id == int.Parse(Uid(me)))
@@ -2977,6 +2984,7 @@ admin.MapPut("/{id:int}/profile", async (
     if (user is null) return Results.NotFound();
     var previousEmail = user.Email;
     var changes = new List<string>();
+    string? oldUsername = null;
 
     if (body.Username is not null)
     {
@@ -2989,6 +2997,7 @@ admin.MapPut("/{id:int}/profile", async (
             if (await db.Users.AnyAsync(u => u.Id != id && u.Username.ToLower() == lower, ct))
                 return Results.Conflict(new { error = "That username is taken.", field = "username" });
             changes.Add($"username @{user.Username} → @{wanted}");
+            oldUsername = user.Username;
             user.Username = wanted;
         }
     }
@@ -3018,6 +3027,7 @@ admin.MapPut("/{id:int}/profile", async (
     }
 
     await db.SaveChangesAsync(ct);
+    if (oldUsername is not null) renames.UsernameChanged(oldUsername, user.Username);
     if (changes.Count > 0)
     {
         await hub.Clients.User(id.ToString()).SendAsync("AccountChanged", ct);
@@ -3739,6 +3749,10 @@ notes.MapPut("/{id}", async (
         if (note.Tags.Except(prior.Tags, StringComparer.OrdinalIgnoreCase).Any())
             webhooks.Enqueue(uid, WebhookEvents.TagAdded, WebhookPayload(WebhookEvents.TagAdded, note));
     }
+
+    // Retitled: the owner's links to it by its old title follow it.
+    if (prior is not null && !note.Secure)
+        http.RequestServices.GetRequiredService<RenamePropagationService>().TitleChanged(uid, id, prior.Title, note.Title);
 
     if (!note.Secure) http.Response.Headers.ETag = LiveAgentEdits.ETag(note.Body);
     return Results.Ok(note);
@@ -5385,14 +5399,15 @@ shares.MapPut("/incoming/{shareId:int}", async (
     int shareId, SharedBodyWrite body, ClaimsPrincipal user, AppDbContext db, VaultState state,
     MarkdownStorageService storage, WriteRing writeRing, SearchIndexService search,
     SnapshotService snapshots, IConfiguration config, IHostEnvironment env,
-    IHubContext<NotesHub> hub, VaultObserverOptions vault, ILoggerFactory lf, ICollabEngine collab, NoteWriteLocks writeLocks, CancellationToken ct) =>
+    IHubContext<NotesHub> hub, VaultObserverOptions vault, ILoggerFactory lf, ICollabEngine collab, NoteWriteLocks writeLocks,
+    RenamePropagationService renames, CancellationToken ct) =>
 {
     var uid = int.Parse(Uid(user));
     var share = await db.Shares.FirstOrDefaultAsync(s => s.Id == shareId && s.GranteeUserId == uid, ct);
     if (share is null) return Results.NotFound();
     if (share.Access != "edit") return Results.Forbid();
     return await ApplySharedEdit(share.OwnerId.ToString(), share.NoteId, body, db,
-        state, storage, writeRing, search, snapshots, config, env, hub, vault, lf, collab, writeLocks, ct);
+        state, storage, writeRing, search, snapshots, config, env, hub, vault, lf, collab, writeLocks, renames, ct);
 });
 
 // Grantee: your own tags for a note shared with you. They organise your desk
@@ -5935,7 +5950,8 @@ app.MapPut("/api/shared/{token}", async (
     string token, SharedBodyWrite body, AppDbContext db, VaultState state, MarkdownStorageService storage,
     WriteRing writeRing, SearchIndexService search, SnapshotService snapshots,
     IConfiguration config, IHostEnvironment env, IHubContext<NotesHub> hub,
-    VaultObserverOptions vault, ILoggerFactory lf, ICollabEngine collab, NoteWriteLocks writeLocks, CancellationToken ct) =>
+    VaultObserverOptions vault, ILoggerFactory lf, ICollabEngine collab, NoteWriteLocks writeLocks,
+    RenamePropagationService renames, CancellationToken ct) =>
 {
     var share = await db.Shares.FirstOrDefaultAsync(s => s.Token == token && s.Kind == "link", ct);
     if (share is null) return Results.NotFound();
@@ -5943,7 +5959,7 @@ app.MapPut("/api/shared/{token}", async (
         return Results.Json(new { error = "This link has expired." }, statusCode: StatusCodes.Status410Gone);
     if (share.Access != "edit") return Results.Forbid();
     return await ApplySharedEdit(share.OwnerId.ToString(), share.NoteId, body, db,
-        state, storage, writeRing, search, snapshots, config, env, hub, vault, lf, collab, writeLocks, ct);
+        state, storage, writeRing, search, snapshots, config, env, hub, vault, lf, collab, writeLocks, renames, ct);
 });
 
 // ── Search ────────────────────────────────────────────────────────────────────
@@ -7434,7 +7450,7 @@ static async Task<IResult> ApplySharedEdit(
     VaultState state, MarkdownStorageService storage, WriteRing writeRing, SearchIndexService search,
     SnapshotService snapshots, IConfiguration config, IHostEnvironment env,
     IHubContext<NotesHub> hub, VaultObserverOptions vault, ILoggerFactory lf,
-    ICollabEngine collab, NoteWriteLocks writeLocks, CancellationToken ct)
+    ICollabEngine collab, NoteWriteLocks writeLocks, RenamePropagationService renames, CancellationToken ct)
 {
     // Someone who is not the owner is about to replace the owner's text: the
     // shared writer snapshots the prior revision first (recoverable), refuses
@@ -7447,14 +7463,20 @@ static async Task<IResult> ApplySharedEdit(
         return Results.BadRequest(new { error = "That title is too long." });
     var writer = new NoteBodyWriter(state, storage, writeRing, search, snapshots, config, env, hub,
         collab, writeLocks, vault, lf);
+    string? oldTitle = null;
     var (_, refusal) = await writer.ChangeAsync(ownerUid, noteId, note =>
+    {
+        oldTitle = note.Title;
         // A locked note is not writable from outside the vault either: the editor on
         // the other end was handed an empty body, so saving it would erase the note.
-        note.Secure
+        return note.Secure
             ? NoteEdit.Refuse(Results.Json(new { error = "The owner locked this note." }, statusCode: StatusCodes.Status410Gone))
-            : new NoteEdit(edit.Body, Title: title),
-        LiveRoomPolicy.Refuse, ct);
+            : new NoteEdit(edit.Body, Title: title);
+    }, LiveRoomPolicy.Refuse, ct);
     if (refusal is not null) return refusal;
+    // Retitled by a sharee: the owner's links to it follow, as for the owner's own rename.
+    if (title is not null)
+        renames.TitleChanged(ownerUid, noteId, oldTitle, title);
     // Everyone else it's shared with sees the new title on their card.
     if (title is not null)
     {

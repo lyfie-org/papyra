@@ -28,7 +28,8 @@ export interface AuthUser {
   /** The server's own zone (the container's TZ), as an IANA name. */
   serverTimeZone?: string;
   /** Theme stored on the account ('light' | 'dark' | 'system'); null = never chosen. */
-  theme?: 'light' | 'dark' | 'system' | null;
+  /** 'light' | 'dark' | 'system' | 'schedule:HH:MM-HH:MM' (see lib/themeSchedule). */
+  theme?: string | null;
   /** Set while the account waits out its deletion week (UTC). */
   deletionScheduledUtc?: string | null;
 }

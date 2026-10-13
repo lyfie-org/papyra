@@ -1,8 +1,10 @@
 import { createContext, useContext } from 'react';
+import type { ThemeSchedule } from '../lib/themeSchedule';
 
 // Preference is what the user chose; Theme is the resolved light/dark applied to
-// the DOM. 'system' follows the OS and reacts to OS changes live.
-export type ThemePreference = 'light' | 'dark' | 'system';
+// the DOM. 'system' follows the OS and reacts to OS changes live; 'schedule'
+// follows the clock (see lib/themeSchedule).
+export type ThemePreference = 'light' | 'dark' | 'system' | 'schedule';
 export type Theme = 'light' | 'dark';
 
 export interface ThemeContextValue {
@@ -11,6 +13,13 @@ export interface ThemeContextValue {
   /** The user's stored choice (may be 'system'). */
   preference: ThemePreference;
   setPreference: (p: ThemePreference) => void;
+  /** Light/dark times for 'schedule' (the last ones set, even while another preference is on). */
+  schedule: ThemeSchedule;
+  /** Turn the schedule on with these times. */
+  setSchedule: (s: ThemeSchedule) => void;
+  /** The choice as stored on the account: 'light' | 'dark' | 'system' | 'schedule:HH:MM-HH:MM'. */
+  wire: string;
+  setWire: (wire: string) => void;
   toggleTheme: () => void;
 }
 
