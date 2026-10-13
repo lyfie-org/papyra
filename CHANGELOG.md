@@ -6,6 +6,10 @@ a Docker Hub tag and a GitHub Release.
 
 <!-- new releases are inserted directly below this line -->
 
+## [0.4.10] - 2026-10-13
+
+- fix(editor): show multi-cell table selection so rows, columns and whole tables can be dragged and copied (9f3a7d4)
+
 ## [0.4.9] - 2026-10-13
 
 - feat: links follow a note's new title, mentions follow a new username (549c87c)
