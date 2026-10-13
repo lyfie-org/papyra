@@ -503,6 +503,9 @@ namespace Papyra.Api.Data.Migrations
                     b.Property<int>("OwnerId")
                         .HasColumnType("INTEGER");
 
+                    b.Property<string>("Payload")
+                        .HasColumnType("TEXT");
+
                     b.Property<DateTime?>("ReadUtc")
                         .HasColumnType("TEXT");
 

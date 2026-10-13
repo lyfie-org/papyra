@@ -4,8 +4,9 @@ import { Inbox, X, Lock } from 'lucide-react';
 import Avatar from './Avatar';
 import {
   useNotifications, useNotificationBadge, useMarkNotificationsRead, useDismissNotification,
-  type AppNotification,
+  useAcceptNotification, type AppNotification,
 } from '../hooks/useNotifications';
+import { describeRules, parseRules } from '../lib/smartCollections';
 import { useAnswerAccessRequest, useRequestAccess } from '../hooks/useShares';
 import { useToast } from '../lib/toastContext';
 import './NotificationBell.css';
@@ -166,7 +167,9 @@ function Item({ n, onNavigate }: { n: AppNotification; onNavigate: () => void })
     case 'comment': line = <>{who} commented on {noteName}</>; break;
     case 'comment_reply': line = <>{who} replied to a comment on {noteName}</>; break;
     case 'comment_mention': line = <>{who} mentioned you in a comment on {noteName}</>; break;
+    case 'collection_offer': line = <>{who} sent you the collection <span className="notif__note">“{n.collectionName ?? 'Untitled'}”</span></>; break;
   }
+  const offer = n.kind === 'collection_offer';
 
   return (
     <li className={`notif__item${n.readUtc ? '' : ' notif__item--unread'}`}>
@@ -177,7 +180,11 @@ function Item({ n, onNavigate }: { n: AppNotification; onNavigate: () => void })
 
         {(n.kind === 'mention' || isComment) && n.text && <blockquote className="notif__quote">{n.text}</blockquote>}
 
-        {!n.available && <p className="notif__muted">That note is no longer available.</p>}
+        {!n.available && (
+          <p className="notif__muted">{offer ? 'This collection can’t be read.' : 'That note is no longer available.'}</p>
+        )}
+
+        {offer && n.available && <CollectionOffer n={n} />}
 
         {n.available && n.kind === 'access_requested' && (
           n.requestStatus === 'pending' ? (
@@ -210,7 +217,7 @@ function Item({ n, onNavigate }: { n: AppNotification; onNavigate: () => void })
           )
         )}
 
-        {n.available && n.kind !== 'access_requested' && (
+        {n.available && n.kind !== 'access_requested' && !offer && (
           canOpen ? (
             <div className="notif__actions">
               <button type="button" className="notif__link" onClick={open}>
@@ -231,6 +238,38 @@ function Item({ n, onNavigate }: { n: AppNotification; onNavigate: () => void })
         <X size={14} />
       </button>
     </li>
+  );
+}
+
+/** A collection someone sent: what it would show, and a button to add it. */
+function CollectionOffer({ n }: { n: AppNotification }) {
+  const accept = useAcceptNotification();
+  const navigate = useNavigate();
+  const { toast } = useToast();
+  const rules = n.collectionRules ? parseRules(n.collectionRules) : null;
+  return (
+    <>
+      {rules && (
+        <p className="notif__quote">{describeRules(rules)}</p>
+      )}
+      <div className="notif__actions">
+        <BusyButton
+          type="button"
+          className="notif__btn notif__btn--go"
+          busy={accept.isPending}
+          busyLabel="Adding…"
+          onClick={async () => {
+            try {
+              const added = await accept.mutateAsync(n.id);
+              toast(`Added “${added.name}” to your collections.`,
+                { label: 'Open', onClick: () => navigate(`/?collection=${added.id}`) });
+            } catch (e) { toast((e as Error).message); }
+          }}
+        >
+          Add to my collections
+        </BusyButton>
+      </div>
+    </>
   );
 }
 

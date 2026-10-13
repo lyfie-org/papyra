@@ -1,8 +1,10 @@
 import { useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { ArrowRight, Layers, Pencil, Plus, Tag, Tags, Trash2, X } from 'lucide-react';
+import { ArrowRight, FileInput, Layers, Pencil, Plus, Share2, Tag, Tags, Trash2, X } from 'lucide-react';
 import EmptyState from '../components/EmptyState';
 import RuleBuilder from '../components/RuleBuilder';
+import CollectionShareDialog from '../components/CollectionShareDialog';
+import CollectionImportDialog from '../components/CollectionImportDialog';
 import { useCollections, useDeleteCollection } from '../hooks/useCollections';
 import { useCreateTag, useDeleteTag, useTags } from '../hooks/useTags';
 import { useNotes } from '../hooks/useNotes';
@@ -36,6 +38,8 @@ export default function CollectionsPage() {
 
   const [building, setBuilding] = useState(false);
   const [editing, setEditing] = useState<number | null>(null);
+  const [sharing, setSharing] = useState<{ id: number; name: string } | null>(null);
+  const [importing, setImporting] = useState(false);
   const [newTag, setNewTag] = useState<string | null>(null);
   const [newTagColour, setNewTagColour] = useState<string>(TAG_COLOURS[0]);
 
@@ -93,9 +97,14 @@ export default function CollectionsPage() {
       <div className="collections__section-head">
         <h2 className="collections__subhead"><Layers size={16} /> Smart collections</h2>
         {!building && (
-          <button type="button" className="collections__new" onClick={() => { setEditing(null); setBuilding(true); }}>
-            <Plus size={15} /> New collection
-          </button>
+          <span className="collections__head-actions">
+            <button type="button" className="collections__new" onClick={() => setImporting(true)}>
+              <FileInput size={15} /> Import
+            </button>
+            <button type="button" className="collections__new" onClick={() => { setEditing(null); setBuilding(true); }}>
+              <Plus size={15} /> New collection
+            </button>
+          </span>
         )}
       </div>
 
@@ -154,6 +163,17 @@ export default function CollectionsPage() {
                     <Pencil size={14} />
                   </button>
                 )}
+                {c.rules && (
+                  <button
+                    type="button"
+                    className="collection-card__tool"
+                    aria-label={`Share ${c.name}`}
+                    title="Share"
+                    onClick={() => setSharing({ id: c.id, name: c.name })}
+                  >
+                    <Share2 size={14} />
+                  </button>
+                )}
                 <BusyButton
                   type="button"
                   className="collection-card__tool collection-card__tool--del"
@@ -167,6 +187,9 @@ export default function CollectionsPage() {
           )))}
         </ul>
       )}
+
+      {sharing && <CollectionShareDialog collection={sharing} onClose={() => setSharing(null)} />}
+      {importing && <CollectionImportDialog onClose={() => setImporting(false)} />}
 
       {/* ── Tags ──────────────────────────────────────────────────────────── */}
       <div className="collections__section-head collections__section-head--tags">

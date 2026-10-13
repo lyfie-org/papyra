@@ -65,3 +65,59 @@ export function useDeleteCollection() {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: KEY }),
   });
 }
+
+/** Why a collection request failed, in the server's own words when it sent some. */
+async function failure(res: Response, fallback: string): Promise<Error> {
+  const body = await res.json().catch(() => null) as { error?: string } | null;
+  return new Error(body?.error ?? fallback);
+}
+
+/**
+ * A collection as shareable JSON — `{papyraCollection: 1, name, rules}`, its
+ * name and rules only — pretty-printed for copying.
+ */
+export function useCollectionExport(id: number) {
+  return useQuery<string>({
+    queryKey: [...KEY, id, 'export'],
+    queryFn: async () => {
+      const res = await fetch(`/api/collections/${id}/export`);
+      if (!res.ok) throw await failure(res, 'Couldn’t read this collection.');
+      return JSON.stringify(await res.json(), null, 2);
+    },
+    staleTime: 0,
+  });
+}
+
+/** Offer a copy of a collection to someone here; it lands in their notifications. */
+export function useSendCollection() {
+  return useMutation({
+    mutationFn: async (input: { id: number; username: string }) => {
+      const res = await fetch(`/api/collections/${input.id}/send`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ username: input.username }),
+      });
+      if (!res.ok) throw await failure(res, 'Couldn’t send the collection.');
+      return (await res.json()) as { recipient: string };
+    },
+  });
+}
+
+/** Add a collection from pasted JSON. The server numbers a name that's taken. */
+export function useImportCollection() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (json: string): Promise<SmartCollection> => {
+      let parsed: unknown;
+      try { parsed = JSON.parse(json); } catch { throw new Error('That isn’t a Papyra collection — the text isn’t valid JSON.'); }
+      const res = await fetch('/api/collections/import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(parsed),
+      });
+      if (!res.ok) throw await failure(res, 'Couldn’t add that collection.');
+      return res.json();
+    },
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: KEY }),
+  });
+}

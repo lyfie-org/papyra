@@ -603,6 +603,34 @@ const routes: Route[] = [
         return noContent();
       }),
   ],
+  // Sharing a collection: copy/paste works in the demo; sending needs other people.
+  [
+    'GET',
+    /^\/api\/collections\/(\d+)\/export$/,
+    ({ match }) => {
+      const col = getState().collections.find((c) => c.id === Number(match[1]));
+      if (!col) return json({ error: 'not found' }, 404);
+      return json({ papyraCollection: 1, name: col.name, rules: JSON.parse(col.rulesJson) });
+    },
+  ],
+  [
+    'POST',
+    /^\/api\/collections\/import$/,
+    async ({ body }) => {
+      const input = (await body()) as { papyraCollection?: number; name?: string; rules?: { conditions?: unknown[] } };
+      if (input?.papyraCollection !== 1 || !input.name?.trim() || !Array.isArray(input.rules?.conditions) || input.rules.conditions.length === 0)
+        return json({ error: 'That isn’t a Papyra collection.' }, 400);
+      return mutate((s) => {
+        const taken = new Set(s.collections.map((c) => c.name.toLowerCase()));
+        let name = input.name!.trim();
+        for (let i = 2; taken.has(name.toLowerCase()); i++) name = `${input.name!.trim()} (${i})`;
+        const created = { id: nextId(), name, rulesJson: JSON.stringify(input.rules), createdUtc: now() };
+        s.collections.push(created);
+        return json(created);
+      });
+    },
+  ],
+  ['POST', /^\/api\/collections\/(\d+)\/send$/, () => serverOnly('Sending a collection to someone')],
   [
     'GET',
     /^\/api\/collections\/(\d+)\/notes$/,
