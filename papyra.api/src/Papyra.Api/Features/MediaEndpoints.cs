@@ -204,6 +204,11 @@ public static class MediaEndpoints
             if (hit.Error is not null) return hit.Error;
             return store.Get(hit.OwnerUid!, hit.Path!) is { } meta ? Results.Ok(Client(meta)) : Results.NotFound();
         }).RequireAuthorization();
+        app.MapPost("/api/shares/incoming/{shareId:int}/media/upload", GrantUploadAsync)
+            .RequireAuthorization()
+            .RequireRateLimiting(UploadRateLimit)
+            .WithMetadata(new Microsoft.AspNetCore.Mvc.RequestSizeLimitAttribute(MediaLimits.Largest + 4 * 1024 * 1024))
+            .DisableAntiforgery();
         app.MapPost("/api/shares/incoming/{shareId:int}/media/meta", async (int shareId, MediaMetaBatch body,
             HttpContext http, SharedMedia shared, MediaMetaStore store, CancellationToken ct) =>
         {
@@ -235,15 +240,37 @@ public static class MediaEndpoints
     /// </summary>
     private static async Task<IResult> UploadAsync(HttpRequest request, string? noteId, ClaimsPrincipal user,
         MediaMetaStore store, IConfiguration config, IHostEnvironment env, ILoggerFactory lf, CancellationToken ct)
+        => (await StoreUploadAsync(request, Uid(user), store, config, env, lf, ct)).Result;
+
+    /// <summary>
+    /// A person a note is shared with for editing adds a picture or a file to
+    /// it. The file goes where the note's own attachments live — the owner's
+    /// media folder — and only the edit grantee of a note that is still shared,
+    /// unlocked and present may send one. Until the note's next save embeds it,
+    /// <see cref="ShareUploads"/> lets the share serve it (the editor draws the
+    /// new picture straight away).
+    /// </summary>
+    private static async Task<IResult> GrantUploadAsync(int shareId, HttpRequest request, SharedMedia shared,
+        ShareUploads uploads, MediaMetaStore store, IConfiguration config, IHostEnvironment env, ILoggerFactory lf,
+        CancellationToken ct)
+    {
+        var grant = await shared.EditableGrantAsync(shareId, request.HttpContext, ct);
+        if (grant.Error is not null) return grant.Error;
+        var (result, filename) = await StoreUploadAsync(request, grant.OwnerUid!, store, config, env, lf, ct);
+        if (filename is not null) uploads.Add(grant.OwnerUid!, grant.NoteId!, filename);
+        return result;
+    }
+
+    private static async Task<(IResult Result, string? Filename)> StoreUploadAsync(HttpRequest request, string uid,
+        MediaMetaStore store, IConfiguration config, IHostEnvironment env, ILoggerFactory lf, CancellationToken ct)
     {
         if (!MediaTypeHeaderValue.TryParse(request.ContentType, out var contentType)
             || !contentType.MediaType.Equals("multipart/form-data", StringComparison.OrdinalIgnoreCase))
-            return Results.BadRequest(new { error = "Send the file as multipart/form-data." });
+            return (Results.BadRequest(new { error = "Send the file as multipart/form-data." }), null);
         var boundary = HeaderUtilities.RemoveQuotes(contentType.Boundary).Value;
         if (string.IsNullOrWhiteSpace(boundary) || boundary.Length > 200)
-            return Results.BadRequest(new { error = "Malformed upload." });
+            return (Results.BadRequest(new { error = "Malformed upload." }), null);
 
-        var uid = Uid(user);
         var mediaDir = PapyraPaths.UserMediaDir(config, env.ContentRootPath, uid);
         string? tmp = null;
         string? clientName = null;
@@ -267,7 +294,7 @@ public static class MediaEndpoints
                 switch (disposition.Name.Value?.Trim('"'))
                 {
                     case "file":
-                        if (tmp is not null) return Results.BadRequest(new { error = "One file per upload." });
+                        if (tmp is not null) return (Results.BadRequest(new { error = "One file per upload." }), null);
                         clientName = disposition.FileNameStar.Value ?? disposition.FileName.Value?.Trim('"') ?? "file";
 
                         var head = new byte[MediaSniffer.HeaderBytes];
@@ -289,11 +316,11 @@ public static class MediaEndpoints
                             while ((read = await section.Body.ReadAsync(buffer, ct)) > 0)
                             {
                                 size += read;
-                                if (size > limit) return TooLarge(kindLabel, limit);
+                                if (size > limit) return (TooLarge(kindLabel, limit), null);
                                 await fs.WriteAsync(buffer.AsMemory(0, read), ct);
                                 hash.AppendData(buffer, 0, read);
                             }
-                            if (size > limit) return TooLarge(kindLabel, limit);
+                            if (size > limit) return (TooLarge(kindLabel, limit), null);
                             await fs.FlushAsync(ct);
                             hashHex = Convert.ToHexStringLower(hash.GetHashAndReset());
                         }
@@ -318,7 +345,7 @@ public static class MediaEndpoints
                 }
             }
 
-            if (tmp is null || size == 0) return Results.BadRequest(new { error = "No file." });
+            if (tmp is null || size == 0) return (Results.BadRequest(new { error = "No file." }), null);
 
             // A readable name — the original's, slugged — plus a short suffix so
             // two pasted "image.png"s never clobber each other: `airway-bill-3f9a2c.jpg`.
@@ -333,20 +360,20 @@ public static class MediaEndpoints
 
             if (poster is not null && sniffed.Kind == "video") store.SavePoster(uid, filename, poster, posterExt!);
             var meta = store.Record(uid, dest, hashHex!, hints, hasPoster: poster is not null && sniffed.Kind == "video");
-            return Results.Ok(new
+            return (Results.Ok(new
             {
                 filename,
                 meta.Kind, meta.Mime, meta.Size, meta.Version,
                 meta.Width, meta.Height, meta.DurationMs, meta.Animated, meta.Poster, meta.Thumb,
-            });
+            }), filename);
         }
         catch (InvalidDataException)
         {
-            return Results.BadRequest(new { error = "Malformed upload." });
+            return (Results.BadRequest(new { error = "Malformed upload." }), null);
         }
         catch (BadHttpRequestException ex) when (ex.StatusCode == StatusCodes.Status413PayloadTooLarge)
         {
-            return TooLarge("file", MediaLimits.Largest);
+            return (TooLarge("file", MediaLimits.Largest), null);
         }
         finally
         {
@@ -518,13 +545,48 @@ public static class MediaEndpoints
 /// </summary>
 public sealed class SharedMedia(
     AppDbContext db, IDataProtectionProvider dataProtection, VaultState state, MarkdownStorageService storage,
-    VaultObserverOptions vault, MediaReferences refs, IConfiguration config, IHostEnvironment env, ILoggerFactory lf)
+    VaultObserverOptions vault, MediaReferences refs, ShareUploads uploads, IConfiguration config,
+    IHostEnvironment env, ILoggerFactory lf)
 {
     public readonly record struct Hit(string? Path, string? OwnerUid, IResult? Error, int Status);
+
+    /// <summary>An edit grant a grantee may add attachments through.</summary>
+    public readonly record struct Grant(string? OwnerUid, string? NoteId, IResult? Error);
 
     private (string Key, Share? Share, Note? Note, Hit? Refusal)? _resolved;
 
     public async Task<Hit> ByLinkAsync(string token, string filename, HttpContext http, CancellationToken ct)
+    {
+        await LoadLinkAsync(token, http, ct);
+        return Resolve(filename);
+    }
+
+    /// <summary>
+    /// The note a share link opens, under the same rules as its attachments
+    /// (expiry, spent views, locked or gone) — or why not.
+    /// </summary>
+    public async Task<(Note? Note, IResult? Error)> LinkNoteAsync(string token, HttpContext http, CancellationToken ct)
+    {
+        await LoadLinkAsync(token, http, ct);
+        var (_, share, note, refusal) = _resolved!.Value;
+        if (refusal is { } r) return (null, r.Error);
+        if (share is null || note is null || note.Secure) return (null, Results.NotFound());
+        return (note, null);
+    }
+
+    /// <summary>The caller's edit grant on a note that is still there and unlocked.</summary>
+    public async Task<Grant> EditableGrantAsync(int shareId, HttpContext http, CancellationToken ct)
+    {
+        await LoadGrantAsync(shareId, http, ct);
+        var (_, share, note, _) = _resolved!.Value;
+        if (share is null || note is null || note.Secure) return new(null, null, Results.NotFound());
+        if (share.Access != "edit")
+            return new(null, null, Results.Json(new { error = "You can only view this note." },
+                statusCode: StatusCodes.Status403Forbidden));
+        return new(share.OwnerId.ToString(), share.NoteId, null);
+    }
+
+    private async Task LoadLinkAsync(string token, HttpContext http, CancellationToken ct)
     {
         var key = "link:" + token;
         if (_resolved?.Key != key)
@@ -538,10 +600,15 @@ public sealed class SharedMedia(
                 refusal = Gone("This link has reached its view limit.");
             _resolved = (key, share, refusal is null ? await NoteOf(share!, ct) : null, refusal);
         }
-        return Resolve(filename);
     }
 
     public async Task<Hit> ByGrantAsync(int shareId, string filename, HttpContext http, CancellationToken ct)
+    {
+        await LoadGrantAsync(shareId, http, ct);
+        return Resolve(filename);
+    }
+
+    private async Task LoadGrantAsync(int shareId, HttpContext http, CancellationToken ct)
     {
         var key = "grant:" + shareId;
         if (_resolved?.Key != key)
@@ -550,7 +617,6 @@ public sealed class SharedMedia(
             var share = await db.Shares.FirstOrDefaultAsync(s => s.Id == shareId && s.GranteeUserId == uid, ct);
             _resolved = (key, share, share is null ? null : await NoteOf(share, ct), share is null ? NotFound() : null);
         }
-        return Resolve(filename);
     }
 
     private Hit Resolve(string filename)
@@ -562,7 +628,10 @@ public sealed class SharedMedia(
         if (share is null || note is null || note.Secure) return NotFound();
         var owner = share.OwnerId.ToString();
         var path = MediaEndpoints.Locate(PapyraPaths.UserMediaDir(config, env.ContentRootPath, owner), filename, lf);
-        if (path is null || !refs.References(note, Path.GetFileName(path))) return NotFound();
+        // Just added by an editor and not yet saved into the body: still this
+        // note's (see ShareUploads).
+        var name = Path.GetFileName(path ?? "");
+        if (path is null || !(refs.References(note, name) || uploads.Holds(owner, share.NoteId, name))) return NotFound();
         return new Hit(path, owner, null, StatusCodes.Status200OK);
     }
 
@@ -597,4 +666,37 @@ public sealed class SharedMedia(
 
     private static Hit Gone(string error) => new(null, null,
         Results.Json(new { error }, statusCode: StatusCodes.Status410Gone), StatusCodes.Status410Gone);
+}
+
+/// <summary>
+/// Attachments an editor added to a shared note in the last little while. A
+/// share serves only the files its note embeds, and the note embeds a new one
+/// only once it is saved — a second or so later in a live room, longer on a
+/// slow connection. Until then this says "it is this note's": the person who
+/// added it (and anyone else in the room) sees it at once instead of a broken
+/// picture. Memory only; forgotten after <see cref="Window"/> or a restart, by
+/// when the save has long since made the reference real.
+/// </summary>
+public sealed class ShareUploads(TimeProvider clock)
+{
+    public static readonly TimeSpan Window = TimeSpan.FromMinutes(30);
+    private const int Max = 10_000;
+
+    private readonly System.Collections.Concurrent.ConcurrentDictionary<(string Owner, string Note, string File), DateTimeOffset> _recent = new();
+
+    public void Add(string ownerUid, string noteId, string filename)
+    {
+        var now = clock.GetUtcNow();
+        if (_recent.Count >= Max) Prune(now);
+        _recent[(ownerUid, noteId, filename)] = now + Window;
+    }
+
+    public bool Holds(string ownerUid, string noteId, string filename) =>
+        _recent.TryGetValue((ownerUid, noteId, filename), out var until) && until > clock.GetUtcNow();
+
+    private void Prune(DateTimeOffset now)
+    {
+        foreach (var (key, until) in _recent)
+            if (until <= now) _recent.TryRemove(key, out _);
+    }
 }

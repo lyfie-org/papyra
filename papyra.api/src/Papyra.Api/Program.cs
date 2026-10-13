@@ -104,6 +104,7 @@ builder.Services.AddSingleton<MediaMetaStore>();
 builder.Services.AddSingleton<HeicConverter>();
 // Per-request resolver for media reached through a share.
 builder.Services.AddScoped<SharedMedia>();
+builder.Services.AddSingleton(_ => new ShareUploads(TimeProvider.System));
 builder.Services.AddSingleton<WriteRing>();
 // Gives .md files other tools create without an `id:` one (watcher + cold boot).
 builder.Services.AddSingleton<ForeignNoteAdopter>();
@@ -5718,7 +5719,7 @@ accessRequests.MapPost("/{id:int}/deny", async (
 app.MapGet("/api/shared/{token}", async (
     string token, HttpContext http, IDataProtectionProvider dataProtection, AppDbContext db,
     VaultState state, MarkdownStorageService storage, EmailSender email,
-    VaultObserverOptions vault, ILoggerFactory lf, CancellationToken ct) =>
+    VaultObserverOptions vault, ILoggerFactory lf, IHubContext<NotesHub> hub, CancellationToken ct) =>
 {
     var share = await db.Shares.FirstOrDefaultAsync(s => s.Token == token && s.Kind == "link", ct);
     if (share is null) return Results.NotFound();
@@ -5751,6 +5752,10 @@ app.MapGet("/api/shared/{token}", async (
     {
         share.ViewCount++;
         await db.SaveChangesAsync(ct);
+        // The owner's share dialog shows "3/5": tell it, so the count moves as
+        // the link is opened rather than on the dialog's next load.
+        await hub.Clients.User(share.OwnerId.ToString()).SendAsync("ShareViewed",
+            new { noteId = share.NoteId, shareId = share.Id, views = share.ViewCount }, ct);
         var lifetime = TimeSpan.FromMinutes(30);
         if (viewId.Length > 0) http.Response.Cookies.Append(cookieName, viewer.Protect(visit, lifetime), new CookieOptions
         {
@@ -6566,6 +6571,23 @@ app.MapGet("/api/link-preview", async (string? url, LinkPreviewService previews,
     return preview is null ? Results.NoContent() : Results.Ok(preview);
 })
 .RequireAuthorization()
+.RequireRateLimiting(PreviewRateLimit);
+
+// The same, for a share link's reader (anonymous): the link cards in the note
+// they were given show their icon and picture as they do for the owner. Only
+// links that note holds, so a share link is no open door to the fetcher, and
+// only while the link itself still opens (expiry, spent views, locked note).
+app.MapGet("/api/shared/{token}/link-preview", async (
+    string token, string? url, HttpContext http, SharedMedia shared, LinkPreviewService previews, CancellationToken ct) =>
+{
+    if (string.IsNullOrWhiteSpace(url) || url.Length > 2048) return Results.BadRequest();
+    var (note, refused) = await shared.LinkNoteAsync(token, http, ct);
+    if (refused is not null) return refused;
+    var wanted = url.Trim();
+    if (!note!.Body.Contains(wanted, StringComparison.Ordinal)) return Results.NotFound();
+    var preview = await previews.GetAsync(wanted, ct);
+    return preview is null ? Results.NoContent() : Results.Ok(preview);
+})
 .RequireRateLimiting(PreviewRateLimit);
 
 // ── Embed a link ──────────────────────────────────────────────────────────────

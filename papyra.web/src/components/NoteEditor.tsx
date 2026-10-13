@@ -52,6 +52,7 @@ import NoteComments, { CommentsButton } from './comments/NoteComments';
 import { useComments } from '../hooks/useComments';
 import { useReleaseSelectionOnLeave } from '../hooks/useReleaseSelectionOnLeave';
 import { usePlainTableCells } from '../hooks/usePlainTableCells';
+import { useExitBlockShortcut } from '../hooks/useExitBlockShortcut';
 import { fillsSheet } from '../lib/sheetHold';
 
 /*
@@ -208,6 +209,8 @@ export default function NoteEditor({ note, isDraft = false }: { note: Note; isDr
   useReleaseSelectionOnLeave(lexicalEditor, sheetRef);
   // Pasted tables lose their cell colours and sit on the note's paper.
   usePlainTableCells(lexicalEditor);
+  // Ctrl+Enter leaves a code block, quote, list or table at once.
+  useExitBlockShortcut(lexicalEditor);
   const [title, setTitle] = useState(note.title);
   // Mirror the title in a ref so the debounced save reads the live value, not a
   // value captured in the closure of the render that scheduled it.

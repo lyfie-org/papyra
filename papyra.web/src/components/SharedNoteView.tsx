@@ -4,7 +4,7 @@ import {
 } from '@lyfie/luthor/presets/papyra';
 import '@lyfie/luthor/styles.css';
 import { LexicalCollaboration } from '@lexical/react/LexicalCollaborationContext';
-import { Check, Eye, Loader2, PencilLine, Pin } from 'lucide-react';
+import { Check, Eye, Loader2, PencilLine, Pin, Type } from 'lucide-react';
 import { useResolvedTheme } from '../hooks/useTheme';
 import { useInPlaceWikilinks } from '../hooks/useInPlaceWikilinks';
 import { tintInkClass } from '../lib/noteColors';
@@ -24,7 +24,12 @@ import { renderFileCard } from '../lib/renderFileCard';
 import { useToast } from '../lib/toastContext';
 import { useReleaseSelectionOnLeave } from '../hooks/useReleaseSelectionOnLeave';
 import { usePlainTableCells } from '../hooks/usePlainTableCells';
-import { PAPYRA_EDITOR_FEATURES } from '../lib/editorToolbar';
+import { useExitBlockShortcut } from '../hooks/useExitBlockShortcut';
+import { PAPYRA_EDITOR_FEATURES, PAPYRA_TOOLBAR_LAYOUT, createToolbarItems } from '../lib/editorToolbar';
+import { useAlwaysShowEditorToolbar } from '../hooks/useEditorToolbar';
+import { createMediaUploader, searchUsers, uploadErrorMessage } from '../lib/papyraEditorAdapter';
+import { checkMediaFile, loadMediaLimits } from '../lib/mediaLimits';
+import { resolveCard, resolveEmbed } from '../lib/embedResolve';
 import './NoteToolbar.css';
 import './SharedNoteView.css';
 
@@ -69,7 +74,7 @@ type Status = 'idle' | 'saving' | 'saved' | 'error';
 // carets. Falls back to the save-as-you-type path above when the embedded
 // collab engine is off. Public links never pass it.
 export default function SharedNoteView({
-  note, onSave, onSaveTitle, onRequestEdit, mediaBase, collab, pin, onClose, onOpenLink, actions,
+  note, onSave, onSaveTitle, onRequestEdit, mediaBase, uploadUrl, linkPreviewUrl, collab, pin, onClose, onOpenLink, actions,
 }: {
   note: SharedNote;
   onSave?: (body: string) => Promise<void>;
@@ -77,6 +82,13 @@ export default function SharedNoteView({
   onSaveTitle?: (title: string) => Promise<void>;
   onRequestEdit?: () => Promise<void>;
   mediaBase: string;
+  /**
+   * Where an editor's new attachments go (a signed-in grantee's share). Without
+   * it the note can still be edited, but nothing can be attached.
+   */
+  uploadUrl?: string;
+  /** Link cards' previews: a share link's reader asks through the link. */
+  linkPreviewUrl?: string;
   collab?: { shareId: number };
   /** The viewer's own pin for it (signed-in grantees). */
   pin?: { pinned: boolean; onToggle: () => void };
@@ -114,39 +126,85 @@ export default function SharedNoteView({
   const openComments = useCallback(() => setCommentsPanel(true), []);
   const closeComments = useCallback(() => setCommentsPanel(false), []);
 
-  // Minimal host seam: media resolves through the share endpoint; uploads and
-  // note navigation are inert on a shared surface. Built once per share —
-  // a new adapter would re-render every embed.
+  // Whoever may edit gets the owner's editor: the formatting toolbar, uploads
+  // (into the owner's note, through the share), embeds and link cards.
+  const canEdit = !live && note.access === 'edit' && !!onSave;
+  const editable = canEdit || liveEdit;
+  const signedIn = !!collab;
+  const canUpload = editable && !!uploadUrl;
+
+  // The host seam: media resolves through the share endpoint, and an editor's
+  // uploads go through it too. Rebuilt only when what the viewer may do
+  // changes — a new adapter would re-render every embed.
   const { toast } = useToast();
   const openLinkRef = useRef(onOpenLink);
   useEffect(() => { openLinkRef.current = onOpenLink; }, [onOpenLink]);
   const followLink = useCallback((target: string) => openLinkRef.current?.(target), []);
   // Attachments' sizes and thumbnails known before the editor draws them.
   const mediaReady = useMediaMetaReady(note.body, mediaBase);
+  const getLexical = useCallback(() => editorRef.current?.getLexicalEditor() ?? null, []);
   const adapter = useMemo<PapyraEditorAdapter>(() => {
     const meta = mediaMetaStore(mediaBase);
+    const refused = 'Attachments can’t be added through a share link.';
+    const upload = canUpload && uploadUrl ? createMediaUploader(uploadUrl, mediaBase) : null;
+    // The size limits, so an oversized file is refused before it is sent.
+    if (upload) void loadMediaLimits();
+    const report = (error: unknown) => { const message = uploadErrorMessage(error); if (message) toast(message); };
     return {
       resolveMediaUrl: (filename, options) => mediaUrl(mediaBase, filename, options, meta.get(filename)),
       getMediaMeta: (filename) => meta.get(filename),
       subscribeMediaMeta: (listener) => meta.subscribe(listener),
       renderFileCard,
-      validateMedia: () => 'Attachments can’t be added to a shared note.',
-      onUploadError: (error) => toast(error instanceof Error ? error.message : 'Couldn’t attach that file.'),
-      uploadMedia: async () => { throw new Error('Attachments can’t be added to a shared note.'); },
-      mediaToolbarItems: createMediaToolbarItems({ upload: () => Promise.reject(new Error('read-only')), readOnly: true }),
+      resolveCard: (url) => resolveCard(url, undefined, linkPreviewUrl),
+      // Finding a link's player, and people to mention, need an account.
+      ...(signedIn ? {
+        resolveEmbed: async (url: string) => {
+          const found = await resolveEmbed(url);
+          if (found?.type === 'card') toast('That site doesn’t allow embedding — added it as a link card.');
+          return found;
+        },
+        searchUsers,
+      } : {}),
+      validateMedia: upload ? (file) => checkMediaFile(file) : () => refused,
+      onUploadError: report,
+      uploadMedia: upload ?? (async () => { throw new Error(refused); }),
+      // eslint-disable-next-line react-hooks/refs -- getLexical is called only from the mounted editor's toolbar, never while rendering
+      mediaToolbarItems: createMediaToolbarItems(upload ? {
+        getEditor: getLexical,
+        notify: (message) => toast(message),
+        // Replace uploads outside the drop pipeline, so it checks and reports on its own.
+        upload: async (file) => {
+          try {
+            const refusal = checkMediaFile(file);
+            if (refusal) throw new Error(refusal);
+            return await upload(file);
+          } catch (error) {
+            report(error);
+            throw error;
+          }
+        },
+      } : { upload: () => Promise.reject(new Error('read-only')), readOnly: true }),
       openNote: (ref) => { const target = (ref.title ?? ref.id ?? '').trim(); if (target) followLink(target); },
       searchNotes: async () => [],
     };
-  }, [mediaBase, toast, followLink]);
+  }, [mediaBase, toast, followLink, canUpload, uploadUrl, linkPreviewUrl, signedIn, getLexical]);
+
+  // The formatting toolbar, for anyone who may edit: opens as Settings says
+  // (like the owner's notes), and the header's T button shows or hides it here.
+  const alwaysShowToolbar = useAlwaysShowEditorToolbar();
+  const [toolbarOverride, setToolbarOverride] = useState<boolean | null>(null);
+  const toolbarShown = editable && (toolbarOverride ?? alwaysShowToolbar);
+  const toolbarItems = useMemo(() => createToolbarItems({ uploads: canUpload, mention: signedIn }), [canUpload, signedIn]);
   // In place — without this Lexical would open the `#` href in a new tab.
   useInPlaceWikilinks(articleRef, onOpenLink ? followLink : noop);
   useEffect(() => (articleRef.current ? pauseOffscreenVideos(articleRef.current) : undefined), []);
   useEffect(() => (articleRef.current ? keepMediaToolbarsInView(articleRef.current) : undefined), []);
   useReleaseSelectionOnLeave(lexical, articleRef);
   usePlainTableCells(lexical);
+  // Ctrl+Enter leaves a code block, quote, list or table at once.
+  useExitBlockShortcut(lexical);
 
   const colored = !!note.color;
-  const canEdit = !live && note.access === 'edit' && !!onSave;
   // Painted exactly like the owner's open note: `--note-tint` mixed by
   // --tint-strength (muted in dark mode), and a coloured note keeps a light
   // editor for dark ink — the NoteEditor convention.
@@ -270,6 +328,18 @@ export default function SharedNoteView({
         ) : (
           <span className="shared-note__badge"><Eye size={13} aria-hidden="true" /> View only</span>
         )}
+        {editable && (
+          <button
+            type="button"
+            className={`note-toolbar__btn${toolbarShown ? ' is-active' : ''}`}
+            aria-pressed={toolbarShown}
+            aria-label={toolbarShown ? 'Hide formatting toolbar' : 'Show formatting toolbar'}
+            title={toolbarShown ? 'Hide formatting toolbar' : 'Show formatting toolbar'}
+            onClick={() => setToolbarOverride(!toolbarShown)}
+          >
+            <Type size={18} />
+          </button>
+        )}
         {pin && (
           <button
             type="button"
@@ -339,6 +409,10 @@ export default function SharedNoteView({
                   initialTheme={editorTheme}
                   colored={colored}
                   readOnly={!liveEdit}
+                  toolbar={toolbarShown}
+                  toolbarAlignment="center"
+                  toolbarLayout={PAPYRA_TOOLBAR_LAYOUT}
+                  toolbarItems={toolbarItems}
                   defaultEditorView="visual"
                   blockAnchors="off"
                   adapter={adapter}
@@ -381,6 +455,10 @@ export default function SharedNoteView({
         initialTheme={editorTheme}
         colored={colored}
         readOnly={!canEdit}
+        toolbar={toolbarShown}
+        toolbarAlignment="center"
+        toolbarLayout={PAPYRA_TOOLBAR_LAYOUT}
+        toolbarItems={toolbarItems}
         defaultEditorView="visual"
         defaultContent={note.body}
         adapter={adapter}

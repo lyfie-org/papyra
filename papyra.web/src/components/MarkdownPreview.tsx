@@ -59,6 +59,8 @@ function BlockView({ block }: { block: Block }) {
       return <pre className="md-preview__pre">{block.v}</pre>;
     case 'hr':
       return <hr className="md-preview__hr" />;
+    case 'gap':
+      return <div className="md-preview__gap" style={{ '--md-gap': block.n } as CSSProperties} aria-hidden="true" />;
     case 'embed':
       return null; // shown by CardMedia
     case 'list':

@@ -379,6 +379,78 @@ public sealed class MediaSecurityTests
         finally { Cleanup(factory, dir); }
     }
 
+    [Fact]
+    public async Task IncomingShare_Editor_UploadsIntoTheOwnersNote_ViewerCannot()
+    {
+        var (factory, dir) = NewApp();
+        try
+        {
+            var owner = await OwnerAsync(factory);
+            var bea = await MemberAsync(factory, owner, "bea");
+            var cal = await MemberAsync(factory, owner, "cal");
+            await WriteNoteAsync(owner, "n1", "shared words");
+            await WriteNoteAsync(owner, "n2", "other words");
+            var edit = await GrantAsync(owner, "n1", "bea", "edit");
+            var view = await GrantAsync(owner, "n1", "cal", "view");
+            var otherNote = await GrantAsync(owner, "n2", "bea", "edit");
+
+            using var form = new MultipartFormDataContent { { new ByteArrayContent(Png), "file", "added.png" } };
+            var res = await bea.PostAsync($"/api/shares/incoming/{edit}/media/upload", form);
+            Assert.Equal(HttpStatusCode.OK, res.StatusCode);
+            var name = (await res.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("filename").GetString()!;
+
+            // Before any save embeds it: served through the note's shares at
+            // once (the editor draws it straight away)…
+            Assert.Equal(HttpStatusCode.OK, (await bea.GetAsync($"/api/shares/incoming/{edit}/media/{name}")).StatusCode);
+            Assert.Equal(HttpStatusCode.OK, (await cal.GetAsync($"/api/shares/incoming/{view}/media/{name}")).StatusCode);
+            // …never through another note's share, and never as Bea's own file.
+            Assert.Equal(HttpStatusCode.NotFound, (await bea.GetAsync($"/api/shares/incoming/{otherNote}/media/{name}")).StatusCode);
+            Assert.Equal(HttpStatusCode.NotFound, (await bea.GetAsync($"/api/media/{name}")).StatusCode);
+            // It is the owner's attachment now.
+            Assert.Equal(HttpStatusCode.OK, (await owner.GetAsync($"/api/media/{name}")).StatusCode);
+
+            // A viewer may not add, nor may anyone through a share that isn't theirs.
+            using var viewForm = new MultipartFormDataContent { { new ByteArrayContent(Png), "file", "no.png" } };
+            Assert.Equal(HttpStatusCode.Forbidden, (await cal.PostAsync($"/api/shares/incoming/{view}/media/upload", viewForm)).StatusCode);
+            using var strangerForm = new MultipartFormDataContent { { new ByteArrayContent(Png), "file", "no.png" } };
+            Assert.Equal(HttpStatusCode.NotFound, (await cal.PostAsync($"/api/shares/incoming/{edit}/media/upload", strangerForm)).StatusCode);
+
+            // Locked by its owner: nothing more goes in.
+            await WriteNoteAsync(owner, "n1", "shared words", secure: true);
+            using var lockedForm = new MultipartFormDataContent { { new ByteArrayContent(Png), "file", "late.png" } };
+            Assert.Equal(HttpStatusCode.NotFound, (await bea.PostAsync($"/api/shares/incoming/{edit}/media/upload", lockedForm)).StatusCode);
+        }
+        finally { Cleanup(factory, dir); }
+    }
+
+    [Fact]
+    public async Task LinkShare_LinkPreview_AnswersOnlyForTheNotesOwnLinks()
+    {
+        var (factory, dir) = NewApp();
+        try
+        {
+            var owner = await OwnerAsync(factory);
+            // A loopback address: the SSRF guard refuses to fetch it, so the
+            // preview is empty (204) — past the share's own checks, no network.
+            await WriteNoteAsync(owner, "n1", "![[card:http://127.0.0.1/inside|Inside]]");
+            var token = await LinkAsync(owner, "n1", maxViews: null);
+            var anon = factory.CreateClient();
+
+            Assert.Equal(HttpStatusCode.NoContent,
+                (await anon.GetAsync($"/api/shared/{token}/link-preview?url={Uri.EscapeDataString("http://127.0.0.1/inside")}")).StatusCode);
+            Assert.Equal(HttpStatusCode.NotFound,
+                (await anon.GetAsync($"/api/shared/{token}/link-preview?url={Uri.EscapeDataString("https://example.com/")}")).StatusCode);
+            Assert.Equal(HttpStatusCode.BadRequest, (await anon.GetAsync($"/api/shared/{token}/link-preview")).StatusCode);
+            Assert.Equal(HttpStatusCode.NotFound,
+                (await anon.GetAsync($"/api/shared/nope/link-preview?url={Uri.EscapeDataString("http://127.0.0.1/inside")}")).StatusCode);
+
+            var expired = await LinkAsync(owner, "n1", maxViews: null, expires: DateTime.UtcNow.AddMinutes(-1));
+            Assert.Equal(HttpStatusCode.Gone,
+                (await anon.GetAsync($"/api/shared/{expired}/link-preview?url={Uri.EscapeDataString("http://127.0.0.1/inside")}")).StatusCode);
+        }
+        finally { Cleanup(factory, dir); }
+    }
+
     // ── Vault gate ────────────────────────────────────────────────────────────
 
     [Fact]
@@ -504,6 +576,14 @@ public sealed class MediaSecurityTests
             Kind: "link", Access: "view", GranteeUsername: null, ExpiresUtc: expires, MaxViews: maxViews));
         Assert.Equal(HttpStatusCode.OK, res.StatusCode);
         return (await res.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("token").GetString()!;
+    }
+
+    private static async Task<int> GrantAsync(HttpClient owner, string noteId, string username, string access)
+    {
+        var res = await owner.PostAsJsonAsync($"/api/notes/{noteId}/shares", new ShareWrite(
+            Kind: "user", Access: access, GranteeUsername: username, ExpiresUtc: null, MaxViews: null));
+        Assert.Equal(HttpStatusCode.OK, res.StatusCode);
+        return (await res.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("id").GetInt32();
     }
 
     private static async Task<string> UnlockAsync(HttpClient client)

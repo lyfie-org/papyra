@@ -115,6 +115,7 @@ export default function SharedNoteModal({ shareId, onClose }: { shareId: number;
               />
             ) : undefined}
             mediaBase={`/api/shares/incoming/${shareId}/media`}
+            uploadUrl={`/api/shares/incoming/${shareId}/media/upload`}
             // Signed in: join the note's live room (classic saves if the
             // collab engine is off).
             collab={{ shareId }}

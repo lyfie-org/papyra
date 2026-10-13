@@ -18,6 +18,19 @@ describe('Papyra toolbar', () => {
     expect(items).not.toContain('image');
   });
 
+  it('drops uploads and mentions where a shared note can’t use them', () => {
+    const ids = (items: ReturnType<typeof createToolbarItems>) =>
+      items.flatMap((i) => [i.id, ...(i.items ?? []).map((c) => c.id)]);
+    const full = ids(createToolbarItems());
+    expect(full).toEqual(expect.arrayContaining(['papyra.mention', 'papyra.upload-image', 'papyra.attach']));
+    const linkReader = ids(createToolbarItems({ uploads: false, mention: false }));
+    expect(linkReader).not.toContain('papyra.mention');
+    expect(linkReader).not.toContain('papyra.upload-image');
+    expect(linkReader).not.toContain('papyra.attach');
+    // Embeds need no upload: they stay.
+    expect(linkReader).toEqual(expect.arrayContaining(['papyra.embed-youtube', 'papyra.embed-web', 'papyra.image-link']));
+  });
+
   it('places every Papyra item the layout names', () => {
     const ids = createToolbarItems().map((i) => i.id);
     const placed = PAPYRA_TOOLBAR_LAYOUT.sections.flatMap((s) => s.items)

@@ -71,6 +71,10 @@ export function useSignalR(): ServerStatus {
     // A note shared with us was saved (by its live room or anyone else): the
     // Shared-with-me cards show its text. An open live note ignores this — its
     // content arrives through the room.
+    // Someone opened one of our share links: the share dialog's "views 2/5".
+    connection.on('ShareViewed', (e: { noteId?: string }) => {
+      if (e?.noteId) void queryClient.invalidateQueries({ queryKey: ['shares', e.noteId], exact: true });
+    });
     connection.on('SharedNoteUpdated', () => {
       void queryClient.invalidateQueries({ queryKey: ['shares', 'incoming'], exact: true });
     });
