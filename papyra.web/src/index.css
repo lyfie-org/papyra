@@ -229,8 +229,9 @@ html.is-mouse-selecting :is(.luthor-floating-toolbar, .comment-bubble) {
   .note-editor__scroll:has(.luthor-floating-toolbar) { z-index: 4; }
 }
 
-/* A file was chosen but the browser hasn't handed it over yet (lib/pickFile):
-   the pointer says "working" — and changing it makes the browser redraw it. */
+/* The file picker is open, or a chosen file hasn't been handed over yet
+   (lib/pickFile): a stock "working" pointer. Never the drawn I-beam above,
+   which Chromium on Windows can lose across the native dialog. */
 html.is-picking-file,
 html.is-picking-file * {
   cursor: progress !important;
