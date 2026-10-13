@@ -20,6 +20,19 @@ const ICON = { size: 16, strokeWidth: 2 } as const;
 export const PAPYRA_EDITOR_FEATURES = { youTubeEmbed: true, iframeEmbed: true } as const;
 
 /**
+ * Lexical theme classes luthor's theme leaves out. Dragging across table cells
+ * already makes a cell selection (whole rows, columns, the table — copy puts it
+ * on the clipboard as a real table), but Lexical marks the chosen cells and the
+ * table only through these two keys: without them nothing was painted, and the
+ * browser's own highlight stayed inside the first cell, so it looked like a
+ * drag could never leave it. index.css styles both.
+ */
+export const PAPYRA_EDITOR_THEME = {
+  tableCellSelected: 'papyra-table-cell-selected',
+  tableSelection: 'papyra-table-selection',
+};
+
+/**
  * A dozen controls instead of twenty-odd: the block style picker (shown short,
  * "H2"), the four text styles, the link, then groups that open a small row of
  * their tools (a group lights up while something inside it is on), then
