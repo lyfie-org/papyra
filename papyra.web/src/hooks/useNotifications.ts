@@ -9,7 +9,8 @@ export type NotificationKind =
   | 'access_denied'
   | 'comment'
   | 'comment_reply'
-  | 'comment_mention';
+  | 'comment_mention'
+  | 'collection_offer';
 
 /**
  * One entry in the bell. What it may show of the note (title, the mentioning
@@ -40,6 +41,9 @@ export interface AppNotification {
   requestPending: boolean;
   /** comment_* events: the thread to open the note at. */
   threadId?: number | null;
+  /** collection_offer: the collection as it was sent (name and rules JSON). */
+  collectionName?: string | null;
+  collectionRules?: string | null;
 }
 
 export const NOTIFICATIONS_KEY = ['notifications'] as const;
@@ -84,5 +88,24 @@ export function useDismissNotification() {
       queryClient.setQueryData<AppNotification[]>(NOTIFICATIONS_KEY, old => old?.filter(n => n.id !== id));
     },
     onSettled: () => queryClient.invalidateQueries({ queryKey: NOTIFICATIONS_KEY }),
+  });
+}
+
+/** Add the collection an offer carries; the offer leaves the tray. */
+export function useAcceptNotification() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (id: number): Promise<{ id: number; name: string }> => {
+      const res = await fetch(`/api/notifications/${id}/accept`, { method: 'POST' });
+      if (!res.ok) {
+        const body = await res.json().catch(() => null) as { error?: string } | null;
+        throw new Error(body?.error ?? (res.status === 404 ? 'That offer is gone.' : 'Couldn’t add it.'));
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      void queryClient.invalidateQueries({ queryKey: NOTIFICATIONS_KEY });
+      void queryClient.invalidateQueries({ queryKey: ['collections'] });
+    },
   });
 }

@@ -4515,6 +4515,79 @@ collections.MapGet("/{id:int}/notes", async (
         .Select(RedactSecure));
 });
 
+// ── Sharing a collection ─────────────────────────────────────────────────────────
+// A collection travels as its name and rules (SmartCollectionShare), never its notes:
+// copied as JSON and pasted into any account, or sent to someone here, who gets a
+// collection_offer in their tray and adds it with one click.
+
+// Make a collection in the caller's account from shared JSON, renamed if the name
+// is taken. Shared by import and by accepting an offer.
+async Task<SmartCollection> AddSharedCollection(AppDbContext db, int uid, string name, string rulesJson, CancellationToken ct)
+{
+    var taken = await db.SmartCollections.Where(c => c.UserId == uid).Select(c => c.Name).ToListAsync(ct);
+    var collection = new SmartCollection
+    {
+        UserId = uid,
+        Name = SmartCollectionShare.UniqueName(name, taken),
+        RulesJson = rulesJson,
+        CreatedUtc = DateTime.UtcNow,
+    };
+    db.SmartCollections.Add(collection);
+    await db.SaveChangesAsync(ct);
+    return collection;
+}
+
+collections.MapGet("/{id:int}/export", async (int id, ClaimsPrincipal user, AppDbContext db, CancellationToken ct) =>
+{
+    var uid = int.Parse(Uid(user));
+    var collection = await db.SmartCollections.FirstOrDefaultAsync(c => c.Id == id && c.UserId == uid, ct);
+    if (collection is null) return Results.NotFound();
+    try { return Results.Content(SmartCollectionShare.Write(collection.Name, collection.RulesJson), "application/json"); }
+    catch (JsonException) { return Results.BadRequest(new { error = "Stored rules are invalid." }); }
+})
+.WithSummary("A collection as shareable JSON")
+.WithDescription("Returns `{papyraCollection: 1, name, rules}` — the name and rules only, never notes. Paste it into `POST /api/collections/import` in any account.");
+
+collections.MapPost("/import", async (JsonElement body, ClaimsPrincipal user, AppDbContext db, CancellationToken ct) =>
+{
+    if (!SmartCollectionShare.TryRead(body.GetRawText(), out var name, out var rulesJson, out var error))
+        return Results.BadRequest(new { error });
+    var collection = await AddSharedCollection(db, int.Parse(Uid(user)), name, rulesJson, ct);
+    return Results.Ok(new { collection.Id, collection.Name, collection.RulesJson, collection.CreatedUtc });
+})
+.WithSummary("Add a collection from shared JSON")
+.WithDescription("Takes the `{papyraCollection, name, rules}` JSON from an export. Unknown rule fields are refused; a taken name gets a number.");
+
+collections.MapPost("/{id:int}/send", async (
+    int id, CollectionSendWrite body, ClaimsPrincipal user, AppDbContext db,
+    IHubContext<NotesHub> hub, CancellationToken ct) =>
+{
+    var uid = int.Parse(Uid(user));
+    var collection = await db.SmartCollections.FirstOrDefaultAsync(c => c.Id == id && c.UserId == uid, ct);
+    if (collection is null) return Results.NotFound();
+
+    var uname = body.Username?.Trim().TrimStart('@');
+    if (string.IsNullOrWhiteSpace(uname)) return Results.BadRequest(new { error = "Who should get it?" });
+    var recipient = await db.Users.FirstOrDefaultAsync(u => u.Username == uname, ct);
+    if (recipient is null) return Results.NotFound(new { error = $"There's no one called “{uname}” here." });
+    if (recipient.Id == uid) return Results.BadRequest(new { error = "This collection is already yours." });
+
+    string payload;
+    try { payload = SmartCollectionShare.Write(collection.Name, collection.RulesJson); }
+    catch (JsonException) { return Results.BadRequest(new { error = "Stored rules are invalid." }); }
+
+    db.Notifications.Add(new Notification
+    {
+        UserId = recipient.Id, Kind = "collection_offer", ActorUserId = uid, OwnerId = uid,
+        Payload = payload, CreatedUtc = DateTime.UtcNow,
+    });
+    await db.SaveChangesAsync(ct);
+    await hub.Clients.User(recipient.Id.ToString()).SendAsync("NotificationsChanged", ct);
+    return Results.Ok(new { recipient = recipient.Username });
+})
+.WithSummary("Send a collection to someone")
+.WithDescription("The recipient gets a notification and adds a copy of the collection (name and rules, as they are now) with `POST /api/notifications/{id}/accept`.");
+
 // ── Webhooks (event-driven outbound) ──────────────────────────────────────────────
 // Register a URL to receive HMAC-signed JSON when NoteCreated/TagAdded/PinToggled
 // fires for the caller's notes. The secret is returned once at creation (stored in
@@ -5616,6 +5689,10 @@ notifications.MapGet("/", async (ClaimsPrincipal user, AppDbContext db, VaultSta
 
         var request = n.AccessRequestId is { } rid ? requests.GetValueOrDefault(rid) : null;
         var actor = actors.GetValueOrDefault(n.ActorUserId);
+        // An offered collection carries itself; there is no note behind it.
+        string? collectionName = null, collectionRules = null;
+        var offer = n.Kind == "collection_offer"
+            && SmartCollectionShare.TryRead(n.Payload, out collectionName, out collectionRules, out _);
         return new
         {
             n.Id, n.Kind, n.CreatedUtc, n.ReadUtc, n.NoteId, n.Access,
@@ -5623,7 +5700,9 @@ notifications.MapGet("/", async (ClaimsPrincipal user, AppDbContext db, VaultSta
             actorName = actor?.Name,
             title = visible ? note!.Title : null,
             text,
-            available,
+            available = n.Kind == "collection_offer" ? offer : available,
+            collectionName = offer ? collectionName : null,
+            collectionRules = offer ? collectionRules : null,
             mine,
             shareId = share?.Id,
             shareAccess = share?.Access,
@@ -5652,6 +5731,24 @@ notifications.MapPost("/read", async (ClaimsPrincipal user, AppDbContext db, Can
     return Results.Ok(new { marked });
 })
 .WithSummary("Mark all notifications read");
+
+// Take what a notification offers. Today that is a collection: a copy of it is
+// added to the caller's account (renamed if the name is taken) and the entry goes.
+notifications.MapPost("/{id:int}/accept", async (int id, ClaimsPrincipal user, AppDbContext db, CancellationToken ct) =>
+{
+    var uid = int.Parse(Uid(user));
+    var n = await db.Notifications.FirstOrDefaultAsync(x => x.Id == id && x.UserId == uid && x.DismissedUtc == null, ct);
+    if (n is null) return Results.NotFound();
+    if (n.Kind != "collection_offer") return Results.BadRequest(new { error = "There's nothing to accept here." });
+    if (!SmartCollectionShare.TryRead(n.Payload, out var name, out var rulesJson, out var error))
+        return Results.BadRequest(new { error });
+
+    n.DismissedUtc = DateTime.UtcNow;
+    n.ReadUtc ??= n.DismissedUtc;
+    var collection = await AddSharedCollection(db, uid, name, rulesJson, ct);
+    return Results.Ok(new { collection.Id, collection.Name, collection.RulesJson, collection.CreatedUtc });
+})
+.WithSummary("Accept an offered collection");
 
 notifications.MapDelete("/{id:int}", async (int id, ClaimsPrincipal user, AppDbContext db, CancellationToken ct) =>
 {
@@ -7966,6 +8063,7 @@ public sealed record GitConfigWrite(string? RemoteUrl, string? Branch, string? T
 
 // Smart-collection creation: a display name + the serialized AND/OR rule set.
 public sealed record SmartCollectionWrite(string? Name, string? RulesJson);
+public sealed record CollectionSendWrite(string? Username);
 
 // Set/change the vault PIN, with one proof of ownership (see POST /api/auth/vault/pin).
 public sealed record VaultPinSetRequest(string? Pin, string? CurrentPin = null, string? Password = null);
