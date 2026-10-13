@@ -6,6 +6,12 @@ a Docker Hub tag and a GitHub Release.
 
 <!-- new releases are inserted directly below this line -->
 
+## [0.4.9] - 2026-10-13
+
+- feat: links follow a note's new title, mentions follow a new username (549c87c)
+- feat: visible progress for every background action; send notices off-request (0500b6d)
+- feat: let API-key agents edit live notes (merge, presence, section patches) (2f2df9c)
+
 ## [0.4.8] - 2026-10-13
 
 - fix: drawn I-beam also below the last line on coloured dark-mode notes (ccce03d)
