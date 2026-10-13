@@ -273,8 +273,8 @@ public static partial class CommentEndpoints
                 _ => $"@{author} commented on your note",
             };
             // The comment, not the note: the note body never leaves Papyra by mail.
-            await email.NotifyAsync(r, NotificationCatalog.Comments, subject,
-                $"{subject}:\n\n“{Clip(comment.Body, 400)}”\n\nReply in Papyra: {url}/?notifications=1", ct: ct);
+            email.NotifyInBackground(r, NotificationCatalog.Comments, subject,
+                $"{subject}:\n\n“{Clip(comment.Body, 400)}”\n\nReply in Papyra: {url}/?notifications=1");
         }
     }
 

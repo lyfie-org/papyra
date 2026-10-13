@@ -11,6 +11,7 @@ import {
 import './NoteHistory.css';
 import LoadingBar from './LoadingBar';
 
+import BusyButton from './BusyButton';
 export type HistoryView = 'preview' | 'changes';
 
 export interface HistoryVersion {
@@ -321,14 +322,14 @@ export default function NoteHistory({ noteId, live, onPreview, onRestore, onClos
             <span className="note-history__pos">
               {atNow ? `${count} earlier version${count === 1 ? '' : 's'}` : `${index + 1} of ${count}`}
             </span>
-            <button
+            <BusyButton
               type="button"
               className="note-history__restore"
-              disabled={atNow || restoring || loaded === null}
+              disabled={atNow || loaded === null} busy={restoring} busyLabel="Restoring…"
               onClick={() => void restore()}
             >
-              <RotateCcw size={15} /> {restoring ? 'Restoring…' : 'Restore this version'}
-            </button>
+              <RotateCcw size={15} /> Restore this version
+            </BusyButton>
           </div>
         )}
       </section>

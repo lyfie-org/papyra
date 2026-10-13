@@ -7,6 +7,7 @@ import './ConflictResolver.css';
 import { useDialogFocus } from '../hooks/useDialogFocus';
 import LoadingBar from './LoadingBar';
 
+import BusyButton from './BusyButton';
 // One conflict's two sides, fetched on open. Left = the parent note as Papyra has
 // it; right = the sync tool's conflicting copy.
 interface ConflictDetail {
@@ -35,7 +36,8 @@ export default function ConflictResolver({ conflictId, onClose }: Props) {
   const queryClient = useQueryClient();
   const [detail, setDetail] = useState<ConflictDetail | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [resolving, setResolving] = useState(false);
+  // Which way it is being resolved, so that button (and only it) shows it.
+  const [resolving, setResolving] = useState<Keep | null>(null);
 
   useEffect(() => {
     let live = true;
@@ -53,7 +55,7 @@ export default function ConflictResolver({ conflictId, onClose }: Props) {
   }, [conflictId]);
 
   const resolve = useCallback(async (keep: Keep) => {
-    setResolving(true);
+    setResolving(keep);
     try {
       const res = await fetch(`/api/conflicts/${encodeURIComponent(conflictId)}/resolve`, {
         method: 'POST',
@@ -66,7 +68,7 @@ export default function ConflictResolver({ conflictId, onClose }: Props) {
       onClose();
     } catch {
       setError('Resolving failed.');
-      setResolving(false);
+      setResolving(null);
     }
   }, [conflictId, queryClient, onClose]);
 
@@ -115,30 +117,36 @@ export default function ConflictResolver({ conflictId, onClose }: Props) {
         </div>
 
         <footer className="conflict-resolver__actions">
-          <button
+          <BusyButton
             type="button"
             className="conflict-resolver__btn"
-            disabled={resolving || detail === null}
+            disabled={(resolving !== null && resolving !== 'left') || detail === null}
+            busy={resolving === 'left'}
+            busyLabel="Keeping…"
             onClick={() => void resolve('left')}
           >
             <ArrowLeft size={16} /> Keep Left
-          </button>
-          <button
+          </BusyButton>
+          <BusyButton
             type="button"
             className="conflict-resolver__btn"
-            disabled={resolving || detail === null}
+            disabled={(resolving !== null && resolving !== 'both') || detail === null}
+            busy={resolving === 'both'}
+            busyLabel="Keeping…"
             onClick={() => void resolve('both')}
           >
             <Copy size={16} /> Keep Both
-          </button>
-          <button
+          </BusyButton>
+          <BusyButton
             type="button"
             className="conflict-resolver__btn conflict-resolver__btn--primary"
-            disabled={resolving || detail === null}
+            disabled={(resolving !== null && resolving !== 'right') || detail === null}
+            busy={resolving === 'right'}
+            busyLabel="Keeping…"
             onClick={() => void resolve('right')}
           >
             Keep Right <ArrowRight size={16} />
-          </button>
+          </BusyButton>
         </footer>
       </div>
     </div>

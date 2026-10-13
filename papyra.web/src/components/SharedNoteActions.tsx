@@ -17,6 +17,7 @@ import './CardMenu.css';
 import './ShareDialog.css';
 import './SharedNoteActions.css';
 
+import BusyButton from './BusyButton';
 function stop(e: React.SyntheticEvent) {
   e.preventDefault();
   e.stopPropagation();
@@ -252,9 +253,9 @@ function ReshareDialog({ share, onClose }: { share: SharedActionsShare; onClose:
           <option value="view">Can view</option>
           <option value="edit">Can edit</option>
         </select>
-        <button type="button" className="share__btn" disabled={reshare.isPending} onClick={() => void add()}>
+        <BusyButton type="button" className="share__btn" busy={reshare.isPending} busyLabel="Adding…" onClick={() => void add()}>
           <Plus size={15} /> Add
-        </button>
+        </BusyButton>
       </div>
       {done.length > 0 && (
         <ul className="shared-actions__done" role="status">

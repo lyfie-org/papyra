@@ -8,6 +8,7 @@ import { usernameRule } from '../lib/profileRules';
 import { zoneCity, zoneOffsetLabel } from '../lib/timeZone';
 import { NO_AUTOFILL } from '../lib/autofill';
 
+import BusyButton from './BusyButton';
 type Saved = { ok: true } | { ok: false; error: string; field?: string; code?: string };
 
 /** PUT only the fields given; the server leaves the rest as they are. */
@@ -29,7 +30,7 @@ async function saveProfile(fields: Record<string, unknown>): Promise<Saved> {
 function Actions({ busy, disabled, onCancel, label = 'Save' }: { busy: boolean; disabled?: boolean; onCancel: () => void; label?: string }) {
   return (
     <div className="settings__form-actions">
-      <button type="submit" className="settings__btn" disabled={busy || disabled}>{busy ? 'Saving…' : label}</button>
+      <BusyButton type="submit" className="settings__btn" disabled={disabled} busy={busy} busyLabel="Saving…">{label}</BusyButton>
       <button type="button" className="settings__btn settings__btn--quiet" onClick={onCancel}>Cancel</button>
     </div>
   );

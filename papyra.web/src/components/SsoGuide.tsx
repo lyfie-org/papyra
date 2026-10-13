@@ -12,6 +12,7 @@ import { ICON_CHOICES, KIND_ICON, iconLabel } from '../lib/ssoIcons';
 import { SsoIcon } from './SsoIcon';
 import './SsoGuide.css';
 
+import BusyButton from './BusyButton';
 interface Kind {
   id: SsoKind;
   name: string;
@@ -281,12 +282,12 @@ export function SsoGuide({ provider, taken, redirectUriPrefix, onDone }: {
           <h3 className="sso-guide__step-title">Test and turn on</h3>
           <div className="settings__form">
             <div className="settings__form-actions">
-              <button type="button" className="settings__btn settings__btn--quiet" disabled={!authority.trim() || testing} onClick={() => void runTest()}>
-                {testing ? 'Testing…' : 'Test connection'}
-              </button>
-              <button type="button" className="settings__btn" disabled={!complete || save.isPending} onClick={() => store(true)}>
-                {save.isPending ? 'Saving…' : provider?.enabled ? 'Save' : 'Turn on'}
-              </button>
+              <BusyButton type="button" className="settings__btn settings__btn--quiet" disabled={!authority.trim()} busy={testing} busyLabel="Testing…" onClick={() => void runTest()}>
+                Test connection
+              </BusyButton>
+              <BusyButton type="button" className="settings__btn" disabled={!complete} busy={save.isPending} busyLabel="Saving…" onClick={() => store(true)}>
+                {provider?.enabled ? 'Save' : 'Turn on'}
+              </BusyButton>
               <button type="button" className="settings__btn settings__btn--quiet" disabled={!name.trim() || save.isPending} onClick={() => store(false)}>
                 {provider?.enabled ? 'Turn off' : 'Save, keep off'}
               </button>
@@ -359,7 +360,7 @@ export default function SsoSettings() {
               <span className="setting-row__hint sso-row__uri">{p.redirectUri}</span>
             </div>
             <button type="button" className="setting-row__action" onClick={() => setEditing(p.id)}>Edit</button>
-            <button type="button" className="setting-row__action" onClick={() => void drop(p)}>Remove</button>
+            <BusyButton type="button" className="setting-row__action" onClick={() => drop(p)} busyLabel="Removing…">Remove</BusyButton>
           </div></div>
         ))}
         {data.providers.length > 0 && (

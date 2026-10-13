@@ -8,6 +8,7 @@ import { requestEmailCode } from '../lib/emailCode';
 import { SsoIcon } from '../components/SsoIcon';
 import './AuthForm.css';
 
+import BusyButton from '../components/BusyButton';
 /** What /api/auth/providers says to show (see SsoSettings). */
 interface SsoOptions {
   display: 'buttons' | 'icons';
@@ -205,9 +206,9 @@ export default function LoginPage() {
             label="Code"
             onEmail={step2.canEmail ? () => requestEmailCode('/api/auth/login/2fa/email', { ticket: step2.ticket }) : undefined}
           />
-          <button className="auth__submit" type="submit" disabled={busy || code.length !== 6}>
-            {busy ? 'Checking…' : 'Sign in'}
-          </button>
+          <BusyButton className="auth__submit" type="submit" disabled={code.length !== 6} busy={busy} busyLabel="Checking…">
+            Sign in
+          </BusyButton>
           <button type="button" className="auth__link" onClick={() => { setStep2(null); setError(null); }}>
             <ArrowLeft size={12} aria-hidden="true" /> Back
           </button>
@@ -237,9 +238,9 @@ export default function LoginPage() {
           Remember this device
         </label>
 
-        <button className="auth__submit" type="submit" disabled={busy}>
-          {busy ? 'Signing in…' : 'Sign in'}
-        </button>
+        <BusyButton className="auth__submit" type="submit" busy={busy} busyLabel="Signing in…">
+          Sign in
+        </BusyButton>
 
         {/* Always offered. Whether a reset can actually be emailed depends on the
             instance having SMTP configured, and the endpoint answers identically
@@ -264,14 +265,14 @@ export default function LoginPage() {
                 autoComplete="username"
               />
             </label>
-            <button
+            <BusyButton
               type="button"
               className="auth__submit"
-              disabled={forgotBusy}
+              busy={forgotBusy} busyLabel="Sending…"
               onClick={() => void requestReset()}
             >
-              {forgotBusy ? 'Sending…' : 'Email me a reset link'}
-            </button>
+              Email me a reset link
+            </BusyButton>
             {forgotMsg && <p className="auth__tagline">{forgotMsg}</p>}
           </div>
         )}
@@ -279,9 +280,9 @@ export default function LoginPage() {
         {(canPasskey || sso) && <div className="auth__divider"><span>or</span></div>}
 
         {canPasskey && (
-          <button type="button" className="auth__sso auth__passkey" disabled={busy} onClick={() => void passkeySignIn()}>
+          <BusyButton type="button" className="auth__sso auth__passkey" disabled={busy} onClick={() => passkeySignIn()} busyLabel="Waiting for your device…">
             <Fingerprint size={17} aria-hidden="true" /> Sign in with a passkey
-          </button>
+          </BusyButton>
         )}
 
         {sso && sso.display === 'buttons' && sso.providers.map(p => (

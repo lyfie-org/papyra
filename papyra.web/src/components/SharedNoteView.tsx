@@ -33,6 +33,7 @@ import { resolveCard, resolveEmbed } from '../lib/embedResolve';
 import './NoteToolbar.css';
 import './SharedNoteView.css';
 
+import BusyButton from './BusyButton';
 export interface SharedNote {
   title: string;
   body: string;
@@ -376,14 +377,16 @@ export default function SharedNoteView({
               ? <>You asked {note.owner ? `@${note.owner}` : 'the owner'} for edit access. You’ll be able to edit as soon as they approve.</>
               : <>Want to make changes? Ask {note.owner ? `@${note.owner}` : 'the owner'} for edit access.</>}
           </p>
-          <button
+          <BusyButton
             type="button"
             className="shared-note__request-btn"
-            disabled={note.requestPending || requesting}
+            disabled={note.requestPending}
+            busy={requesting}
+            busyLabel="Sending…"
             onClick={() => void requestEdit()}
           >
-            {note.requestPending ? 'Requested' : requesting ? 'Sending…' : 'Request edit access'}
-          </button>
+            {note.requestPending ? 'Requested' : 'Request edit access'}
+          </BusyButton>
         </div>
       )}
 

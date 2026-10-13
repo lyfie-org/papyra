@@ -12,6 +12,7 @@ import LoadingBar from './LoadingBar';
 import './ConfirmDialog.css';
 import './LogsPanel.css';
 
+import BusyButton from './BusyButton';
 // Settings → Logs (admin). What the instance did and what went wrong, kept for
 // as long as the admin chooses. The server scrubs every entry of personal data
 // (no names, titles, ids, paths, addresses), so one can be copied straight
@@ -100,9 +101,9 @@ export default function LogsPanel() {
           ))}
         </div>
         {entries.length > 0 && (
-          <button type="button" className="logs__clear" onClick={() => void clearAll()} disabled={clear.isPending}>
+          <BusyButton type="button" className="logs__clear" onClick={() => void clearAll()} busy={clear.isPending} busyLabel="Clearing…">
             <Trash2 size={14} aria-hidden="true" /> Clear
-          </button>
+          </BusyButton>
         )}
       </div>
 
@@ -130,14 +131,14 @@ export default function LogsPanel() {
       )}
 
       {logs.hasNextPage && (
-        <button
+        <BusyButton
           type="button"
           className="settings__btn settings__btn--ghost logs__more"
-          disabled={logs.isFetchingNextPage}
+          busy={logs.isFetchingNextPage} busyLabel="Loading…"
           onClick={() => void logs.fetchNextPage()}
         >
-          {logs.isFetchingNextPage ? 'Loading…' : 'Load more'}
-        </button>
+          Load more
+        </BusyButton>
       )}
 
       {open && <LogEntryDialog entry={open} onClose={() => setOpen(null)} />}

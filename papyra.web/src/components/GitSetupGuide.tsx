@@ -22,6 +22,8 @@ const CLASSIC_TOKEN_URL =
 
 import { normaliseRepoUrl, repoLabel } from '../lib/gitUrl';
 
+import BusyButton from './BusyButton';
+import { useActivityTask } from '../hooks/useBusy';
 function when(iso: string | null): string {
   if (!iso) return 'Not yet';
   return new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
@@ -36,6 +38,8 @@ function when(iso: string | null): string {
 export default function GitSetupGuide() {
   const { data } = useGitConfig();
   const run = useRunGitSync();
+  // A push of the whole vault can take a while: name it where it can be seen.
+  useActivityTask(run.isPending && 'Backing up to GitHub');
   const save = useSaveGitConfig();
   const [guideOpen, setGuideOpen] = useState(false);
   const [switching, setSwitching] = useState(false);
@@ -93,10 +97,10 @@ export default function GitSetupGuide() {
               </p>
             )}
             <div className="git-card__actions">
-              <button type="button" className="settings__btn" disabled={run.isPending} onClick={() => run.mutate()}>
-                <RefreshCw size={15} className={run.isPending ? 'git-spin' : undefined} aria-hidden="true" />
-                {run.isPending ? 'Backing up…' : 'Back up now'}
-              </button>
+              <BusyButton type="button" className="settings__btn" busy={run.isPending} busyLabel="Backing up…" onClick={() => run.mutate()}>
+                <RefreshCw size={15} aria-hidden="true" />
+                Back up now
+              </BusyButton>
               <button type="button" className="settings__btn settings__btn--ghost" onClick={() => setGuideOpen(true)}>
                 Change repository or token
               </button>
@@ -160,6 +164,8 @@ function SetupGuide({ initialUrl, hasToken, onClose }: { initialUrl: string; has
   useDialogFocus(sheet);
   const save = useSaveGitConfig();
   const run = useRunGitSync();
+  // A push of the whole vault can take a while: name it where it can be seen.
+  useActivityTask(run.isPending && 'Backing up to GitHub');
 
   const [step, setStep] = useState(initialUrl ? 1 : 0);
   const [repoInput, setRepoInput] = useState(initialUrl.replace(/\.git$/, ''));
@@ -413,13 +419,14 @@ function SetupGuide({ initialUrl, hasToken, onClose }: { initialUrl: string; has
             </button>
           )}
           {step === 3 && !finished && probe && !probe.ok && (
-            <button type="button" className="git-card__cta" onClick={() => void check()}>Check again</button>
+            <BusyButton type="button" className="git-card__cta" busy={checking} busyLabel="Checking…" onClick={() => void check()}>Check again</BusyButton>
           )}
           {step === 3 && !finished && probe?.ok && (
-            <button type="button" className="git-card__cta"
-              disabled={save.isPending || run.isPending || (mode === 'encrypted' && !password)} onClick={() => void finish()}>
-              {save.isPending || run.isPending ? 'Backing up…' : 'Save and back up now'}
-            </button>
+            <BusyButton type="button" className="git-card__cta"
+              disabled={mode === 'encrypted' && !password} busy={save.isPending || run.isPending} busyLabel="Backing up…"
+              onClick={() => void finish()}>
+              Save and back up now
+            </BusyButton>
           )}
           {finished && <button type="button" className="git-card__cta" onClick={onClose}>Done</button>}
         </footer>}
@@ -463,9 +470,10 @@ function ModeSwitch({ to, remoteUrl, branch, onDone, onCancel }: {
       )}
       {error && <p className="settings__error" role="alert">{error}</p>}
       <div className="git-card__actions">
-        <button type="button" className="settings__btn" disabled={save.isPending || (to === 'encrypted' && !password)} onClick={() => void apply()}>
+        <BusyButton type="button" className="settings__btn" disabled={to === 'encrypted' && !password}
+          busy={save.isPending} busyLabel={to === 'encrypted' ? 'Encrypting…' : 'Switching…'} onClick={() => void apply()}>
           {to === 'encrypted' ? 'Encrypt and back up' : 'Switch to readable files'}
-        </button>
+        </BusyButton>
         <button type="button" className="settings__btn settings__btn--ghost" onClick={onCancel}>Cancel</button>
       </div>
     </div>

@@ -21,6 +21,7 @@ import logo from '../assets/papyra_logo.png';
 import './AuthForm.css';
 import './SetupPage.css';
 
+import BusyButton from '../components/BusyButton';
 // The first-run wizard for a brand-new Papyra. Before the account exists:
 //   welcome (fresh, or restore a backup first) → username → authenticator →
 //   email → code → password → vault PIN → time zone → create.
@@ -335,8 +336,8 @@ export default function SetupPage() {
               <input value={totpCode} onChange={e => { setTotpCode(e.target.value.replace(/\D/g, '')); setTotpProven(false); }} inputMode="numeric"
                 autoComplete="one-time-code" maxLength={6} required className="setup__code" />
             </label>
-            <Nav onBack={() => go('username')} nextDisabled={!totp || totpCode.length !== 6 || busy}
-              nextLabel={busy ? 'Checking…' : totpProven ? 'Continue' : 'Verify'} />
+            <Nav onBack={() => go('username')} nextDisabled={!totp || totpCode.length !== 6}
+              busy={busy} busyLabel="Checking…" nextLabel={totpProven ? 'Continue' : 'Verify'} />
           </form>
         )}
 
@@ -362,8 +363,8 @@ export default function SetupPage() {
               <input value={code} onChange={e => setCode(e.target.value.replace(/\D/g, ''))} inputMode="numeric"
                 autoComplete="one-time-code" maxLength={6} autoFocus required className="setup__code" />
             </label>
-            <button type="button" className="setup__link" disabled={busy} onClick={() => void sendCode()}>Send a new code</button>
-            <Nav onBack={() => go('email')} nextDisabled={code.length !== 6 || busy} nextLabel={busy ? 'Checking…' : 'Verify'} />
+            <BusyButton type="button" className="setup__link" disabled={busy} onClick={() => sendCode()} busyLabel="Sending…">Send a new code</BusyButton>
+            <Nav onBack={() => go('email')} nextDisabled={code.length !== 6} busy={busy} busyLabel="Checking…" nextLabel="Verify" />
           </form>
         )}
 
@@ -408,8 +409,8 @@ export default function SetupPage() {
             <h1 className="auth__title">Your time zone</h1>
             <p className="auth__tagline">Pick your country, then the zone within it. We guessed from this browser.</p>
             <TimeZonePicker value={zone} onChange={setZone} allowDefault={false} />
-            <Nav onBack={() => go('pin')} nextDisabled={!zone || busy}
-              nextLabel={busy ? (restoreId ? 'Creating and restoring…' : 'Creating…') : 'Create account'} />
+            <Nav onBack={() => go('pin')} nextDisabled={!zone}
+              busy={busy} busyLabel={restoreId ? 'Creating and restoring…' : 'Creating…'} nextLabel="Create account" />
           </form>
         )}
 
@@ -452,9 +453,9 @@ export default function SetupPage() {
             </div>
             <div className="setup__nav">
               <button type="button" className="setup__back" onClick={() => go('import')}><ArrowLeft size={15} aria-hidden="true" /> Back</button>
-              <button type="button" className="auth__submit" disabled={busy} onClick={() => void finish()}>
+              <BusyButton type="button" className="auth__submit" busy={busy} busyLabel="Opening…" onClick={() => void finish()}>
                 Open Papyra <ArrowRight size={15} aria-hidden="true" />
-              </button>
+              </BusyButton>
             </div>
           </section>
         )}
@@ -463,13 +464,15 @@ export default function SetupPage() {
   );
 }
 
-function Nav({ onBack, nextDisabled, nextLabel = 'Next' }: { onBack: () => void; nextDisabled: boolean; nextLabel?: string }) {
+function Nav({ onBack, nextDisabled, nextLabel = 'Next', busy = false, busyLabel }: {
+  onBack: () => void; nextDisabled: boolean; nextLabel?: string; busy?: boolean; busyLabel?: string;
+}) {
   return (
     <div className="setup__nav">
-      <button type="button" className="setup__back" onClick={onBack}><ArrowLeft size={15} aria-hidden="true" /> Back</button>
-      <button type="submit" className="auth__submit" disabled={nextDisabled}>
+      <button type="button" className="setup__back" onClick={onBack} disabled={busy}><ArrowLeft size={15} aria-hidden="true" /> Back</button>
+      <BusyButton type="submit" className="auth__submit" disabled={nextDisabled} busy={busy} busyLabel={busyLabel}>
         {nextLabel} <ArrowRight size={15} aria-hidden="true" />
-      </button>
+      </BusyButton>
     </div>
   );
 }
@@ -571,7 +574,7 @@ function RestoreStep({ onStaged, onBack }: { onStaged: (id: string, summary: Bac
         </>
       )}
       {error && <p className="setup__field-error" role="alert"><TriangleAlert size={14} aria-hidden="true" /> {error}</p>}
-      <Nav onBack={onBack} nextDisabled={!ready || busy} nextLabel={busy ? 'Opening backup…' : 'Open backup'} />
+      <Nav onBack={onBack} nextDisabled={!ready} busy={busy} busyLabel="Opening backup…" nextLabel="Open backup" />
     </form>
   );
 }
@@ -644,9 +647,9 @@ function EmailStep({ email, setEmail, emailConfigured, busy, onConfigured, onSen
             <input type="checkbox" checked={useSsl} onChange={e => setUseSsl(e.target.checked)} /> Use TLS
           </label>
           <div className="setup__row">
-            <button type="button" className="auth__submit" disabled={!valid || !host.trim() || saving || busy} onClick={() => void saveSmtp()}>
-              {saving || busy ? 'Sending…' : 'Save and send code'}
-            </button>
+            <BusyButton type="button" className="auth__submit" disabled={!valid || !host.trim()} busy={saving || busy} busyLabel="Sending…" onClick={() => void saveSmtp()}>
+              Save and send code
+            </BusyButton>
             <button type="button" className="setup__link" onClick={onSkip} disabled={!valid}>
               Skip — set up email later (the address won’t be verified)
             </button>
@@ -656,9 +659,9 @@ function EmailStep({ email, setEmail, emailConfigured, busy, onConfigured, onSen
       <div className="setup__nav">
         <button type="button" className="setup__back" onClick={onBack}><ArrowLeft size={15} aria-hidden="true" /> Back</button>
         {emailConfigured && (
-          <button type="submit" className="auth__submit" disabled={!valid || busy}>
-            {busy ? 'Sending…' : 'Send code'} <ArrowRight size={15} aria-hidden="true" />
-          </button>
+          <BusyButton type="submit" className="auth__submit" disabled={!valid} busy={busy} busyLabel="Sending…">
+            Send code <ArrowRight size={15} aria-hidden="true" />
+          </BusyButton>
         )}
       </div>
     </form>

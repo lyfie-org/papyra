@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { CheckCircle2, Loader2, TriangleAlert } from 'lucide-react';
+import { CheckCircle2, TriangleAlert } from 'lucide-react';
 import { useQueryClient } from '@tanstack/react-query';
 import { restoreFromGit, type BackupSummary } from '../hooks/useGitSync';
 import { summaryLine } from '../lib/backupSummary';
@@ -7,6 +7,8 @@ import { MASKED_SECRET, NO_AUTOFILL } from '../lib/autofill';
 import { normaliseRepoUrl, repoLabel } from '../lib/gitUrl';
 import './GitRestorePanel.css';
 
+import BusyButton from './BusyButton';
+import { track } from '../lib/progress';
 /**
  * Pull a GitHub backup back into this account — readable or encrypted, the
  * current layout or an older Papyra's. Used in Settings → Backup and in the
@@ -41,10 +43,10 @@ export default function GitRestorePanel({
     setBusy(true);
     setError(null);
     try {
-      const res = await restoreFromGit({
+      const res = await track(restoreFromGit({
         remoteUrl: repoUrl, branch: branch.trim() || 'main', token: token.trim(),
         password: password || undefined, keepSyncing, accountPassword,
-      });
+      }), 'Restoring from GitHub');
       if (!res.ok) {
         if (res.code === 'password_required' || res.code === 'password_wrong') setNeedsPassword(true);
         setError(res.error);
@@ -110,9 +112,9 @@ export default function GitRestorePanel({
       )}
       {error && <p className="git-restore__bad" role="alert"><TriangleAlert size={15} aria-hidden="true" /> {error}</p>}
       <div>
-        <button type="button" className="settings__btn" disabled={!ready || busy} onClick={() => void restore()}>
-          {busy ? <><Loader2 size={15} className="git-spin" aria-hidden="true" /> Restoring…</> : 'Restore from GitHub'}
-        </button>
+        <BusyButton type="button" className="settings__btn" disabled={!ready} busy={busy} busyLabel="Restoring…" onClick={() => void restore()}>
+          Restore from GitHub
+        </BusyButton>
       </div>
     </div>
   );

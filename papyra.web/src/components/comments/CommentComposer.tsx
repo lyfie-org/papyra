@@ -2,6 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState, type KeyboardEvent } from
 import Avatar from '../Avatar';
 import type { CommentPerson } from '../../hooks/useComments';
 
+import BusyButton from '../BusyButton';
 const MAX = 4000;
 
 /** The @handle being typed just before the caret, if any. */
@@ -137,10 +138,10 @@ export default function CommentComposer({
         <div className="comment-composer__actions">
           <span className="comment-composer__hint">@ to mention · Ctrl+Enter to send</span>
           {onCancel && <button type="button" className="comment-btn" onClick={onCancel}>Cancel</button>}
-          <button type="button" className="comment-btn comment-btn--primary" disabled={!text.trim() || busy}
+          <BusyButton type="button" className="comment-btn comment-btn--primary" disabled={!text.trim()} busy={busy} busyLabel="Sending…"
             onMouseDown={(e) => e.preventDefault()} onClick={() => void submit()}>
             {submitLabel}
-          </button>
+          </BusyButton>
         </div>
       )}
     </div>

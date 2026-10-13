@@ -10,6 +10,7 @@ import { useAnswerAccessRequest, useRequestAccess } from '../hooks/useShares';
 import { useToast } from '../lib/toastContext';
 import './NotificationBell.css';
 
+import BusyButton from './BusyButton';
 /** "just now", "5m", "3h", "2d", then a date. */
 function ago(iso: string): string {
   // Server timestamps are UTC; some arrive without a zone marker.
@@ -191,12 +192,18 @@ function Item({ n, onNavigate }: { n: AppNotification; onNavigate: () => void })
                 <option value="edit">Can edit</option>
                 <option value="view">Can view</option>
               </select>
-              <button type="button" className="notif__btn" disabled={answer.isPending} onClick={() => void decide(false)}>
+              <BusyButton type="button" className="notif__btn"
+                disabled={answer.isPending && answer.variables?.approve !== false}
+                busy={answer.isPending && answer.variables?.approve === false} busyLabel="Declining…"
+                onClick={() => void decide(false)}>
                 Decline
-              </button>
-              <button type="button" className="notif__btn notif__btn--go" disabled={answer.isPending} onClick={() => void decide(true)}>
+              </BusyButton>
+              <BusyButton type="button" className="notif__btn notif__btn--go"
+                disabled={answer.isPending && answer.variables?.approve !== true}
+                busy={answer.isPending && answer.variables?.approve === true} busyLabel="Approving…"
+                onClick={() => void decide(true)}>
                 Approve
-              </button>
+              </BusyButton>
             </div>
           ) : (
             <p className="notif__muted">{n.requestStatus === 'approved' ? 'Approved' : 'Declined'}</p>
@@ -235,10 +242,12 @@ function MentionAccess({ n }: { n: AppNotification }) {
     <div className="notif__locked">
       <Lock size={13} aria-hidden="true" />
       <span>{n.requestPending ? 'Access requested' : 'Not shared with you'}</span>
-      <button
+      <BusyButton
         type="button"
         className="notif__btn notif__btn--go"
-        disabled={n.requestPending || request.isPending}
+        disabled={n.requestPending}
+        busy={request.isPending}
+        busyLabel="Asking…"
         onClick={async () => {
           try {
             await request.mutateAsync({ notificationId: n.id, access: 'edit' });
@@ -247,7 +256,7 @@ function MentionAccess({ n }: { n: AppNotification }) {
         }}
       >
         {n.requestPending ? 'Requested' : 'Request access'}
-      </button>
+      </BusyButton>
     </div>
   );
 }

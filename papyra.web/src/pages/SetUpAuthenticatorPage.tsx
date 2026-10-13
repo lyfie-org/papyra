@@ -4,6 +4,7 @@ import TotpQr from '../components/TotpQr';
 import CodeField from '../components/CodeField';
 import './ChoosePasswordPage.css';
 
+import BusyButton from '../components/BusyButton';
 /**
  * The one-time screen an account without an authenticator meets after signing
  * in (a new account, or one an admin reset). The server refuses the rest of the
@@ -82,10 +83,10 @@ export default function SetUpAuthenticatorPage({ username }: { username: string 
 
         <CodeField value={code} onChange={onCode} label="6-digit code" />
 
-        <button type="submit" className="choose-pw__submit" disabled={busy || !enrol || code.length !== 6}>
-          {busy ? 'Checking…' : 'Continue'}
-        </button>
-        <button type="button" className="choose-pw__signout" onClick={() => void signOut()}>Sign out</button>
+        <BusyButton type="submit" className="choose-pw__submit" disabled={!enrol || code.length !== 6} busy={busy} busyLabel="Checking…">
+          Continue
+        </BusyButton>
+        <BusyButton type="button" className="choose-pw__signout" onClick={() => signOut()} busyLabel="Signing out…">Sign out</BusyButton>
       </form>
     </main>
   );

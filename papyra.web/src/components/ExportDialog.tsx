@@ -10,6 +10,7 @@ import { useVault } from '../hooks/useVault';
 import { vaultFetch } from '../lib/vault';
 import './ExportDialog.css';
 
+import BusyButton from './BusyButton';
 /**
  * Confirm-then-download for "Export all notes". The export is every note you
  * own — your vault included, in its own `vault/` folder — so it asks for what
@@ -88,9 +89,9 @@ export default function ExportDialog({ onClose }: { onClose: () => void }) {
                     onEmail={user?.canEmailCode ? () => requestEmailCode('/api/auth/step-up/email') : undefined}
                   />
                   {error && <p className="settings__error" role="alert">{error}</p>}
-                  <button type="submit" className="settings__btn" disabled={busy || code.length !== 6 || (needsVault && !open)}>
-                    <Download size={16} /> {busy ? 'Preparing…' : 'Export'}
-                  </button>
+                  <BusyButton type="submit" className="settings__btn" disabled={code.length !== 6 || (needsVault && !open)} busy={busy} busyLabel="Preparing…">
+                    <Download size={16} /> Export
+                  </BusyButton>
                 </form>
               </li>
             </ol>

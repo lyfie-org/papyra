@@ -55,6 +55,7 @@ import { usePlainTableCells } from '../hooks/usePlainTableCells';
 import { useExitBlockShortcut } from '../hooks/useExitBlockShortcut';
 import { fillsSheet } from '../lib/sheetHold';
 
+import BusyButton from './BusyButton';
 /*
  * luthor ≤2.9.7 serializes a just-adopted document without the Papyra preset's
  * bridge extras, so until the next commit getMarkdown() returns
@@ -913,7 +914,7 @@ export default function NoteEditor({ note, isDraft = false }: { note: Note; isDr
         <div className="note-editor__conflict" role="alert">
           <span>This note was modified externally.</span>
           <div className="note-editor__conflict-actions">
-            <button type="button" onClick={() => void review()} disabled={reviewing}>Review</button>
+            <BusyButton type="button" onClick={() => void review()} busy={reviewing} busyLabel="Loading…">Review</BusyButton>
             <button type="button" onClick={keepLocal} disabled={reviewing}>Overwrite with Local</button>
           </div>
         </div>

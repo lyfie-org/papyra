@@ -1,5 +1,6 @@
 using System.Net;
 using System.Net.Mail;
+using System.Threading.Channels;
 
 namespace Papyra.Api.Storage;
 
@@ -147,4 +148,48 @@ public sealed class EmailSender
             return EmailResult.Fail(ex.Message);
         }
     }
+
+    // ── Outbox ───────────────────────────────────────────────────────────────
+    // A notice about something the person just did ("a passkey was added", "new
+    // sign-in") must not hold up the response: an SMTP round trip is a second or
+    // more, up to the 15 s timeout, and the button that triggered it would look
+    // frozen all that time. Those go through here and are sent by
+    // EmailOutboxService. Bounded: a stuck mail host drops the oldest, never
+    // grows memory.
+
+    private sealed record OutboundMail(string To, string Subject, string Body, IReadOnlyList<EmailDetail>? Details);
+
+    private readonly Channel<OutboundMail> _outbox = Channel.CreateBounded<OutboundMail>(
+        new BoundedChannelOptions(500) { FullMode = BoundedChannelFullMode.DropOldest, SingleReader = true });
+
+    /// <summary>
+    /// <see cref="NotifyAsync(Models.User, string, string, string, IReadOnlyList{EmailDetail}?, CancellationToken)"/>
+    /// without waiting for it: the preference is checked now, the mail is sent
+    /// shortly after. For notices whose outcome the caller doesn't report.
+    /// </summary>
+    public void NotifyInBackground(
+        Models.User user, string eventId, string subject, string body, IReadOnlyList<EmailDetail>? details = null) =>
+        NotifyInBackground(user, user.Email, eventId, subject, body, details);
+
+    /// <summary>As above, to an explicit address (e.g. the old one, after a change).</summary>
+    public void NotifyInBackground(
+        Models.User user, string? toAddress, string eventId, string subject, string body,
+        IReadOnlyList<EmailDetail>? details = null)
+    {
+        if (!NotificationPrefs.Wants(user, eventId) || string.IsNullOrWhiteSpace(toAddress)) return;
+        _outbox.Writer.TryWrite(new OutboundMail(toAddress, subject, body, details));
+    }
+
+    /// <summary>Send queued notices until <paramref name="stop"/> (see <see cref="EmailOutboxService"/>).</summary>
+    internal async Task DrainOutboxAsync(CancellationToken stop)
+    {
+        await foreach (var mail in _outbox.Reader.ReadAllAsync(stop))
+            await SendAsync(mail.To, mail.Subject, mail.Body, mail.Details, stop);
+    }
+}
+
+/// <summary>Sends the notices <see cref="EmailSender.NotifyInBackground(Models.User, string, string, string, IReadOnlyList{EmailDetail}?)"/> queued.</summary>
+public sealed class EmailOutboxService(EmailSender sender) : BackgroundService
+{
+    protected override Task ExecuteAsync(CancellationToken stoppingToken) => sender.DrainOutboxAsync(stoppingToken);
 }

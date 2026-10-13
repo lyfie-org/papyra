@@ -13,6 +13,7 @@ import { describeRule, matchesRules, parseRules, type SmartRules } from '../lib/
 import './CollectionsPage.css';
 import LoadingBar from '../components/LoadingBar';
 
+import BusyButton from '../components/BusyButton';
 const TAG_COLOURS = NOTE_SWATCHES.filter((s) => s.value).map((s) => s.value!);
 
 /**
@@ -153,14 +154,14 @@ export default function CollectionsPage() {
                     <Pencil size={14} />
                   </button>
                 )}
-                <button
+                <BusyButton
                   type="button"
                   className="collection-card__tool collection-card__tool--del"
                   aria-label={`Delete ${c.name}`}
-                  onClick={() => void dropCollection(c.id, c.name)}
+                  onClick={() => dropCollection(c.id, c.name)}
                 >
                   <Trash2 size={14} />
-                </button>
+                </BusyButton>
               </span>
             </li>
           )))}
@@ -202,9 +203,9 @@ export default function CollectionsPage() {
               />
             ))}
           </div>
-          <button type="submit" className="collections__save" disabled={createTag.isPending || !newTag.trim()}>
-            {createTag.isPending ? 'Adding…' : 'Add tag'}
-          </button>
+          <BusyButton type="submit" className="collections__save" disabled={!newTag.trim()} busy={createTag.isPending} busyLabel="Adding…">
+            Add tag
+          </BusyButton>
           <button type="button" className="collections__cancel" aria-label="Cancel" onClick={() => setNewTag(null)}>
             <X size={15} />
           </button>
@@ -235,14 +236,14 @@ export default function CollectionsPage() {
                 <span className="tag-pill__name">{t.name}</span>
                 <span className="tag-pill__count">{t.count}</span>
               </button>
-              <button
+              <BusyButton
                 type="button"
                 className="tag-pill__del"
                 aria-label={`Delete tag ${t.name}`}
-                onClick={() => void dropTag(t.name, t.count)}
+                onClick={() => dropTag(t.name, t.count)}
               >
                 <X size={12} />
-              </button>
+              </BusyButton>
             </li>
           ))}
         </ul>
