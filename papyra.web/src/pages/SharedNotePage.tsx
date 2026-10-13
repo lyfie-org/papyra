@@ -86,6 +86,7 @@ export default function SharedNotePage() {
             onSave={save}
             onSaveTitle={saveTitle}
             mediaBase={`/api/shared/${encodeURIComponent(token ?? '')}/media`}
+            linkPreviewUrl={`/api/shared/${encodeURIComponent(token ?? '')}/link-preview`}
           />
         )}
       </main>

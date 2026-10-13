@@ -4,6 +4,21 @@
   --border: #ddd5c8;
   --code-bg: #ede8df;
 
+  /* Code blocks: their own opaque page, never the note's tint — light in the
+     light theme, dark in the dark one, whatever colour the note is — so the
+     syntax colours below always sit on the ground they were tuned for (every
+     one holds AA, 4.9:1 or better). */
+  --code-block-bg:     #faf6ef;
+  --code-block-fg:     #3d2c1e;
+  --code-block-muted:  #7a6857;
+  --code-block-border: #e3dacb;
+  --syntax-comment:  #7a6857;
+  --syntax-keyword:  #8a3360;
+  --syntax-string:   #3c6a26;
+  --syntax-number:   #a3461a;
+  --syntax-function: #2b5d8c;
+  --syntax-variable: #7c5210;
+
   --text-h: #3d2c1e;
   --text: #7a5c4e;
 
@@ -171,7 +186,13 @@
   --papyra-accent-contrast:  var(--accent-fg);
   --papyra-accent-hover:     var(--accent-hover);
   --papyra-accent-surface:   var(--accent-bg);
-  --papyra-code-surface:     var(--code-bg);
+  --papyra-code-surface:     var(--code-block-bg);
+  --papyra-syntax-comment:   var(--syntax-comment);
+  --papyra-syntax-keyword:   var(--syntax-keyword);
+  --papyra-syntax-string:    var(--syntax-string);
+  --papyra-syntax-number:    var(--syntax-number);
+  --papyra-syntax-function:  var(--syntax-function);
+  --papyra-syntax-variable:  var(--syntax-variable);
   --papyra-font-body:        var(--sans);
   --papyra-font-heading:     var(--heading);
   --papyra-font-mono:        var(--mono);
@@ -196,6 +217,17 @@
   --surface:  #28231e;
   --border:   #3d3530;
   --code-bg:  #23201c;
+
+  --code-block-bg:     #191613;
+  --code-block-fg:     #ece1cf;
+  --code-block-muted:  #9a8a77;
+  --code-block-border: #3a322b;
+  --syntax-comment:  #9a8a77;
+  --syntax-keyword:  #e09ac4;
+  --syntax-string:   #a8cc86;
+  --syntax-number:   #eba875;
+  --syntax-function: #8fbbe6;
+  --syntax-variable: #e3c27c;
 
   /* Lifted note paper: holds --text at 4.6:1 (AA) and --text-h at 11.4:1. */
   --paper:      #312a24;

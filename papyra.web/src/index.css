@@ -229,6 +229,13 @@ html.is-mouse-selecting :is(.luthor-floating-toolbar, .comment-bubble) {
   .note-editor__scroll:has(.luthor-floating-toolbar) { z-index: 4; }
 }
 
+/* A file was chosen but the browser hasn't handed it over yet (lib/pickFile):
+   the pointer says "working" — and changing it makes the browser redraw it. */
+html.is-picking-file,
+html.is-picking-file * {
+  cursor: progress !important;
+}
+
 /* luthor paints its own selection from --papyra-selection-bg; declared on the
    editor element so it picks up the coloured-note override above. */
 .luthor-preset-papyra {
@@ -258,7 +265,6 @@ b,
   --papyra-text-muted:    var(--tint-ink-muted);
   --papyra-text-heading:  var(--tint-ink);
   --papyra-border:        color-mix(in srgb, var(--tint-ink) 18%, transparent);
-  --papyra-code-surface:  color-mix(in srgb, var(--tint-ink) 6%, transparent);
   /* Links too: dark mode's accent text is a pale sage that sank to ~2:1 on a
      pastel tint; --tint-link holds AA on every tint in both themes. */
   --papyra-accent-text:   var(--tint-link);
@@ -273,6 +279,30 @@ b,
   --papyra-floating-surface: color-mix(in srgb, var(--note-tint) 55%, var(--tint-lift));
 }
 
+/* Code blocks keep their own opaque page on every note (see --code-block-* in
+   tokens.css): the theme's light or dark ground, never the tint and never the
+   coloured note's light-lock, so syntax colours always read. luthor inks the
+   block, its line numbers and its language/copy bar from its own --luthor-*
+   variables; re-pointed here, on the block and its bar only. */
+.luthor-preset-papyra :is(.luthor-code-block, .luthor-codeblock-controls) {
+  --luthor-bg:                   var(--code-block-bg);
+  --luthor-fg:                   var(--code-block-fg);
+  --luthor-muted-fg:             var(--code-block-muted);
+  --luthor-border:               var(--code-block-border);
+  --luthor-border-hover:         var(--code-block-muted);
+  --luthor-codeblock-bg:         var(--code-block-bg);
+  --luthor-code-unhighlighted-fg: var(--code-block-fg);
+  --luthor-syntax-comment:       var(--syntax-comment);
+  --luthor-syntax-keyword:       var(--syntax-keyword);
+  --luthor-syntax-string:        var(--syntax-string);
+  --luthor-syntax-number:        var(--syntax-number);
+  --luthor-syntax-function:      var(--syntax-function);
+  --luthor-syntax-variable:      var(--syntax-variable);
+  color-scheme: light;
+}
+[data-theme='dark'] .luthor-preset-papyra :is(.luthor-code-block, .luthor-codeblock-controls) {
+  color-scheme: dark;
+}
 /* ── Scrollbars ────────────────────────────────────────────────────────────────
    A slim, rounded ink pill on a bare track — a pencil line in the margin rather
    than OS chrome. Colours come from --scroll-* (mixed from --text), so every

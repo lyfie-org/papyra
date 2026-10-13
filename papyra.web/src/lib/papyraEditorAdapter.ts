@@ -51,20 +51,19 @@ function isAbort(error: unknown): boolean {
 // it. onMentions is deliberately omitted: mention delivery is detected on the
 // server at save time, because the notes PUT is also reachable from API keys,
 // sharee edits and the public edit-link route, none of which run the editor.
-export function createPapyraEditorAdapter(
-  { noteId, navigate, queryClient, onUnresolvedLink, onUploadError, getEditor, notify }: AdapterDeps,
-): PapyraEditorAdapter {
-  const meta = mediaMetaStore(OWN_MEDIA);
-  // The size limits, so an oversized file is refused before it is sent.
-  void loadMediaLimits();
-
-  // Dropped/pasted/picked file → stored attachment, referenced back as
-  // ![[filename]]. A HEIC photo is converted and a video brings its poster
-  // frame first (see uploadPrep). The response carries the file's metadata,
-  // primed into the cache so the new embed has its size before its first frame.
-  const uploadMedia = async (file: File, options?: UploadFileOptions) => {
+/**
+ * Dropped/pasted/picked file → stored attachment, referenced back as
+ * ![[filename]]. A HEIC photo is converted and a video brings its poster frame
+ * first (see uploadPrep). The response carries the file's metadata, primed into
+ * `mediaBase`'s cache so the new embed has its size before its first frame.
+ * `uploadUrl`: the owner's own upload, or a shared note's (an editor adding to
+ * someone else's note — the file joins the owner's).
+ */
+export function createMediaUploader(uploadUrl: string, mediaBase: string) {
+  const meta = mediaMetaStore(mediaBase);
+  return async (file: File, options?: UploadFileOptions) => {
     const prepared = await prepareUpload(file, options?.signal);
-    const res = await fetchWithProgress(`${OWN_MEDIA}/upload?noteId=${encodeURIComponent(noteId)}`, {
+    const res = await fetchWithProgress(uploadUrl, {
       method: 'POST',
       body: uploadForm(prepared),
       signal: options?.signal,
@@ -83,6 +82,20 @@ export function createPapyraEditorAdapter(
     const isDocument = (kind === 'pdf' || kind === 'file') && !/^(image|video|audio)\//.test(prepared.file.type);
     return { filename: data.filename, ...(isDocument ? { label: file.name } : {}) };
   };
+}
+
+/** Why an upload failed, for a toast; nothing for a cancel. */
+export function uploadErrorMessage(error: unknown): string | null {
+  return isAbort(error) ? null : uploadMessage(error);
+}
+
+export function createPapyraEditorAdapter(
+  { noteId, navigate, queryClient, onUnresolvedLink, onUploadError, getEditor, notify }: AdapterDeps,
+): PapyraEditorAdapter {
+  const meta = mediaMetaStore(OWN_MEDIA);
+  // The size limits, so an oversized file is refused before it is sent.
+  void loadMediaLimits();
+  const uploadMedia = createMediaUploader(`${OWN_MEDIA}/upload?noteId=${encodeURIComponent(noteId)}`, OWN_MEDIA);
 
   return {
     // ![[file.ext]] → a URL the browser can GET: the original, or a
@@ -179,16 +192,19 @@ export function createPapyraEditorAdapter(
     // owns every real rule (2+ chars, prefix-only, self excluded, capped at 8,
     // rate-limited) — this just forwards the query and degrades to no
     // suggestions rather than throwing, same as resolveBlock does offline.
-    searchUsers: async (query) => {
-      try {
-        const res = await fetch(`/api/users/search?q=${encodeURIComponent(query)}`);
-        if (!res.ok) return [];
-        return (await res.json()) as { username: string; name: string }[];
-      } catch {
-        return [];
-      }
-    },
+    searchUsers,
   };
+}
+
+/** `@` typeahead: people on this Papyra (signed in only). */
+export async function searchUsers(query: string): Promise<{ username: string; name: string }[]> {
+  try {
+    const res = await fetch(`/api/users/search?q=${encodeURIComponent(query)}`);
+    if (!res.ok) return [];
+    return (await res.json()) as { username: string; name: string }[];
+  } catch {
+    return [];
+  }
 }
 
 function findByTitle(queryClient: QueryClient, title?: string): Note | undefined {

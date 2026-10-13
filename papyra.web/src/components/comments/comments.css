@@ -158,12 +158,14 @@
 .comment-thread__foot .comment-composer { flex: 1 1 180px; }
 .comment-thread__resolve { flex: none; }
 
-.comment {
+/* `li.comment`, never a bare `.comment`: Prism tags a code block's comments
+   `token comment`, and a bare class turned them into flex rows. */
+li.comment {
   display: flex;
   gap: var(--space-2);
   padding: var(--space-2) 0;
 }
-.comment + .comment { border-top: 1px solid var(--border); }
+li.comment + li.comment { border-top: 1px solid var(--border); }
 .comment__avatar { flex: none; margin-top: 2px; }
 .comment__main { flex: 1; min-width: 0; }
 .comment__head {
@@ -244,7 +246,7 @@
 .comment__reaction.is-mine { border-color: var(--accent-border); background: var(--accent-bg); }
 .comment__react { position: relative; }
 .comment__react-btn { opacity: 0.6; }
-.comment:hover .comment__react-btn,
+li.comment:hover .comment__react-btn,
 .comment__react-btn:focus-visible,
 .comment__react-btn[aria-expanded='true'] { opacity: 1; }
 .comment__picker { left: 0; right: auto; gap: 2px; }

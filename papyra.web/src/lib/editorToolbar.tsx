@@ -54,7 +54,14 @@ function today(): string {
  * drop (`uploadAndEmbedFile` → the vault's media folder → `![[file]]`), so a
  * picked image and a dropped one land identically in the markdown.
  */
-export function createToolbarItems(): ExtensiveToolbarItem[] {
+export function createToolbarItems(
+  { uploads = true, mention = true }: {
+    /** Picking files to attach (off where nothing can be stored: a share link's reader). */
+    uploads?: boolean;
+    /** `@` mentions (off for a reader who isn't signed in: there is no one to look up). */
+    mention?: boolean;
+  } = {},
+): ExtensiveToolbarItem[] {
   const upload = async (run: (name: string, ...args: unknown[]) => unknown, accept?: string) => {
     const file = await pickFile(accept);
     if (!file) return;
@@ -63,7 +70,7 @@ export function createToolbarItems(): ExtensiveToolbarItem[] {
     await Promise.resolve(run('uploadAndEmbedFile', file)).catch(() => {});
   };
 
-  return [
+  const items: ExtensiveToolbarItem[] = [
     {
       id: 'papyra.link-note',
       label: 'Link a note',
@@ -146,4 +153,8 @@ export function createToolbarItems(): ExtensiveToolbarItem[] {
       ],
     },
   ];
+  const UPLOADS = new Set(['papyra.upload-image', 'papyra.attach']);
+  return items
+    .filter((item) => mention || item.id !== 'papyra.mention')
+    .map((item) => (uploads || !item.items ? item : { ...item, items: item.items.filter((i) => !UPLOADS.has(i.id)) }));
 }

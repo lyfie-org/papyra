@@ -58,10 +58,16 @@ export async function resolveEmbed(url: string, fetcher: typeof fetch = (...a) =
   }
 }
 
-/** A saved link card's title, summary and picture (the server's link preview). */
-export async function resolveCard(url: string, fetcher: typeof fetch = (...a) => fetch(...a)): Promise<SavedCardMetadata | null> {
+/**
+ * A saved link card's title, summary and picture (the server's link preview).
+ * `endpoint`: a share link's reader asks through the link
+ * (`/api/shared/<token>/link-preview`), which answers for that note's links.
+ */
+export async function resolveCard(
+  url: string, fetcher: typeof fetch = (...a) => fetch(...a), endpoint = '/api/link-preview',
+): Promise<SavedCardMetadata | null> {
   try {
-    const res = await fetcher(`/api/link-preview?url=${encodeURIComponent(url)}`, { credentials: 'same-origin' });
+    const res = await fetcher(`${endpoint}?url=${encodeURIComponent(url)}`, { credentials: 'same-origin' });
     if (!res.ok || res.status === 204) return null;
     const p = await res.json() as { title?: string; description?: string | null; image?: string | null; siteName?: string; icon?: string | null };
     return {
