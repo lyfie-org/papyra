@@ -6,6 +6,12 @@ a Docker Hub tag and a GitHub Release.
 
 <!-- new releases are inserted directly below this line -->
 
+## [0.4.8] - 2026-10-13
+
+- fix: drawn I-beam also below the last line on coloured dark-mode notes (ccce03d)
+- fix: keep syntax colours inside code blocks (ea691e1)
+- feat: full editor for shared-note editors, code highlighting, Ctrl+Enter exit (0cd569c)
+
 ## [0.4.7] - 2026-10-12
 
 - feat: editable smart collections, job chips, trash countdown, branded icons (cfc83f0)
