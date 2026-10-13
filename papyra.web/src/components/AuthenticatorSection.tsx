@@ -10,6 +10,8 @@ import { requestEmailCode } from '../lib/emailCode';
 import { useAuth } from '../hooks/useAuth';
 import { parseUtc } from '../lib/vault';
 
+import BusyButton from './BusyButton';
+import { useBusy } from '../hooks/useBusy';
 interface Authenticator { id: number; name: string; createdUtc: string; lastUsedUtc: string | null }
 interface TotpStatus { enabled: boolean; authenticators: Authenticator[] }
 
@@ -26,6 +28,7 @@ async function send(url: string, body: unknown, method = 'POST') {
  */
 export default function AuthenticatorSection() {
   const queryClient = useQueryClient();
+  const [toggling, runToggle] = useBusy();
   const { user } = useAuth();
   const status = useQuery({
     queryKey: ['totp'],
@@ -111,14 +114,14 @@ export default function AuthenticatorSection() {
           actionDisabled={isAdmin}
         >
           {close => signInOn ? (
-            <TurnOff onEmail={emailCode} error={signInError}
-              onSubmit={async code => { if (await setSignIn(false, code)) close(); }} onCancel={close} />
+            <TurnOff onEmail={emailCode} error={signInError} busy={toggling}
+              onSubmit={code => void runToggle(async () => { if (await setSignIn(false, code)) close(); })} onCancel={close} />
           ) : (
-            <form className="settings__form" onSubmit={async e => { e.preventDefault(); if (await setSignIn(true)) close(); }}>
+            <form className="settings__form" onSubmit={e => { e.preventDefault(); void runToggle(async () => { if (await setSignIn(true)) close(); }); }}>
               <p className="settings__hint">Signing in will ask for a code from your authenticator.</p>
               {signInError && <p className="settings__error" role="alert">{signInError}</p>}
               <div className="settings__form-actions">
-                <button type="submit" className="settings__btn">Turn on</button>
+                <BusyButton type="submit" className="settings__btn" busy={toggling} busyLabel="Turning on…">Turn on</BusyButton>
                 <button type="button" className="settings__btn settings__btn--quiet" onClick={close}>Cancel</button>
               </div>
             </form>
@@ -129,8 +132,8 @@ export default function AuthenticatorSection() {
   );
 }
 
-function TurnOff({ onEmail, error, onSubmit, onCancel }: {
-  onEmail?: () => Promise<string>; error: string | null; onSubmit: (code: string) => void; onCancel: () => void;
+function TurnOff({ onEmail, error, busy, onSubmit, onCancel }: {
+  onEmail?: () => Promise<string>; error: string | null; busy: boolean; onSubmit: (code: string) => void; onCancel: () => void;
 }) {
   const [code, setCode] = useState('');
   return (
@@ -138,7 +141,7 @@ function TurnOff({ onEmail, error, onSubmit, onCancel }: {
       <CodeField value={code} onChange={setCode} autoFocus onEmail={onEmail} />
       {error && <p className="settings__error" role="alert">{error}</p>}
       <div className="settings__form-actions">
-        <button type="submit" className="settings__btn" disabled={code.length !== 6}>Turn off</button>
+        <BusyButton type="submit" className="settings__btn" disabled={code.length !== 6} busy={busy} busyLabel="Turning off…">Turn off</BusyButton>
         <button type="button" className="settings__btn settings__btn--quiet" onClick={onCancel}>Cancel</button>
       </div>
     </form>
@@ -162,7 +165,7 @@ function RemoveAuthenticator({ id, onEmail, onDone, onCancel }: {
       <CodeField value={code} onChange={setCode} autoFocus label="Code from any of your authenticators" onEmail={onEmail} />
       {error && <p className="settings__error" role="alert">{error}</p>}
       <div className="settings__form-actions">
-        <button type="submit" className="settings__btn" disabled={busy || code.length !== 6}>Remove</button>
+        <BusyButton type="submit" className="settings__btn" disabled={code.length !== 6} busy={busy} busyLabel="Removing…">Remove</BusyButton>
         <button type="button" className="settings__btn settings__btn--quiet" onClick={onCancel}>Cancel</button>
       </div>
     </form>
@@ -220,10 +223,10 @@ function AddAuthenticator({ hasOne, hasPassword, onEmail, onDone, onCancel }: {
       )}
       {error && <p className="settings__error" role="alert">{error}</p>}
       <div className="settings__form-actions">
-        <button type="submit" className="settings__btn"
-          disabled={busy || !enrol || code.length !== 6 || (hasOne && confirmCode.length !== 6) || (hasPassword && !password)}>
-          {busy ? 'Checking…' : 'Add'}
-        </button>
+        <BusyButton type="submit" className="settings__btn"
+          disabled={!enrol || code.length !== 6 || (hasOne && confirmCode.length !== 6) || (hasPassword && !password)} busy={busy} busyLabel="Checking…">
+          Add
+        </BusyButton>
         <button type="button" className="settings__btn settings__btn--quiet" onClick={onCancel}>Cancel</button>
       </div>
     </form>

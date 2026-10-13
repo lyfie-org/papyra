@@ -248,4 +248,17 @@ public sealed class ProfileEndpointsTests
         Assert.Equal("dark", (await login.Content.ReadFromJsonAsync<JsonElement>()).GetProperty("theme").GetString());
         Assert.Equal("dark", (await Me(other)).GetProperty("theme").GetString());
     });
+
+    [Theory]
+    [InlineData("schedule:07:00-19:00", true)]
+    [InlineData("schedule:20:30-06:15", true)]  // light overnight is a choice too
+    [InlineData("schedule:07:00-07:00", false)] // one of them would never show
+    [InlineData("schedule:25:00-07:00", false)]
+    [InlineData("schedule:7:00-19:00", false)]
+    public Task Theme_CanBeATimeOfDaySchedule(string theme, bool ok) => InApp(async (client, _, _, _) =>
+    {
+        var res = await client.PutAsJsonAsync("/api/auth/profile", new ProfileRequest(null, null, Theme: theme));
+        Assert.Equal(ok ? HttpStatusCode.OK : HttpStatusCode.BadRequest, res.StatusCode);
+        if (ok) Assert.Equal(theme, (await Me(client)).GetProperty("theme").GetString());
+    });
 }

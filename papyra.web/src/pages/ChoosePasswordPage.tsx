@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import './ChoosePasswordPage.css';
 
+import BusyButton from '../components/BusyButton';
 /**
  * The wall a freshly provisioned account meets on its first sign-in.
  *
@@ -77,9 +78,9 @@ export default function ChoosePasswordPage({ username }: { username: string }) {
 
         <p className="choose-pw__hint">At least 8 characters.</p>
 
-        <button type="submit" className="choose-pw__submit" disabled={busy}>
-          {busy ? 'Saving…' : 'Continue'}
-        </button>
+        <BusyButton type="submit" className="choose-pw__submit" busy={busy} busyLabel="Saving…">
+          Continue
+        </BusyButton>
       </form>
     </main>
   );

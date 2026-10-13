@@ -8,6 +8,7 @@ import { useConfirm } from '../lib/confirmContext';
 import { parseUtc } from '../lib/vault';
 import './SessionsSection.css';
 
+import BusyButton from './BusyButton';
 interface Session {
   id: number;
   label: string;
@@ -65,9 +66,9 @@ export default function SessionsSection() {
       title="Signed-in devices"
       id="signed-in-devices"
       footer={others > 0 && (
-        <button type="button" className="settings__btn settings__btn--quiet" onClick={() => void endOthers()}>
+        <BusyButton type="button" className="settings__btn settings__btn--quiet" onClick={() => endOthers()} busyLabel="Signing out…">
           <LogOut size={15} /> Sign out all other devices
-        </button>
+        </BusyButton>
       )}
     >
       {isLoading && <div className="setting-row"><div className="setting-row__line"><LoadingBar label="Loading devices" /></div></div>}
@@ -88,7 +89,7 @@ export default function SessionsSection() {
               <button type="button" className="setting-row__action" onClick={() => setRenaming(s.id)}>Rename</button>
             )}
             {!s.current && renaming !== s.id && (
-              <button type="button" className="setting-row__action" onClick={() => void end(s)}>Sign out</button>
+              <BusyButton type="button" className="setting-row__action" onClick={() => end(s)} busyLabel="Signing out…">Sign out</BusyButton>
             )}
           </div>
           {renaming === s.id && (

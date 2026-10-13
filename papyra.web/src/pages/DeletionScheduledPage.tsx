@@ -4,6 +4,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { clearSessionData } from '../lib/session';
 import './AuthForm.css';
 
+import BusyButton from '../components/BusyButton';
 /**
  * What an account waiting out its deletion week sees instead of the desk. The
  * server refuses everything else meanwhile, so this is the only door: keep the
@@ -62,10 +63,10 @@ export default function DeletionScheduledPage({ username, scheduledUtc }: { user
           <input type="password" autoComplete="current-password" value={password}
             onChange={(e) => setPassword(e.target.value)} required />
         </label>
-        <button className="auth__submit" type="submit" disabled={busy || !password}>
-          {busy ? 'Keeping…' : 'Keep my account'}
-        </button>
-        <button type="button" className="auth__link" onClick={() => void signOut()}>Sign out</button>
+        <BusyButton className="auth__submit" type="submit" disabled={!password} busy={busy} busyLabel="Keeping…">
+          Keep my account
+        </BusyButton>
+        <BusyButton type="button" className="auth__link" onClick={() => signOut()} busyLabel="Signing out…">Sign out</BusyButton>
       </form>
     </main>
   );

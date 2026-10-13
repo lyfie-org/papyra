@@ -93,6 +93,8 @@ export interface CollabTicket {
 export interface CollabAwarenessData {
   uid: number;
   username: string;
+  /** Set by the engine for an API-key agent editing through it (never by a browser). */
+  agent?: boolean;
 }
 
 export interface CollabRoom {

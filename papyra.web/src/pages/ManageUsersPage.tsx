@@ -15,6 +15,7 @@ import '../components/CardMenu.css';
 import LoadingBar from '../components/LoadingBar';
 import { MASKED_SECRET, NO_AUTOFILL } from '../lib/autofill';
 
+import BusyButton from '../components/BusyButton';
 // Accounts on this instance — Settings → Users, shown to admins only. It sits in
 // Settings' "Administration" group, apart from the preferences above it, so an
 // admin's own choices and the instance's roster don't read as the same thing.
@@ -477,9 +478,9 @@ function DisableDialog({ target, onClose, onDone }: {
           </label>
           <div className="users-dialog__actions">
             <button type="button" className="users-dialog__btn" onClick={onClose}>Cancel</button>
-            <button type="submit" className="users-dialog__btn users-dialog__btn--danger" disabled={busy}>
-              <Ban size={15} aria-hidden="true" /> {busy ? 'Disabling…' : 'Disable account'}
-            </button>
+            <BusyButton type="submit" className="users-dialog__btn users-dialog__btn--danger" busy={busy} busyLabel="Disabling…">
+              <Ban size={15} aria-hidden="true" /> Disable account
+            </BusyButton>
           </div>
         </form>
       </div>
@@ -536,9 +537,9 @@ function EditUserDialog({ target, onClose, onDone }: {
           {target.email && <p className="users-dialog__note">{target.email} gets an email listing what changed.</p>}
           <div className="users-dialog__actions">
             <button type="button" className="users-dialog__btn" onClick={onClose}>Cancel</button>
-            <button type="submit" className="users-dialog__btn users-dialog__btn--primary" disabled={busy || !username.trim()}>
-              {busy ? 'Saving…' : 'Save'}
-            </button>
+            <BusyButton type="submit" className="users-dialog__btn users-dialog__btn--primary" disabled={!username.trim()} busy={busy} busyLabel="Saving…">
+              Save
+            </BusyButton>
           </div>
         </form>
       </div>
@@ -658,9 +659,9 @@ function AddUserDialog({ onClose, onCreated }: {
 
           <div className="users-dialog__actions">
             <button type="button" className="users-dialog__btn" onClick={onClose}>Cancel</button>
-            <button type="submit" className="users-dialog__btn users-dialog__btn--primary" disabled={busy}>
-              {busy ? 'Creating…' : 'Create account'}
-            </button>
+            <BusyButton type="submit" className="users-dialog__btn users-dialog__btn--primary" busy={busy} busyLabel="Creating…">
+              Create account
+            </BusyButton>
           </div>
         </form>
       </div>

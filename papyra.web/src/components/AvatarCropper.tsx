@@ -3,6 +3,7 @@ import { Minus, Plus, RotateCcw } from 'lucide-react';
 import { MAX_ZOOM, clampView, coverScale, minZoom, type CropView } from '../lib/cropMath';
 import './AvatarCropper.css';
 
+import BusyButton from './BusyButton';
 /** Side of the square that gets uploaded. Big enough for a retina 128px avatar. */
 const OUTPUT_PX = 512;
 /** Largest on-screen crop frame; smaller on a narrow phone. */
@@ -284,14 +285,14 @@ export default function AvatarCropper({ file, onCancel, onCropped }: Props) {
 
         <div className="cropper__actions">
           <button type="button" className="cropper__btn" onClick={onCancel}>Cancel</button>
-          <button
+          <BusyButton
             type="button"
             className="cropper__btn cropper__btn--primary"
             onClick={() => void apply()}
-            disabled={!image || busy}
+            disabled={!image} busy={busy} busyLabel="Saving…"
           >
-            {busy ? 'Saving…' : 'Save photo'}
-          </button>
+            Save photo
+          </BusyButton>
         </div>
       </div>
     </div>

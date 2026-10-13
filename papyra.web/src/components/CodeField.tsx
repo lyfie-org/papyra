@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import './CodeField.css';
 
+import BusyButton from './BusyButton';
 /**
  * "Confirm it's you": the one six-digit code Papyra ever asks for — from the
  * authenticator app, or (where this Papyra can send mail) an emailed one.
@@ -52,9 +53,9 @@ export default function CodeField({
         onChange={e => onChange(e.target.value.replace(/\D/g, ''))}
       />
       {onEmail && (
-        <button type="button" className="code-field__alt" disabled={sending} onClick={() => void email()}>
-          {sending ? 'Sending…' : sentTo ? 'Send another' : 'No phone? Email me a code'}
-        </button>
+        <BusyButton type="button" className="code-field__alt" busy={sending} busyLabel="Sending…" onClick={() => void email()}>
+          {sentTo ? 'Send another' : 'No phone? Email me a code'}
+        </BusyButton>
       )}
       {emailError && <span className="code-field__error" role="alert">{emailError}</span>}
     </label>

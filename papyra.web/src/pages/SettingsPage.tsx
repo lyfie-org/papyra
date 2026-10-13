@@ -34,6 +34,7 @@ import { hasPlatformAuthenticator, isWebAuthnAvailable } from '../lib/webauthn';
 import { useAuth, type AuthUser } from '../hooks/useAuth';
 import { useNotes } from '../hooks/useNotes';
 import { useTheme, type ThemePreference } from '../hooks/useTheme';
+import { isValidTime } from '../lib/themeSchedule';
 import { setAlwaysShowEditorToolbar, useAlwaysShowEditorToolbar } from '../hooks/useEditorToolbar';
 import { clearSessionData } from '../lib/session';
 import { AI_ENABLED } from '../lib/features';
@@ -48,6 +49,8 @@ import { useSettings, useUpdateSettings, RETENTION_OPTIONS } from '../hooks/useS
 import { useImportStatus, importSummary, IMPORT_STATUS_KEY, type ImportStatus } from '../hooks/useImportStatus';
 import './SettingsPage.css';
 import LoadingBar from '../components/LoadingBar';
+import BusyButton from '../components/BusyButton';
+import { useActivityTask, useBusy } from '../hooks/useBusy';
 import AboutPanel from '../components/AboutPanel';
 import LogsPanel from '../components/LogsPanel';
 import ExportDialog from '../components/ExportDialog';
@@ -60,7 +63,7 @@ import SettingRow, { SettingGroup } from '../components/SettingRow';
 import SessionsSection from '../components/SessionsSection';
 import RenameForm from '../components/RenameForm';
 import AuthenticatorSection from '../components/AuthenticatorSection';
-import { fetchWithProgress } from '../lib/progress';
+import { fetchWithProgress, track } from '../lib/progress';
 import { MASKED_SECRET, NO_AUTOFILL } from '../lib/autofill';
 
 type Tab = 'profile' | 'appearance' | 'notifications' | 'security' | 'data' | 'keys' | 'sync'
@@ -358,9 +361,9 @@ function ProfileTab({ user }: { user: AuthUser | null }) {
         </div>
         {/* Up here, apart from every form below: a stray click near "Update
             password" used to land on it and end the session. */}
-        <button type="button" className="profile-hero__signout" onClick={() => void logout()}>
+        <BusyButton type="button" className="profile-hero__signout" onClick={() => logout()} busyLabel="Signing out…">
           <LogOut size={15} /> Sign out
-        </button>
+        </BusyButton>
       </section>
 
       <div className="settings__stats">
@@ -385,6 +388,35 @@ function ProfileTab({ user }: { user: AuthUser | null }) {
   );
 }
 
+// Light from one time, dark from another, by this device's clock. Either way
+// round: light can just as well run overnight.
+function ThemeScheduleFields() {
+  const { schedule, setSchedule } = useTheme();
+  const [draft, setDraft] = useState(schedule);
+  const same = draft.lightAt === draft.darkAt;
+
+  function change(next: typeof draft) {
+    setDraft(next);
+    if (isValidTime(next.lightAt) && isValidTime(next.darkAt) && next.lightAt !== next.darkAt) setSchedule(next);
+  }
+
+  return (
+    <div className="settings__schedule">
+      <label className="settings__field settings__field--inline">
+        <Sun size={16} aria-hidden="true" /> Light from
+        <input type="time" value={draft.lightAt} required
+          onChange={e => change({ ...draft, lightAt: e.target.value })} />
+      </label>
+      <label className="settings__field settings__field--inline">
+        <Moon size={16} aria-hidden="true" /> Dark from
+        <input type="time" value={draft.darkAt} required
+          onChange={e => change({ ...draft, darkAt: e.target.value })} />
+      </label>
+      {same && <p className="settings__error" role="alert">Pick two different times.</p>}
+    </div>
+  );
+}
+
 // ── Appearance ──────────────────────────────────────────────────────────────────
 function AppearanceTab() {
   const { preference, setPreference } = useTheme();
@@ -393,6 +425,7 @@ function AppearanceTab() {
     { id: 'light', label: 'Light', icon: Sun },
     { id: 'dark', label: 'Dark', icon: Moon },
     { id: 'system', label: 'System', icon: Monitor },
+    { id: 'schedule', label: 'Scheduled', icon: Clock },
   ];
   return (
     <div className="settings__panel">
@@ -411,6 +444,7 @@ function AppearanceTab() {
           </button>
         ))}
       </div>
+      {preference === 'schedule' && <ThemeScheduleFields />}
 
       <h2 id="formatting-toolbar" className="settings__subhead">Formatting toolbar</h2>
       <p className="settings__hint">Formatting tools above each note.</p>
@@ -510,10 +544,10 @@ function SecurityTab() {
               </div>
               {renamingPasskey !== d.id && <>
                 <button type="button" className="setting-row__action" onClick={() => setRenamingPasskey(d.id)}>Rename</button>
-                <button type="button" className="setting-row__action" disabled={!open}
-                  title={open ? undefined : 'Unlock your vault to remove a passkey'} onClick={() => void remove(d)}>
+                <BusyButton type="button" className="setting-row__action" disabled={!open}
+                  title={open ? undefined : 'Unlock your vault to remove a passkey'} onClick={() => remove(d)} busyLabel="Removing…">
                   Remove
-                </button>
+                </BusyButton>
               </>}
             </div>
             {renamingPasskey === d.id && (
@@ -552,9 +586,9 @@ function SecurityTab() {
                     onChange={e => { setName(e.target.value); setError(null); }} />
                 </label>
                 <div className="settings__form-actions">
-                  <button type="submit" className="settings__btn" disabled={enrolling}>
-                    <Fingerprint size={16} /> {enrolling ? 'Waiting for your device…' : 'Add'}
-                  </button>
+                  <BusyButton type="submit" className="settings__btn" busy={enrolling} busyLabel="Waiting for your device…">
+                    <Fingerprint size={16} /> Add
+                  </BusyButton>
                   <button type="button" className="settings__btn settings__btn--quiet" onClick={() => setAddingDevice(false)}>Cancel</button>
                 </div>
               </form>
@@ -589,7 +623,7 @@ function SecurityTab() {
             <div className="setting-row__text">
               <span className="setting-row__value"><LockOpen size={14} /> Vault open on this device</span>
             </div>
-            <button type="button" className="setting-row__action" onClick={() => void lock()}>Lock now</button>
+            <BusyButton type="button" className="setting-row__action" onClick={() => lock()} busyLabel="Locking…">Lock now</BusyButton>
           </div></div>
         )}
       </SettingGroup>
@@ -608,6 +642,7 @@ function DataTab() {
   const [provider, setProvider] = useState<'obsidian' | 'keep'>('obsidian');
   const [importMsg, setImportMsg] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
+  const [uploaded, setUploaded] = useState(0);
   const importRef = useRef<HTMLInputElement | null>(null);
   const [exporting, setExporting] = useState(false);
   const queryClient = useQueryClient();
@@ -617,13 +652,14 @@ function DataTab() {
 
   async function runImport(file: File) {
     setUploading(true);
+    setUploaded(0);
     setImportMsg('Uploading…');
     try {
       const form = new FormData();
       form.append('file', file);
       const res = await fetchWithProgress(`/api/import/${provider}`, {
-        method: 'POST', body: form,
-        onProgress: (f) => setImportMsg(`Uploading… ${Math.round(f * 100)}%`),
+        method: 'POST', body: form, label: 'Uploading archive',
+        onProgress: (f) => { setUploaded(f); setImportMsg(`Uploading… ${Math.round(f * 100)}%`); },
       });
       const data = await res.json().catch(() => null);
       if (res.ok) {
@@ -654,11 +690,12 @@ function DataTab() {
           <option value="obsidian">Obsidian vault (.zip)</option>
           <option value="keep">Google Keep (.zip)</option>
         </select>
-        <button type="button" className="settings__btn" disabled={importing}
+        <BusyButton type="button" className="settings__btn" disabled={importing && !uploading}
+          busy={uploading} busyLabel="Uploading…" progress={uploading ? uploaded : null}
           title={importing ? 'An import is already running' : undefined}
           onClick={() => importRef.current?.click()}>
           <Upload size={16} /> Choose archive
-        </button>
+        </BusyButton>
         <input ref={importRef} type="file" accept=".zip" hidden
           onChange={e => { const f = e.target.files?.[0]; if (f) void runImport(f); }} />
       </div>
@@ -730,10 +767,11 @@ function EncryptedBackupSection() {
     setExportMsg(null);
     setExportBusy(true);
     try {
-      const res = await fetch('/api/backups/generate', {
+      const res = await fetchWithProgress('/api/backups/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ password: exportPw }),
+        label: 'Encrypting your backup',
       });
       if (!res.ok) {
         const data = await res.json().catch(() => null);
@@ -768,7 +806,7 @@ function EncryptedBackupSection() {
       const form = new FormData();
       form.append('password', restorePw);
       form.append('file', file);
-      const res = await fetchWithProgress('/api/backups/restore', { method: 'POST', body: form });
+      const res = await fetchWithProgress('/api/backups/restore', { method: 'POST', body: form, label: 'Restoring your backup' });
       const data = await res.json().catch(() => null);
       if (!res.ok) { setRestoreMsg(data?.error ?? 'Restore failed.'); return; }
       setRestorePw('');
@@ -792,9 +830,9 @@ function EncryptedBackupSection() {
             <p className="settings__hint">Lose the password and the backup can’t be opened.</p>
             {exportMsg && <p className="settings__msg">{exportMsg}</p>}
             <div className="settings__form-actions">
-              <button type="submit" className="settings__btn" disabled={exportBusy || !exportPw}>
-                <Lock size={16} /> {exportBusy ? 'Encrypting…' : 'Download'}
-              </button>
+              <BusyButton type="submit" className="settings__btn" disabled={!exportPw} busy={exportBusy} busyLabel="Encrypting…">
+                <Lock size={16} /> Download
+              </BusyButton>
               <button type="button" className="settings__btn settings__btn--quiet" onClick={() => { setExportMsg(null); close(); }}>Done</button>
             </div>
           </form>
@@ -813,10 +851,10 @@ function EncryptedBackupSection() {
             </label>
             {restoreMsg && <p className="settings__msg">{restoreMsg}</p>}
             <div className="settings__form-actions">
-              <button type="button" className="settings__btn" disabled={restoreBusy || !restorePw}
+              <BusyButton type="button" className="settings__btn" disabled={!restorePw} busy={restoreBusy} busyLabel="Restoring…"
                 onClick={() => restoreRef.current?.click()}>
                 <Upload size={16} /> Choose backup file
-              </button>
+              </BusyButton>
               <button type="button" className="settings__btn settings__btn--quiet" onClick={() => { setRestoreMsg(null); close(); }}>Done</button>
             </div>
             <input ref={restoreRef} type="file" accept=".papyra-vault" hidden
@@ -852,9 +890,14 @@ function KeysTab() {
   const [askCode, setAskCode] = useState(false);
   const [code, setCode] = useState('');
   const [keyError, setKeyError] = useState<string | null>(null);
+  const [creating, runCreate] = useBusy();
 
-  async function create(e: React.FormEvent) {
+  function create(e: React.FormEvent) {
     e.preventDefault();
+    void runCreate(createKey);
+  }
+
+  async function createKey() {
     const res = await fetch('/api/keys', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -919,7 +962,7 @@ function KeysTab() {
             </div>
             {renamingKey !== k.id && <>
               <button type="button" className="setting-row__action" onClick={() => setRenamingKey(k.id)}>Rename</button>
-              <button type="button" className="setting-row__action" onClick={() => void revoke(k.id)}>Revoke</button>
+              <BusyButton type="button" className="setting-row__action" onClick={() => revoke(k.id)} busyLabel="Revoking…">Revoke</BusyButton>
             </>}
           </div>
           {renamingKey === k.id && (
@@ -949,7 +992,9 @@ function KeysTab() {
               />
               {keyError && <p className="settings__error" role="alert">{keyError}</p>}
               <div className="settings__form-actions">
-                <button type="submit" className="settings__btn" disabled={code.length !== 6}><KeyRound size={15} /> Create key</button>
+                <BusyButton type="submit" className="settings__btn" disabled={code.length !== 6} busy={creating} busyLabel="Creating key…">
+                  <KeyRound size={15} /> Create key
+                </BusyButton>
                 <button type="button" className="settings__btn settings__btn--quiet" onClick={() => { setAskCode(false); setCode(''); setKeyError(null); }}>Cancel</button>
               </div>
             </form>
@@ -1000,7 +1045,8 @@ function JobsTab() {
   async function trigger(job: Job) {
     setBusyId(job.id);
     try {
-      const result = await run.mutateAsync(job.id);
+      // Named in the activity card: some jobs (re-index, re-embed) run for a while.
+      const result = await track(run.mutateAsync(job.id), `Running “${job.name}”`);
       toast(result.ok
         ? `${job.name}: ${result.summary ?? 'nothing needed doing'}`
         : `${job.name} failed — ${result.error}`);
@@ -1045,14 +1091,15 @@ function JobsTab() {
   };
 
   const runButton = (job: Job) => (
-    <button
+    <BusyButton
       type="button"
       className="settings__btn"
-      disabled={busyId === job.id || job.running}
+      busy={busyId === job.id || job.running}
+      busyLabel="Running…"
       onClick={() => void trigger(job)}
     >
-      <Play size={15} /> {busyId === job.id || job.running ? 'Running…' : 'Run now'}
-    </button>
+      <Play size={15} /> Run now
+    </BusyButton>
   );
 
   return (
@@ -1194,9 +1241,9 @@ function SyncTab() {
             />
           </label>
           <div className="settings__form-actions">
-            <button type="submit" className="settings__btn" disabled={save.isPending}>
-              {save.isPending ? 'Saving…' : 'Save'}
-            </button>
+            <BusyButton type="submit" className="settings__btn" busy={save.isPending} busyLabel="Saving…">
+              Save
+            </BusyButton>
             {saved && <span className="settings__msg"><CheckCircle2 size={15} /> Saved</span>}
             {save.isError && <span className="settings__error">Couldn’t save.</span>}
           </div>
@@ -1327,9 +1374,9 @@ function EmailTab() {
             </label>
 
             <div className="settings__form-actions">
-              <button type="submit" className="settings__btn" disabled={save.isPending}>
-                {save.isPending ? 'Saving…' : 'Save email settings'}
-              </button>
+              <BusyButton type="submit" className="settings__btn" busy={save.isPending} busyLabel="Saving…">
+                Save email settings
+              </BusyButton>
               <button type="button" className="settings__btn settings__btn--quiet" onClick={() => { setEdits({}); setPassword(''); setEditing(false); }}>Cancel</button>
               {save.isError && <span className="settings__error">{(save.error as Error).message}</span>}
             </div>
@@ -1365,9 +1412,9 @@ function EmailTab() {
                     {test.isSuccess && <p className="settings__msg"><CheckCircle2 size={15} /> Sent to {test.data}</p>}
                     {test.isError && <p className="settings__error">{(test.error as Error).message}</p>}
                     <div className="settings__form-actions">
-                      <button type="button" className="settings__btn" disabled={test.isPending} onClick={() => test.mutate(testTo)}>
-                        <Send size={16} /> {test.isPending ? 'Sending…' : 'Send'}
-                      </button>
+                      <BusyButton type="button" className="settings__btn" busy={test.isPending} busyLabel="Sending…" onClick={() => test.mutate(testTo)}>
+                        <Send size={16} /> Send
+                      </BusyButton>
                       <button type="button" className="settings__btn settings__btn--quiet" onClick={close}>Done</button>
                     </div>
                   </div>
@@ -1390,9 +1437,9 @@ function EmailTab() {
                     </label>
                     {inviteMsg && <p className="settings__msg">{inviteMsg}</p>}
                     <div className="settings__form-actions">
-                      <button type="submit" className="settings__btn" disabled={invite.isPending}>
-                        <UserPlus size={16} /> {invite.isPending ? 'Sending…' : 'Send invitation'}
-                      </button>
+                      <BusyButton type="submit" className="settings__btn" busy={invite.isPending} busyLabel="Sending…">
+                        <UserPlus size={16} /> Send invitation
+                      </BusyButton>
                       <button type="button" className="settings__btn settings__btn--quiet" onClick={() => { setInviteMsg(null); close(); }}>Done</button>
                     </div>
                   </form>
@@ -1447,6 +1494,9 @@ function AiTab() {
   const [pullError, setPullError] = useState<string | null>(null);
 
   const pull = usePullModel(setProgress);
+  // A model is gigabytes: its download is named in the activity card, with its bar.
+  useActivityTask(pulling && `Downloading ${friendlyModelName(pulling, choices)}`,
+    progress && progress.total > 0 ? progress.completed / progress.total : null);
   // Switching to a model that is already here is a settings change, not a
   // download, so it gets its own (much shorter) busy state.
   const [switching, setSwitching] = useState<string | null>(null);
@@ -1608,18 +1658,17 @@ function AiTab() {
                 <div><dt>Size</dt><dd>{c.size}</dd></div>
                 <div><dt>Memory needed</dt><dd>{c.memory}</dd></div>
               </dl>
-              <button
+              <BusyButton
                 type="button"
                 className="settings__btn"
-                disabled={active || pulling !== null || switching !== null || !status?.canPull}
+                disabled={active || (pulling !== null && !busy) || (switching !== null && switching !== c.model) || !status?.canPull}
+                busy={busy || switching === c.model}
+                busyLabel={busy ? 'Downloading…' : 'Switching…'}
+                progress={busy && progress && progress.total > 0 ? progress.completed / progress.total : null}
                 onClick={() => (here ? void switchToModel(c.model) : install(c.model))}
               >
-                {active ? 'In use'
-                  : busy ? 'Downloading…'
-                  : switching === c.model ? 'Switching…'
-                  : here ? 'Use this one'
-                  : 'Download'}
-              </button>
+                {active ? 'In use' : here ? 'Use this one' : 'Download'}
+              </BusyButton>
 
               {busy && (
                 <div className="settings__model-progress" role="status">
@@ -1664,14 +1713,16 @@ function AiTab() {
                     {friendlyModelName(m, choices)}
                     <code>{m}</code>
                   </span>
-                  <button
+                  <BusyButton
                     type="button"
                     className="settings__btn"
-                    disabled={inUse || switching !== null || usingCloud}
+                    disabled={inUse || (switching !== null && switching !== m) || usingCloud}
+                    busy={switching === m}
+                    busyLabel="Switching…"
                     onClick={() => void switchToModel(m)}
                   >
-                    {inUse ? 'In use' : switching === m ? 'Switching…' : 'Use this one'}
-                  </button>
+                    {inUse ? 'In use' : 'Use this one'}
+                  </BusyButton>
                 </li>
               );
             })}
@@ -1757,9 +1808,9 @@ function AiTab() {
           </details>
 
           <div className="settings__form-actions">
-            <button type="submit" className="settings__btn" disabled={save.isPending}>
-              {save.isPending ? 'Saving…' : 'Save'}
-            </button>
+            <BusyButton type="submit" className="settings__btn" busy={save.isPending} busyLabel="Saving…">
+              Save
+            </BusyButton>
             {saved && <span className="settings__msg"><CheckCircle2 size={15} /> Saved</span>}
             {save.isError && <span className="settings__error">{(save.error as Error).message}</span>}
           </div>

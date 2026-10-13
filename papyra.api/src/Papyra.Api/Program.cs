@@ -207,6 +207,9 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<WebhookDispatcherS
 
 // Phase 15.2: @mention → a block reference in the mentioned user's inbox.
 builder.Services.AddSingleton<MentionDeliveryService>();
+// Links follow a note's new title; mentions follow a person's new username.
+builder.Services.AddSingleton<RenamePropagationService>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<RenamePropagationService>());
 builder.Services.AddHostedService(sp => sp.GetRequiredService<MentionDeliveryService>());
 
 // Native git sync of the notes vault. Singleton so the manual-trigger endpoint runs
@@ -476,6 +479,7 @@ builder.Services.AddAuthorization();
 builder.Services.AddSingleton<LoginThrottle>();
 // Outbound mail. Singleton like the config it reads; every send is best-effort.
 builder.Services.AddSingleton<EmailSender>();
+builder.Services.AddHostedService<EmailOutboxService>();
 
 const string UserSearchRateLimit = "user-search";
 const string AuthRateLimit = "auth";
@@ -867,7 +871,7 @@ app.UseStaticFiles(new StaticFileOptions
         using var scope = scopes.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
         foreach (var admin in await db.Users.Where(u => u.Role == "Admin" && u.DisabledUtc == null).ToListAsync())
-            await mailer.NotifyAsync(admin, NotificationCatalog.AdminJobFailed,
+            mailer.NotifyInBackground(admin, NotificationCatalog.AdminJobFailed,
                 $"“{job.Name}” failed on your Papyra",
                 $"The background job “{job.Name}” failed. It will try again on its next run; you'll hear again only "
                 + "if it fails after working.\n\nSee Settings → Jobs in Papyra for details, or run it again from there.",
@@ -903,7 +907,11 @@ if (app.Environment.IsDevelopment() && !string.IsNullOrWhiteSpace(devSignInAs))
     app.Use(async (context, next) =>
     {
         var remote = context.Connection.RemoteIpAddress;
-        if (context.User.Identity?.IsAuthenticated != true && (remote is null || IPAddress.IsLoopback(remote)))
+        // A request carrying an API key is that key's, so scripts can be tried
+        // against a dev server the browser is signed into by this bypass.
+        var keyed = context.Request.Headers.ContainsKey("X-API-Key")
+                    || context.Request.Headers.Authorization.ToString().StartsWith("Bearer ", StringComparison.Ordinal);
+        if (context.User.Identity?.IsAuthenticated != true && !keyed && (remote is null || IPAddress.IsLoopback(remote)))
         {
             var db = context.RequestServices.GetRequiredService<AppDbContext>();
             var user = await db.Users.FirstOrDefaultAsync(
@@ -960,6 +968,9 @@ app.Use(async (context, next) =>
                         new Claim(ClaimTypes.NameIdentifier, user.Id.ToString()),
                         new Claim(ClaimTypes.Name, user.Username),
                         new Claim(ClaimTypes.Role, user.Role),
+                        // Which key: a live note's presence and history name it.
+                        new Claim(LiveAgentEdits.KeyIdClaim, key.Id.ToString()),
+                        new Claim(LiveAgentEdits.KeyNameClaim, key.Name),
                     ], "ApiKey"));
                 }
             }
@@ -1430,8 +1441,8 @@ auth.MapPost("/setup", async (
     var zone = body.TimeZone?.Trim();
     if (!string.IsNullOrEmpty(zone) && !TimeZoneInfo.TryFindSystemTimeZoneById(zone, out _))
         return Results.BadRequest(new { error = "That isn’t a time zone this server recognises.", field = "timeZone" });
-    if (body.Theme is not (null or "light" or "dark" or "system"))
-        return Results.BadRequest(new { error = "Theme is light, dark or system.", field = "theme" });
+    if (body.Theme is not null && !ThemeChoice.IsValid(body.Theme))
+        return Results.BadRequest(new { error = ThemeChoice.Problem, field = "theme" });
 
     // A staged restore is addressed by the id /setup/restore handed out — a GUID,
     // parsed as one so it can never name a path.
@@ -1731,14 +1742,13 @@ auth.MapPost("/forgot-password", async (
     await db.SaveChangesAsync(ct);
 
     var link = $"{email.PublicUrl($"{http.Request.Scheme}://{http.Request.Host}")}/reset-password?token={token}";
-    await email.NotifyAsync(
+    email.NotifyInBackground(
         user, NotificationCatalog.PasswordReset,
         "Reset your Papyra password",
         $"Someone asked to reset the password for \"{user.Username}\".\n\n"
         + $"Set a new one here:\n{link}\n\n"
         + "This link expires in 1 hour and can be used once. "
-        + "If this wasn't you, ignore this email — nothing has changed.",
-        ct: ct);
+        + "If this wasn't you, ignore this email — nothing has changed.");
 
     return vague;
 })
@@ -1780,12 +1790,12 @@ auth.MapPost("/reset-password", async (
 
     // Security mail, sent regardless of notification preferences: being told your
     // password changed is how you find out it wasn't you who changed it.
-    await email.NotifyAsync(
+    email.NotifyInBackground(
         user, NotificationCatalog.PasswordChanged,
         "Your Papyra password was changed",
         $"The password for \"{user.Username}\" was just reset.\n\n"
         + "If that wasn't you, contact your Papyra administrator immediately.",
-        [new("When", SignInNotices.When(user, DateTime.UtcNow))], ct);
+        [new("When", SignInNotices.When(user, DateTime.UtcNow))]);
 
     return Results.NoContent();
 })
@@ -2061,12 +2071,12 @@ webauthn.MapPost("/register/verify", async (
     {
         var error = await bio.RegisterVerifyAsync(user, body.Response, body.Name, party, ct);
         if (error is not null) return Results.BadRequest(new { error });
-        await email.NotifyAsync(user, NotificationCatalog.PasskeyAdded,
+        email.NotifyInBackground(user, NotificationCatalog.PasskeyAdded,
             "A passkey was added to your Papyra account",
             "A device was registered to sign in to your account and open your vault with biometrics.\n\n"
             + "If that wasn't you, remove it under Settings → Security and change your password.",
             [new("Device name", string.IsNullOrWhiteSpace(body.Name) ? "(unnamed)" : body.Name.Trim()),
-             new("Works at", party.RpId), .. RequestDetails(user, http)], ct);
+             new("Works at", party.RpId), .. RequestDetails(user, http)]);
         return Results.Ok(new { registered = true });
     }
     catch (Fido2NetLib.Fido2VerificationException ex)
@@ -2114,10 +2124,10 @@ webauthn.MapDelete("/credentials/{id:int}", async (
     if (credential is null) return Results.NotFound();
     db.WebAuthnCredentials.Remove(credential);
     await db.SaveChangesAsync(ct);
-    await email.NotifyAsync(user, NotificationCatalog.PasskeyRemoved,
+    email.NotifyInBackground(user, NotificationCatalog.PasskeyRemoved,
         "A passkey was removed from your Papyra account",
         "A registered device can no longer sign in to your account or open your vault.",
-        [new("Device name", credential.Name), .. RequestDetails(user, http)], ct);
+        [new("Device name", credential.Name), .. RequestDetails(user, http)]);
     return Results.NoContent();
 });
 
@@ -2140,7 +2150,7 @@ webauthn.MapPut("/credentials/{id:int}", async (int id, RenameRequest body, Clai
 // state, not the notes vault).
 auth.MapPut("/profile", async (
     ProfileRequest body, HttpContext http, ClaimsPrincipal principal, AppDbContext db, EmailSender mail,
-    LoginThrottle throttle, TotpService totp, CancellationToken ct) =>
+    LoginThrottle throttle, TotpService totp, RenamePropagationService renames, CancellationToken ct) =>
 {
     var id = int.Parse(Uid(principal));
     var user = await db.Users.FindAsync([id], ct);
@@ -2149,9 +2159,10 @@ auth.MapPut("/profile", async (
     // Username: optional in the payload (older clients never send it). Renaming
     // is safe because everything a user owns is keyed by their numeric id — the
     // vault dir, shares, keys, the avatar — and the avatar-by-username lookup
-    // reads the live row. What does not follow a rename is text: an `@oldname`
-    // already typed into someone's note stays as written.
+    // reads the live row. Text follows too: `@oldname` mentions in every note
+    // and comment are rewritten in the background (RenamePropagationService).
     var renamed = false;
+    string? oldUsername = null;
     var previousEmail = user.Email;
     if (body.Username is not null)
     {
@@ -2165,6 +2176,7 @@ auth.MapPut("/profile", async (
             var lower = wanted.ToLower();
             if (await db.Users.AnyAsync(u => u.Id != id && u.Username.ToLower() == lower, ct))
                 return Results.Conflict(new { error = "That username is taken.", field = "username" });
+            oldUsername = user.Username;
             user.Username = wanted;
             renamed = true;
         }
@@ -2244,8 +2256,8 @@ auth.MapPut("/profile", async (
 
     if (body.Theme is not null)
     {
-        if (body.Theme is not ("light" or "dark" or "system"))
-            return Results.BadRequest(new { error = "Theme is light, dark or system.", field = "theme" });
+        if (!ThemeChoice.IsValid(body.Theme))
+            return Results.BadRequest(new { error = ThemeChoice.Problem, field = "theme" });
         user.Theme = body.Theme;
     }
 
@@ -2260,6 +2272,8 @@ auth.MapPut("/profile", async (
     }
 
     await db.SaveChangesAsync(ct);
+    // Saved: now `@old` mentions everywhere follow the new name.
+    if (oldUsername is not null) renames.UsernameChanged(oldUsername, user.Username);
 
     // The session cookie carries the username as a claim; re-issue it so the new
     // name is what the rest of this session sees. Only for a cookie session — an
@@ -2271,11 +2285,11 @@ auth.MapPut("/profile", async (
     // session would want to stop hearing from Papyra.
     if (!string.IsNullOrWhiteSpace(previousEmail)
         && !string.Equals(previousEmail, user.Email, StringComparison.OrdinalIgnoreCase))
-        await mail.NotifyAsync(user, previousEmail, NotificationCatalog.EmailChanged,
+        mail.NotifyInBackground(user, previousEmail, NotificationCatalog.EmailChanged,
             "The email on your Papyra account changed",
             $"The email address on \"{user.Username}\" was changed, so Papyra will write to the new one from now on.\n\n"
             + "If that wasn't you, sign in and change your password, then put your address back under Settings → Profile.",
-            [new("New address", string.IsNullOrWhiteSpace(user.Email) ? "(none)" : user.Email), .. RequestDetails(user, http)], ct);
+            [new("New address", string.IsNullOrWhiteSpace(user.Email) ? "(none)" : user.Email), .. RequestDetails(user, http)]);
 
     return Results.Ok(new { user.Id, user.Username, user.Name, user.Email, user.Role, user.TimeZone, user.Theme, serverTimeZone = ServerTimeZoneId() });
 }).RequireAuthorization();
@@ -2387,11 +2401,11 @@ auth.MapPost("/totp", async (
     totp.Add(user.Id, body.Name ?? string.Empty, secret, step);
     await db.SaveChangesAsync(ct);
     throttle.Reset(key);
-    await mail.NotifyAsync(user, NotificationCatalog.TotpChanged,
+    mail.NotifyInBackground(user, NotificationCatalog.TotpChanged,
         "An authenticator was added to your Papyra account",
         $"An authenticator app was added to @{user.Username}. Its codes now confirm sensitive changes.\n\n"
         + "If that wasn't you, change your password now.",
-        RequestDetails(user, http), ct);
+        RequestDetails(user, http));
     return Results.Ok(new { enabled = true });
 }).RequireAuthorization().RequireRateLimiting(AuthRateLimit);
 
@@ -2417,9 +2431,9 @@ auth.MapPost("/totp/{id:int}/remove", async (
     db.UserAuthenticators.Remove(target);
     await db.SaveChangesAsync(ct);
     throttle.Reset(key);
-    await mail.NotifyAsync(user, NotificationCatalog.TotpChanged, "An authenticator was removed from your Papyra account",
+    mail.NotifyInBackground(user, NotificationCatalog.TotpChanged, "An authenticator was removed from your Papyra account",
         $"\"{target.Name}\" can no longer confirm changes on @{user.Username}.\n\nIf that wasn't you, change your password now.",
-        RequestDetails(user, http), ct);
+        RequestDetails(user, http));
     return Results.NoContent();
 }).RequireAuthorization().RequireRateLimiting(AuthRateLimit);
 
@@ -2570,11 +2584,11 @@ auth.MapPost("/password", async (
     unlockTokens.RevokeUser(user.Id.ToString());
     // Everywhere else signs in again with the new password.
     await Sessions.RevokeAllAsync(db, user.Id, Sessions.CurrentSid(http.User), ct);
-    await email.NotifyAsync(user, NotificationCatalog.PasswordChanged,
+    email.NotifyInBackground(user, NotificationCatalog.PasswordChanged,
         "Your Papyra password was changed",
         $"The password for \"{user.Username}\" was just changed from inside Papyra.\n\n"
         + "If that wasn't you, reset it from the sign-in page straight away and tell your Papyra administrator.",
-        RequestDetails(user, http), ct);
+        RequestDetails(user, http));
     return Results.NoContent();
 }).RequireAuthorization();
 
@@ -2869,10 +2883,10 @@ admin.MapPost("/{id:int}/reset-2fa", async (int id, HttpContext http, AppDbConte
     await ResetTwoFactorAsync(totp, user, ct);
     await db.SaveChangesAsync(ct);
     await ForgetSignInsAsync(db, user.Id, ct);
-    await email.NotifyAsync(user, NotificationCatalog.TotpChanged, "Your Papyra authenticator was reset",
+    email.NotifyInBackground(user, NotificationCatalog.TotpChanged, "Your Papyra authenticator was reset",
         $"An administrator reset the authenticator on @{user.Username}. Set a new one up the next time you sign in.\n\n"
         + "If you didn't ask for this, tell your administrator.",
-        RequestDetails(user, http), ct);
+        RequestDetails(user, http));
     return Results.NoContent();
 });
 
@@ -2961,7 +2975,7 @@ admin.MapDelete("/{id:int}", async (int id, ClaimsPrincipal me, AppDbContext db,
 // the address it's leaving, and their open tabs re-read who they are.
 admin.MapPut("/{id:int}/profile", async (
     int id, AdminProfileRequest body, ClaimsPrincipal me, AppDbContext db, EmailSender email,
-    IHubContext<NotesHub> hub, CancellationToken ct) =>
+    IHubContext<NotesHub> hub, RenamePropagationService renames, CancellationToken ct) =>
 {
     // Your own email change asks for a code (PUT /profile); this door must not skip it.
     if (id == int.Parse(Uid(me)))
@@ -2970,6 +2984,7 @@ admin.MapPut("/{id:int}/profile", async (
     if (user is null) return Results.NotFound();
     var previousEmail = user.Email;
     var changes = new List<string>();
+    string? oldUsername = null;
 
     if (body.Username is not null)
     {
@@ -2982,6 +2997,7 @@ admin.MapPut("/{id:int}/profile", async (
             if (await db.Users.AnyAsync(u => u.Id != id && u.Username.ToLower() == lower, ct))
                 return Results.Conflict(new { error = "That username is taken.", field = "username" });
             changes.Add($"username @{user.Username} → @{wanted}");
+            oldUsername = user.Username;
             user.Username = wanted;
         }
     }
@@ -3011,6 +3027,7 @@ admin.MapPut("/{id:int}/profile", async (
     }
 
     await db.SaveChangesAsync(ct);
+    if (oldUsername is not null) renames.UsernameChanged(oldUsername, user.Username);
     if (changes.Count > 0)
     {
         await hub.Clients.User(id.ToString()).SendAsync("AccountChanged", ct);
@@ -3043,14 +3060,13 @@ admin.MapPut("/{id:int}/role", async (
     // Their open tabs re-read who they are, so admin pages appear or go at once.
     await hub.Clients.User(id.ToString()).SendAsync("AccountChanged", ct);
 
-    await email.NotifyAsync(user, NotificationCatalog.AccountStatus,
+    email.NotifyInBackground(user, NotificationCatalog.AccountStatus,
         role == "Admin" ? "You're now an administrator on Papyra" : "Your Papyra account is now a regular account",
         role == "Admin"
             ? $"@{me.Identity?.Name} made \"{user.Username}\" an administrator. You can now manage accounts and "
               + "this server's settings from Settings. Administrators still can't read anyone else's notes."
             : $"@{me.Identity?.Name} changed \"{user.Username}\" back to a regular account. Your notes are untouched; "
-              + "the administration pages are no longer available to you.",
-        ct: ct);
+              + "the administration pages are no longer available to you.");
     await TellOtherAdmins(db, email, int.Parse(Uid(me)),
         $"{user.Username} is now {(role == "Admin" ? "an admin" : "a regular user")}",
         $"@{me.Identity?.Name} changed the role of \"{user.Username}\" to {role}.", ct, exceptUserId: user.Id);
@@ -3083,12 +3099,11 @@ admin.MapPost("/{id:int}/disable", async (
     // Open tabs find out now rather than at their next save.
     await hub.Clients.User(id.ToString()).SendAsync("AccountDisabled", ct);
 
-    await email.NotifyAsync(user, NotificationCatalog.AccountStatus,
+    email.NotifyInBackground(user, NotificationCatalog.AccountStatus,
         "Your Papyra account has been disabled",
         $"An administrator disabled \"{user.Username}\". You can't sign in until it is turned back on. "
         + "Your notes are kept exactly as they were.\n\n"
-        + "If you weren't expecting this, contact the person who runs your Papyra.",
-        ct: ct);
+        + "If you weren't expecting this, contact the person who runs your Papyra.");
     await TellOtherAdmins(db, email, int.Parse(Uid(me)), $"{user.Username}'s account was disabled",
         $"@{me.Identity?.Name} disabled \"{user.Username}\"."
         + (user.DisabledReason is null ? string.Empty : $"\n\nReason given: {user.DisabledReason}"), ct, exceptUserId: user.Id);
@@ -3105,11 +3120,10 @@ admin.MapPost("/{id:int}/enable", async (
     user.DisabledReason = null;
     await db.SaveChangesAsync(ct);
 
-    await email.NotifyAsync(user, NotificationCatalog.AccountStatus,
+    email.NotifyInBackground(user, NotificationCatalog.AccountStatus,
         "Your Papyra account is active again",
         $"An administrator turned \"{user.Username}\" back on — you can sign in again.\n\n"
-        + "If your password may have leaked, choose a new one under Settings → Profile after you sign in.",
-        ct: ct);
+        + "If your password may have leaked, choose a new one under Settings → Profile after you sign in.");
     await TellOtherAdmins(db, email, int.Parse(Uid(me)), $"{user.Username}'s account was re-enabled",
         $"@{me.Identity?.Name} turned \"{user.Username}\" back on.", ct, exceptUserId: user.Id);
     return Results.NoContent();
@@ -3636,6 +3650,38 @@ notes.MapPut("/{id}", async (
     var closedRoom = prior is not null && note.Secure && !wasSecure && await collab.IsRoomActiveAsync(uid, id, ct);
     if (closedRoom) await collab.CloseAsync(uid, id, flush: true, ct);
 
+    // A body change that names the version it was made against (If-Match — a
+    // script or agent that read the note) to a note open live: merged into the
+    // room, so nobody's typing is lost and the agent shows in its presence.
+    // The room saves the body itself; this write then keeps it, like a live
+    // editor's metadata save. (Outside the write lock: the room's save takes it.)
+    var baseHash = LiveAgentEdits.IfMatch(http.Request);
+    var mergedLive = false;
+    if (baseHash is not null && prior is not null && !closedRoom && note.Body != prior.Body
+        && await collab.IsRoomActiveAsync(uid, id, ct))
+    {
+        var agent = await LiveAgentEdits.AgentAsync(user, http.RequestServices.GetRequiredService<AppDbContext>(), ct);
+        var outcome = await collab.AgentEditAsync(uid, id, baseHash, note.Body, agent, ct);
+        switch (outcome?.Kind)
+        {
+            case AgentEditOutcome.Applied:
+                mergedLive = true;
+                // The room's save moved the note on: diff side effects against that.
+                if (state.PathFor(uid, id) is { } livePath && state.TryGet(uid, livePath, out var saved) && saved is not null)
+                    prior = saved;
+                break;
+            case AgentEditOutcome.Stale:
+                return LiveAgentEdits.Stale(outcome.Body ?? string.Empty);
+            case AgentEditOutcome.Gone:
+                return Results.NotFound();
+            case AgentEditOutcome.NotLive:
+                break; // the room closed meanwhile: an ordinary (If-Match-checked) write
+            default:
+                return Results.Json(new { error = "Live editing is unavailable right now.", code = "collab_unavailable" },
+                    statusCode: StatusCodes.Status503ServiceUnavailable);
+        }
+    }
+
     // From here to the write, nothing else may write this note — a live room
     // saves its body in the background (see NoteWriteLocks).
     using var writeLock = await writeLocks.AcquireAsync(uid, id, ct);
@@ -3647,8 +3693,11 @@ notes.MapPut("/{id}", async (
         // copy, possibly just saved by the room — never a stale one.
         if (onDisk is not null && (http.Request.Headers.ContainsKey(CollabEndpoints.CollabClientHeader)
                                    || note.Body == prior.Body
-                                   || closedRoom))
+                                   || closedRoom
+                                   || mergedLive))
             note.Body = onDisk.Body;
+        else if (baseHash is not null && onDisk is not null && CollabHash.Of(onDisk.Body) != baseHash)
+            return LiveAgentEdits.Stale(onDisk.Body);
         else if (await CollabEndpoints.BodyWriteGuardAsync(collab, uid, id, onDisk?.Body, note.Body, ct) is { } busy)
             return busy;
     }
@@ -3701,8 +3750,122 @@ notes.MapPut("/{id}", async (
             webhooks.Enqueue(uid, WebhookEvents.TagAdded, WebhookPayload(WebhookEvents.TagAdded, note));
     }
 
+    // Retitled: the owner's links to it by its old title follow it.
+    if (prior is not null && !note.Secure)
+        http.RequestServices.GetRequiredService<RenamePropagationService>().TitleChanged(uid, id, prior.Title, note.Title);
+
+    if (!note.Secure) http.Response.Headers.ETag = LiveAgentEdits.ETag(note.Body);
     return Results.Ok(note);
 });
+
+// One note, read fresh from disk, with an ETag a later write can send back as
+// If-Match (see LiveAgentEdits). A note open live has what's typed saved first,
+// so the reader starts from the room's text.
+notes.MapGet("/{id}", async (
+    string id, ClaimsPrincipal user, HttpContext http, VaultState state, MarkdownStorageService storage,
+    ICollabEngine collab, CancellationToken ct) =>
+{
+    var uid = Uid(user);
+    if (state.PathFor(uid, id) is null) return Results.NotFound();
+    if (await collab.IsRoomActiveAsync(uid, id, ct)) await collab.FlushAsync(uid, id, ct);
+    var path = state.PathFor(uid, id);
+    var note = path is null ? null : await storage.ReadAsync(path, ct);
+    if (note is null) return Results.NotFound();
+    if (!note.Secure) http.Response.Headers.ETag = LiveAgentEdits.ETag(note.Body);
+    return Results.Ok(RedactSecure(note));
+})
+    .WithSummary("Get a note")
+    .WithDescription("The note as on disk (a live room's typing saved first). The ETag names this body: send it as If-Match on PUT to have the edit merged into a live room rather than refused.");
+
+notes.MapGet("/{id}/sections", (string id, ClaimsPrincipal user, VaultState state) =>
+{
+    var uid = Uid(user);
+    if (state.PathFor(uid, id) is not { } path || !state.TryGet(uid, path, out var note) || note is null)
+        return Results.NotFound();
+    if (note.Secure) return Results.Json(new { error = "Unlock required.", code = "locked" }, statusCode: StatusCodes.Status401Unauthorized);
+    return Results.Ok(NoteSections.Outline(note.Body));
+})
+    .WithSummary("List a note's sections")
+    .WithDescription("The note's headings in order (text, level, and occurrence among equal headings) — the names PATCH /sections ops address.");
+
+// Edit by heading instead of rewriting the body — see NoteSections. Applied to
+// the latest text (a live room's typing saved first), so it needs no If-Match;
+// open live, it is merged into the room like any agent edit.
+notes.MapPatch("/{id}/sections", async (
+    string id, SectionPatch body, ClaimsPrincipal user, HttpContext http, VaultState state,
+    MarkdownStorageService storage, WriteRing writeRing, SearchIndexService search, SnapshotService snapshots,
+    WebArchiverService archiver, MediaJobQueue mediaJobs, EmbeddingService embeddings, MentionDeliveryService mentions,
+    AppDbContext db, IHubContext<NotesHub> hub, ICollabEngine collab, NoteWriteLocks writeLocks,
+    VaultObserverOptions vault, IConfiguration config, IHostEnvironment env, ILoggerFactory lf, CancellationToken ct) =>
+{
+    var uid = Uid(user);
+    if (!PathGuard.IsValidNoteId(id)) return Results.NotFound();
+    var ops = body.Ops ?? [];
+
+    IResult Done(Note note)
+    {
+        http.Response.Headers.ETag = LiveAgentEdits.ETag(note.Body);
+        return Results.Ok(note);
+    }
+
+    // A save landing between our read and our write sends us round again.
+    for (var attempt = 0; attempt < 3; attempt++)
+    {
+        var live = await collab.IsRoomActiveAsync(uid, id, ct);
+        if (live) await collab.FlushAsync(uid, id, ct);
+        var path = state.PathFor(uid, id);
+        var current = path is null ? null : await storage.ReadAsync(path, ct);
+        if (current is null || current.Trashed) return Results.NotFound();
+        if (current.Secure)
+            return Results.Json(new { error = "Unlock required.", code = "locked" }, statusCode: StatusCodes.Status401Unauthorized);
+
+        var (patched, error) = NoteSections.Apply(current.Body, ops);
+        if (error is not null) return Results.UnprocessableEntity(new { error, code = "section_patch_invalid" });
+        if (patched == current.Body) return Done(current);
+        var baseHash = CollabHash.Of(current.Body);
+
+        if (live)
+        {
+            var outcome = await collab.AgentEditAsync(uid, id, baseHash, patched!, await LiveAgentEdits.AgentAsync(user, db, ct), ct);
+            switch (outcome?.Kind)
+            {
+                case AgentEditOutcome.Applied:
+                    return state.PathFor(uid, id) is { } livePath && state.TryGet(uid, livePath, out var saved) && saved is not null
+                        ? Done(saved)
+                        : Results.NotFound();
+                case AgentEditOutcome.Stale:
+                    continue;
+                case AgentEditOutcome.Gone:
+                    return Results.NotFound();
+                case AgentEditOutcome.NotLive:
+                    break;
+                default:
+                    return Results.Json(new { error = "Live editing is unavailable right now.", code = "collab_unavailable" },
+                        statusCode: StatusCodes.Status503ServiceUnavailable);
+            }
+        }
+
+        var writer = new NoteBodyWriter(state, storage, writeRing, search, snapshots, config, env, hub,
+            collab, writeLocks, vault, lf);
+        var (written, refusal) = await writer.ChangeAsync(uid, id, note =>
+            CollabHash.Of(note.Body) == baseHash ? new NoteEdit(patched) : NoteEdit.Refuse(LiveAgentEdits.Stale(note.Body)),
+            LiveRoomPolicy.Refuse, ct);
+        // Moved on (412) or a room opened (409 collab_active): start over.
+        if (refusal is IStatusCodeHttpResult { StatusCode: 409 or 412 }) continue;
+        if (refusal is not null) return refusal;
+        if (written is null) return Results.NotFound();
+
+        archiver.Enqueue(uid, id, written.Body);
+        mediaJobs.EnqueueNewRefs(uid, current.Body, written.Body);
+        embeddings.Enqueue(uid, id, written.Body);
+        mentions.Enqueue(uid, user.Identity?.Name ?? uid, id, written.Body, current.Body);
+        return Done(written);
+    }
+    return Results.Json(new { error = "The note kept changing. Try again.", code = "busy" },
+        statusCode: StatusCodes.Status409Conflict);
+})
+    .WithSummary("Edit a note by its sections")
+    .WithDescription("Ops (replace, append, prepend, insertAfter, insertBefore, delete) addressed by heading, applied in order. Merged into a live room when the note is open; 422 when a heading is missing or ambiguous.");
 
 notes.MapDelete("/{id}", async (
     string id,
@@ -4229,11 +4392,11 @@ keys.MapPost("/", async (
     await db.SaveChangesAsync(ct);
 
     if (await db.Users.FindAsync([uid], ct) is { } owner)
-        await email.NotifyAsync(owner, NotificationCatalog.ApiKeyCreated,
+        email.NotifyInBackground(owner, NotificationCatalog.ApiKeyCreated,
             "A new API key was created on your Papyra account",
             "A key that can read and change your notes from scripts and other apps was just created.\n\n"
             + "If that wasn't you, delete it under Settings → API Keys and change your password.",
-            [new("Key name", name), new("Starts with", prefix), .. RequestDetails(owner, http)], ct);
+            [new("Key name", name), new("Starts with", prefix), .. RequestDetails(owner, http)]);
 
     // token is shown to the caller this once, never persisted in the clear.
     return Results.Ok(new { key.Id, key.Name, key.Prefix, key.CreatedUtc, token });
@@ -4581,14 +4744,10 @@ notes.MapGet("/{id}/snapshots", async (
         ?? PathGuard.ResolveAndVerify(vault.UserNotesDir(uid), $"{id}.md", logger);
     var versions = snapshots.List(dir, live);
 
-    // Versions written by a live room carry who edited them ("edited by A, B").
+    // Versions written by a live room carry who edited them ("edited by A, B",
+    // or "A via key-name" for an API-key agent).
     var editors = versions.ToDictionary(v => v.Id, v => snapshots.ContributorsOf(dir, v.Id));
-    var uids = editors.Values.SelectMany(u => u).Distinct().ToList();
-    var names = uids.Count == 0
-        ? new Dictionary<int, string>()
-        : await db.Users.Where(u => uids.Contains(u.Id))
-            .Select(u => new { u.Id, u.Name, u.Username })
-            .ToDictionaryAsync(u => u.Id, u => string.IsNullOrWhiteSpace(u.Name) ? u.Username : u.Name, ct);
+    var names = await LiveAgentEdits.NamesAsync(db, editors.Values.SelectMany(u => u).Distinct().ToList(), ct);
     return Results.Ok(versions.Select(v => new
     {
         id = v.Id,
@@ -5240,14 +5399,15 @@ shares.MapPut("/incoming/{shareId:int}", async (
     int shareId, SharedBodyWrite body, ClaimsPrincipal user, AppDbContext db, VaultState state,
     MarkdownStorageService storage, WriteRing writeRing, SearchIndexService search,
     SnapshotService snapshots, IConfiguration config, IHostEnvironment env,
-    IHubContext<NotesHub> hub, VaultObserverOptions vault, ILoggerFactory lf, ICollabEngine collab, NoteWriteLocks writeLocks, CancellationToken ct) =>
+    IHubContext<NotesHub> hub, VaultObserverOptions vault, ILoggerFactory lf, ICollabEngine collab, NoteWriteLocks writeLocks,
+    RenamePropagationService renames, CancellationToken ct) =>
 {
     var uid = int.Parse(Uid(user));
     var share = await db.Shares.FirstOrDefaultAsync(s => s.Id == shareId && s.GranteeUserId == uid, ct);
     if (share is null) return Results.NotFound();
     if (share.Access != "edit") return Results.Forbid();
     return await ApplySharedEdit(share.OwnerId.ToString(), share.NoteId, body, db,
-        state, storage, writeRing, search, snapshots, config, env, hub, vault, lf, collab, writeLocks, ct);
+        state, storage, writeRing, search, snapshots, config, env, hub, vault, lf, collab, writeLocks, renames, ct);
 });
 
 // Grantee: your own tags for a note shared with you. They organise your desk
@@ -5590,11 +5750,10 @@ accessRequests.MapPost("/", async (
         var url = email.PublicUrl($"{http.Request.Scheme}://{http.Request.Host}");
         var verb = access == "edit" ? "edit" : "view";
         var name = string.IsNullOrWhiteSpace(note.Title) ? "Untitled" : note.Title;
-        await email.NotifyAsync(owner, NotificationCatalog.AccessRequested,
+        email.NotifyInBackground(owner, NotificationCatalog.AccessRequested,
             $"@{who} is asking to {verb} a note",
             $"@{who} asked for {verb} access to “{name}”.\n\n"
-            + $"Approve or decline it in Papyra: {url}/?notifications=1",
-            ct: ct);
+            + $"Approve or decline it in Papyra: {url}/?notifications=1");
     }
     return Results.Ok(new { request.Id, request.Access, request.Status });
 })
@@ -5698,10 +5857,9 @@ accessRequests.MapPost("/{id:int}/deny", async (
     await hub.Clients.User(request.RequesterUserId.ToString()).SendAsync("NotificationsChanged", ct);
     // No title: a declined requester was never let into the note.
     if (await db.Users.FindAsync([request.RequesterUserId], ct) is { } requester)
-        await email.NotifyAsync(requester, NotificationCatalog.AccessAnswered,
+        email.NotifyInBackground(requester, NotificationCatalog.AccessAnswered,
             $"@{user.Identity?.Name} declined your request",
-            $"@{user.Identity?.Name} declined your request to see one of their notes. You can ask again later from the mention.",
-            ct: ct);
+            $"@{user.Identity?.Name} declined your request to see one of their notes. You can ask again later from the mention.");
     return Results.NoContent();
 })
 .WithSummary("Decline an access request");
@@ -5792,7 +5950,8 @@ app.MapPut("/api/shared/{token}", async (
     string token, SharedBodyWrite body, AppDbContext db, VaultState state, MarkdownStorageService storage,
     WriteRing writeRing, SearchIndexService search, SnapshotService snapshots,
     IConfiguration config, IHostEnvironment env, IHubContext<NotesHub> hub,
-    VaultObserverOptions vault, ILoggerFactory lf, ICollabEngine collab, NoteWriteLocks writeLocks, CancellationToken ct) =>
+    VaultObserverOptions vault, ILoggerFactory lf, ICollabEngine collab, NoteWriteLocks writeLocks,
+    RenamePropagationService renames, CancellationToken ct) =>
 {
     var share = await db.Shares.FirstOrDefaultAsync(s => s.Token == token && s.Kind == "link", ct);
     if (share is null) return Results.NotFound();
@@ -5800,7 +5959,7 @@ app.MapPut("/api/shared/{token}", async (
         return Results.Json(new { error = "This link has expired." }, statusCode: StatusCodes.Status410Gone);
     if (share.Access != "edit") return Results.Forbid();
     return await ApplySharedEdit(share.OwnerId.ToString(), share.NoteId, body, db,
-        state, storage, writeRing, search, snapshots, config, env, hub, vault, lf, collab, writeLocks, ct);
+        state, storage, writeRing, search, snapshots, config, env, hub, vault, lf, collab, writeLocks, renames, ct);
 });
 
 // ── Search ────────────────────────────────────────────────────────────────────
@@ -6780,22 +6939,11 @@ app.MapGet("/api/export", async (
             new("Size", size >= 1_048_576 ? $"about {size / 1_048_576.0:0.0} MB" : $"about {Math.Max(1, size / 1024)} KB"),
             new("Server", email.PublicUrl($"{http.Request.Scheme}://{http.Request.Host}")),
         };
-        var owner = me;
-        _ = Task.Run(async () =>
-        {
-            try
-            {
-                await email.NotifyAsync(owner, NotificationCatalog.ExportReady, "Your notes were exported",
-                    "A full export of your Papyra notes — including your vault — was just downloaded.\n\n"
-                    + "If that was you, there's nothing to do. If it wasn't, change your password and vault PIN "
-                    + "straight away, and tell your Papyra administrator.",
-                    details, CancellationToken.None);
-            }
-            catch (Exception ex)
-            {
-                lf.CreateLogger("Export").LogWarning(ex, "Export notice email failed");
-            }
-        });
+        email.NotifyInBackground(me, NotificationCatalog.ExportReady, "Your notes were exported",
+            "A full export of your Papyra notes — including your vault — was just downloaded.\n\n"
+            + "If that was you, there's nothing to do. If it wasn't, change your password and vault PIN "
+            + "straight away, and tell your Papyra administrator.",
+            details);
     }
 
     // Streamed: the zip is written straight into the response as it is built —
@@ -7063,7 +7211,7 @@ static async Task AnnounceShare(
         "access_approved" => ($"@{who} approved your request", $"@{who} approved your request — you {role} “{name}”."),
         _ => ($"@{who} shared “{name}” with you", $"@{who} shared “{name}” with you ({role})."),
     };
-    await email.NotifyAsync(recipient, eventId, subject, $"{lead}\n\nOpen it in Papyra: {url}/shared-with-me", ct: ct);
+    email.NotifyInBackground(recipient, eventId, subject, $"{lead}\n\nOpen it in Papyra: {url}/shared-with-me");
 }
 
 // A card-sized plain-text taste of a note body.
@@ -7302,7 +7450,7 @@ static async Task<IResult> ApplySharedEdit(
     VaultState state, MarkdownStorageService storage, WriteRing writeRing, SearchIndexService search,
     SnapshotService snapshots, IConfiguration config, IHostEnvironment env,
     IHubContext<NotesHub> hub, VaultObserverOptions vault, ILoggerFactory lf,
-    ICollabEngine collab, NoteWriteLocks writeLocks, CancellationToken ct)
+    ICollabEngine collab, NoteWriteLocks writeLocks, RenamePropagationService renames, CancellationToken ct)
 {
     // Someone who is not the owner is about to replace the owner's text: the
     // shared writer snapshots the prior revision first (recoverable), refuses
@@ -7315,14 +7463,20 @@ static async Task<IResult> ApplySharedEdit(
         return Results.BadRequest(new { error = "That title is too long." });
     var writer = new NoteBodyWriter(state, storage, writeRing, search, snapshots, config, env, hub,
         collab, writeLocks, vault, lf);
+    string? oldTitle = null;
     var (_, refusal) = await writer.ChangeAsync(ownerUid, noteId, note =>
+    {
+        oldTitle = note.Title;
         // A locked note is not writable from outside the vault either: the editor on
         // the other end was handed an empty body, so saving it would erase the note.
-        note.Secure
+        return note.Secure
             ? NoteEdit.Refuse(Results.Json(new { error = "The owner locked this note." }, statusCode: StatusCodes.Status410Gone))
-            : new NoteEdit(edit.Body, Title: title),
-        LiveRoomPolicy.Refuse, ct);
+            : new NoteEdit(edit.Body, Title: title);
+    }, LiveRoomPolicy.Refuse, ct);
     if (refusal is not null) return refusal;
+    // Retitled by a sharee: the owner's links to it follow, as for the owner's own rename.
+    if (title is not null)
+        renames.TitleChanged(ownerUid, noteId, oldTitle, title);
     // Everyone else it's shared with sees the new title on their card.
     if (title is not null)
     {
@@ -7603,7 +7757,7 @@ static async Task TellOtherAdmins(
         .Where(u => u.Role == "Admin" && u.Id != actorId && u.Id != exceptUserId && u.DisabledUtc == null)
         .ToListAsync(ct);
     foreach (var a in admins)
-        await email.NotifyAsync(a, NotificationCatalog.AdminAccountChanges, subject, body, ct: ct);
+        email.NotifyInBackground(a, NotificationCatalog.AdminAccountChanges, subject, body);
 }
 
 // The JSON body delivered to webhooks for a note event.

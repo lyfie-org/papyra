@@ -8,6 +8,7 @@ import './NotesPage.css';
 import './VaultPage.css';
 import LoadingBar from '../components/LoadingBar';
 
+import BusyButton from '../components/BusyButton';
 /**
  * The locked vault: every note marked `secure: true`.
  *
@@ -27,9 +28,9 @@ export default function VaultPage() {
       <header className="notes-page__bar">
         <h1 className="page-title notes-page__title">Vault</h1>
         {pinSet && open && (
-          <button type="button" className="vault-page__lock" onClick={() => void lock()}>
+          <BusyButton type="button" className="vault-page__lock" onClick={() => lock()} busyLabel="Locking…">
             <Lock size={15} /> Lock vault
-          </button>
+          </BusyButton>
         )}
       </header>
 

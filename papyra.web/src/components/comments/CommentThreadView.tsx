@@ -7,6 +7,7 @@ import { useConfirm } from '../../lib/confirmContext';
 import { useToast } from '../../lib/toastContext';
 import type { CommentThread, CommentsData, NoteCommentItem, useComments } from '../../hooks/useComments';
 
+import BusyButton from '../BusyButton';
 type Api = ReturnType<typeof useComments>;
 
 /** "@bea" in a comment, set apart; everything else is plain text (never HTML). */
@@ -162,7 +163,7 @@ export default function CommentThreadView({ thread, data, api, showQuote, detach
           onSubmit={(body) => api.create.mutateAsync({ body, threadId: thread.id })}
         />
         {thread.canResolve && (
-          <button type="button" className="comment-btn comment-thread__resolve"
+          <BusyButton type="button" className="comment-btn comment-thread__resolve"
             onClick={async () => {
               try {
                 await api.resolve.mutateAsync({ id: thread.id, resolved: !thread.resolved });
@@ -170,7 +171,7 @@ export default function CommentThreadView({ thread, data, api, showQuote, detach
               } catch (e) { toast((e as Error).message); }
             }}>
             {thread.resolved ? <><RotateCcw size={14} aria-hidden="true" /> Reopen</> : <><Check size={14} aria-hidden="true" /> Resolve</>}
-          </button>
+          </BusyButton>
         )}
       </div>
     </div>

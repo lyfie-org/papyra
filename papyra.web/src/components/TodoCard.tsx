@@ -119,9 +119,12 @@ function TodoCard({ note }: { note: Note }) {
       >
         <Pin size={15} fill={note.pinned ? 'currentColor' : 'none'} />
       </button>
-      <Link to={`/note/${encodeURIComponent(note.id)}`} className="todo-card__title-link">
-        <h3 className="note-card__title">{title}</h3>
-      </Link>
+      {/* No title: the items are the card (it opens on a click anywhere). */}
+      {(note.title.trim() || items.length === 0) && (
+        <Link to={`/note/${encodeURIComponent(note.id)}`} className="todo-card__title-link">
+          <h3 className={`note-card__title${note.title.trim() ? '' : ' is-untitled'}`}>{title}</h3>
+        </Link>
+      )}
 
       {items.length > 0 && (
         <span className="todo-card__progress">{done}/{items.length} done</span>

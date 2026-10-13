@@ -4,13 +4,27 @@
 // download with a Content-Length) reports a real fraction; one that can't leaves
 // it null and the bar trickles on its own.
 //
+// A task with a label ("Backing up to GitHub") is also shown by name in the
+// ActivityDock — the more visible in-page card for work that takes a while.
+//
 // Framework-free so plain helpers (notesApi, the editor adapter) can use it; React
 // reads it through useSyncExternalStore (see useActivity).
 
 export interface Task {
   /** Real completion, 0..1. Never lowers what the bar already shows. */
   update(fraction: number): void;
+  /** Rename it in the dock (e.g. "Importing 40/120"); null hides it from the dock. */
+  label(text: string | null): void;
   end(): void;
+}
+
+/** A named task, as the ActivityDock shows it. */
+export interface LabelledTask {
+  id: number;
+  label: string;
+  /** 0..1, or null when it can't tell. */
+  progress: number | null;
+  startedAt: number;
 }
 
 export interface Activity {
@@ -18,18 +32,29 @@ export interface Activity {
   active: number;
   /** Mean real progress of the tasks that know theirs; null when none do. */
   progress: number | null;
+  /** Open tasks with a label, oldest first. */
+  labelled: LabelledTask[];
 }
 
-const tasks = new Map<number, number | null>();
+interface Entry {
+  progress: number | null;
+  label: string | null;
+  startedAt: number;
+}
+
+const tasks = new Map<number, Entry>();
 const listeners = new Set<() => void>();
 let seq = 0;
-let snapshot: Activity = { active: 0, progress: null };
+let snapshot: Activity = { active: 0, progress: null, labelled: [] };
 
 function emit() {
-  const known = [...tasks.values()].filter((p): p is number => p !== null);
+  const known = [...tasks.values()].map((t) => t.progress).filter((p): p is number => p !== null);
   snapshot = {
     active: tasks.size,
     progress: known.length ? known.reduce((a, b) => a + b, 0) / known.length : null,
+    labelled: [...tasks.entries()]
+      .filter(([, t]) => t.label)
+      .map(([id, t]) => ({ id, label: t.label!, progress: t.progress, startedAt: t.startedAt })),
   };
   listeners.forEach((l) => l());
 }
@@ -43,16 +68,23 @@ export function getActivity(): Activity {
   return snapshot;
 }
 
-export function beginTask(): Task {
+export function beginTask(options: { label?: string } = {}): Task {
   const id = ++seq;
-  tasks.set(id, null);
+  tasks.set(id, { progress: null, label: options.label ?? null, startedAt: Date.now() });
   emit();
   return {
     update(fraction) {
-      if (!tasks.has(id)) return;
+      const entry = tasks.get(id);
+      if (!entry) return;
       const f = Math.min(1, Math.max(0, fraction));
-      if ((tasks.get(id) ?? 0) >= f) return;
-      tasks.set(id, f);
+      if ((entry.progress ?? 0) >= f) return;
+      entry.progress = f;
+      emit();
+    },
+    label(text) {
+      const entry = tasks.get(id);
+      if (!entry || entry.label === text) return;
+      entry.label = text;
       emit();
     },
     end() {
@@ -61,9 +93,12 @@ export function beginTask(): Task {
   };
 }
 
-/** Show the bar for as long as `work` runs (no measurable progress). */
-export async function track<T>(work: Promise<T>): Promise<T> {
-  const task = beginTask();
+/**
+ * Show the bar for as long as `work` runs (no measurable progress) — and, given
+ * a label, a named card in the ActivityDock too.
+ */
+export async function track<T>(work: Promise<T>, label?: string): Promise<T> {
+  const task = beginTask({ label });
   try {
     return await work;
   } finally {
@@ -71,7 +106,11 @@ export async function track<T>(work: Promise<T>): Promise<T> {
   }
 }
 
-type ProgressInit = RequestInit & { onProgress?: (fraction: number) => void };
+type ProgressInit = RequestInit & {
+  onProgress?: (fraction: number) => void;
+  /** Name it in the ActivityDock ("Restoring backup") — for transfers worth watching. */
+  label?: string;
+};
 
 const NULL_BODY = new Set([101, 204, 205, 304]);
 
@@ -136,7 +175,7 @@ async function streamWithProgress(res: Response, report: (f: number) => void): P
  * Same contract as fetch: resolves to a Response, rejects on network failure.
  */
 export async function fetchWithProgress(url: string, init: ProgressInit = {}): Promise<Response> {
-  const task = beginTask();
+  const task = beginTask({ label: init.label });
   const report = (f: number) => { task.update(f); init.onProgress?.(f); };
   try {
     const hasBody = init.body instanceof FormData || init.body instanceof Blob;

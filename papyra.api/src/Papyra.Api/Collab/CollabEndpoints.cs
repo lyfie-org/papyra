@@ -204,8 +204,11 @@ public static class CollabEndpoints
         if (body.YState is { Length: > 0 } yState)
             await states.WriteAsync(ownerUid, noteId, Convert.FromBase64String(yState), newHash, ct);
 
-        // Mentions go out from whoever typed them (the first contributor), else the owner.
-        var authorId = body.Contributors is { Length: > 0 } c ? c[0] : owner;
+        // Mentions go out from whoever typed them (the first contributor — for an
+        // API key, its account), else the owner.
+        var authorId = body.Contributors is { Length: > 0 } c
+            ? await LiveAgentEdits.AccountOfAsync(db, c[0], ct) ?? owner
+            : owner;
         var author = await db.Users.Where(u => u.Id == authorId).Select(u => u.Username).FirstOrDefaultAsync(ct);
         mentions.Enqueue(ownerUid, author ?? ownerUid, noteId, note.Body, prior);
 
@@ -235,6 +238,8 @@ public static class CollabEndpoints
         {
             error = "Someone is editing this note live. Reopen it to join them.",
             code = "collab_active",
+            // Scripts and agents: say what you read and the edit is merged instead.
+            hint = "Send the ETag from GET /api/notes/{id} as If-Match, or use PATCH /api/notes/{id}/sections.",
         }, statusCode: StatusCodes.Status409Conflict);
     }
 

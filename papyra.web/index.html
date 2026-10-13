@@ -31,6 +31,13 @@
       (function () {
         var saved = null;
         try { saved = localStorage.getItem('papyra-theme'); } catch (e) {}
+        // A time-based theme, 'schedule:HH:MM-HH:MM' (light from, dark from) — see lib/themeSchedule.
+        var s = /^schedule:(\d\d):(\d\d)-(\d\d):(\d\d)$/.exec(saved || '');
+        if (s) {
+          var now = new Date(), t = now.getHours() * 60 + now.getMinutes();
+          var l = +s[1] * 60 + +s[2], d = +s[3] * 60 + +s[4];
+          saved = (l < d ? t >= l && t < d : t >= l || t < d) ? 'light' : 'dark';
+        }
         var theme =
           saved === 'light' || saved === 'dark'
             ? saved

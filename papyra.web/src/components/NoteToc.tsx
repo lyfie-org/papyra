@@ -1,4 +1,4 @@
-import { useEffect, useId, useLayoutEffect, useRef, useState } from 'react';
+import { useEffect, useId, useLayoutEffect, useRef, useState, type CSSProperties } from 'react';
 import './NoteToc.css';
 
 interface Head {
@@ -143,6 +143,7 @@ export default function NoteToc({ scrollRef }: { scrollRef: React.RefObject<HTML
   };
 
   const optionId = (i: number) => `${idPrefix}-toc-${i}`;
+  const topLevel = heads.reduce((min, h) => Math.min(min, h.level), 6);
 
   return (
     <nav className="note-toc" aria-label="Outline">
@@ -162,6 +163,9 @@ export default function NoteToc({ scrollRef }: { scrollRef: React.RefObject<HTML
       >
         {heads.map((h, i) => {
           const isFocused = i === focused;
+          // Indent by depth below the note's top heading level, so a note that
+          // starts at H2 isn't pushed in a step for nothing.
+          const depth = Math.min(2, h.level - topLevel);
           return (
             <div
               key={h.key}
@@ -170,7 +174,7 @@ export default function NoteToc({ scrollRef }: { scrollRef: React.RefObject<HTML
               aria-selected={isFocused}
               aria-current={i === active ? 'location' : undefined}
               className={`note-toc__item note-toc__item--h${h.level}${i === active ? ' is-active' : ''}${isFocused ? ' is-focused' : ''}`}
-              style={{ height: step + (isFocused ? GROW : 0) }}
+              style={{ height: step + (isFocused ? GROW : 0), '--toc-depth': depth } as CSSProperties}
               title={open ? undefined : h.text}
             >
               <span className="note-toc__label">{h.text}</span>

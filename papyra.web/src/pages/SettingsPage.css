@@ -736,6 +736,7 @@
 /* ── Appearance segmented control ─────────────────────────────────── */
 .settings__segment {
   display: inline-flex;
+  flex-wrap: wrap;
   gap: 0.3rem;
   padding: 0.3rem;
   border: 1px solid var(--border);
@@ -759,6 +760,26 @@
   background: var(--accent);
   color: var(--accent-fg);
 }
+
+/* Scheduled theme: the two switch-over times, under the segment. */
+.settings__schedule {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--space-2) var(--space-6);
+  margin-top: var(--space-3);
+}
+.settings__schedule input[type="time"] {
+  padding: 0.4rem 0.55rem;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--text-h);
+  font: inherit;
+  color-scheme: inherit;
+}
+.settings__schedule input[type="time"]:hover { border-color: var(--border-hover); }
+.settings__schedule input[type="time"]:focus-visible { outline: none; border-color: var(--border-focus); }
+.settings__schedule .settings__error { flex-basis: 100%; margin: 0; }
 
 /* ── API keys ─────────────────────────────────────────────────────── */
 .settings__token {

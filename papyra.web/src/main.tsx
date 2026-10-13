@@ -19,6 +19,7 @@ import { ShareOfferProvider } from './components/ShareOfferProvider.tsx';
 import './index.css';
 import App from './App.tsx';
 import TopProgressBar from './components/TopProgressBar.tsx';
+import ActivityDock from './components/ActivityDock.tsx';
 import ErrorBoundary from './components/ErrorBoundary.tsx';
 import ErrorScreen from './components/ErrorScreen.tsx';
 import { crashActions } from './lib/errorActions.ts';
@@ -86,6 +87,8 @@ createRoot(document.getElementById('root')!).render(
     <QueryClientProvider client={queryClient}>
       <ThemeProvider>
         <TopProgressBar />
+        {/* Named long-running work (backup, restore, jobs), as a card in the corner. */}
+        <ActivityDock />
         {/* A document opened from a note (PDF, text), over whatever page. */}
         <DocumentPreviewHost />
         <ToastProvider>

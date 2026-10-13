@@ -3,6 +3,7 @@ import { useNavigate, useSearchParams } from 'react-router-dom';
 import { CheckCircle2 } from 'lucide-react';
 import './AuthForm.css';
 
+import BusyButton from '../components/BusyButton';
 interface TokenInfo {
   kind: 'reset' | 'invite';
   username: string;
@@ -140,9 +141,9 @@ export default function TokenPage({ mode }: { mode: 'reset' | 'invite' }) {
 
         {error && <p className="auth__error" role="alert">{error}</p>}
 
-        <button type="submit" className="auth__submit" disabled={busy}>
-          {busy ? 'Saving…' : mode === 'reset' ? 'Change password' : 'Create my account'}
-        </button>
+        <BusyButton type="submit" className="auth__submit" busy={busy} busyLabel="Saving…">
+          {mode === 'reset' ? 'Change password' : 'Create my account'}
+        </BusyButton>
       </form>
     </div>
   );

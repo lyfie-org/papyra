@@ -1,9 +1,9 @@
 import { useEffect, useRef } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { useAuth, type AuthUser } from '../hooks/useAuth';
-import { useTheme, type ThemePreference } from '../hooks/useTheme';
+import { useTheme } from '../hooks/useTheme';
 
-async function saveTheme(theme: ThemePreference): Promise<void> {
+async function saveTheme(theme: string): Promise<void> {
   await fetch('/api/auth/profile', {
     method: 'PUT',
     headers: { 'Content-Type': 'application/json' },
@@ -21,15 +21,17 @@ async function saveTheme(theme: ThemePreference): Promise<void> {
  */
 export default function ThemeAccountSync() {
   const { user } = useAuth();
-  const { preference, setPreference } = useTheme();
+  // The stored form ('light', 'system', 'schedule:07:00-19:00'…), so a schedule's
+  // times travel with the account too.
+  const { wire: preference, setWire: setPreference } = useTheme();
   const queryClient = useQueryClient();
   // What the account and this browser last agreed on.
-  const synced = useRef<ThemePreference | null>(null);
-  const server = (user?.theme ?? null) as ThemePreference | null;
+  const synced = useRef<string | null>(null);
+  const server = user?.theme ?? null;
 
   useEffect(() => {
     if (!user) return;
-    const remember = (theme: ThemePreference) => {
+    const remember = (theme: string) => {
       synced.current = theme;
       queryClient.setQueryData<{ state: string; user: AuthUser | null }>(['auth'], old =>
         old?.user ? { ...old, user: { ...old.user, theme } } : old);

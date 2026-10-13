@@ -107,7 +107,7 @@ public static class SignInNotices
         await db.SaveChangesAsync(ct);
 
         if (!isNew) return hash;
-        await email.NotifyAsync(user, NotificationCatalog.NewSignIn,
+        email.NotifyInBackground(user, NotificationCatalog.NewSignIn,
             "New sign-in to your Papyra account",
             $"Your account \"{user.Username}\" was just signed in to from a browser it hasn't seen before.\n\n"
             + "If this was you, there's nothing to do. If it wasn't, change your password now and ask your "
@@ -117,7 +117,7 @@ public static class SignInNotices
                 new("Browser", label),
                 new("Address", ip ?? "unknown"),
                 new("Signed in with", method),
-            ], ct);
+            ]);
         return hash;
     }
 

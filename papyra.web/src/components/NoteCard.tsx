@@ -60,6 +60,9 @@ function NoteCard({ note, variant = 'active', conflictId, conflictCount, onResol
   const shared = shareSummary?.find(s => s.noteId === note.id);
 
   const title = note.title.trim() || 'Untitled';
+  // No title: the card is its content. "Untitled" only when there is nothing
+  // else on it to show.
+  const showTitle = !!note.title.trim() || (!note.secure && !note.body.trim());
   // YAML `color` drives the card surface via a CSS var so the stylesheet can dim
   // the (always-light) pastel toward surface in dark mode instead of glaring.
   const style = note.color ? ({ '--note-tint': note.color } as CSSProperties) : undefined;
@@ -129,7 +132,7 @@ function NoteCard({ note, variant = 'active', conflictId, conflictCount, onResol
         </button>
       )}
       {!note.secure && <CardMedia body={note.body} part="cover" />}
-      <h3 className="note-card__title">{title}</h3>
+      {showTitle && <h3 className={`note-card__title${note.title.trim() ? '' : ' is-untitled'}`}>{title}</h3>}
       {/* A secure note's body never reaches the client, so there's no snippet to
           show — a redacted placeholder stands in until it's unlocked. */}
       {note.secure ? (

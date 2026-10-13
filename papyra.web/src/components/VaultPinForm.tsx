@@ -6,6 +6,7 @@ import './VaultUnlock.css';
 import './VaultPinForm.css';
 import { MASKED_SECRET } from '../lib/autofill';
 
+import BusyButton from './BusyButton';
 /**
  * Create, change or reset the vault PIN.
  *
@@ -98,9 +99,9 @@ export default function VaultPinForm({ onDone }: { onDone?: () => void }) {
       )}
 
       <div className="vault-pin-form__actions">
-        <button type="submit" className="vault-unlock__btn" disabled={busy}>
-          <KeyRound size={15} /> {busy ? 'Saving…' : pinSet ? 'Change PIN' : 'Set PIN'}
-        </button>
+        <BusyButton type="submit" className="vault-unlock__btn" busy={busy} busyLabel="Saving…">
+          <KeyRound size={15} /> {pinSet ? 'Change PIN' : 'Set PIN'}
+        </BusyButton>
         {pinSet && !s.pinDisabled && s.hasPassword && (
           <button type="button" className="vault-pin-form__switch" onClick={() => { setUsePassword((v) => !v); setError(null); }}>
             {usePassword ? 'Use my current PIN instead' : 'Forgot your PIN?'}

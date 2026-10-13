@@ -34,7 +34,6 @@
 .note-toc__item {
   display: flex;
   align-items: center;
-  justify-content: flex-end;
   gap: var(--space-2);
   width: 100%;
   min-height: 0;
@@ -45,8 +44,11 @@
   transition: height 120ms var(--ease);
 }
 
+/* Pushed to the right edge whatever the label's length or the dash's own
+   width (active and focused dashes are longer), so labels never shift. */
 .note-toc__dash {
   flex: none;
+  margin-left: auto;
   height: 2px;
   border-radius: 2px;
   background: var(--text);
@@ -60,7 +62,9 @@
    it can't compete with the one magnified heading. */
 .note-toc__item.is-active .note-toc__dash { background: var(--accent); opacity: 1; width: 18px; }
 
-/* Names only while open: all one small size, one magnified. */
+/* Names only while open: all one small size, one magnified. Left-aligned and
+   indented by depth (--toc-depth, 0–2), so each level starts on one line and
+   an indent always means "under the heading above"; the dashes keep the right. */
 .note-toc__label {
   overflow: hidden;
   min-width: 0;
@@ -69,7 +73,7 @@
   font-family: var(--sans);
   font-size: 10.5px;
   line-height: 1.2;
-  text-align: right;
+  text-align: left;
   text-overflow: ellipsis;
   white-space: nowrap;
   opacity: 0;
@@ -77,10 +81,9 @@
 }
 .note-toc__rail.is-open .note-toc__label {
   max-width: 200px;
+  padding-left: calc(var(--toc-depth, 0) * 12px);
   opacity: 0.6;
 }
-.note-toc__item--h2 .note-toc__label { padding-right: 2px; }
-.note-toc__item--h3 .note-toc__label { padding-right: 6px; }
 
 .note-toc__rail.is-open .note-toc__item.is-focused .note-toc__label {
   color: var(--text-h);

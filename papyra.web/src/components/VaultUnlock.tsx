@@ -8,6 +8,7 @@ import './VaultUnlock.css';
 import LoadingBar from './LoadingBar';
 import { MASKED_SECRET } from '../lib/autofill';
 
+import BusyButton from './BusyButton';
 function useCountdown(until: Date | null): number {
   const [now, setNow] = useState(() => Date.now());
   useEffect(() => {
@@ -132,9 +133,10 @@ export default function VaultUnlock({
           Your PIN is disabled after too many wrong tries.
         </p>
         {biometricHere && (
-          <button type="button" className="vault-unlock__bio" onClick={() => void viaBiometric()} disabled={!!busy}>
-            <Fingerprint size={16} /> {busy === 'bio' ? 'Waiting for your device…' : 'Unlock with biometrics'}
-          </button>
+          <BusyButton type="button" className="vault-unlock__bio" onClick={() => void viaBiometric()}
+            disabled={busy === 'pin'} busy={busy === 'bio'} busyLabel="Waiting for your device…">
+            <Fingerprint size={16} /> Unlock with biometrics
+          </BusyButton>
         )}
         <Link className="vault-unlock__link" to="/settings?tab=security&s=vault-pin">Reset your PIN in Settings</Link>
         {error && <p className="vault-unlock__error" role="alert">{error}</p>}
@@ -164,16 +166,17 @@ export default function VaultUnlock({
             aria-describedby="vault-unlock-status"
             autoFocus
           />
-          <button type="submit" className="vault-unlock__btn" disabled={!pin || busy === 'pin' || wait > 0}>
-            {busy === 'pin' ? 'Checking…' : 'Unlock'}
-          </button>
+          <BusyButton type="submit" className="vault-unlock__btn" disabled={!pin || wait > 0} busy={busy === 'pin'} busyLabel="Checking…">
+            Unlock
+          </BusyButton>
         </div>
       </form>
 
       {biometricHere && (
-        <button type="button" className="vault-unlock__bio" onClick={() => void viaBiometric()} disabled={!!busy}>
-          <Fingerprint size={16} /> {busy === 'bio' ? 'Waiting for your device…' : 'Use biometrics instead'}
-        </button>
+        <BusyButton type="button" className="vault-unlock__bio" onClick={() => void viaBiometric()}
+          disabled={busy === 'pin'} busy={busy === 'bio'} busyLabel="Waiting for your device…">
+          <Fingerprint size={16} /> Use biometrics instead
+        </BusyButton>
       )}
 
       <p id="vault-unlock-status" className="vault-unlock__muted" aria-live="polite">

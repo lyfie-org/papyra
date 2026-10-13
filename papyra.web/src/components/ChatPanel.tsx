@@ -15,6 +15,7 @@ import {
 import { useConfirm } from '../lib/confirmContext';
 import './ChatPanel.css';
 
+import BusyButton from './BusyButton';
 /**
  * Ask-your-notes side panel.
  *
@@ -204,12 +205,12 @@ export default function ChatPanel({ onClose }: { onClose: () => void }) {
                 >
                   <Pencil size={13} />
                 </button>
-                <button
+                <BusyButton
                   type="button" className="chat-panel__icon chat-panel__icon--danger" aria-label={`Delete ${s.title}`}
-                  onClick={() => void deleteSession(s.id, s.title)}
+                  onClick={() => deleteSession(s.id, s.title)}
                 >
                   <Trash2 size={13} />
-                </button>
+                </BusyButton>
               </li>
             ))}
           </ul>

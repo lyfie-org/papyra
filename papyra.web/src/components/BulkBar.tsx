@@ -14,6 +14,7 @@ import BulkShareDialog from './BulkShareDialog';
 import { useSharedPin, type IncomingShare } from '../hooks/useShares';
 import './BulkBar.css';
 
+import BusyButton from './BusyButton';
 type Patch = Partial<Pick<Note, 'pinned' | 'archived' | 'trashed'>>;
 
 /** Which page the selection is on — it decides what can be done to it. */
@@ -174,11 +175,12 @@ export default function BulkBar({ notes, shared = [], total, onClear, onSelectAl
     await act('delete', false);
   }
 
-  const button = (label: string, icon: React.ReactNode, onClick: () => void, danger = false) => (
-    <button type="button" className={`bulk-bar__btn${danger ? ' bulk-bar__btn--danger' : ''}`}
+  // An action's own button shows it running; the rest wait (disabled) meanwhile.
+  const button = (label: string, icon: React.ReactNode, onClick: () => unknown, danger = false) => (
+    <BusyButton type="button" className={`bulk-bar__btn${danger ? ' bulk-bar__btn--danger' : ''}`}
       disabled={busy || !online} title={offline} aria-label={label} onClick={onClick}>
       {icon}<span>{label}</span>
-    </button>
+    </BusyButton>
   );
 
   const bar = (
@@ -202,24 +204,24 @@ export default function BulkBar({ notes, shared = [], total, onClear, onSelectAl
           {/* Your own notes only: shared ones are their owners' to archive, share or delete. */}
           {notes.length > 0 && (
             <>
-              {button('Archive', <Archive size={17} />, () => void act('archive'))}
+              {button('Archive', <Archive size={17} />, () => act('archive'))}
               {button('Share', <Share2 size={17} />, () => setSharing(notes))}
-              {button('Delete', <Trash2 size={17} />, () => void remove(), true)}
+              {button('Delete', <Trash2 size={17} />, () => remove(), true)}
             </>
           )}
         </>
       )}
       {mode === 'archived' && (
         <>
-          {button('Unarchive', <ArchiveRestore size={17} />, () => void act('unarchive'))}
+          {button('Unarchive', <ArchiveRestore size={17} />, () => act('unarchive'))}
           {button('Share', <Share2 size={17} />, () => setSharing(notes))}
-          {button('Delete', <Trash2 size={17} />, () => void remove(), true)}
+          {button('Delete', <Trash2 size={17} />, () => remove(), true)}
         </>
       )}
       {mode === 'trashed' && (
         <>
-          {button('Restore', <RotateCcw size={17} />, () => void act('untrash'))}
-          {button('Delete forever', <Trash2 size={17} />, () => void purge(), true)}
+          {button('Restore', <RotateCcw size={17} />, () => act('untrash'))}
+          {button('Delete forever', <Trash2 size={17} />, () => purge(), true)}
         </>
       )}
     </div>

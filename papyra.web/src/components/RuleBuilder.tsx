@@ -7,6 +7,7 @@ import { NOTE_SWATCHES, swatchFor, swatchName } from '../lib/noteColors';
 import type { SmartField, SmartRule, SmartRules } from '../lib/smartCollections';
 import './RuleBuilder.css';
 
+import BusyButton from './BusyButton';
 const FIELDS: { id: SmartField; label: string }[] = [
   { id: 'tag', label: 'Tag is' },
   { id: 'color', label: 'Colour is' },
@@ -236,9 +237,9 @@ export default function RuleBuilder({ collection, onSaved, onCancel }: {
         {onCancel && (
           <button type="button" className="rule-builder__cancel" onClick={onCancel}>Cancel</button>
         )}
-        <button type="submit" className="rule-builder__save" disabled={saving}>
-          {saving ? 'Saving…' : collection ? 'Save changes' : 'Save collection'}
-        </button>
+        <BusyButton type="submit" className="rule-builder__save" busy={saving} busyLabel="Saving…">
+          {collection ? 'Save changes' : 'Save collection'}
+        </BusyButton>
       </div>
       {error && <p className="rule-builder__error" role="alert">{error}</p>}
     </form>

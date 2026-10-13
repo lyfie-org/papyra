@@ -10,6 +10,7 @@ import { vaultFetch } from '../lib/vault';
 import { NO_AUTOFILL } from '../lib/autofill';
 import './DeleteAccountSection.css';
 
+import BusyButton from './BusyButton';
 interface Status { scheduledUtc: string | null; blockers: string[]; graceDays: number; totp?: boolean; canEmail?: boolean }
 
 /**
@@ -163,9 +164,9 @@ function ConfirmDialog({ graceDays, totp, canEmail, onClose }: {
               <input {...NO_AUTOFILL} inputMode="numeric" autoComplete="one-time-code" maxLength={6} placeholder="6-digit code" value={code}
                 onChange={(e) => setCode(e.target.value.replace(/\D/g, ''))} />
               {canEmail && (
-                <button type="button" className="settings__btn" disabled={!password || busy === 'code'} onClick={() => void sendCode()}>
-                  {busy === 'code' ? 'Sending…' : sentTo ? 'Send again' : totp ? 'Email one instead' : 'Email me a code'}
-                </button>
+                <BusyButton type="button" className="settings__btn" disabled={!password} busy={busy === 'code'} busyLabel="Sending…" onClick={() => void sendCode()}>
+                  {sentTo ? 'Send again' : totp ? 'Email one instead' : 'Email me a code'}
+                </BusyButton>
               )}
             </div>
             {sentTo && <span className="danger-dialog__hint">Sent to {sentTo}. It works once, for 10 minutes.</span>}
@@ -184,9 +185,9 @@ function ConfirmDialog({ graceDays, totp, canEmail, onClose }: {
         {error && <p className="settings__error" role="alert">{error}</p>}
         <div className="danger-dialog__actions">
           <button type="button" className="settings__btn" onClick={onClose}>Cancel</button>
-          <button type="submit" className="danger-zone__btn danger-zone__btn--solid" disabled={!ready || busy === 'delete'}>
-            {busy === 'delete' ? 'Scheduling…' : `Delete everything in ${graceDays} days`}
-          </button>
+          <BusyButton type="submit" className="danger-zone__btn danger-zone__btn--solid" disabled={!ready} busy={busy === 'delete'} busyLabel="Scheduling…">
+            {`Delete everything in ${graceDays} days`}
+          </BusyButton>
         </div>
       </form>
     </Shell>

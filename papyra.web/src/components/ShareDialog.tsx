@@ -13,6 +13,7 @@ import { useDialogFocus } from '../hooks/useDialogFocus';
 import UserPicker from './UserPicker';
 import Avatar from './Avatar';
 
+import BusyButton from './BusyButton';
 // Link limits as a short list of sensible choices rather than a calendar and a
 // number spinner: nobody needs "expires 14 March" precision for a share link,
 // and the spinner's tiny arrows were fiddly.
@@ -152,7 +153,7 @@ export default function ShareDialog({ note, onClose }: { note: Note; onClose: ()
               <option value="view">Can view</option>
               <option value="edit">Can edit</option>
             </select>
-            <button type="button" className="share__btn" onClick={() => void addPerson()}><Plus size={15} /> Add</button>
+            <BusyButton type="button" className="share__btn" onClick={() => addPerson()} busyLabel="Adding…"><Plus size={15} /> Add</BusyButton>
           </div>
           {linked.length > 0 && (
             <fieldset className="share__linked">
@@ -219,9 +220,9 @@ export default function ShareDialog({ note, onClose }: { note: Note; onClose: ()
                 {VIEW_OPTIONS.map((o) => <option key={o.value} value={o.value}>{o.label}</option>)}
               </select>
             </label>
-            <button type="button" className="share__btn" onClick={() => void createLink()}>
+            <BusyButton type="button" className="share__btn" onClick={() => createLink()} busyLabel="Creating…">
               <Plus size={15} /> Create link
-            </button>
+            </BusyButton>
           </div>
           <ul className="share__links">
             {links.map(s => (

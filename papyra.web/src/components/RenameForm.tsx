@@ -1,5 +1,6 @@
 import { useState } from 'react';
 
+import BusyButton from './BusyButton';
 /**
  * The one editor behind every "Rename" — devices, authenticators, passkeys, API
  * keys. PUTs `{ name }` to `url` and folds back on success.
@@ -32,7 +33,7 @@ export default function RenameForm({ url, current, placeholder, onDone, onCancel
       </label>
       {error && <p className="settings__error" role="alert">{error}</p>}
       <div className="settings__form-actions">
-        <button type="submit" className="settings__btn" disabled={busy || !name.trim()}>{busy ? 'Saving…' : 'Save'}</button>
+        <BusyButton type="submit" className="settings__btn" disabled={!name.trim()} busy={busy} busyLabel="Saving…">Save</BusyButton>
         <button type="button" className="settings__btn settings__btn--quiet" onClick={onCancel}>Cancel</button>
       </div>
     </form>

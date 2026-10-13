@@ -9,6 +9,7 @@ import './ShareDialog.css';
 import './BulkShareDialog.css';
 import UserPicker from './UserPicker';
 
+import BusyButton from './BusyButton';
 /**
  * Share a selection with one person. Links stay per-note (one link per note
  * is rarely what anyone wants from a bulk action), so this is people only.
@@ -87,9 +88,9 @@ export default function BulkShareDialog({ notes, onClose }: {
                 <option value="view">Can view</option>
                 <option value="edit">Can edit</option>
               </select>
-              <button type="submit" className="share__btn" disabled={busy || !username.trim() || shareable === 0}>
-                {busy ? 'Sharing…' : `Share ${shareable === notes.length ? '' : shareable + ' '}`.trim()}
-              </button>
+              <BusyButton type="submit" className="share__btn" disabled={!username.trim() || shareable === 0} busy={busy} busyLabel="Sharing…">
+                {`Share ${shareable === notes.length ? '' : shareable + ' '}`.trim()}
+              </BusyButton>
             </div>
             {locked > 0 && (
               <p className="bulk-share__warn">

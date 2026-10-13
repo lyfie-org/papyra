@@ -39,6 +39,35 @@ public interface ICollabEngine
     Task FlushAsync(string ownerUid, string noteId, CancellationToken ct = default);
     /// <summary>An older version was restored: it replaces the live room's text (never merged).</summary>
     Task RestoreAsync(string ownerUid, string noteId, string body, CancellationToken ct = default);
+    /// <summary>
+    /// Merge an agent's whole-body edit, made against the file version hashed
+    /// <paramref name="baseHash"/>, into the live room and save it. Null when
+    /// the engine could not be reached.
+    /// </summary>
+    Task<AgentEditOutcome?> AgentEditAsync(string ownerUid, string noteId, string baseHash, string body,
+        CollabAgent agent, CancellationToken ct = default);
+}
+
+/// <summary>
+/// Someone editing a live note from outside its room — a script or AI agent on
+/// an API key. <paramref name="Contributor"/> is who history credits: a user id,
+/// or minus the API key's id (see <see cref="LiveAgentEdits"/>); <paramref name="Name"/>
+/// is what the room's presence shows.
+/// </summary>
+public sealed record CollabAgent(int Contributor, int Uid, string Username, string Name);
+
+/// <summary>
+/// What the room did with an agent edit. <c>applied</c>: merged and saved, the
+/// file is now <see cref="Body"/>. <c>stale</c>: the agent read a version the
+/// room never held — <see cref="Body"/> is the current one to redo it against.
+/// <c>not-live</c>: no room (anymore). <c>gone</c>: the note was trashed or locked.
+/// </summary>
+public sealed record AgentEditOutcome(string Kind, string? Body, string? Hash, bool Conflicted)
+{
+    public const string Applied = "applied";
+    public const string Stale = "stale";
+    public const string NotLive = "not-live";
+    public const string Gone = "gone";
 }
 
 /// <summary>HTTP client for the engine's loopback-only internal routes.</summary>
@@ -115,6 +144,25 @@ public sealed class CollabEngine(CollabOptions options, IHttpClientFactory http,
     {
         using var _ = await SendAsync(HttpMethod.Post, $"/rooms/{Room(ownerUid, noteId)}/restore",
             JsonContent.Create(new { body, hash = CollabHash.Of(body) }), ct);
+    }
+
+    public async Task<AgentEditOutcome?> AgentEditAsync(string ownerUid, string noteId, string baseHash, string body,
+        CollabAgent agent, CancellationToken ct = default)
+    {
+        using var response = await SendAsync(HttpMethod.Post, $"/rooms/{Room(ownerUid, noteId)}/agent-edit",
+            JsonContent.Create(new
+            {
+                baseHash,
+                body,
+                agent = new { contributor = agent.Contributor, uid = agent.Uid, username = agent.Username, name = agent.Name },
+            }), ct);
+        if (response is not { IsSuccessStatusCode: true })
+        {
+            if (response is not null)
+                logger.LogWarning("Collab engine refused an agent edit for {NoteId}: HTTP {Status}", noteId, (int)response.StatusCode);
+            return null;
+        }
+        return await response.Content.ReadFromJsonAsync<AgentEditOutcome>(ct);
     }
 
     private sealed record RoomInfo(bool Active, int Connections);

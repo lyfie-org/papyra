@@ -428,7 +428,7 @@ public sealed class BackupLayout
                 user.Name = account.Name.Trim();
             if (!string.IsNullOrWhiteSpace(account.TimeZone) && TimeZoneInfo.TryFindSystemTimeZoneById(account.TimeZone, out _))
                 user.TimeZone = account.TimeZone;
-            if (account.Theme is "light" or "dark" or "system") user.Theme = account.Theme;
+            if (ThemeChoice.IsValid(account.Theme)) user.Theme = account.Theme;
             if (account.NotifyOnMention is { } m) user.NotifyOnMention = m;
             if (account.NotifyOnShare is { } s) user.NotifyOnShare = s;
             if (account.NotificationPrefs is not null) user.NotificationPrefs = account.NotificationPrefs;

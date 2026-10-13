@@ -130,6 +130,32 @@ describe('collab server', () => {
     await waitFor(() => client.markdown() === 'Back to before', 5000, 'restore adopt')
   })
 
+  it('merges an agent edit into the live room and shows the agent in presence', async () => {
+    const { api, ticket, connect, internal } = await start('Itinerary\n\nDay 1')
+    const client = connect(ticket(1))
+    await client.synced
+    await waitFor(() => client.markdown() === 'Itinerary\n\nDay 1')
+    const read = api.current(ROOM)
+    client.type(1, 5, ' Tokyo') // live typing the agent never saw
+
+    const agentEdit = (body: unknown) => internal(`/rooms/${encodeURIComponent(ROOM)}/agent-edit`, {
+      body: JSON.stringify(body),
+      headers: { 'Content-Type': 'application/json' },
+    })
+    const res = await agentEdit({
+      baseHash: read.hash,
+      body: 'Itinerary\n\nDay 1\n\nDay 2 Kyoto',
+      agent: { contributor: -3, uid: 7, username: 'rahul', name: 'claude-japan' },
+    })
+    expect(await res.json()).toMatchObject({ kind: 'applied', body: 'Itinerary\n\nDay 1 Tokyo\n\nDay 2 Kyoto' })
+    await waitFor(() => client.markdown() === 'Itinerary\n\nDay 1 Tokyo\n\nDay 2 Kyoto', 5000, 'agent edit')
+
+    const names = () => [...client.provider.awareness!.getStates().values()].map((s) => (s as { name?: string }).name)
+    await waitFor(() => names().includes('claude-japan'), 5000, 'agent presence')
+
+    expect((await agentEdit({ baseHash: read.hash, body: 'x' })).status).toBe(400)
+  })
+
   it('closes everyone out when the note is trashed', async () => {
     const { ticket, connect, internal } = await start()
     const client = connect(ticket(1))
