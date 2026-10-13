@@ -27,6 +27,9 @@
 .md-preview > * + * { margin-top: 0.35em; }
 
 .md-preview__p { margin: 0; }
+/* Empty lines the note keeps between blocks: a line's height each (the
+   preview's 1.55 line height), less the gap every block already has. */
+.md-preview__gap { height: calc(var(--md-gap) * 1.55em - 0.35em); }
 .md-preview__line { display: block; }
 
 .md-preview__h {

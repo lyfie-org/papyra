@@ -33,6 +33,14 @@ describe('parseBlocks', () => {
     });
   });
 
+  it('keeps the empty lines a note leaves between blocks, as the editor shows them', () => {
+    // luthor writes an empty paragraph as one extra blank line.
+    const { blocks } = parseBlocks("\n\n[[Fukuoka]]\n\n\n[[Hita]]\n\n[[Kyoto]]\n\n\n\n\n\n\nend\n\n\n");
+    expect(blocks.map((b) => b.t)).toEqual(['p', 'gap', 'p', 'p', 'gap', 'p']);
+    expect(blocks[1]).toEqual({ t: 'gap', n: 1 });
+    expect(blocks[4]).toEqual({ t: 'gap', n: 3 }); // capped
+  });
+
   it('nests three levels of bullets and returns to the right level', () => {
     const md = ['- a', '    - b', '        - c', '    - d', '- e'].join('\n');
     const list = parseBlocks(md).blocks[0] as ListBlock;

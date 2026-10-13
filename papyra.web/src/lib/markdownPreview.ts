@@ -41,6 +41,8 @@ export type Block =
   | { t: 'code'; v: string }
   | { t: 'hr' }
   | { t: 'embed'; v: string }
+  /** Empty lines the writer left between two blocks (see parseBlocks). */
+  | { t: 'gap'; n: number }
   | ListBlock;
 
 // ── Inline ───────────────────────────────────────────────────────────────────
@@ -89,6 +91,8 @@ const QUOTE = /^\s{0,3}>\s?(.*)$/;
 const FENCE = /^\s{0,3}(```|~~~)/;
 const EMBED_LINE = /^\s*!\[\[([^\]]+)\]\]\s*$/;
 const TABLE_RULE = /^\s*\|?\s*:?-{2,}/;
+/** Most empty lines a card keeps between two blocks. */
+const MAX_GAP = 3;
 /** `\|` after protectEscapes. */
 const ESCAPED_PIPE = protectEscapes('\\|');
 
@@ -139,7 +143,20 @@ export function parseBlocks(md: string, maxLines = 14): { blocks: Block[]; trunc
 
   while (i < lines.length && !full()) {
     const line = lines[i];
-    if (!line.trim()) { i++; continue; }
+    if (!line.trim()) {
+      // One blank line only separates two blocks; each one past it is an empty
+      // line the writer left there (luthor writes an empty paragraph so), and
+      // the open note shows it. Kept between blocks — not before the first or
+      // after the last — so a card is spaced like the note.
+      let run = 0;
+      while (i < lines.length && !lines[i].trim()) { run++; i++; }
+      if (run > 1 && blocks.length > 0 && i < lines.length) {
+        const n = Math.min(run - 1, MAX_GAP);
+        blocks.push({ t: 'gap', n });
+        used += n;
+      }
+      continue;
+    }
 
     if (FENCE.test(line)) {
       const fence = FENCE.exec(line)![1];
@@ -294,9 +311,13 @@ export const PREVIEW_MAX_LINES = Math.ceil(MAX_EM / LINE_EM) + 4;
 export function previewCapEm(md: string): number | null {
   let em = 0;
   let blocks = 0;
+  let blank = 0;
   for (const raw of stripComments(stripBlockAnchors(md).replace(/\r\n?/g, '\n')).split('\n')) {
     const line = raw.trim();
-    if (!line) continue;
+    if (!line) { blank++; continue; }
+    // Empty lines kept between blocks (see parseBlocks) take a line each.
+    if (blocks > 0 && blank > 1) em += Math.min(blank - 1, MAX_GAP) * LINE_EM;
+    blank = 0;
     blocks++;
     const text = line.replace(LIST, '$4').replace(/^#{1,6}\s+/, '');
     const heading = /^#{1,6}\s/.test(line);
