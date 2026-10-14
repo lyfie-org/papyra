@@ -156,6 +156,37 @@ textarea {
 :is(a, .luthor-link, .luthor-wikilink) *::selection {
   color: var(--selection-link);
 }
+/* Link hover keeps the link's own ink. Luthor's .luthor-link:hover switches to
+   --luthor-accent-hover, which the papyra preset maps to --papyra-accent-hover:
+   a button *fill* green that ignores --tint-link and sank to ~2:1 on coloured
+   notes (wikilinks have no hover colour, hence "only some links"). Hover is
+   shown by the underline instead, so every link reads the same on any tint. */
+.luthor-preset-papyra .luthor-link:hover {
+  color: var(--luthor-link-color);
+  text-decoration-thickness: 2px;
+}
+.luthor-preset-papyra .luthor-wikilink:hover {
+  border-bottom-color: currentColor;
+}
+.md-preview__link:hover {
+  text-decoration-color: currentColor;
+}
+/* Checklist boxes. Luthor inks the tick with --luthor-bg (= --papyra-surface),
+   which is transparent on a coloured note, so the tick vanished; and the sage
+   box blended into sage/green tints. Plain paper: dark tick on the sage fill.
+   Coloured: box in the note's link ink, tick in its opposite (--tint-lift is
+   white under dark ink, black under light ink) — holds on every tint. */
+.luthor-preset-papyra .luthor-list-item-checked::before {
+  color: var(--papyra-accent-contrast);
+}
+:is(.note-editor--colored, .shared-note--colored, .note-card--colored) :is(.luthor-list-item-unchecked, .luthor-list-item-unchecked:hover)::before {
+  border-color: var(--tint-link);
+}
+:is(.note-editor--colored, .shared-note--colored, .note-card--colored) .luthor-list-item-checked::before {
+  border-color: var(--tint-link);
+  background-color: var(--tint-link);
+  color: var(--tint-lift);
+}
 /* A drag across table cells selects whole cells (PAPYRA_EDITOR_THEME): wash
    each chosen cell in the selection colour and hide the browser's own text
    highlight and caret inside the table, which would otherwise still trace the

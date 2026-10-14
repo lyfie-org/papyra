@@ -1,56 +1,46 @@
-<!--
-  Papyra release notes template.
-  Copy everything below the line into the GitHub release body.
-  Delete any section that has nothing in it. Keep it short: what changed for
-  the person using Papyra, not how it was built.
--->
+# Release notes
+
+Every release has one file: [`.github/release-notes/vX.Y.Z.md`](release-notes/).
+That file **is** the GitHub release body.
+
+1. **Release** workflow runs → if `vX.Y.Z.md` already exists it is used as-is;
+   otherwise a draft is generated from the `feat:` / `fix:` commit subjects and
+   committed alongside `VERSION`.
+2. Rewrite the draft in plain words (format below) and get it onto `main`.
+3. **Release notes** workflow runs on that push (or run it by hand with a tag,
+   or empty for every file) and copies the file into the GitHub release.
+
+Keep it short and user-facing — what changed for the person using Papyra, not
+how it was built. One line per bullet. Drop any section with nothing in it.
 
 ---
 
-# vX.Y.Z
+```markdown
+One plain line: what this release is about.
 
-One or two lines in my own words: what this release is about and why you'd want it.
+### ⚠️ Breaking changes
+- What changed and what to do before pulling.
 
-## ⚠️ Breaking changes
+### 🌟 Highlights
+- **Feature.** A sentence on what you can do now.
 
-> Read this before you pull the new image.
-
-- What changed, who it affects, and what to do about it.
-
-## 🌟 Highlights
-
-### Feature name
-A sentence or two on what you can do now. Add a screenshot if it helps.
-
-### Another feature
-…
-
-## 🚀 New features
+### 🚀 Features
 - …
 
-## ✨ Improvements
+### ✨ Improvements
 - …
 
-## 🐛 Bug fixes
+### 🐛 Fixes
 - …
 
-## 🔒 Security
+### 🔒 Security
 - …
 
-## 🧰 For self-hosters
-- New/changed environment variables, volumes, ports, or migrations.
-- `PAPYRA_SOMETHING` — what it does, default.
+### 🧰 Self-hosting
+- New env vars, volumes, migrations — `PAPYRA_SOMETHING`: what it does.
 
-## 📦 Upgrade
-
-```bash
-docker compose pull && docker compose up -d
+**Upgrade:** `docker compose pull && docker compose up -d` · **Full changelog:** [vPREV...vX.Y.Z](https://github.com/lyfie-org/papyra/compare/vPREV...vX.Y.Z)
 ```
 
-Image: `lyfie/papyra:vX.Y.Z` (also `latest`). Back up your data volume before a major or breaking release.
-
-## 📝 Commits
-- feat: … (abc1234)
-- fix: … (def5678)
-
-**Full changelog:** https://github.com/lyfie-org/papyra/compare/vPREV...vX.Y.Z
+Use **Highlights** only for a headline feature (one or two per release, max).
+A one-fix release is just the summary line and a `### 🐛 Fixes` list.
