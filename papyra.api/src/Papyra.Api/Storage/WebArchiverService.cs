@@ -149,7 +149,7 @@ public sealed partial class WebArchiverService : BackgroundService
             if (mediaType is not null && !mediaType.Contains("html", StringComparison.OrdinalIgnoreCase)) return null;
 
             await using var stream = await resp.Content.ReadAsStreamAsync(ct);
-            return await ReadCappedAsync(stream, ct);
+            return await ReadCappedAsync(stream, resp.Content.Headers.ContentType?.CharSet, sniffMeta: true, ct);
         }
         return null; // too many redirects
     }
@@ -191,7 +191,7 @@ public sealed partial class WebArchiverService : BackgroundService
             if (resp.IsSuccessStatusCode && (mediaType is null || mediaType.Contains("html", StringComparison.OrdinalIgnoreCase)))
             {
                 await using var stream = await resp.Content.ReadAsStreamAsync(ct);
-                html = await ReadCappedAsync(stream, ct);
+                html = await ReadCappedAsync(stream, resp.Content.Headers.ContentType?.CharSet, sniffMeta: true, ct);
             }
             return new PageProbe(uri, frameOptions, csp, mediaType, html);
         }
@@ -213,7 +213,7 @@ public sealed partial class WebArchiverService : BackgroundService
         var mediaType = resp.Content.Headers.ContentType?.MediaType;
         if (mediaType is not null && !mediaType.Contains("json", StringComparison.OrdinalIgnoreCase)) return null;
         await using var stream = await resp.Content.ReadAsStreamAsync(ct);
-        return await ReadCappedAsync(stream, ct);
+        return await ReadCappedAsync(stream, resp.Content.Headers.ContentType?.CharSet, sniffMeta: false, ct);
     }
 
     private static async Task<bool> HostIsPublicAsync(Uri uri, CancellationToken ct)
@@ -224,7 +224,7 @@ public sealed partial class WebArchiverService : BackgroundService
         return ips.Length > 0 && ips.All(IsPubliclyRoutable);
     }
 
-    private static async Task<string?> ReadCappedAsync(Stream stream, CancellationToken ct)
+    private static async Task<string?> ReadCappedAsync(Stream stream, string? headerCharset, bool sniffMeta, CancellationToken ct)
     {
         using var ms = new MemoryStream();
         var buffer = new byte[81920];
@@ -234,8 +234,49 @@ public sealed partial class WebArchiverService : BackgroundService
             if (ms.Length + read > MaxBytes) break; // stop at the cap
             ms.Write(buffer, 0, read);
         }
-        return ms.Length == 0 ? null : Encoding.UTF8.GetString(ms.ToArray());
+        return ms.Length == 0 ? null : Decode(ms.ToArray(), headerCharset, sniffMeta);
     }
+
+    // Pages aren't all UTF-8: jalan.net answers `charset=Windows-31J` (Shift_JIS),
+    // and decoding that as UTF-8 archived a card of U+FFFD. Pick the encoding the
+    // way a browser does — BOM, then the Content-Type charset, then a <meta>
+    // charset in the head — falling back to UTF-8.
+    static WebArchiverService() => Encoding.RegisterProvider(CodePagesEncodingProvider.Instance);
+
+    internal static string Decode(byte[] bytes, string? headerCharset, bool sniffMeta)
+    {
+        if (bytes.AsSpan().StartsWith((ReadOnlySpan<byte>)[0xEF, 0xBB, 0xBF])) return Encoding.UTF8.GetString(bytes, 3, bytes.Length - 3);
+        var encoding = EncodingFor(headerCharset)
+            ?? (sniffMeta ? EncodingFor(MetaCharset(bytes)) : null)
+            ?? new UTF8Encoding(false);
+        return encoding.GetString(bytes);
+    }
+
+    // A <meta charset="…"> or <meta http-equiv content="…; charset=…"> in the first
+    // 4 KiB, read as Latin-1 so the ASCII markup survives any encoding.
+    private static string? MetaCharset(byte[] bytes)
+    {
+        var head = Encoding.Latin1.GetString(bytes, 0, Math.Min(bytes.Length, 4096));
+        var m = MetaCharsetRegex().Match(head);
+        return m.Success ? m.Groups[1].Value : null;
+    }
+
+    private static Encoding? EncodingFor(string? charset)
+    {
+        if (string.IsNullOrWhiteSpace(charset)) return null;
+        var name = charset.Trim().Trim('"', '\'').ToLowerInvariant() switch
+        {
+            // WHATWG labels .NET doesn't know by name.
+            "windows-31j" or "x-sjis" or "ms_kanji" or "csshiftjis" or "ms932" => "shift_jis",
+            "iso-8859-1" or "latin1" or "us-ascii" or "ascii" => "windows-1252", // browsers decode these as 1252
+            var n => n,
+        };
+        try { return Encoding.GetEncoding(name); }
+        catch (ArgumentException) { return null; }
+    }
+
+    [GeneratedRegex(@"<meta[^>]+charset\s*=\s*[""']?\s*([A-Za-z0-9_.:-]+)", RegexOptions.IgnoreCase)]
+    private static partial Regex MetaCharsetRegex();
 
     // Append a "Saved" card to the note this job came from.
     private async Task AppendSavedCardAsync(string userId, string noteId, string card, CancellationToken ct)
