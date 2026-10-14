@@ -1,0 +1,54 @@
+name: Release notes
+
+# Copies .github/release-notes/vX.Y.Z.md into the body of GitHub release vX.Y.Z.
+# Runs when those files change on main, or by hand: give a tag to update one
+# release, or leave it empty to sync every file. A file whose release does not
+# exist yet is skipped (the Release workflow publishes it when it cuts the tag).
+on:
+  push:
+    branches: [main]
+    paths: ['.github/release-notes/**']
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release to update, e.g. v0.4.11 (empty = all)'
+        required: false
+        default: ''
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    name: Update GitHub release bodies
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+
+      - name: Sync notes
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ github.event.inputs.tag }}
+          BEFORE: ${{ github.event.before }}
+        run: |
+          DIR=.github/release-notes
+          if [ -n "$TAG" ]; then
+            FILES="$DIR/$TAG.md"
+          elif [ "${{ github.event_name }}" = "push" ] && git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
+            FILES=$(git diff --name-only --diff-filter=AM "$BEFORE" HEAD -- "$DIR")
+          else
+            FILES=$(ls "$DIR"/v*.md)
+          fi
+
+          for f in $FILES; do
+            [ -f "$f" ] || { echo "::error::$f not found"; exit 1; }
+            tag=$(basename "$f" .md)
+            if gh release view "$tag" >/dev/null 2>&1; then
+              gh release edit "$tag" --notes-file "$f"
+              echo "✅ $tag"
+            else
+              echo "⏭️ $tag has no GitHub release yet"
+            fi
+          done

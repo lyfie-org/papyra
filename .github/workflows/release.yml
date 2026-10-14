@@ -5,7 +5,8 @@ name: Release
 #   2. bumps VERSION + prepends CHANGELOG.md from the commits since the last tag,
 #   3. commits + tags vX.Y.Z on main and pushes,
 #   4. pushes a multi-arch image to Docker Hub (vX.Y.Z + latest),
-#   5. publishes a GitHub Release with the same notes,
+#   5. publishes a GitHub Release from .github/release-notes/vX.Y.Z.md (drafted
+#      from commits when not written ahead; edit it later → release-notes.yml),
 #   6. fast-forwards development back to main so both branches stay in lockstep,
 #   7. redeploys the site so papyra.app's changelog shows the new release.
 #
@@ -137,18 +138,38 @@ jobs:
             $0 == marker && !done { print section; done=1 }
           ' CHANGELOG.md > CHANGELOG.tmp && mv CHANGELOG.tmp CHANGELOG.md
 
-          # Stash the body for the GitHub Release.
-          {
-            echo "$COMMITS"
-            echo ""
-            echo "**Docker:** \`docker pull ${IMAGE}:${TAG}\`"
-          } > RELEASE_NOTES.md
+          # GitHub Release body = .github/release-notes/$TAG.md (format in
+          # .github/RELEASE_TEMPLATE.md). Written ahead of time → used as-is;
+          # otherwise draft it from feat:/fix: subjects to rewrite later — the
+          # Release notes workflow pushes the edit into the release.
+          NOTES=".github/release-notes/$TAG.md"
+          if [ ! -f "$NOTES" ]; then
+            mkdir -p .github/release-notes
+            SUBJECTS=$(git log $RANGE --no-merges --pretty=format:'%s' | grep -v '^release:' || true)
+            bullets() { echo "$SUBJECTS" | grep -E "^$1(\([^)]*\))?!?: " | sed -E "s/^$1(\([^)]*\))?!?: */- /; s/^- (.)/- \U\1/" || true; }
+            FEATS=$(bullets feat)
+            FIXES=$(bullets fix)
+            {
+              echo "<!-- Draft from commit subjects. Replace this line with one plain sentence on what the release is about, tidy the bullets (see .github/RELEASE_TEMPLATE.md), then push to main. -->"
+              echo ""
+              if [ -n "$FEATS" ]; then printf '### 🚀 Features\n%s\n\n' "$FEATS"; fi
+              if [ -n "$FIXES" ]; then printf '### 🐛 Fixes\n%s\n\n' "$FIXES"; fi
+              if [ -z "$FEATS$FIXES" ]; then printf 'Maintenance release: dependency and tooling updates.\n\n'; fi
+              printf '**Upgrade:** `docker compose pull && docker compose up -d`'
+              if [ -n "$PREV_TAG" ]; then
+                printf ' · **Full changelog:** [%s...%s](https://github.com/%s/compare/%s...%s)' \
+                  "$PREV_TAG" "$TAG" "${{ github.repository }}" "$PREV_TAG" "$TAG"
+              fi
+              echo ""
+            } > "$NOTES"
+          fi
+          cp "$NOTES" RELEASE_NOTES.md
 
       - name: Commit, tag & push to main
         run: |
           git config user.name  "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git add VERSION CHANGELOG.md
+          git add VERSION CHANGELOG.md .github/release-notes
           git commit -m "release: ${{ steps.ver.outputs.tag }}"
           git tag ${{ steps.ver.outputs.tag }}
           git push origin HEAD:main
