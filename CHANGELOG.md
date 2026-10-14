@@ -6,6 +6,11 @@ a Docker Hub tag and a GitHub Release.
 
 <!-- new releases are inserted directly below this line -->
 
+## [0.4.13] - 2026-10-14
+
+- Note links are plain coloured text (no underline) (5ccb3a8)
+- fix(archiver): decode pages by charset (BOM → Content-Type → <meta>) (978511e)
+
 ## [0.4.12] - 2026-10-14
 
 - fix: keep link ink on hover + per-release notes files (37786e2)
