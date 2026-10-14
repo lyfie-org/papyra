@@ -151,25 +151,34 @@ textarea {
 ::selection {
   background: var(--selection-bg);
 }
-/* Links keep their underline but take a selection-safe ink (see tokens). */
+/* Links take a selection-safe ink (see tokens). */
 :is(a, .luthor-link, .luthor-wikilink)::selection,
 :is(a, .luthor-link, .luthor-wikilink) *::selection {
   color: var(--selection-link);
 }
-/* Link hover keeps the link's own ink. Luthor's .luthor-link:hover switches to
-   --luthor-accent-hover, which the papyra preset maps to --papyra-accent-hover:
-   a button *fill* green that ignores --tint-link and sank to ~2:1 on coloured
-   notes (wikilinks have no hover colour, hence "only some links"). Hover is
-   shown by the underline instead, so every link reads the same on any tint. */
-.luthor-preset-papyra .luthor-link:hover {
-  color: var(--luthor-link-color);
-  text-decoration-thickness: 2px;
+/* Links in notes are plain coloured text — no underline — and hover lays a
+   soft wash of the link's own colour behind them. The ink never changes:
+   luthor's .luthor-link:hover switched to --papyra-accent-hover, a button
+   *fill* green that ignored --tint-link and sank to ~2:1 on coloured notes
+   (wikilinks had no hover colour, hence "only some links"). The link ink is
+   AA on every tint, and a 14% wash of it keeps that on any background.
+   The doubled class outranks luthor's .luthor-preset-papyra .luthor-wikilink,
+   which loads after this file. */
+.luthor-preset-papyra.luthor-preset-papyra :is(.luthor-link, .luthor-wikilink),
+.md-preview__link {
+  text-decoration: none;
+  border-bottom: none;
+  border-radius: 3px;
+  padding: 0 2px;
+  margin: 0 -2px; /* room for the wash, no reflow */
+  transition: background-color var(--dur-fast, 120ms) ease;
 }
-.luthor-preset-papyra .luthor-wikilink:hover {
-  border-bottom-color: currentColor;
+.luthor-preset-papyra.luthor-preset-papyra :is(.luthor-link, .luthor-wikilink):hover {
+  color: var(--luthor-link-color);
+  background-color: color-mix(in srgb, currentColor 14%, transparent);
 }
 .md-preview__link:hover {
-  text-decoration-color: currentColor;
+  background-color: color-mix(in srgb, currentColor 14%, transparent);
 }
 /* Checklist boxes. Luthor inks the tick with --luthor-bg (= --papyra-surface),
    which is transparent on a coloured note, so the tick vanished; and the sage
