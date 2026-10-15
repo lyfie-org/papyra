@@ -1,0 +1,41 @@
+---
+// Shown on every page of the dev preview (dev.papyra.app) only — see IS_DEV_SITE.
+// Scrolls away with the page; the sticky header stays where it always is.
+import { DOCKER_IMAGE, SITE_URL } from '../data/site';
+---
+
+<aside class="dev-banner" aria-label="Development preview">
+  <div class="wrap dev-banner__inner">
+    <span><strong>Dev preview</strong> of the <code>development</code> branch — may break.</span>
+    <span>Image <code>{DOCKER_IMAGE}</code></span>
+    <a href={SITE_URL}>Go to papyra.app</a>
+  </div>
+</aside>
+
+<style>
+  .dev-banner {
+    background: var(--accent-bg);
+    border-bottom: 1px solid var(--accent-border);
+    color: var(--text-h);
+    font-size: var(--fs-sm);
+  }
+
+  .dev-banner__inner {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: var(--space-2) var(--space-5);
+    padding-block: var(--space-2);
+  }
+
+  .dev-banner code {
+    font-family: var(--mono);
+    font-size: var(--fs-xs);
+    overflow-wrap: anywhere;
+  }
+
+  .dev-banner a {
+    margin-inline-start: auto;
+    color: var(--accent-text);
+  }
+</style>

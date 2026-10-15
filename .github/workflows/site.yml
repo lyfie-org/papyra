@@ -1,6 +1,14 @@
 name: site
 
-# Builds and deploys the product website (papyra.app).
+# Builds and deploys the product website. Two lines (see .github/RELEASE_LINES.md):
+#
+#   main        → production, https://papyra.app  (push, daily schedule, or by hand)
+#   development → dev preview, https://dev.papyra.app  (by hand only)
+#
+# The dev build sets PUBLIC_SITE_CHANNEL=dev: every page is noindex, robots.txt
+# blocks all crawlers, no sitemap ships, and a banner points at papyra.app and
+# the `lyfie/papyra:dev` image. Both lines deploy to the same Cloudflare Pages
+# project; dev.papyra.app is a custom domain on its `development` branch alias.
 #
 # Deployed from Actions rather than through Cloudflare Pages' own Git
 # integration: the build reaches across the monorepo into papyra.web to produce
@@ -14,10 +22,11 @@ name: site
 
 # Push-only on purpose: a PR from development → main would otherwise run the
 # same build twice (once for the push, once for the PR). The merge into main is
-# itself a push, so production still deploys.
+# itself a push, so production still deploys. development is not here: the dev
+# site moves only when you run this workflow on it by hand.
 on:
   push:
-    branches: [main, development]
+    branches: [main]
     paths:
       - 'papyra.app/**'
       - 'papyra.web/**'
@@ -31,7 +40,8 @@ on:
       - 'pnpm-lock.yaml'
       - '.github/workflows/site.yml'
       - '.github/actions/**'
-  # So a deploy can be re-run without an empty commit.
+  # Re-run production without an empty commit, or — run on development — deploy
+  # the dev site.
   workflow_dispatch:
   # Daily rebuild of main, so the Docker Hub pull count and GitHub star count
   # baked into the pages stay current (src/lib/stats.mjs). The site itself stays
@@ -49,6 +59,16 @@ jobs:
     permissions:
       contents: read
     steps:
+      # main → prod, development → dev; any other ref has no site to deploy to.
+      - name: Resolve channel
+        id: channel
+        run: |
+          case "${{ github.ref_name }}" in
+            main)        echo "channel=prod" >> "$GITHUB_OUTPUT"; echo "url=https://papyra.app" >> "$GITHUB_OUTPUT" ;;
+            development) echo "channel=dev"  >> "$GITHUB_OUTPUT"; echo "url=https://dev.papyra.app" >> "$GITHUB_OUTPUT" ;;
+            *) echo "::error::The site deploys from main (production) or development (dev) only, not '${{ github.ref_name }}'."; exit 1 ;;
+          esac
+
       - uses: actions/checkout@v7
 
       # The site plus the web app it embeds as /demo — not the collab engine.
@@ -66,7 +86,23 @@ jobs:
         run: pnpm --filter papyra-web run build:demo
 
       - name: Build the site
+        env:
+          PUBLIC_SITE_CHANNEL: ${{ steps.channel.outputs.channel }}
         run: pnpm --filter papyra-app run build
+
+      # The dev site must never be indexed; prove the build marked it so.
+      - name: Verify the dev build is noindex
+        if: steps.channel.outputs.channel == 'dev'
+        run: |
+          grep -q 'name="robots" content="noindex' papyra.app/dist/index.html \
+            || { echo "::error::dist/index.html is missing the noindex robots meta."; exit 1; }
+          grep -q 'X-Robots-Tag: noindex' papyra.app/dist/_headers \
+            || { echo "::error::dist/_headers is missing X-Robots-Tag: noindex."; exit 1; }
+          grep -qx 'Disallow: /' papyra.app/dist/robots.txt \
+            || { echo "::error::dist/robots.txt does not block crawlers."; exit 1; }
+          test ! -e papyra.app/dist/sitemap-index.xml \
+            || { echo "::error::The dev build shipped a sitemap."; exit 1; }
+          echo "Dev build is noindex."
 
       # A silently-ignored rule here means deep links 404 in production, and the
       # only signal is a line in wrangler's output — so make it a hard gate.
@@ -143,7 +179,9 @@ jobs:
             echo "::error::CLOUDFLARE_API_TOKEN and/or CLOUDFLARE_ACCOUNT_ID are not set. Add them under Settings → Secrets and variables → Actions. The Pages project must also already exist: wrangler pages project create papyra --production-branch=main"
             exit 1
           fi
-          # main → production (papyra.app); every other branch → a preview URL.
+          # main → production (papyra.app); development → its branch alias
+          # (development.papyra.pages.dev), which dev.papyra.app points at.
           pnpm exec wrangler pages deploy dist \
             --project-name=papyra \
             --branch="${{ github.ref_name }}"
+          echo "Deployed ${{ steps.channel.outputs.channel }} → ${{ steps.channel.outputs.url }}" >> "$GITHUB_STEP_SUMMARY"

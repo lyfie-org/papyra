@@ -3,7 +3,8 @@
 
 services:
   papyra:
-    image: lyfie/papyra:latest
+    # Release by default; PAPYRA_TAG=dev (or dev-<sha>) runs the dev line instead.
+    image: lyfie/papyra:${PAPYRA_TAG:-latest}
     container_name: papyra
     restart: unless-stopped
     ports:

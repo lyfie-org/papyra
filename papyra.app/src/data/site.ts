@@ -4,7 +4,15 @@
 
 export const GITHUB_URL = 'https://github.com/lyfie-org/papyra';
 export const DOCKER_HUB_URL = 'https://hub.docker.com/r/lyfie/papyra';
-export const DOCKER_IMAGE = 'lyfie/papyra:latest';
+/**
+ * Which line this build is: the production site (papyra.app, from main) or the
+ * dev preview (dev.papyra.app, from development). Set by .github/workflows/site.yml;
+ * unset locally, so a plain `pnpm run build` is always production.
+ */
+export const IS_DEV_SITE = import.meta.env.PUBLIC_SITE_CHANNEL === 'dev';
+
+/** The dev preview tracks the dev image, published by .github/workflows/docker-dev.yml. */
+export const DOCKER_IMAGE = IS_DEV_SITE ? 'lyfie/papyra:dev' : 'lyfie/papyra:latest';
 export const LICENSE = 'GNU GPL v3.0';
 
 /** The one-line description used in the manifest and the app's About tab. */
@@ -24,6 +32,7 @@ export const LUTHOR_URL = 'https://www.luthor.fyi';
 export const CREATOR_NAME = 'Rahul N. Anand';
 export const CREATOR_URL = 'https://www.rahulnsanand.com';
 
+/** Always production — the dev preview's canonicals point here too, so it never competes. */
 export const SITE_URL = 'https://papyra.app';
 
 /** One description, used by meta tags, structured data and llms.txt. */

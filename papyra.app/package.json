@@ -5,7 +5,7 @@
   "type": "module",
   "scripts": {
     "dev": "astro dev",
-    "build": "node scripts/check-tokens.mjs && astro build && node scripts/check-links.mjs",
+    "build": "node scripts/check-tokens.mjs && astro build && node scripts/channel.mjs && node scripts/check-links.mjs",
     "preview": "astro preview",
     "check": "astro check",
     "check:tokens": "node scripts/check-tokens.mjs",

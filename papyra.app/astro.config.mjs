@@ -6,6 +6,10 @@ import sitemap from '@astrojs/sitemap';
 import rehypeTableScroll from './src/lib/rehype-table-scroll.mjs';
 import rehypeExternalLinks from './src/lib/rehype-external-links.mjs';
 
+// The dev preview (dev.papyra.app) is never indexed, so it ships no sitemap.
+// Everything else that differs is in Base.astro and scripts/channel.mjs.
+const isDevSite = process.env.PUBLIC_SITE_CHANNEL === 'dev';
+
 export default defineConfig({
   site: 'https://papyra.app',
   // Fully static: every byte is served from Cloudflare's edge with no origin,
@@ -14,13 +18,14 @@ export default defineConfig({
   integrations: [
     mdx(),
     react(),
-    sitemap({
-      // HTML pages only: the 404, and the plain-text twins (/llms.txt,
-      // /docs/*.md) which are linked from the pages themselves.
-      filter: (page) => !/\/404\/?$|\.(txt|md)\/?$/.test(page),
-      // Every build is a fresh look at the docs and the release notes.
-      serialize: (item) => ({ ...item, lastmod: new Date().toISOString() }),
-    }),
+    !isDevSite &&
+      sitemap({
+        // HTML pages only: the 404, and the plain-text twins (/llms.txt,
+        // /docs/*.md) which are linked from the pages themselves.
+        filter: (page) => !/\/404\/?$|\.(txt|md)\/?$/.test(page),
+        // Every build is a fresh look at the docs and the release notes.
+        serialize: (item) => ({ ...item, lastmod: new Date().toISOString() }),
+      }),
   ],
   markdown: {
     // Tables scroll inside their own box so a wide one never makes the page
