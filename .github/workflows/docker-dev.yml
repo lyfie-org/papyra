@@ -1,0 +1,124 @@
+name: Docker (dev)
+
+# Publishes a test build of `development` to Docker Hub, by hand only.
+#
+#   lyfie/papyra:dev            — moves to the newest dev build
+#   lyfie/papyra:dev-<shortsha> — pinned to one commit, never moves
+#
+# Never `latest` and never a version tag: those belong to release.yml, cut from
+# main. Nothing here commits, tags or pushes to git either, so running it has no
+# effect on the next release. Try a build with:
+#   PAPYRA_TAG=dev docker compose -f docker-compose.hub.yml up -d
+# See .github/RELEASE_LINES.md.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+# A newer dev build supersedes one still in flight.
+concurrency:
+  group: docker-dev
+  cancel-in-progress: true
+
+jobs:
+  publish:
+    name: Build, smoke-test & push dev image
+    runs-on: ubuntu-latest
+    # The dev line is development only; the run is skipped from any other ref.
+    if: github.ref == 'refs/heads/development'
+    env:
+      IMAGE: ${{ secrets.DOCKERHUB_USERNAME }}/papyra
+    steps:
+      - name: Checkout development
+        uses: actions/checkout@v7
+
+      - name: Compute tags
+        id: tags
+        run: |
+          SHORT=$(git rev-parse --short=7 HEAD)
+          echo "short=$SHORT" >> "$GITHUB_OUTPUT"
+          echo "Publishing $IMAGE:dev and $IMAGE:dev-$SHORT ($(cat VERSION) + development)"
+
+      - name: Set up QEMU
+        uses: docker/setup-qemu-action@v3
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      # Same gate as a release: the image must boot and collaborate before it is
+      # pushed anywhere, dev tag or not.
+      - name: Build image for smoke test
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64
+          load: true
+          tags: papyra:smoketest
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Setup pnpm workspace (collab e2e script)
+        uses: ./.github/actions/setup-pnpm
+        with:
+          install-args: --filter papyra-collab...
+
+      - name: Smoke test
+        run: |
+          docker run -d -p 8080:8080 -e PAPYRA_ALLOW_INSECURE_COOKIES=true --name smoke papyra:smoketest
+          echo "Waiting for boot..."
+          for i in $(seq 1 15); do
+            sleep 2
+            STATUS=$(docker inspect -f '{{.State.Status}}' smoke 2>/dev/null || echo missing)
+            if [ "$STATUS" != "running" ]; then
+              echo "❌ Container not running (status=$STATUS). Logs:"; docker logs smoke; exit 1
+            fi
+            CODE=$(curl -s -o /dev/null -w "%{http_code}" http://localhost:8080/health || echo 000)
+            # 200 = healthy; 428 = healthy but awaiting first-admin setup. Both = boot OK.
+            if [ "$CODE" = "200" ] || [ "$CODE" = "428" ]; then
+              echo "✅ Boot OK (HTTP $CODE)"; exit 0
+            fi
+          done
+          echo "❌ /health never returned 200/428. Logs:"; docker logs smoke; exit 1
+
+      - name: Smoke test — live collaboration
+        working-directory: papyra.collab
+        env:
+          PAPYRA_E2E_URL: http://localhost:8080
+        run: |
+          pnpm run e2e || { docker logs smoke; exit 1; }
+          docker rm -f smoke
+
+      - name: Log in to Docker Hub
+        uses: docker/login-action@v3
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+      # The tag list is written out in full on purpose — no metadata action that
+      # might add `latest` on its own.
+      - name: Build & push multi-arch dev image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          push: true
+          tags: |
+            ${{ env.IMAGE }}:dev
+            ${{ env.IMAGE }}:dev-${{ steps.tags.outputs.short }}
+          labels: |
+            org.opencontainers.image.revision=${{ github.sha }}
+            org.opencontainers.image.source=https://github.com/${{ github.repository }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+      - name: Summary
+        run: |
+          {
+            echo "### Dev image published"
+            echo ""
+            echo "- \`$IMAGE:dev\`"
+            echo "- \`$IMAGE:dev-${{ steps.tags.outputs.short }}\`"
+            echo ""
+            echo "Try it: \`PAPYRA_TAG=dev docker compose -f docker-compose.hub.yml up -d\`"
+          } >> "$GITHUB_STEP_SUMMARY"
