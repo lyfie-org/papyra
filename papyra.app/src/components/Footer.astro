@@ -2,7 +2,7 @@
 import { Image } from 'astro:assets';
 import Icon from './Icon.astro';
 import lyfieLogo from '../assets/lyfie_logo.png';
-import { DOCKER_HUB_URL, GITHUB_URL, LICENSE, LYFIE_URL } from '../data/site';
+import { DISCORD_URL, DOCKER_HUB_URL, GITHUB_URL, LICENSE, LYFIE_URL } from '../data/site';
 
 const year = new Date().getFullYear();
 
@@ -30,6 +30,7 @@ const columns = [
     links: [
       { href: '/contribute/', label: 'Contribute' },
       { href: GITHUB_URL, label: 'GitHub', external: true },
+      { href: DISCORD_URL, label: 'Discord', external: true },
       { href: DOCKER_HUB_URL, label: 'Docker Hub', external: true },
       { href: '/docs/security/', label: 'Security' },
       { href: LYFIE_URL, label: 'Lyfie', external: true },
@@ -52,6 +53,9 @@ const columns = [
       <p class="site-footer__icons">
         <a class="is-github" href={GITHUB_URL} rel="noopener noreferrer" aria-label="Papyra on GitHub" title="Papyra on GitHub">
           <Icon name="github" size={18} />
+        </a>
+        <a class="is-discord" href={DISCORD_URL} rel="noopener noreferrer" aria-label="Papyra on Discord" title="Chat with us on Discord">
+          <Icon name="discord" size={18} />
         </a>
         <a class="is-docker" href={DOCKER_HUB_URL} rel="noopener noreferrer" aria-label="Papyra on Docker Hub" title="Papyra on Docker Hub">
           <Icon name="docker" size={18} />
