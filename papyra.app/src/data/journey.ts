@@ -23,12 +23,33 @@ export interface Milestone {
 
 export const JOURNEY: Milestone[] = [
   {
-    date: '2026-10-07',
+    date: '2026-10-15',
     version: '1.0',
     icon: 'rocket',
     title: 'Papyra 1.0',
     text: 'Everything below — polished, tested and ready for your notes.',
     current: true,
+  },
+  {
+    date: '2026-10-13',
+    version: '0.4.9',
+    icon: 'code',
+    title: 'Agents in your notes',
+    text: 'Scripts and AI agents on an API key edit live notes beside you.',
+  },
+  {
+    date: '2026-10-10',
+    version: '0.4.4',
+    icon: 'users',
+    title: 'Shared notes, organised',
+    text: 'Tag and pin what others share with you; linked notes travel together.',
+  },
+  {
+    date: '2026-10-09',
+    version: '0.4.0',
+    icon: 'globe',
+    title: 'Embed any link',
+    text: 'Maps, songs, videos and documents, right inside a note.',
   },
   {
     date: '2026-10-06',

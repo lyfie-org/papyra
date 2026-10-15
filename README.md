@@ -15,9 +15,9 @@
 
 ---
 
-> [!WARNING]
-> **ACTIVE DEVELOPMENT** — v0.1.2. Anything can change and break anytime.
-> If you adopt it today, keep the backups it makes for you.
+> [!NOTE]
+> **Papyra 1.0** — the first stable release. The file format, data layout and upgrade
+> path are stable from here on. Still: back up your data volume, hidden `.papyra` folders included.
 
 ---
 
@@ -74,13 +74,13 @@ transcription, Tesseract OCR, Ollama embeddings and RAG chat). The routes return
 | **Framework** | React 19 / TypeScript 6 / Vite 8 |
 | **Routing** | `react-router-dom` 7 |
 | **Data fetching** | `@tanstack/react-query` 5 — no Redux, no Zustand |
-| **Editor** | `@lyfie/luthor` 2.9.5 (our Lexical 0.40 wrapper). *Standard Lexical or alternative rich-text engines are not used here.* |
+| **Editor** | `@lyfie/luthor` 2.11 (our Lexical 0.40 wrapper). *Standard Lexical or alternative rich-text engines are not used here.* |
 | **Real-time** | `@microsoft/signalr` |
 | **Offline** | IndexedDB outbox + service worker; autosave, no save button |
 
 #### Website (`/papyra.app`)
 
-Astro 7 static site — marketing pages, ten docs pages, the rendered API
+Astro 7 static site — marketing pages, eleven docs pages, the rendered API
 reference, and a **live in-browser demo** built from `papyra.web` with a fake
 backend. Deployed to Cloudflare Pages from GitHub Actions.
 
@@ -194,7 +194,7 @@ pnpm --filter papyra-web run check:a11y
 
 | Suite | What it is | Count |
 |---|---|---|
-| `papyra.api/tests/Papyra.Tests` | xUnit — storage, path jail, search index, conflict detection, cold-boot diff, auth, sharing, backups | **373 test cases** across 47 classes |
+| `papyra.api/tests/Papyra.Tests` | xUnit — storage, path jail, search index, conflict detection, cold-boot diff, auth, sharing, backups | **869 test cases** |
 | `papyra.api/tests/edge` | Black-box HTTP checks against a running instance — routing, auth policies, cookies, tenant isolation, real status codes | **239 checks** (`edge.sh` 99 + `edge2.sh` 140) |
 
 The edge harness needs a live instance and a throwaway vault; see
