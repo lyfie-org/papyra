@@ -87,10 +87,13 @@ const robots = IS_DEV_SITE
     <script is:inline>
       (function () {
         var saved = localStorage.getItem('papyra-theme');
+        // No saved choice yet: follow the visitor's local clock — dark from 18:00
+        // to 05:59, light from 06:00 to 17:59 (browser time zone).
+        var hour = new Date().getHours();
         var theme =
           saved === 'light' || saved === 'dark'
             ? saved
-            : window.matchMedia('(prefers-color-scheme: dark)').matches
+            : hour >= 18 || hour < 6
               ? 'dark'
               : 'light';
         document.documentElement.setAttribute('data-theme', theme);
