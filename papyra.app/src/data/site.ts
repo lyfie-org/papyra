@@ -4,6 +4,8 @@
 
 export const GITHUB_URL = 'https://github.com/lyfie-org/papyra';
 export const DOCKER_HUB_URL = 'https://hub.docker.com/r/lyfie/papyra';
+/** The lyfie.org community Discord (Papyra has its own channels there). Never-expiring invite. */
+export const DISCORD_URL = 'https://discord.gg/KQNsjGAUUz';
 /**
  * Which line this build is: the production site (papyra.app, from main) or the
  * dev preview (dev.papyra.app, from development). Set by .github/workflows/site.yml;

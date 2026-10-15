@@ -1,7 +1,7 @@
 ---
 import Base from '../layouts/Base.astro';
 import Icon from '../components/Icon.astro';
-import { GITHUB_URL } from '../data/site';
+import { DISCORD_URL, GITHUB_URL } from '../data/site';
 // The repository's own CONTRIBUTING.md, rendered at build time — GitHub shows the
 // same file next to every new issue and pull request, so the two never drift.
 import { Content } from '../../../CONTRIBUTING.md';
@@ -24,6 +24,10 @@ import { Content } from '../../../CONTRIBUTING.md';
         <a class="btn btn--ghost" href={GITHUB_URL} rel="noopener noreferrer">
           <Icon name="github" size={16} />
           View the source
+        </a>
+        <a class="btn btn--ghost" href={DISCORD_URL} rel="noopener noreferrer">
+          <Icon name="discord" size={16} />
+          Chat on Discord
         </a>
         <a class="btn btn--ghost" href="/api/">
           <Icon name="code" size={16} />

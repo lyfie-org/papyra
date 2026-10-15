@@ -12,6 +12,9 @@ request genuinely shapes it.
   to do, not only the button you want.
 - **Improve the docs.** Anything that confused you on [papyra.app/docs](https://papyra.app/docs/)
   will confuse the next person. The pages live in `papyra.app/src/content/docs/`.
+- **Come say hello on [Discord](https://discord.gg/KQNsjGAUUz).** Papyra has its own
+  help, ideas and issues channels there, and it's the quickest way to ask
+  "is this a bug or me?" before opening an issue.
 - **Star the repo and tell a friend.** Honestly, this helps more than you'd think.
 
 Found a security problem? Please don't open a public issue — report it privately
