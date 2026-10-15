@@ -6,6 +6,11 @@ a Docker Hub tag and a GitHub Release.
 
 <!-- new releases are inserted directly below this line -->
 
+## [0.4.14] - 2026-10-15
+
+- chore: v1 prep (bdd2b6e)
+- chore(release): prepare v1.0.0 (fbfd191)
+
 ## [0.4.13] - 2026-10-14
 
 - Note links are plain coloured text (no underline) (5ccb3a8)
