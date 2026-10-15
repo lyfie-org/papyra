@@ -171,14 +171,18 @@ textarea {
   border-radius: 3px;
   padding: 0 2px;
   margin: 0 -2px; /* room for the wash, no reflow */
-  transition: background-color var(--dur-fast, 120ms) ease;
+  /* A faint resting wash: links must differ from body text by more than colour
+     (WCAG 1.4.1 / axe link-in-text-block). It is a background-image — the one
+     background form axe counts as a distinction — so no underline is needed. */
+  --link-wash: color-mix(in srgb, currentColor 8%, transparent);
+  background-image: linear-gradient(var(--link-wash), var(--link-wash));
 }
 .luthor-preset-papyra.luthor-preset-papyra :is(.luthor-link, .luthor-wikilink):hover {
   color: var(--luthor-link-color);
-  background-color: color-mix(in srgb, currentColor 14%, transparent);
+  --link-wash: color-mix(in srgb, currentColor 16%, transparent);
 }
 .md-preview__link:hover {
-  background-color: color-mix(in srgb, currentColor 14%, transparent);
+  --link-wash: color-mix(in srgb, currentColor 16%, transparent);
 }
 /* Checklist boxes. Luthor inks the tick with --luthor-bg (= --papyra-surface),
    which is transparent on a coloured note, so the tick vanished; and the sage
