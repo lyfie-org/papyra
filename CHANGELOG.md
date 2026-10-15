@@ -6,6 +6,14 @@ a Docker Hub tag and a GitHub Release.
 
 <!-- new releases are inserted directly below this line -->
 
+## [0.4.15] - 2026-10-15
+
+- Update index.css (268ce99)
+- Update MarkdownPreview.css (baf34e8)
+- feat(site): default theme follows the visitor's local time until they pick one (5d28d17)
+- docs: friendlier README with screenshots, GIFs and first steps; add Discord to README, CONTRIBUTING and papyra.app (c34c146)
+- ci: add manual dev line for the Docker image and papyra.app (52b3619)
+
 ## [0.4.14] - 2026-10-15
 
 - chore: v1 prep (bdd2b6e)
