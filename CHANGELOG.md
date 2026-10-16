@@ -6,6 +6,10 @@ a Docker Hub tag and a GitHub Release.
 
 <!-- new releases are inserted directly below this line -->
 
+## [1.0.0] - 2026-10-16
+
+- No code changes since the previous release.
+
 ## [0.4.15] - 2026-10-15
 
 - Update index.css (268ce99)
