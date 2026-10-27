@@ -7,7 +7,8 @@
   border-radius: var(--radius-lg);
   box-shadow: var(--shadow-card);
   /* Roomy to write in, not roomy to look at: the page itself is the point. */
-  padding: var(--space-6) clamp(var(--space-4), 4vw, var(--space-10)) var(--space-3);
+  --sheet-pad-x: clamp(var(--space-4), 4vw, var(--space-10));
+  padding: var(--space-6) var(--sheet-pad-x) var(--space-3);
   display: flex;
   flex-direction: column;
   flex: 1 1 auto;
@@ -47,15 +48,20 @@
 }
 @keyframes journal-shimmer { to { background-position: -200% 0; } }
 
-/* Today wears a ribbon bookmark. */
+/* Today wears a ribbon bookmark. It hangs in the page's side margin so it never covers the header
+   (the mood chip sits at its right end); where the margin is too thin it shortens to a tab that
+   stays inside the top padding. */
 .journal-sheet__ribbon {
   position: absolute;
   top: -1px;
-  right: clamp(var(--space-5), 6vw, var(--space-12));
+  right: max(0px, calc((var(--sheet-pad-x) - 22px) / 2));
   width: 22px;
   height: 58px;
   background: var(--ribbon);
   clip-path: polygon(0 0, 100% 0, 100% 100%, 50% 82%, 0 100%);
+}
+@media (max-width: 560px) {
+  .journal-sheet__ribbon { height: 22px; }
 }
 
 /* The date on the left, how the day felt on the same line: one slim header. */
