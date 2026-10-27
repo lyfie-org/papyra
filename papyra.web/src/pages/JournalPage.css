@@ -1,8 +1,12 @@
+/* A wide page, as tall as the window: the desk scrolls only once the writing runs past it. */
 .journal-page {
-  width: min(100%, 820px);
+  width: min(100%, 1080px);
   margin: 0 auto;
-  padding: var(--space-4) var(--space-4) var(--space-12);
+  min-height: 100%;
+  display: flex;
+  flex-direction: column;
 }
+.journal-page--aside { width: min(100%, 1400px); }
 
 .journal-page__status {
   margin: var(--space-8) 0;
@@ -27,7 +31,8 @@
 
 .journal-page__nav,
 .journal-page__today,
-.journal-page__calendar {
+.journal-page__date,
+.journal-page__links {
   display: inline-flex;
   align-items: center;
   gap: var(--space-1);
@@ -45,43 +50,31 @@
 .journal-page__nav { padding-inline: var(--space-2); min-width: 36px; justify-content: center; }
 .journal-page__nav:hover:not(:disabled),
 .journal-page__today:hover,
-.journal-page__calendar:hover { border-color: var(--border-hover); }
+.journal-page__date:hover,
+.journal-page__links:hover { border-color: var(--border-hover); }
 .journal-page__nav:disabled { opacity: 0.4; cursor: default; }
-.journal-page__calendar { margin-inline-start: auto; }
-
-.journal-page__jump input[type='date'] {
-  min-height: 36px;
-  padding: var(--space-1) var(--space-3);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-pill);
-  background: var(--surface);
-  color: var(--text-h);
-  font: 500 var(--fs-xs)/1 var(--sans);
-}
-.journal-page__jump input[type='date']:hover { border-color: var(--border-hover); }
-.journal-page__jump input[type='date']:focus-visible { border-color: var(--border-focus); }
-
-.journal-page__sr {
-  position: absolute;
-  width: 1px;
-  height: 1px;
-  overflow: hidden;
-  clip-path: inset(50%);
-  white-space: nowrap;
-}
+.journal-page__nav:focus-visible,
+.journal-page__today:focus-visible,
+.journal-page__date:focus-visible,
+.journal-page__links:focus-visible { outline: 2px solid var(--border-focus); outline-offset: 2px; }
+.journal-page__links { margin-inline-start: auto; }
+/* The sage border is for what is selected: the panel, while it is open. */
+.journal-page__links[aria-pressed='true'] { background: var(--accent-bg); border-color: var(--accent-border); }
 
 @media (prefers-reduced-motion: reduce) {
-  .journal-page__nav, .journal-page__today, .journal-page__calendar { transition: none; }
+  .journal-page__nav, .journal-page__today, .journal-page__date, .journal-page__links { transition: none; }
 }
 
-/* The sheet, with its panel beside it on a wide desk and under it on a narrow one. */
-.journal-page__layout { display: block; }
-.journal-page__main { min-width: 0; }
+/* The sheet fills what is left of the page; its panel, when asked for, sits beside it on a wide
+   desk and under it on a narrow one. */
+.journal-page__layout { flex: 1 1 auto; display: flex; flex-direction: column; min-height: 0; }
+.journal-page__main { flex: 1 1 auto; display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.journal-page__layout .journal-aside { margin-top: var(--space-4); }
 @media (min-width: 1100px) {
-  .journal-page { width: min(100%, 1120px); }
-  .journal-page__layout { display: grid; grid-template-columns: minmax(0, 1fr) 260px; gap: var(--space-8); align-items: start; }
-  .journal-page__layout .journal-aside { position: sticky; top: var(--space-4); }
+  .journal-page--aside .journal-page__layout { display: grid; grid-template-columns: minmax(0, 1fr) 280px; gap: var(--space-6); align-items: stretch; }
+  .journal-page--aside .journal-page__layout .journal-aside { margin-top: 0; position: sticky; top: 0; align-self: start; }
 }
-@media (max-width: 1099px) {
-  .journal-page__layout .journal-aside { margin-top: var(--space-4); }
-}
+
+/* Focus mode: the sheet covers the browser (see EntrySheet.css), so nothing else stays on the page. */
+.journal-page--focus .journal-page__bar,
+.journal-page--focus .journal-aside { visibility: hidden; }

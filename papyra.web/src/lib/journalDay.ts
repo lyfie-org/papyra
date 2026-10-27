@@ -86,6 +86,11 @@ export function longDate(day: Day, locale?: string): string {
   return fmt(day, { day: 'numeric', month: 'long', year: 'numeric' }, locale);
 }
 
+/** "27 Oct 2026" (order follows the locale). */
+export function mediumDate(day: Day, locale?: string): string {
+  return fmt(day, { day: 'numeric', month: 'short', year: 'numeric' }, locale);
+}
+
 /** "October 2026". */
 export function monthTitle(day: Day, locale?: string): string {
   return fmt(day, { month: 'long', year: 'numeric' }, locale);

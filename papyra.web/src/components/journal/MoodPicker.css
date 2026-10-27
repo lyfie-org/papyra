@@ -51,3 +51,26 @@
 @media (max-width: 480px) {
   .mood-picker__btn { min-width: 44px; padding-inline: var(--space-1); }
 }
+
+/* A chosen mood folds into one small chip; the five come back when it is tapped. */
+.mood-picker-wrap { display: inline-flex; align-items: center; gap: var(--space-3); }
+.mood-picker__prompt { font: 400 var(--fs-xs)/1 var(--sans); color: var(--text); white-space: nowrap; }
+@media (max-width: 520px) { .mood-picker__prompt { display: none; } }
+
+.mood-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-3) var(--space-1) var(--space-2);
+  border: 1px solid var(--accent-border);
+  border-radius: var(--radius-pill);
+  background: var(--accent-bg);
+  color: var(--text-h);
+  font: 500 var(--fs-xs)/1.4 var(--sans);
+  cursor: pointer;
+  transition: border-color var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease);
+}
+.mood-chip:hover:not(:disabled) { border-color: var(--border-hover); }
+.mood-chip:focus-visible { outline: 2px solid var(--border-focus); outline-offset: 2px; }
+.mood-chip:disabled { opacity: 0.5; cursor: default; }
+@media (prefers-reduced-motion: reduce) { .mood-chip { transition: none; } }

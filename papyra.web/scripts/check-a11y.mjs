@@ -113,6 +113,28 @@ const FLOWS = [
     await page.locator('.journal-sheet .luthor-content-editable').waitFor();
     await page.waitForTimeout(500); // the page turn
   } },
+  { name: 'journal notes panel open', run: async (page) => {
+    await page.goto(`${ORIGIN}/demo/journal`);
+    await page.locator('.journal-sheet .luthor-content-editable').waitFor();
+    await page.getByRole('button', { name: /Notes & to-dos/ }).click();
+    await page.locator('.journal-aside').waitFor();
+    await page.waitForTimeout(500);
+  } },
+  { name: 'journal mood chip and its five open', run: async (page) => {
+    await page.goto(`${ORIGIN}/demo/journal/${dayAgo(1)}`);
+    await page.locator('.journal-sheet .luthor-content-editable').waitFor();
+    await page.getByRole('button', { name: /How the day felt: .*Change/ }).click();
+    await page.getByRole('radiogroup', { name: 'How the day felt' }).waitFor();
+    await page.waitForTimeout(500);
+  } },
+  { name: 'journal focus mode', run: async (page) => {
+    await page.goto(`${ORIGIN}/demo/journal/${dayAgo(1)}`);
+    await page.locator('.journal-sheet .luthor-content-editable').waitFor();
+    // The demo's banner sits over a phone's footer, where the Focus button is: press it directly.
+    await page.getByRole('button', { name: 'Focus', exact: true }).evaluate((el) => el.click());
+    await page.locator('.journal-sheet--focus').waitFor();
+    await page.waitForTimeout(500);
+  } },
   { name: 'journal day with a checklist', run: async (page) => {
     await page.goto(`${ORIGIN}/demo/journal/${dayAgo(1)}`);
     await page.locator('.journal-sheet .luthor-content-editable').waitFor();

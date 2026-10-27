@@ -1,7 +1,9 @@
 // @vitest-environment jsdom
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
+import { useState } from 'react';
 import MoodPicker from './MoodPicker';
+import type { Mood } from '../../types/journal';
 
 afterEach(cleanup);
 
@@ -55,5 +57,54 @@ describe('MoodPicker', () => {
     fireEvent.click(screen.getByRole('radio', { name: 'Great' }));
     fireEvent.keyDown(screen.getByRole('radiogroup'), { key: 'ArrowRight' });
     expect(onChange).not.toHaveBeenCalled();
+  });
+});
+
+describe('MoodPicker, collapsible', () => {
+  it('shows the five, with a quiet prompt, until a mood is chosen', () => {
+    render(<MoodPicker collapsible compact value={null} onChange={() => {}} />);
+    expect(screen.getAllByRole('radio')).toHaveLength(5);
+    expect(screen.getByText('How was the day?')).toBeTruthy();
+  });
+
+  it('folds a chosen mood into one chip that names it, and opens the five again on a tap', () => {
+    const { rerender } = render(<MoodPicker collapsible compact value={null} onChange={() => {}} />);
+    rerender(<MoodPicker collapsible compact value={4} onChange={() => {}} />);
+    expect(screen.queryByRole('radiogroup')).toBeNull();
+    const chip = screen.getByRole('button', { name: 'How the day felt: Good. Change' });
+    expect(chip.getAttribute('aria-expanded')).toBe('false');
+    expect(chip.textContent).toBe('Good');
+
+    fireEvent.click(chip);
+    const checked = screen.getAllByRole('radio').filter((r) => r.getAttribute('aria-checked') === 'true');
+    expect(checked.map((r) => r.getAttribute('aria-label'))).toEqual(['Good']);
+    expect(document.activeElement).toBe(checked[0]); // the keyboard lands on the chosen one
+  });
+
+  it('folds again once another is chosen, and hands the keyboard back to the chip', () => {
+    const Harness = () => {
+      const [v, setV] = useState<Mood | null>(4);
+      return <MoodPicker collapsible compact value={v} onChange={setV} />;
+    };
+    render(<Harness />);
+    fireEvent.click(screen.getByRole('button', { name: /Change/ }));
+    fireEvent.click(screen.getByRole('radio', { name: 'Great' }));
+    expect(screen.queryByRole('radiogroup')).toBeNull();
+    const chip = screen.getByRole('button', { name: 'How the day felt: Great. Change' });
+    expect(document.activeElement).toBe(chip);
+  });
+
+  it('Esc closes the five without changing anything', () => {
+    const onChange = vi.fn();
+    render(<MoodPicker collapsible compact value={2} onChange={onChange} />);
+    fireEvent.click(screen.getByRole('button', { name: /Change/ }));
+    fireEvent.keyDown(screen.getByRole('radiogroup'), { key: 'Escape' });
+    expect(screen.queryByRole('radiogroup')).toBeNull();
+    expect(onChange).not.toHaveBeenCalled();
+  });
+
+  it('is not collapsible unless asked: a chosen mood still shows all five', () => {
+    render(<MoodPicker value={3} onChange={() => {}} />);
+    expect(screen.getAllByRole('radio')).toHaveLength(5);
   });
 });

@@ -1,8 +1,7 @@
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { Link } from 'react-router-dom';
 import { BookOpen, FileText, ListChecks, ListPlus } from 'lucide-react';
 import { useNotes } from '../../hooks/useNotes';
-import { useMediaQuery } from '../../hooks/useMediaQuery';
 import { useToast } from '../../lib/toastContext';
 import { useBridgeAttached, useBridgeDraft, type JournalBridge } from '../../lib/journalBridge';
 import { isDay, longDate, shortDate } from '../../lib/journalDay';
@@ -25,7 +24,7 @@ interface Props {
 }
 
 /**
- * Beside the page: the things a day usually points at. To-dos with something
+ * Beside the page, when asked for (the Notes & to-dos button): the things a day usually points at. To-dos with something
  * still open, the notes touched most recently — one tap puts a `[[link]]` in the
  * page — and what today has already linked to. "Bring forward" copies the
  * unticked items of the last day that had any.
@@ -35,8 +34,6 @@ export default function JournalAside({ bridge, date, writable }: Props) {
   const draft = useBridgeDraft(bridge);
   const attached = useBridgeAttached(bridge);
   const { toast } = useToast();
-  const wide = useMediaQuery('(min-width: 1100px)');
-  const [openNarrow, setOpenNarrow] = useState(false);
 
   const live = useMemo(
     () => (notes ?? []).filter((n) => !n.trashed && !n.archived && !n.secure && n.kind !== 'inbox'),
@@ -146,13 +143,8 @@ export default function JournalAside({ bridge, date, writable }: Props) {
   );
 
   return (
-    <aside className="journal-aside" aria-label="Link a note or to-do">
-      {wide ? body : (
-        <details open={openNarrow} onToggle={(e) => setOpenNarrow((e.currentTarget as HTMLDetailsElement).open)}>
-          <summary className="journal-aside__summary">Link a note or to-do</summary>
-          {openNarrow && body}
-        </details>
-      )}
+    <aside id="journal-aside" className="journal-aside" aria-label="Link a note or to-do">
+      {body}
     </aside>
   );
 }

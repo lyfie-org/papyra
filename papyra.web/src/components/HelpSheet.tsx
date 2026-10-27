@@ -42,7 +42,7 @@ const CONCEPTS: Array<[string, string]> = [
   ],
   [
     'The journal is one page a day',
-    'Journal, in the sidebar, opens today’s page. Pick how the day felt, write, and it saves itself like any note; a day only exists once it has words. The Calendar shows the month by mood and keeps your streak, which you can hide in Settings. Lock any day with your vault PIN, record a voice note, or start a blank day from a template. It is private: nothing in it is ever shared, and an @name stays plain text.',
+    'Journal, in the sidebar, opens today’s page. Pick how the day felt, write, and it saves itself like any note; a day only exists once it has words. Click the date for the calendar, which shows the month by mood and keeps your streak (you can hide it in Settings). Notes & to-dos opens a panel of things to link; Focus gives the whole window to the writing. Lock any day with your vault PIN, record a voice note, or start a blank day from a template. It is private: nothing in it is ever shared, and an @name stays plain text.',
   ],
   [
     'Link notes with [[double brackets]]',

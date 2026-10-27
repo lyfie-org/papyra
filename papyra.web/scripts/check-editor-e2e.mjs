@@ -657,7 +657,11 @@ async function checkJournal(page) {
   await open();
   check((await day()).body === start, 'journal: opening a day rewrote it');
   check(await page.locator('.photo-strip__item').count() === 3, "journal: the photo strip did not list the day's three pictures");
-  check(await page.getByRole('radio', { name: 'Good' }).getAttribute('aria-checked') === 'true', "journal: the day's mood is not shown as chosen");
+  // A chosen mood folds into one chip that names it.
+  check(await page.getByRole('button', { name: 'How the day felt: Good. Change' }).count() === 1, "journal: the day's mood is not shown as chosen");
+  check(await page.getByRole('radio').count() === 0, 'journal: the five moods stayed open after one was chosen');
+  check(await page.locator('.journal-aside').count() === 0, 'journal: the notes panel is open before it was asked for');
+  check(await page.locator('.journal-page__calendar, input[type="date"]').count() === 0, 'journal: the old calendar button or date input is back');
 
   // The drag handle belongs to the journal only.
   console.log('· journal: drag handle');
@@ -698,6 +702,31 @@ async function checkJournal(page) {
   check(reloaded.mood === 5 && reloaded.body === withDate, 'journal: a reload changed the day');
   check(!/Unsupported/.test(reloaded.body), 'journal: the day holds an [Unsupported …] placeholder');
   check(await page.locator('.luthor-media').count() === 3, 'journal: the pictures did not come back after a reload');
+
+  // The writing fills the page: an empty stretch under the text is still the editor.
+  console.log('· journal: fills the page');
+  const fill = await page.evaluate(() => {
+    const ce = document.querySelector('.journal-sheet .luthor-content-editable').getBoundingClientRect();
+    const sheet = document.querySelector('.journal-sheet').getBoundingClientRect();
+    return { ceBottom: ce.bottom, sheetBottom: sheet.bottom, vh: innerHeight };
+  });
+  check(fill.ceBottom > fill.vh * 0.5, `journal: the writing area stops at ${Math.round(fill.ceBottom)}px of a ${fill.vh}px window`);
+
+  // Focus mode: the sheet covers the browser, the date stays, Esc leaves.
+  console.log('· journal: focus mode');
+  await page.getByRole('button', { name: 'Focus', exact: true }).click();
+  await page.waitForTimeout(500);
+  const covered = await page.evaluate(() => {
+    const r = document.querySelector('.journal-sheet').getBoundingClientRect();
+    return { l: r.left, t: r.top, w: r.width, h: r.height, vw: innerWidth, vh: innerHeight, bar: getComputedStyle(document.querySelector('.journal-page__bar')).visibility };
+  });
+  check(covered.l === 0 && covered.t === 0 && covered.w === covered.vw && covered.h === covered.vh, `journal: focus mode does not cover the browser (${JSON.stringify(covered)})`);
+  check(covered.bar === 'hidden', 'journal: the day bar stayed visible in focus mode');
+  check(await page.locator('.journal-sheet__foot').count() === 0, 'journal: the footer stayed in focus mode');
+  check(await page.getByRole('heading', { level: 1 }).count() === 1, 'journal: the date is missing in focus mode');
+  await page.keyboard.press('Escape');
+  await page.waitForTimeout(300);
+  check(await page.locator('.journal-sheet--focus').count() === 0, 'journal: Esc did not leave focus mode');
 
   // A voice note is offered (the headless browser has no microphone: it says so, and nothing is added).
   console.log('· journal: voice note');

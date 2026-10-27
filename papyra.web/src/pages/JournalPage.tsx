@@ -1,12 +1,13 @@
 import { useCallback, useEffect, useRef, useState, type CSSProperties, type TouchEvent } from 'react';
 import { Link, Navigate, useNavigate, useParams } from 'react-router-dom';
-import { CalendarDays, ChevronLeft, ChevronRight } from 'lucide-react';
+import { CalendarDays, ChevronLeft, ChevronRight, PanelRight } from 'lucide-react';
 import EntrySheet from '../components/journal/EntrySheet';
 import JournalAside from '../components/journal/JournalAside';
 import { createJournalBridge } from '../lib/journalBridge';
 import LoadingBar from '../components/LoadingBar';
 import { useJournalToday } from '../hooks/useJournal';
-import { addDays, isDay, longDate } from '../lib/journalDay';
+import { useFocus } from '../hooks/useFocus';
+import { addDays, isDay, longDate, mediumDate } from '../lib/journalDay';
 import './JournalPage.css';
 
 /** `/journal` → straight into today's page. The server decides what today is. */
@@ -53,6 +54,11 @@ function DayView({ date }: { date: string }) {
   }, [date]);
 
   const [bridge] = useState(createJournalBridge);
+  // Notes and to-dos to link sit behind a button: the page is for writing until they are asked for.
+  const [asideOpen, setAsideOpen] = useState(false);
+  // Focus mode belongs to this page: leaving it (Back, the sidebar) leaves focus too.
+  const { focus, exit: exitFocus } = useFocus();
+  useEffect(() => exitFocus, [exitFocus]);
   const go = useCallback((to: string) => navigate(`/journal/${to}`), [navigate]);
   const canNext = today === null || date < today;
 
@@ -97,7 +103,7 @@ function DayView({ date }: { date: string }) {
 
   return (
     <section
-      className="journal-page"
+      className={`journal-page${asideOpen ? ' journal-page--aside' : ''}${focus ? ' journal-page--focus' : ''}`}
       style={{ '--journal-turn': `${turn}px` } as CSSProperties}
       onTouchStart={onTouchStart}
       onTouchEnd={onTouchEnd}
@@ -106,32 +112,37 @@ function DayView({ date }: { date: string }) {
         <button type="button" className="journal-page__nav" onClick={() => go(addDays(date, -1))} aria-label="Previous day" title="Previous day (Alt+Shift+←)">
           <ChevronLeft size={18} aria-hidden="true" />
         </button>
-        <label className="journal-page__jump">
-          <span className="journal-page__sr">Jump to a date</span>
-          <input
-            type="date"
-            value={date}
-            max={today ?? undefined}
-            onChange={(e) => { if (isDay(e.target.value)) go(e.target.value); }}
-            aria-label={`Jump to a date — now ${longDate(date)}`}
-          />
-        </label>
+        <Link
+          to={`/journal/calendar?m=${date.slice(0, 7)}`}
+          className="journal-page__date"
+          title="Open the calendar"
+          aria-label={`${longDate(date)} — open the calendar`}
+        >
+          <CalendarDays size={15} aria-hidden="true" /> {mediumDate(date)}
+        </Link>
         <button type="button" className="journal-page__nav" onClick={() => go(addDays(date, 1))} disabled={!canNext} aria-label="Next day" title="Next day (Alt+Shift+→)">
           <ChevronRight size={18} aria-hidden="true" />
         </button>
         {today && date !== today && (
           <button type="button" className="journal-page__today" onClick={() => go(today)} title="Back to today (Alt+T)">Today</button>
         )}
-        <Link to="/journal/calendar" className="journal-page__calendar" title="The calendar">
-          <CalendarDays size={16} aria-hidden="true" /> Calendar
-        </Link>
+        <button
+          type="button"
+          className="journal-page__links"
+          aria-pressed={asideOpen}
+          aria-controls={asideOpen ? 'journal-aside' : undefined}
+          onClick={() => setAsideOpen((o) => !o)}
+          title="Notes and to-dos to link, and this day in earlier years"
+        >
+          <PanelRight size={16} aria-hidden="true" /> Notes &amp; to-dos
+        </button>
       </nav>
 
       <div className="journal-page__layout">
         <div className="journal-page__main">
           <EntrySheet key={date} date={date} streakLine={streakLine} bridge={bridge} />
         </div>
-        <JournalAside bridge={bridge} date={date} writable={!today || date <= today} />
+        {asideOpen && <JournalAside bridge={bridge} date={date} writable={!today || date <= today} />}
       </div>
     </section>
   );

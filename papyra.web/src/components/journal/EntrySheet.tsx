@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { Link, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import { PapyraEditor, type PapyraEditorRef } from '@lyfie/luthor/presets/papyra';
 import '@lyfie/luthor/styles.css';
@@ -46,7 +46,6 @@ import { beginTask } from '../../lib/progress';
 import TodoPicker from './TodoPicker';
 import VoiceRecorder from './VoiceRecorder';
 import PhotoStrip from './PhotoStrip';
-import TagEditor from '../TagEditor';
 import './EntrySheet.css';
 
 const STATUS_LABEL = {
@@ -168,6 +167,36 @@ export default function EntrySheet({ date, streakLine, bridge }: Props) {
   useEffect(() => (sheetRef.current ? pauseOffscreenVideos(sheetRef.current) : undefined), []);
   useEffect(() => (sheetRef.current ? keepMediaToolbarsInView(sheetRef.current) : undefined), []);
   useReleaseSelectionOnLeave(lexicalEditor, sheetRef);
+
+  // Focus mode: the sheet fills the browser (CSS), so while it does it is a modal — Tab stays
+  // inside it, and Esc first leaves the writing, then the mode. A menu or panel that owns Esc
+  // (the slash menu, the to-do picker, the voice bar) gets it first.
+  useEffect(() => {
+    if (!focus) return;
+    const onKey = (e: KeyboardEvent) => {
+      const node = sheetRef.current;
+      if (!node) return;
+      if (e.key === 'Escape') {
+        if (e.defaultPrevented || document.querySelector('.luthor-slash-menu, .luthor-mention-menu, .todo-picker, .voice-recorder')) return;
+        const active = document.activeElement as HTMLElement | null;
+        if (active?.closest('.luthor-content-editable')) active.blur(); else exitFocus();
+        return;
+      }
+      if (e.key !== 'Tab') return;
+      const items = [...node.querySelectorAll<HTMLElement>(
+        'a[href], button:not([disabled]), input:not([disabled]), textarea:not([disabled]), select:not([disabled]), [tabindex]:not([tabindex="-1"]), [contenteditable="true"]',
+      )].filter((el) => el.offsetParent !== null);
+      if (items.length === 0) return;
+      const active = document.activeElement as HTMLElement | null;
+      const inside = !!active && node.contains(active);
+      // Inside the writing Tab indents; the trap only catches focus at the edges, or outside.
+      if (!inside) { e.preventDefault(); items[0].focus(); }
+      else if (!e.shiftKey && active === items[items.length - 1]) { e.preventDefault(); items[0].focus(); }
+      else if (e.shiftKey && active === items[0]) { e.preventDefault(); items[items.length - 1].focus(); }
+    };
+    window.addEventListener('keydown', onKey);
+    return () => window.removeEventListener('keydown', onKey);
+  }, [focus, exitFocus]);
   usePlainTableCells(lexicalEditor);
   useExitBlockShortcut(lexicalEditor);
 
@@ -404,21 +433,37 @@ export default function EntrySheet({ date, streakLine, bridge }: Props) {
       ref={sheetRef}
       className={`journal-sheet${focus ? ' journal-sheet--focus' : ''}${isToday ? ' journal-sheet--today' : ''}`}
       aria-label={`Journal, ${longDate(day)}`}
+      role={focus ? 'dialog' : undefined}
+      aria-modal={focus || undefined}
     >
       {isToday && <span className="journal-sheet__ribbon" aria-hidden="true" />}
 
       <header className="journal-sheet__head">
-        <p className="journal-sheet__weekday">{weekdayName(day)}</p>
-        <h1 className="journal-sheet__date">{longDate(day)}</h1>
-        {streakLine && <p className="journal-sheet__streak">{streakLine}</p>}
-        <div className="journal-sheet__mood">
-          <MoodPicker
-            value={entry?.mood ?? null}
-            onChange={session.setMood}
-            disabled={!entry || entry.future || entry.trashed}
-          />
+        <div className="journal-sheet__titles">
+          <p className="journal-sheet__weekday">{weekdayName(day)}</p>
+          {/* The date opens the calendar, on this day's month. */}
+          <h1 className="journal-sheet__date">
+            <Link to={`/journal/calendar?m=${day.slice(0, 7)}`} className="journal-sheet__date-link" title="Open the calendar">
+              {longDate(day)}
+            </Link>
+          </h1>
+          {streakLine && !focus && <p className="journal-sheet__streak">{streakLine}</p>}
         </div>
-        <div className="journal-sheet__rule" aria-hidden="true"><span>❦</span></div>
+        {focus ? (
+          <button type="button" className="journal-sheet__exit" onClick={exitFocus}>
+            <Minimize2 size={14} aria-hidden="true" /> Exit focus
+          </button>
+        ) : (
+          <div className="journal-sheet__mood">
+            <MoodPicker
+              collapsible
+              compact
+              value={entry?.mood ?? null}
+              onChange={session.setMood}
+              disabled={!entry || entry.future || entry.trashed}
+            />
+          </div>
+        )}
       </header>
 
       {entry?.trashed && (
@@ -484,7 +529,7 @@ export default function EntrySheet({ date, streakLine, bridge }: Props) {
               readOnly={readOnly}
               {...journalEditorProps}
               initialTheme={theme}
-              toolbar={toolbarShown && !history && !readOnly}
+              toolbar={toolbarShown && !history && !readOnly && !focus}
               toolbarAlignment="center"
               toolbarLayout={PAPYRA_TOOLBAR_LAYOUT}
               toolbarItems={toolbarItems}
@@ -543,14 +588,14 @@ export default function EntrySheet({ date, streakLine, bridge }: Props) {
 
       {!locked && !history && <PhotoStrip markdown={draft} root={() => lexicalEditor?.getRootElement() ?? null} />}
 
+      {!focus && (
       <footer className="journal-sheet__foot">
         <div className="journal-sheet__foot-left">
-          {entry?.exists && !readOnly && !locked && <TagEditor tags={entry.tags} onChange={session.setTags} />}
-        </div>
-        <div className="journal-sheet__foot-right">
           {words !== null && !locked && (
             <span className="journal-sheet__words">{words} {words === 1 ? 'word' : 'words'}</span>
           )}
+        </div>
+        <div className="journal-sheet__foot-right">
           <span className={`journal-sheet__status journal-sheet__status--${session.status}`} role="status" aria-live="polite">
             {STATUS_LABEL[session.status]}
           </span>
@@ -590,6 +635,7 @@ export default function EntrySheet({ date, streakLine, bridge }: Props) {
           </button>
         </div>
       </footer>
+      )}
     </article>
   );
 }

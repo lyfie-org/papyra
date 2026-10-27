@@ -1,3 +1,4 @@
+import { useEffect, useRef, useState } from 'react';
 import type { Mood } from '../../types/journal';
 import { MOODS } from '../../lib/journalMood';
 import './MoodPicker.css';
@@ -48,6 +49,11 @@ interface Props {
   disabled?: boolean;
   /** Smaller glyphs with no word under them — for a tight header. */
   compact?: boolean;
+  /**
+   * Once a mood is chosen the five fold away into one small chip (the glyph and its word);
+   * tapping it opens the five again. Until then the five are all there is, with a quiet prompt.
+   */
+  collapsible?: boolean;
 }
 
 /**
@@ -55,9 +61,48 @@ interface Props {
  * it. A radio group for assistive tech — "Mood: Good" — with the arrow keys
  * moving between the five.
  */
-export default function MoodPicker({ value, onChange, disabled, compact }: Props) {
+export default function MoodPicker({ value, onChange, disabled, compact, collapsible }: Props) {
+  // Open only because someone asked: a day with no mood always shows the five.
+  const [asked, setAsked] = useState(false);
+  const folded = !!collapsible && value !== null && !asked;
+  const group = useRef<HTMLDivElement>(null);
+  const chip = useRef<HTMLButtonElement>(null);
+  const reopened = useRef(false);
+
+  // Opening the five hands focus to the chosen one; folding them hands it back to the chip.
+  useEffect(() => {
+    if (!collapsible) return;
+    if (asked) { reopened.current = true; group.current?.querySelector<HTMLElement>('[aria-checked="true"]')?.focus(); }
+    else if (reopened.current) { reopened.current = false; chip.current?.focus(); }
+  }, [asked, collapsible]);
+
+  function choose(next: Mood | null) {
+    onChange(next);
+    setAsked(false);
+  }
+
+  if (folded) {
+    const label = MOODS.find((m) => m.value === value)?.label ?? '';
+    return (
+      <button
+        ref={chip}
+        type="button"
+        className="mood-chip"
+        disabled={disabled}
+        aria-expanded={false}
+        aria-label={`How the day felt: ${label}. Change`}
+        title="Change how the day felt"
+        onClick={() => setAsked(true)}
+      >
+        <MoodGlyph mood={value} size={18} />
+        <span className="mood-chip__label">{label}</span>
+      </button>
+    );
+  }
+
   function onKeyDown(e: React.KeyboardEvent<HTMLDivElement>) {
     if (disabled) return;
+    if (e.key === 'Escape' && collapsible && asked) { e.stopPropagation(); setAsked(false); return; }
     const step = e.key === 'ArrowRight' || e.key === 'ArrowDown' ? 1 : e.key === 'ArrowLeft' || e.key === 'ArrowUp' ? -1 : 0;
     if (!step) return;
     e.preventDefault();
@@ -66,32 +111,37 @@ export default function MoodPicker({ value, onChange, disabled, compact }: Props
   }
 
   return (
-    <div
-      className={`mood-picker${compact ? ' mood-picker--compact' : ''}`}
-      role="radiogroup"
-      aria-label="How the day felt"
-      onKeyDown={onKeyDown}
-    >
-      {MOODS.map(({ value: v, label }) => {
-        const on = value === v;
-        return (
-          <button
-            key={v}
-            type="button"
-            role="radio"
-            aria-checked={on}
-            aria-label={label}
-            title={on ? `${label} — tap to clear` : label}
-            tabIndex={on || (value === null && v === 3) ? 0 : -1}
-            disabled={disabled}
-            className={`mood-picker__btn${on ? ' mood-picker__btn--on' : ''}`}
-            onClick={() => onChange(on ? null : v)}
-          >
-            <MoodGlyph mood={v} size={compact ? 20 : 24} />
-            {!compact && <span className="mood-picker__label">{label}</span>}
-          </button>
-        );
-      })}
+    <div className={`mood-picker-wrap${collapsible ? ' mood-picker-wrap--collapsible' : ''}`}>
+      {collapsible && value === null && <span className="mood-picker__prompt" aria-hidden="true">How was the day?</span>}
+      <div
+        ref={group}
+        className={`mood-picker${compact ? ' mood-picker--compact' : ''}`}
+        role="radiogroup"
+        aria-label="How the day felt"
+        onKeyDown={onKeyDown}
+        onBlur={(e) => { if (asked && !e.currentTarget.contains(e.relatedTarget as Node | null)) setAsked(false); }}
+      >
+        {MOODS.map(({ value: v, label }) => {
+          const on = value === v;
+          return (
+            <button
+              key={v}
+              type="button"
+              role="radio"
+              aria-checked={on}
+              aria-label={label}
+              title={on ? `${label} — tap to clear` : label}
+              tabIndex={on || (value === null && v === 3) ? 0 : -1}
+              disabled={disabled}
+              className={`mood-picker__btn${on ? ' mood-picker__btn--on' : ''}`}
+              onClick={() => choose(on ? null : v)}
+            >
+              <MoodGlyph mood={v} size={compact ? 20 : 24} />
+              {!compact && <span className="mood-picker__label">{label}</span>}
+            </button>
+          );
+        })}
+      </div>
     </div>
   );
 }

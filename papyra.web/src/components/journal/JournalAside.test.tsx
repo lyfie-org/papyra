@@ -30,10 +30,6 @@ function setup(opts: { writable?: boolean; attach?: boolean } = {}) {
   if (opts.attach !== false) bridge.attach({ insertLink, insertTodo, carryOver });
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   queryClient.setQueryData(['notes'], NOTES);
-  // Wide layout: the panel is open, not folded into a <details>.
-  vi.stubGlobal('matchMedia', (q: string) => ({
-    matches: q.includes('1100'), media: q, addEventListener: () => {}, removeEventListener: () => {},
-  }));
   render(
     <QueryClientProvider client={queryClient}>
       <MemoryRouter>
