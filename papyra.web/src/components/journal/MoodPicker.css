@@ -1,0 +1,53 @@
+/* Mood glyphs: the shape carries the value; the colour only echoes it. */
+.mood-glyph { flex: none; }
+.mood-glyph--1 { color: var(--mood-1); }
+.mood-glyph--2 { color: var(--mood-2); }
+.mood-glyph--3 { color: var(--mood-3); }
+.mood-glyph--4 { color: var(--mood-4); }
+.mood-glyph--5 { color: var(--mood-5); }
+
+.mood-picker {
+  display: inline-flex;
+  gap: var(--space-1);
+  align-items: stretch;
+}
+
+.mood-picker__btn {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 52px;
+  padding: var(--space-2) var(--space-2) var(--space-1);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text);
+  font: 500 var(--fs-2xs)/1.2 var(--sans);
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease);
+}
+.mood-picker--compact .mood-picker__btn { min-width: 36px; padding: var(--space-1); }
+
+.mood-picker__btn:hover:not(:disabled) { background: var(--accent-bg); border-color: var(--border-hover); }
+.mood-picker__btn:active:not(:disabled) { transform: scale(0.95); }
+.mood-picker__btn:disabled { opacity: 0.5; cursor: default; }
+
+/* The sage border is for what is selected — and only that. */
+.mood-picker__btn--on {
+  background: var(--accent-bg);
+  border-color: var(--accent-border);
+  color: var(--text-h);
+}
+
+.mood-picker__label { white-space: nowrap; }
+
+@media (prefers-reduced-motion: reduce) {
+  .mood-picker__btn { transition: none; }
+  .mood-picker__btn:active:not(:disabled) { transform: none; }
+}
+
+@media (max-width: 480px) {
+  .mood-picker__btn { min-width: 44px; padding-inline: var(--space-1); }
+}

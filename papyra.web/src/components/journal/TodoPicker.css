@@ -1,0 +1,61 @@
+.todo-picker__scrim {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  display: grid;
+  place-items: start center;
+  padding: 12vh var(--space-4) var(--space-4);
+  background: color-mix(in srgb, var(--scrim) 45%, transparent);
+}
+
+.todo-picker {
+  width: min(100%, 420px);
+  max-height: 70vh;
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  color: var(--text);
+  box-shadow: var(--shadow);
+  font: 400 var(--fs-sm)/1.4 var(--sans);
+}
+
+.todo-picker__head { display: flex; align-items: center; gap: var(--space-2); color: var(--text-h); }
+.todo-picker__head h2 { flex: 1; margin: 0; font: 400 var(--fs-lg)/1.2 var(--heading); }
+.todo-picker__close { display: inline-grid; place-items: center; width: 28px; height: 28px; border: 0; border-radius: var(--radius-sm); background: none; color: var(--text); cursor: pointer; }
+.todo-picker__close:hover { background: var(--accent-bg); }
+
+.todo-picker__search {
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--paper);
+  color: var(--text-h);
+  font: inherit;
+}
+.todo-picker__search:hover { border-color: var(--border-hover); }
+.todo-picker__search:focus-visible { border-color: var(--border-focus); outline: none; }
+
+.todo-picker__list { list-style: none; margin: 0; padding: 0; overflow-y: auto; }
+.todo-picker__item {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  width: 100%;
+  padding: var(--space-2) var(--space-3);
+  border: 0;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text-h);
+  font: inherit;
+  text-align: start;
+  cursor: pointer;
+}
+.todo-picker__item:hover,
+.todo-picker__item:focus-visible { background: var(--accent-bg); outline: none; }
+.todo-picker__title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.todo-picker__count { font: 400 var(--fs-2xs)/1 var(--mono); color: var(--text); }
+.todo-picker__empty { margin: 0; color: var(--text); }

@@ -13,11 +13,13 @@ import type { SmartCollection } from '../hooks/useCollections';
 import type { AppNotification } from '../hooks/useNotifications';
 import type { ChatMessage, ChatSessionSummary } from '../hooks/useChatSessions';
 import type { OrderMap } from '../hooks/useNoteOrder';
+import type { JournalPrefs, JournalTemplate } from '../types/journal';
 import { SEED_CATEGORIES, SEED_COLLECTIONS, SEED_NOTIFICATIONS, SEED_NOTES } from './seed';
+import { SEED_JOURNAL_PREFS, SEED_JOURNAL_TEMPLATES, seedJournal, type DemoDay } from './journalSeed';
 
 const KEY = 'papyra-demo-vault';
 /** Bump when the shape below changes so an old saved vault is replaced, not merged. */
-const VERSION = 2; // 2: inbox → notifications
+const VERSION = 3; // 2: inbox → notifications · 3: the journal
 
 export interface ChatSessionRecord extends ChatSessionSummary {
   messages: ChatMessage[];
@@ -35,6 +37,10 @@ export interface DemoState {
   /** Snapshots per note id, newest first. Seeded lazily on the first edit. */
   snapshots: Record<string, { id: string; timestamp: string; body: string }[]>;
   nextId: number;
+  /** The journal: a record per written day, keyed `yyyy-MM-dd`. */
+  journal: Record<string, DemoDay>;
+  journalPrefs: JournalPrefs;
+  journalTemplates: JournalTemplate[];
 }
 
 function fresh(): DemoState {
@@ -51,6 +57,9 @@ function fresh(): DemoState {
     chatSessions: [],
     snapshots: {},
     nextId: 100,
+    journal: seedJournal(),
+    journalPrefs: { ...SEED_JOURNAL_PREFS },
+    journalTemplates: structuredClone(SEED_JOURNAL_TEMPLATES),
   };
 }
 

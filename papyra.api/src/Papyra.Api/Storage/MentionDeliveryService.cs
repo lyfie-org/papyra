@@ -170,6 +170,8 @@ public sealed partial class MentionDeliveryService : BackgroundService
     public void Enqueue(string ownerId, string ownerUsername, string noteId, string body, string? priorBody)
     {
         if (!int.TryParse(ownerId, out var uid)) return;
+        // A journal is a private space: an @name in it stays literal text.
+        if (JournalPaths.IsJournalId(noteId)) return;
         // Nothing in a secure note leaves it — its body is withheld from every
         // other read path, and a mention would smuggle a block out.
         if (string.IsNullOrEmpty(body)) return;

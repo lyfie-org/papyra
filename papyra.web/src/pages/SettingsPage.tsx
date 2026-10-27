@@ -5,7 +5,7 @@ import {
   User as UserIcon, Palette, Database, Info, Camera,
   Sun, Moon, Monitor, Upload, Download, KeyRound, Copy, Trash2, Lock, ShieldAlert,
   Fingerprint, CheckCircle2, GitBranch, AlertTriangle, Bell, Mail, KeySquare, Send, UserPlus,
-  Sparkles, Play, Cog, LockOpen, Eye, LogOut, X, Users, ScrollText, Repeat, Clock, Hand,
+  Sparkles, Play, Cog, LockOpen, Eye, LogOut, X, Users, ScrollText, Repeat, Clock, Hand, BookOpen,
 } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { useDismiss } from '../hooks/useDismiss';
@@ -52,6 +52,7 @@ import LoadingBar from '../components/LoadingBar';
 import BusyButton from '../components/BusyButton';
 import { useActivityTask, useBusy } from '../hooks/useBusy';
 import AboutPanel from '../components/AboutPanel';
+import JournalSettingsPanel from '../components/journal/JournalSettingsPanel';
 import LogsPanel from '../components/LogsPanel';
 import ExportDialog from '../components/ExportDialog';
 import DeleteAccountSection from '../components/DeleteAccountSection';
@@ -66,7 +67,12 @@ import AuthenticatorSection from '../components/AuthenticatorSection';
 import { fetchWithProgress, track } from '../lib/progress';
 import { MASKED_SECRET, NO_AUTOFILL } from '../lib/autofill';
 
-type Tab = 'profile' | 'appearance' | 'notifications' | 'security' | 'data' | 'keys' | 'sync'
+type ImportProvider = 'obsidian' | 'keep' | 'dayone' | 'journal';
+const IMPORT_LABEL: Record<ImportProvider, string> = {
+  obsidian: 'Obsidian', keep: 'Google Keep', dayone: 'Day One', journal: 'journal',
+};
+
+type Tab = 'profile' | 'appearance' | 'journal' | 'notifications' | 'security' | 'data' | 'keys' | 'sync'
   | 'users' | 'sso' | 'email' | 'ai' | 'jobs' | 'logs' | 'about';
 
 // Two groups. The first is yours — it changes what happens to you, and everyone
@@ -75,6 +81,7 @@ type Tab = 'profile' | 'appearance' | 'notifications' | 'security' | 'data' | 'k
 const NAV: { id: Tab; label: string; icon: typeof UserIcon; adminOnly?: boolean }[] = [
   { id: 'profile', label: 'Profile', icon: UserIcon },
   { id: 'appearance', label: 'Appearance', icon: Palette },
+  { id: 'journal', label: 'Journal', icon: BookOpen },
   { id: 'notifications', label: 'Notifications', icon: Bell },
   { id: 'security', label: 'Security', icon: Fingerprint },
   { id: 'data', label: 'Data & Storage', icon: Database },
@@ -177,6 +184,7 @@ export default function SettingsPage() {
         <div className="settings__content">
           {tab === 'profile' && <ProfileTab user={user} />}
           {tab === 'appearance' && <AppearanceTab />}
+          {tab === 'journal' && <JournalSettingsPanel />}
           {tab === 'notifications' && <NotificationsTab />}
           {tab === 'security' && <SecurityTab />}
           {tab === 'data' && <DataTab />}
@@ -639,7 +647,7 @@ function SecurityTab() {
 function DataTab() {
   const { data: settings, isLoading } = useSettings();
   const update = useUpdateSettings();
-  const [provider, setProvider] = useState<'obsidian' | 'keep'>('obsidian');
+  const [provider, setProvider] = useState<ImportProvider>('obsidian');
   const [importMsg, setImportMsg] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploaded, setUploaded] = useState(0);
@@ -686,9 +694,13 @@ function DataTab() {
       <div className="settings__row">
         <select className="settings__select" disabled={importing}
           value={importStatus && !importStatus.done ? importStatus.provider : provider}
-          onChange={e => setProvider(e.target.value as 'obsidian' | 'keep')}>
+          onChange={e => setProvider(e.target.value as ImportProvider)}>
           <option value="obsidian">Obsidian vault (.zip)</option>
           <option value="keep">Google Keep (.zip)</option>
+          <optgroup label="Into your journal">
+            <option value="dayone">Day One (.zip)</option>
+            <option value="journal">Daily notes: 2024-03-02.md files (.zip)</option>
+          </optgroup>
         </select>
         <BusyButton type="button" className="settings__btn" disabled={importing && !uploading}
           busy={uploading} busyLabel="Uploading…" progress={uploading ? uploaded : null}
@@ -712,7 +724,7 @@ function DataTab() {
           />
           <span>
             {importStatus.total > 0
-              ? `Importing ${importStatus.provider === 'keep' ? 'Google Keep' : 'Obsidian'} notes… ${importStatus.processed} of ${importStatus.total}`
+              ? `Importing ${IMPORT_LABEL[importStatus.provider as ImportProvider] ?? 'your'} ${importStatus.provider === 'dayone' || importStatus.provider === 'journal' ? 'days' : 'notes'}… ${importStatus.processed} of ${importStatus.total}`
               : 'Import queued…'}
           </span>
         </div>
@@ -867,7 +879,7 @@ function EncryptedBackupSection() {
 }
 
 // ── API Keys ──────────────────────────────────────────────────────────────────────
-interface ApiKeyRow { id: number; name: string; prefix: string; createdUtc: string; lastUsedUtc: string | null }
+interface ApiKeyRow { id: number; name: string; prefix: string; createdUtc: string; lastUsedUtc: string | null; scope?: 'notes' | 'journal' }
 
 function KeysTab() {
   const confirm = useConfirm();
@@ -882,6 +894,8 @@ function KeysTab() {
   });
 
   const [name, setName] = useState('');
+  // What the key may reach: everything but the journal, or the journal and nothing else.
+  const [scope, setScope] = useState<'notes' | 'journal'>('notes');
   const [renamingKey, setRenamingKey] = useState<number | null>(null);
   const [created, setCreated] = useState<string | null>(null); // raw token, shown once
   const [copied, setCopied] = useState(false);
@@ -901,13 +915,14 @@ function KeysTab() {
     const res = await fetch('/api/keys', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, code }),
+      body: JSON.stringify({ name, code, scope }),
     });
     const data = await res.json().catch(() => null);
     setCode('');
     if (!res.ok) { setKeyError(data?.error ?? 'Couldn’t create the key.'); return; }
     setCreated(data.token);
     setName('');
+    setScope('notes');
     setAskCode(false);
     await queryClient.invalidateQueries({ queryKey: ['apiKeys'] });
   }
@@ -955,7 +970,7 @@ function KeysTab() {
         {(keys ?? []).map(k => (
           <div key={k.id} className={`setting-row${renamingKey === k.id ? ' is-open' : ''}`}><div className="setting-row__line">
             <div className="setting-row__text">
-              <span className="setting-row__value">{k.name} <code className="settings__key-prefix">{k.prefix}…</code></span>
+              <span className="setting-row__value">{k.name} <code className="settings__key-prefix">{k.prefix}…</code>{k.scope === 'journal' && <span className="settings__key-scope">Journal only</span>}</span>
               <span className="setting-row__hint">
                 Created {new Date(k.createdUtc).toLocaleDateString()} · {k.lastUsedUtc ? `last used ${new Date(k.lastUsedUtc).toLocaleDateString()}` : 'never used'}
               </span>
@@ -984,6 +999,12 @@ function KeysTab() {
             <form className="settings__form" onSubmit={create}>
               <label className="settings__field">Name
                 <input placeholder="e.g. CLI, backup script" value={name} autoFocus onChange={e => setName(e.target.value)} />
+              </label>
+              <label className="settings__field">Can reach
+                <select value={scope} onChange={e => setScope(e.target.value === 'journal' ? 'journal' : 'notes')}>
+                  <option value="notes">Notes (not the journal)</option>
+                  <option value="journal">The journal only</option>
+                </select>
               </label>
               <CodeField
                 value={code}

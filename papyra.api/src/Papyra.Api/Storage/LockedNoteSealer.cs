@@ -82,7 +82,7 @@ public sealed class LockedNoteSealer
         {
             var dot = PapyraPaths.UserDotPapyra(_config, _contentRoot, uid);
             var historyDone = File.Exists(Path.Combine(dot, HistoryMarker));
-            var locked = _state.Snapshot(uid).Where(n => n.Secure && !string.IsNullOrEmpty(n.Id)).ToList();
+            var locked = _state.SnapshotAll(uid).Where(n => n.Secure && !string.IsNullOrEmpty(n.Id)).ToList();
             foreach (var note in locked)
             {
                 ct.ThrowIfCancellationRequested();

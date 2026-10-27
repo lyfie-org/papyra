@@ -123,7 +123,7 @@ Open **http://localhost:8080** and create the first account. That's it.
   </tr>
 </table>
 
-**Also in the box:** pictures and PDFs inside notes · to-do lists · tags and smart collections · sharing with people or by link (with expiry) · passkeys, an authenticator app and single sign-on (OIDC) · import from Obsidian and Google Keep · export everything to a zip · sealed backups · backup to a private GitHub repo · installs as an app on your phone.
+**Also in the box:** pictures and PDFs inside notes · to-do lists · tags and smart collections · sharing with people or by link (with expiry) · passkeys, an authenticator app and single sign-on (OIDC) · a day-by-day journal (mood, streak, calendar, voice notes, lockable days) · import from Obsidian, Google Keep and Day One · export everything to a zip · sealed backups · backup to a private GitHub repo · installs as an app on your phone.
 
 <p align="center">
   <picture>
@@ -135,7 +135,7 @@ Open **http://localhost:8080** and create the first account. That's it.
 ## 👣 Your first ten minutes
 
 1. **Create your account.** A short setup walks you through a username, an authenticator app, email, a password and a vault PIN. (Restoring a backup instead? That's an option on the first screen.)
-2. **Bring your notes.** *Settings → Data & Storage* imports an Obsidian vault (.zip) or a Google Keep Takeout. ([Importing](https://papyra.app/docs/importing/))
+2. **Bring your notes.** *Settings → Data & Storage* imports an Obsidian vault (.zip), a Google Keep Takeout, or a Day One journal. ([Importing](https://papyra.app/docs/importing/))
 3. **Write.** Click **New note**, or press <kbd>/</kbd> in a note for headings, lists, tables, images and embeds. ([Writing](https://papyra.app/docs/writing/))
 4. **Lock what's private.** Lock any note with the vault PIN from setup; add your fingerprint or face in *Settings → Security*.
 5. **Put it on your phone.** Open Papyra in your phone's browser and choose *Add to Home Screen*.

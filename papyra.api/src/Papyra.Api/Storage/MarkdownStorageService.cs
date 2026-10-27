@@ -27,6 +27,9 @@ public sealed partial class MarkdownStorageService
     private const string KeyTrashedAt = "trashedAt";
     private const string KeyKind = "kind";
     private const string KeySecure = "secure";
+    // Journal-owned scalars, carried in the foreign-key bag (see Note.ExtraFrontmatter).
+    internal const string KeyMood = "mood";
+    internal const string KeyWords = "words";
 
     // The keys we own; anything else in the frontmatter is foreign and preserved.
     private static readonly HashSet<string> KnownKeys = new(StringComparer.OrdinalIgnoreCase)
@@ -123,6 +126,17 @@ public sealed partial class MarkdownStorageService
         // would reappear on the notes desk).
         if (string.Equals(note.Kind, "todo", StringComparison.OrdinalIgnoreCase)) fm[KeyKind] = "todo";
         else if (string.Equals(note.Kind, "inbox", StringComparison.OrdinalIgnoreCase)) fm[KeyKind] = "inbox";
+        else if (string.Equals(note.Kind, JournalPaths.Kind, StringComparison.OrdinalIgnoreCase))
+        {
+            fm[KeyKind] = JournalPaths.Kind;
+            // The mood and the word count are the entry's own keys: what the note carries is the
+            // truth, so clearing one must not be undone by the file's old copy (`preserve`).
+            // Written as numbers — `mood: 4` reads back as the string "4", which YAML would quote.
+            fm.Remove(KeyMood);
+            fm.Remove(KeyWords);
+            if (note.ExtraFrontmatter.TryGetValue(KeyMood, out var mood) && int.TryParse(mood?.ToString(), out var m)) fm[KeyMood] = m;
+            if (note.ExtraFrontmatter.TryGetValue(KeyWords, out var words) && int.TryParse(words?.ToString(), out var w)) fm[KeyWords] = w;
+        }
         else fm.Remove(KeyKind);
         // Likewise only stamp `secure` while the note is actually locked.
         if (note.Secure) fm[KeySecure] = true;

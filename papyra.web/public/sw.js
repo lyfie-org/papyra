@@ -10,7 +10,7 @@
  * durable and conflict-aware. This file only ever touches GETs.
  */
 
-const VERSION = 'papyra-v4';
+const VERSION = 'papyra-v5';
 const SHELL_CACHE = `${VERSION}-shell`;
 const DATA_CACHE = `${VERSION}-data`;
 const FONT_CACHE = `${VERSION}-fonts`;
@@ -49,8 +49,14 @@ self.addEventListener('message', (event) => {
   }
 });
 
+// The journal's reads: today's page and any one day, so a day you were just writing
+// opens offline. Never the range/stats calls (cheap to redo), and never a request
+// that carries an unlock token — see the fetch handler.
+const JOURNAL_DAY = /^\/api\/journal\/(today|\d{4}-\d{2}-\d{2})$/;
+
 function isCacheableApi(url) {
-  return url.origin === self.location.origin && CACHEABLE_API.includes(url.pathname);
+  return url.origin === self.location.origin
+    && (CACHEABLE_API.includes(url.pathname) || JOURNAL_DAY.test(url.pathname));
 }
 
 // Self-hosted typefaces (public/fonts) — they never change, so cache-first.
@@ -131,5 +137,8 @@ self.addEventListener('fetch', (event) => {
 
   if (isImmutableAsset(url)) { event.respondWith(cacheFirst(request, SHELL_CACHE)); return; }
   if (isFont(url)) { event.respondWith(cacheFirst(request, FONT_CACHE)); return; }
+  // A request made with the vault open can carry a locked day's text. The cache is
+  // keyed by URL alone, so a copy of it would later be served to anyone, vault closed.
+  if (request.headers && request.headers.has('X-Unlock-Token')) return;
   if (isCacheableApi(url)) { event.respondWith(networkFirst(request, DATA_CACHE)); return; }
 });

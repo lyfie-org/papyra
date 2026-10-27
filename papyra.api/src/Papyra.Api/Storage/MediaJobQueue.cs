@@ -158,7 +158,7 @@ public sealed class MediaJobQueue : BackgroundService
         var mediaDir = PapyraPaths.UserMediaDir(_config, _contentRoot, uid);
         if (!Directory.Exists(mediaDir)) return;
         var referenced = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var note in _state.Snapshot(uid))
+        foreach (var note in _state.SnapshotAll(uid))
             if (!note.Trashed) referenced.UnionWith(_refs.Of(note));
         foreach (var file in Directory.EnumerateFiles(mediaDir))
         {
@@ -217,7 +217,7 @@ public sealed class MediaJobQueue : BackgroundService
     }
 
     private bool IsReferenced(string uid, string name) =>
-        _state.Snapshot(uid).Any(n => !n.Trashed && _refs.References(n, name));
+        _state.SnapshotAll(uid).Any(n => !n.Trashed && _refs.References(n, name));
 
     private void Done(string key)
     {

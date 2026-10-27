@@ -57,6 +57,8 @@ public sealed class MediaPipelineTests
         var images = body.GetProperty("extensions").GetProperty("image").EnumerateArray().Select(e => e.GetString()).ToList();
         Assert.Contains(".heic", images);
         Assert.DoesNotContain(".mp4", images);
+        // No Whisper model in the test host: a recording page must not hand over a WAV for nothing.
+        Assert.False(body.GetProperty("transcription").GetBoolean());
 
         using var anonymous = app.Factory.CreateClient();
         Assert.Equal(HttpStatusCode.Unauthorized, (await anonymous.GetAsync("/api/media/limits")).StatusCode);

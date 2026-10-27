@@ -1,0 +1,91 @@
+/* A month as an almanac page. */
+.month-grid {
+  width: 100%;
+  border-collapse: separate;
+  border-spacing: 4px;
+  table-layout: fixed;
+}
+
+.month-grid th {
+  padding: var(--space-1) 0;
+  font: 500 var(--fs-2xs)/1.2 var(--sans);
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  text-align: center;
+  color: var(--text);
+}
+
+.month-grid td { padding: 0; }
+.month-grid__pad { background: none; }
+
+.month-grid__day {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  min-height: 64px;
+  padding: var(--space-2);
+  border: 1px solid var(--paper-edge);
+  border-radius: var(--radius-sm);
+  background: var(--paper);
+  color: var(--text-h);
+  text-decoration: none;
+  overflow: hidden;
+  transition: border-color var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease);
+}
+a.month-grid__day:hover { border-color: var(--border-hover); }
+a.month-grid__day:focus-visible { outline: 2px solid var(--border-focus); outline-offset: 2px; }
+
+/* Every day of weather washes its square: a tint of the mood over the paper. */
+.month-grid__day--mood-1 { background: color-mix(in srgb, var(--mood-1) 16%, var(--paper)); }
+.month-grid__day--mood-2 { background: color-mix(in srgb, var(--mood-2) 16%, var(--paper)); }
+.month-grid__day--mood-3 { background: color-mix(in srgb, var(--mood-3) 16%, var(--paper)); }
+.month-grid__day--mood-4 { background: color-mix(in srgb, var(--mood-4) 16%, var(--paper)); }
+.month-grid__day--mood-5 { background: color-mix(in srgb, var(--mood-5) 16%, var(--paper)); }
+
+/* Set-aside days are ghosted by their border and wash, never by fading their numerals: a link's
+   text keeps its full contrast. */
+.month-grid__day--archived { border-style: dashed; background: var(--code-bg); }
+.month-grid__day--trashed { border-style: dashed; background: var(--code-bg); text-decoration: line-through; }
+.month-grid__day--archived .month-grid__cover,
+.month-grid__day--trashed .month-grid__cover { opacity: 0.55; }
+.month-grid__day--future { opacity: 0.4; border-style: dashed; cursor: default; }
+
+/* Today: the ribbon's colour as a ring (selected-ness is the sage border's job, not today's). */
+.month-grid__day--today { border-color: var(--ribbon); box-shadow: inset 0 0 0 1px var(--ribbon); }
+
+.month-grid__num {
+  font: 400 var(--fs-lg)/1 var(--heading);
+  font-variant-numeric: lining-nums;
+}
+
+.month-grid__marks {
+  display: flex;
+  align-items: center;
+  gap: var(--space-1);
+  min-height: 14px;
+  color: var(--text);
+}
+.month-grid__dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent-text); }
+
+.month-grid__cover {
+  position: absolute;
+  inset-block-end: 6px;
+  inset-inline-end: 6px;
+  width: 28px;
+  height: 28px;
+  object-fit: cover;
+  border-radius: 6px;
+  opacity: 0.9;
+}
+
+@media (max-width: 640px) {
+  .month-grid { border-spacing: 2px; }
+  .month-grid__day { min-height: 48px; padding: var(--space-1); }
+  .month-grid__num { font-size: var(--fs-md); }
+  .month-grid__cover { width: 20px; height: 20px; inset-block-end: 3px; inset-inline-end: 3px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .month-grid__day { transition: none; }
+}

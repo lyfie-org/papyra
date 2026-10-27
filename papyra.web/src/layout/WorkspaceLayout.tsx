@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Link, NavLink, Outlet, matchPath, useLocation, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import {
-  Menu, StickyNote, ListTodo, Archive, Settings, Trash2, ShieldCheck, LockOpen,
+  Menu, StickyNote, ListTodo, BookOpen, Archive, Settings, Trash2, ShieldCheck, LockOpen,
   User, LogOut, Sun, Moon, Layers, Sparkles, CircleQuestionMark, Users,
 } from 'lucide-react';
 import ChatPanel from '../components/ChatPanel';
@@ -37,6 +37,8 @@ import { useLocateEffect } from '../lib/locateNote';
 const NAV_ITEMS = [
   { to: '/', label: 'Notes', icon: StickyNote, end: true },
   { to: '/todo', label: 'To Do', icon: ListTodo, end: false },
+  // A day-wise journal; the demo has no server for it.
+  ...(import.meta.env.VITE_DEMO ? [] : [{ to: '/journal', label: 'Journal', icon: BookOpen, end: false }] as const),
   { to: '/shared-with-me', label: 'Shared with me', icon: Users, end: false },
   { to: '/collections', label: 'Collections', icon: Layers, end: false },
   { to: '/vault', label: 'Vault', icon: ShieldCheck, end: false },

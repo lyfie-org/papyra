@@ -25,7 +25,25 @@ public sealed class VaultState
     public string? PathFor(string userId, string id) =>
         Bucket(userId).FirstOrDefault(kv => string.Equals(kv.Value.Id, id, StringComparison.Ordinal)).Key;
 
-    public IReadOnlyCollection<Note> Snapshot(string userId) => Bucket(userId).Values.ToArray();
+    /// <summary>
+    /// EVERY note of the tenant, journal entries included. Use it wherever a note
+    /// can be destroyed, aged out, rewritten or has to be found — orphan pruning,
+    /// trash purge, rename propagation, sealing, search, backlinks, backup. A
+    /// journal-only photo must never look unreferenced.
+    /// </summary>
+    public IReadOnlyCollection<Note> SnapshotAll(string userId) => Bucket(userId).Values.ToArray();
+
+    /// <summary>
+    /// What belongs on the notes desk: everything but journal entries. Use it for
+    /// anything the person sees as "their notes" — the list, the heatmap,
+    /// collections, tags, bulk operations.
+    /// </summary>
+    public IReadOnlyCollection<Note> SnapshotDesk(string userId) =>
+        Bucket(userId).Values.Where(n => !JournalPaths.IsJournal(n)).ToArray();
+
+    /// <summary>Only the tenant's journal entries.</summary>
+    public IReadOnlyCollection<Note> SnapshotJournal(string userId) =>
+        Bucket(userId).Values.Where(JournalPaths.IsJournal).ToArray();
 
     /// <summary>Forget everything held for one tenant (the account was deleted).</summary>
     public void RemoveUser(string userId) => _byUser.TryRemove(userId, out _);

@@ -1,0 +1,11 @@
+.mood-sparkline { margin: 0; }
+.mood-sparkline svg { display: block; width: 100%; height: auto; overflow: visible; }
+.mood-sparkline__mid { stroke: var(--paper-edge); stroke-width: 1; stroke-dasharray: 3 3; }
+.mood-sparkline__line { stroke: var(--text); stroke-width: 1.6; stroke-linejoin: round; opacity: 0.55; }
+.mood-sparkline__pt { stroke: var(--paper); stroke-width: 1.5; }
+.mood-sparkline__pt--1 { fill: var(--mood-1); }
+.mood-sparkline__pt--2 { fill: var(--mood-2); }
+.mood-sparkline__pt--3 { fill: var(--mood-3); }
+.mood-sparkline__pt--4 { fill: var(--mood-4); }
+.mood-sparkline__pt--5 { fill: var(--mood-5); }
+.mood-sparkline__cap { margin-top: var(--space-1); font: 400 var(--fs-2xs)/1.3 var(--sans); color: var(--text); }

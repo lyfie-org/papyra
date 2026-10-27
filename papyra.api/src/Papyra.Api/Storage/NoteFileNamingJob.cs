@@ -34,7 +34,7 @@ public sealed class NoteFileNamingJob : PeriodicJob
         var renamed = 0;
         foreach (var uid in _state.Users)
         {
-            foreach (var note in _state.Snapshot(uid))
+            foreach (var note in _state.SnapshotDesk(uid))
             {
                 ct.ThrowIfCancellationRequested();
                 if (string.IsNullOrEmpty(note.Id)) continue;

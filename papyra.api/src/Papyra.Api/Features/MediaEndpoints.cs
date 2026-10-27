@@ -57,10 +57,12 @@ public static class MediaEndpoints
 
         // What the upload will accept, so the web app can say no before sending
         // 600 MB. A literal segment: it outranks `/api/media/{filename}`.
-        app.MapGet("/api/media/limits", (HttpResponse response) =>
+        // `transcription`: a recording of the .wav kind gets its words read out, so a page that
+        // records (the journal) knows whether to hand over a WAV.
+        app.MapGet("/api/media/limits", (HttpResponse response, AudioTranscriptionService transcription) =>
         {
             response.Headers.CacheControl = "private, max-age=3600";
-            return Results.Ok(MediaLimits.Describe());
+            return Results.Ok(MediaLimits.Describe(transcription.Enabled));
         }).RequireAuthorization();
 
         app.MapMethods("/api/media/{filename}", GetOrHead, (string filename, HttpContext http, MediaReferences refs,

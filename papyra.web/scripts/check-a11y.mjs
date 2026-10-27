@@ -78,6 +78,13 @@ const recolour = async (page, id, color) => {
   }, { id, color });
 };
 
+// A journal day, counted back from today in the browser's own calendar (the demo's too).
+const dayAgo = (n) => {
+  const d = new Date();
+  d.setDate(d.getDate() - n);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
 const FLOWS = [
   { name: 'notes grid', run: async (page) => {
     await page.goto(`${ORIGIN}/demo/`);
@@ -98,6 +105,42 @@ const FLOWS = [
   { name: 'trash', run: async (page) => {
     await page.goto(`${ORIGIN}/demo/trash`);
     await page.waitForLoadState('networkidle');
+  } },
+  // The journal: today's page with its mood glyphs and streak, a locked day's card, the
+  // almanac month grid (a real table), the year view and the pages that set days aside.
+  { name: 'journal today', run: async (page) => {
+    await page.goto(`${ORIGIN}/demo/journal`);
+    await page.locator('.journal-sheet .luthor-content-editable').waitFor();
+    await page.waitForTimeout(500); // the page turn
+  } },
+  { name: 'journal day with a checklist', run: async (page) => {
+    await page.goto(`${ORIGIN}/demo/journal/${dayAgo(1)}`);
+    await page.locator('.journal-sheet .luthor-content-editable').waitFor();
+    await page.waitForTimeout(500);
+  } },
+  { name: 'journal locked day', run: async (page) => {
+    await page.goto(`${ORIGIN}/demo/journal/${dayAgo(5)}`);
+    await page.locator('.secure-gate').waitFor();
+    await page.waitForTimeout(500);
+  } },
+  { name: 'journal calendar month', run: async (page) => {
+    await page.goto(`${ORIGIN}/demo/journal/calendar`);
+    await page.getByRole('table').first().waitFor();
+    await page.waitForTimeout(500);
+  } },
+  { name: 'journal calendar year', run: async (page) => {
+    await page.goto(`${ORIGIN}/demo/journal/calendar`);
+    await page.getByRole('table').first().waitFor();
+    await page.getByRole('button', { name: /^Year/ }).or(page.getByRole('tab', { name: /^Year/ })).first().click();
+    await page.waitForTimeout(500);
+  } },
+  { name: 'journal in archive and trash', run: async (page) => {
+    await page.goto(`${ORIGIN}/demo/archive`);
+    await page.locator('.journal-bin').waitFor();
+  } },
+  { name: 'settings / journal', run: async (page) => {
+    await page.goto(`${ORIGIN}/demo/settings?tab=journal`);
+    await page.getByText('Writing prompts').waitFor();
   } },
   { name: 'settings / appearance', run: async (page) => {
     await page.goto(`${ORIGIN}/demo/settings?tab=appearance`);

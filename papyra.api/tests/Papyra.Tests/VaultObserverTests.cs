@@ -60,7 +60,7 @@ public sealed class VaultObserverTests
 
             Assert.Equal(1, observer.ProcessedEvents); // debounced to one update
             Assert.Equal(1, state.Count(Uid));
-            Assert.Equal("v19", state.Snapshot(Uid).Single().Title); // and it read the last write
+            Assert.Equal("v19", state.SnapshotAll(Uid).Single().Title); // and it read the last write
         }
         finally
         {
@@ -95,7 +95,7 @@ public sealed class VaultObserverTests
             }, WaitTimeoutMs);
 
             Assert.Equal(1, state.Count(Uid));
-            Assert.Equal("Hello", state.Snapshot(Uid).Single().Title);
+            Assert.Equal("Hello", state.SnapshotAll(Uid).Single().Title);
         }
         finally
         {
@@ -151,7 +151,7 @@ public sealed class VaultObserverTests
             }, WaitTimeoutMs);
             await WaitUntil(() => ReadShared(path).StartsWith("---"), WaitTimeoutMs);
 
-            var note = Assert.Single(state.Snapshot(Uid));
+            var note = Assert.Single(state.SnapshotAll(Uid));
             Assert.Equal(expectedId, note.Id);           // was "" — listed, but unaddressable
             Assert.Equal("Made in Obsidian", note.Title); // was ""
             Assert.Equal($"---\nid: '{expectedId}'\n---\n\n{content}", File.ReadAllText(path));
@@ -183,9 +183,9 @@ public sealed class VaultObserverTests
 
             await File.WriteAllTextAsync(path, "v2 from another editor");
             await WaitUntil(() => ReadShared(path).Contains("id:"), WaitTimeoutMs);
-            await WaitUntil(() => state.Snapshot(Uid).Single().Body.Contains("v2"), WaitTimeoutMs);
+            await WaitUntil(() => state.SnapshotAll(Uid).Single().Body.Contains("v2"), WaitTimeoutMs);
 
-            var note = Assert.Single(state.Snapshot(Uid));
+            var note = Assert.Single(state.SnapshotAll(Uid));
             Assert.Equal("keep1", note.Id);
             Assert.StartsWith("---\nid: 'keep1'\n", File.ReadAllText(path));
         }

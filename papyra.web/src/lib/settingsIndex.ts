@@ -48,6 +48,12 @@ export const SETTINGS_INDEX: SettingsEntry[] = [
   { tab: 'appearance', tabLabel: 'Appearance', section: 'theme', sectionLabel: 'Theme', keywords: ['dark mode', 'light mode', 'night'] },
   { tab: 'appearance', tabLabel: 'Appearance', section: 'formatting-toolbar', sectionLabel: 'Formatting toolbar', keywords: ['editor', 'toolbar', 'table', 'bullet list', 'heading', 'embed', 'always show'] },
 
+  { tab: 'journal', tabLabel: 'Journal', keywords: ['diary', 'day', 'write'] },
+  { tab: 'journal', tabLabel: 'Journal', section: 'journal-day', sectionLabel: 'The day', keywords: ['day starts', 'midnight', 'night owl', 'prompts', 'streak', 'hide streak'] },
+  { tab: 'journal', tabLabel: 'Journal', section: 'journal-templates', sectionLabel: 'Templates', keywords: ['template', 'prompt', 'start from', 'daily page', 'morning pages'] },
+  { tab: 'journal', tabLabel: 'Journal', section: 'journal-reminder', sectionLabel: 'Reminder', keywords: ['remind', 'nudge', 'email', 'daily', 'notification'] },
+  { tab: 'journal', tabLabel: 'Journal', section: 'journal-locking', sectionLabel: 'Locking', keywords: ['lock', 'private', 'pin', 'seal', 'encrypt', 'lock all', 'lock new'] },
+
   { tab: 'notifications', tabLabel: 'Notifications', keywords: ['alerts'] },
   { tab: 'notifications', tabLabel: 'Notifications', section: 'email-notifications', sectionLabel: 'What Papyra tells you about', keywords: ['email', 'mentions', 'shares', 'backup', 'new sign-in', 'login alert', 'security email', 'push'] },
 

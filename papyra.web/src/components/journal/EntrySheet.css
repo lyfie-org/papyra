@@ -1,0 +1,248 @@
+/* One day of the journal: a single sheet of paper on the desk. */
+
+.journal-sheet {
+  position: relative;
+  background: var(--paper);
+  border: 1px solid var(--paper-edge);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  padding: var(--space-10) clamp(var(--space-5), 6vw, var(--space-12)) var(--space-4);
+  color: var(--text);
+  /* The luthor canvas paints --papyra-surface; keep it on the same paper. */
+  --papyra-surface: var(--paper);
+  font-family: var(--sans);
+  isolation: isolate;
+  overflow: clip;
+  /* The page-turn between days: a short slide that settles. */
+  animation: journal-sheet-in var(--dur-slow) var(--ease) both;
+}
+
+/* A faint grain laid over the paper, under the writing. */
+.journal-sheet::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  opacity: var(--grain-opacity);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .24 0 0 0 0 .17 0 0 0 0 .12 0 0 0 1 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+@keyframes journal-sheet-in {
+  from { opacity: 0; transform: translateX(var(--journal-turn, 12px)); }
+  to   { opacity: 1; transform: none; }
+}
+
+.journal-sheet--loading { min-height: 60vh; animation: none; }
+.journal-sheet__skeleton {
+  height: 220px;
+  border-radius: var(--radius-md);
+  background: linear-gradient(90deg, transparent, var(--accent-bg), transparent) 0 0 / 200% 100%;
+  animation: journal-shimmer 1.4s var(--ease-inout) infinite;
+}
+@keyframes journal-shimmer { to { background-position: -200% 0; } }
+
+/* Today wears a ribbon bookmark. */
+.journal-sheet__ribbon {
+  position: absolute;
+  top: -1px;
+  right: clamp(var(--space-5), 6vw, var(--space-12));
+  width: 22px;
+  height: 58px;
+  background: var(--ribbon);
+  clip-path: polygon(0 0, 100% 0, 100% 100%, 50% 82%, 0 100%);
+}
+
+.journal-sheet__head { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-1); }
+
+.journal-sheet__weekday {
+  margin: 0;
+  font: 500 var(--fs-xs)/1.2 var(--sans);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text);
+}
+
+.journal-sheet__date {
+  margin: 0;
+  font: 400 var(--fs-2xl)/1.1 var(--heading);
+  letter-spacing: 0.01em;
+  color: var(--text-h);
+}
+
+.journal-sheet__streak {
+  margin: var(--space-1) 0 0;
+  font: 500 var(--fs-xs)/1.3 var(--sans);
+  color: var(--accent-text);
+}
+
+.journal-sheet__mood { margin-top: var(--space-3); margin-inline-start: calc(var(--space-2) * -1); }
+
+/* A fleuron between two hairlines under the header. */
+.journal-sheet__rule {
+  display: flex;
+  align-items: center;
+  gap: var(--space-3);
+  align-self: stretch;
+  margin: var(--space-4) 0 var(--space-2);
+  color: var(--text);
+  font-size: var(--fs-md);
+  line-height: 1;
+}
+.journal-sheet__rule::before,
+.journal-sheet__rule::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--paper-edge);
+}
+
+/* Notices sit between the header and the page. */
+.journal-sheet__notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  margin: var(--space-2) 0;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--code-bg);
+  color: var(--text-h);
+  font: 400 var(--fs-sm)/1.4 var(--sans);
+}
+.journal-sheet__notice--warn { background: var(--warn-bg); border-color: var(--warn-border); }
+.journal-sheet__notice--error { background: var(--danger-bg); border-color: var(--danger-border); }
+.journal-sheet__notice-actions { display: inline-flex; flex-wrap: wrap; gap: var(--space-2); margin-inline-start: auto; }
+
+.journal-sheet__action,
+.journal-sheet__link {
+  font: 500 var(--fs-xs)/1 var(--sans);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text-h);
+  cursor: pointer;
+}
+.journal-sheet__link { padding: 0; border: 0; background: none; color: var(--accent-text); }
+.journal-sheet__action:hover { border-color: var(--border-hover); }
+
+/* Pages a blank day can start from. */
+.journal-sheet__starts { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin: var(--space-2) 0; }
+.journal-sheet__starts-label { font: 500 var(--fs-xs)/1 var(--sans); color: var(--text); }
+.journal-sheet__chip {
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill, 999px);
+  background: var(--surface);
+  color: var(--text-h);
+  font: 500 var(--fs-xs)/1.4 var(--sans);
+  cursor: pointer;
+}
+.journal-sheet__chip:hover { border-color: var(--border-hover); }
+.journal-sheet__chip:focus-visible { border-color: var(--border-focus); }
+
+/* The page itself. */
+.journal-sheet__body { position: relative; min-height: 38vh; }
+.journal-sheet__diff-slot { margin-bottom: var(--space-4); }
+.journal-sheet__canvas { position: relative; padding-bottom: var(--space-6); }
+
+/* The first letter of the opening paragraph is set larger, in the heading face: a small ceremony for
+   starting the day. Inline on purpose — a sunk or floated capital makes the next block wrap around it. */
+.journal-sheet__canvas .luthor-content-editable > p:first-child:not(:empty)::first-letter {
+  font-family: var(--heading);
+  font-size: 1.7em;
+  line-height: 1;
+  color: var(--text-h);
+}
+
+.journal-sheet__foot {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-4);
+  margin-top: var(--space-2);
+  padding: var(--space-3) 0 var(--space-2);
+  border-top: 1px solid var(--paper-edge);
+  font: 400 var(--fs-xs)/1.3 var(--sans);
+  color: var(--text);
+}
+.journal-sheet__foot-left,
+.journal-sheet__foot-right { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); }
+
+.journal-sheet__words { font-variant-numeric: tabular-nums; }
+.journal-sheet__status { min-width: 4ch; }
+.journal-sheet__status--error { color: var(--danger); }
+.journal-sheet__status--queued { color: var(--warn); }
+
+.journal-sheet__tool {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text);
+  font: 500 var(--fs-xs)/1.2 var(--sans);
+  cursor: pointer;
+}
+.journal-sheet__tool:hover:not(:disabled) { border-color: var(--border-hover); color: var(--text-h); }
+.journal-sheet__tool[aria-pressed='true'] { background: var(--accent-bg); border-color: var(--accent-border); color: var(--text-h); }
+.journal-sheet__tool:disabled { opacity: 0.45; cursor: default; }
+
+/* Focus mode: the chrome steps back until the pointer asks for it. */
+.journal-sheet--focus .journal-sheet__head,
+.journal-sheet--focus .journal-sheet__foot { opacity: 0.35; transition: opacity var(--dur) var(--ease); }
+.journal-sheet--focus .journal-sheet__head:hover,
+.journal-sheet--focus .journal-sheet__head:focus-within,
+.journal-sheet--focus .journal-sheet__foot:hover,
+.journal-sheet--focus .journal-sheet__foot:focus-within { opacity: 1; }
+
+@media (max-width: 640px) {
+  .journal-sheet { padding-top: var(--space-8); border-radius: var(--radius-md); }
+  .journal-sheet__date { font-size: var(--fs-xl); }
+  .journal-sheet__foot { flex-direction: column; align-items: stretch; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .journal-sheet { animation: journal-sheet-fade var(--dur) linear both; }
+  .journal-sheet__skeleton { animation: none; }
+  .journal-sheet--focus .journal-sheet__head,
+  .journal-sheet--focus .journal-sheet__foot { transition: none; }
+}
+@keyframes journal-sheet-fade { from { opacity: 0; } to { opacity: 1; } }
+
+/* The luthor canvas sits on the paper: no boxed input, the sheet's own padding. */
+.journal-sheet__canvas .luthor-editor-wrapper {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  /* `clip` still clips but isn't a scroll container, so the toolbar can stick. */
+  overflow: clip;
+}
+.journal-sheet__canvas .luthor-preset-papyra__content { padding-inline: 0; min-height: 30vh; }
+.journal-sheet__canvas .luthor-richtext-container {
+  --luthor-editor-content-padding-x: 0px;
+  --luthor-first-block-offset: 2px;
+}
+.journal-sheet__canvas .luthor-editor-toolbar-slot {
+  background: var(--paper);
+  border-bottom: 1px solid var(--paper-edge);
+}
+.journal-sheet__canvas .luthor-toolbar { padding-inline: 0; justify-content: safe center; }
+@media (max-width: 620px) {
+  .journal-sheet__canvas .luthor-toolbar { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+  .journal-sheet__canvas .luthor-toolbar::-webkit-scrollbar { display: none; }
+  .journal-sheet__canvas .luthor-toolbar-section { flex-shrink: 0; }
+}
+/* A note is written a line at a time: close the gaps luthor leaves between blocks. */
+.journal-sheet__canvas .luthor-list-li { margin: 1px 0; }
+.journal-sheet__canvas :is(.luthor-list-ul, .luthor-list-ol) { margin-block: 4px; }
+.journal-sheet__canvas .luthor-list-li :is(.luthor-list-ul, .luthor-list-ol) { margin-block: 0; }
+
+/* Focus mode reads like a page in a book: a wider leading. */
+.journal-sheet--focus .journal-sheet__canvas { font-size: 1.075rem; line-height: 1.9; }

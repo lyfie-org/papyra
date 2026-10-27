@@ -1,4 +1,5 @@
 using System.Text;
+using Papyra.Api.Models;
 using Whisper.net;
 
 namespace Papyra.Api.Storage;
@@ -69,11 +70,15 @@ public sealed class AudioTranscriptionService : IMediaJobHandler, IDisposable
 
     // Add the transcript to the note that embeds the recording (the first by
     // id if several do, so it is always the same one). A Secure note is left alone: its text would then be
-    // readable outside the vault in places that show note bodies.
+    // readable outside the vault in places that show note bodies. So is a journal day: it has no live
+    // room, so a line appearing behind the writer's back would turn their next save into a conflict —
+    // the page that recorded it reads the text from /api/media/{file}/text and writes it where it belongs.
+    internal static bool TakesTranscript(Note n) => !n.Trashed && !n.Secure && !JournalPaths.IsJournal(n);
+
     public async Task CompletedAsync(string ownerUid, string fileName, string text, CancellationToken ct)
     {
-        var note = _state.Snapshot(ownerUid)
-            .Where(n => !n.Trashed && !n.Secure && _refs.References(n, fileName))
+        var note = _state.SnapshotAll(ownerUid)
+            .Where(n => TakesTranscript(n) && _refs.References(n, fileName))
             .OrderBy(n => n.Id, StringComparer.Ordinal)
             .FirstOrDefault();
         if (note is null)

@@ -5,10 +5,13 @@ import { useNotes } from '../hooks/useNotes';
 import { useSettings, RETENTION_OPTIONS } from '../hooks/useSettings';
 import './NotesPage.css';
 import LoadingBar from '../components/LoadingBar';
+import JournalBin from '../components/journal/JournalBin';
+import { useJournalBin } from '../hooks/useJournal';
 
 export default function TrashPage() {
   const { data: notes, isLoading, isError } = useNotes();
   const { data: settings } = useSettings();
+  const journalDays = useJournalBin('trashed').data?.length ?? 0;
 
   const retention = RETENTION_OPTIONS.find(o => o.value === settings?.trashRetentionDays);
   const hint = retention
@@ -29,7 +32,7 @@ export default function TrashPage() {
           notes={notes ?? []}
           variant="trashed"
           selectable
-          empty={
+          empty={journalDays > 0 ? <></> : (
             <EmptyState
               icon={Trash2}
               title="Trash is empty"
@@ -37,9 +40,11 @@ export default function TrashPage() {
               hint="Restore anything here before that time is up to keep it."
               action={{ label: 'Change how long Trash keeps notes', to: '/settings?tab=data' }}
             />
-          }
+          )}
         />
       )}
+
+      <JournalBin state="trashed" retentionDays={settings?.trashRetentionDays} />
     </section>
   );
 }

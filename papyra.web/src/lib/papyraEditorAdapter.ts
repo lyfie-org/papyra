@@ -1,3 +1,4 @@
+import { createElement, type ReactNode } from 'react';
 import type { QueryClient } from '@tanstack/react-query';
 import type { NavigateFunction } from 'react-router-dom';
 import type { PapyraEditorAdapter } from '@lyfie/luthor/presets/papyra';
@@ -12,6 +13,10 @@ import { prepareUpload, uploadForm } from './uploadPrep';
 import { mediaKind } from './noteMedia';
 import { renderFileCard } from './renderFileCard';
 import { resolveCard, resolveEmbed } from './embedResolve';
+import { isDay, parseLooseDay, todayIn } from './journalDay';
+import type { JournalToday } from '../types/journal';
+import TodoEmbed from '../components/journal/TodoEmbed';
+import { CHECKLIST_BLOCK } from './checklist';
 
 /** The owner's own attachments. */
 export const OWN_MEDIA = '/api/media';
@@ -35,6 +40,11 @@ interface AdapterDeps {
   getEditor?: () => LexicalEditor | null;
   /** A short confirmation (a toast): "Link copied". */
   notify?: (message: string) => void;
+  /**
+   * `@` mentions. On by default; the journal turns them off — it is a private
+   * space, so `@name` there is plain text and the editor offers no people.
+   */
+  mentions?: boolean;
 }
 
 function uploadMessage(error: unknown): string {
@@ -90,7 +100,7 @@ export function uploadErrorMessage(error: unknown): string | null {
 }
 
 export function createPapyraEditorAdapter(
-  { noteId, navigate, queryClient, onUnresolvedLink, onUploadError, getEditor, notify }: AdapterDeps,
+  { noteId, navigate, queryClient, onUnresolvedLink, onUploadError, getEditor, notify, mentions = true }: AdapterDeps,
 ): PapyraEditorAdapter {
   const meta = mediaMetaStore(OWN_MEDIA);
   // The size limits, so an oversized file is refused before it is sent.
@@ -152,6 +162,9 @@ export function createPapyraEditorAdapter(
     // silently does nothing reads as the app being broken.
     openNote: (ref) => {
       const target = (ref.title ?? '').trim();
+      // `[[2026-09-14]]` is a day of the journal, not a note: the journal is not on
+      // the desk, so it never resolves through the notes cache.
+      if (isDay(target)) { navigate(`/journal/${target}`); return; }
       const found = ref.id
         ?? findByTitle(queryClient, ref.title)?.id
         ?? findById(queryClient, target)?.id;
@@ -182,18 +195,38 @@ export function createPapyraEditorAdapter(
     searchNotes: async (query) => {
       const notes = queryClient.getQueryData<Note[]>(['notes']) ?? [];
       const q = query.trim().toLowerCase();
-      return notes
+      // "yesterday", "last fri", "sep 14" → the day, written as the canonical [[2026-09-14]].
+      const day = dayHit(queryClient, query);
+      const matches = notes
         .filter((n) => !q || n.title.toLowerCase().includes(q))
-        .slice(0, 8)
+        .slice(0, day ? 7 : 8)
         .map((n) => ({ id: n.id, title: n.title, color: n.color ?? undefined }));
+      return day ? [day, ...matches] : matches;
     },
 
     // @ typeahead → GET /api/users/search?q=, a thin pass-through. The server
     // owns every real rule (2+ chars, prefix-only, self excluded, capped at 8,
     // rate-limited) — this just forwards the query and degrades to no
     // suggestions rather than throwing, same as resolveBlock does offline.
-    searchUsers,
+    // No people directory ⇒ the editor never opens its `@` menu (see PapyraEditorAdapter.searchUsers).
+    ...(mentions ? { searchUsers } : {}),
+    // `![[Title#^checklist]]` is a to-do, ticked in place. Through a spread, so this builds against a
+    // luthor that predates `renderBlock` (it then draws the list as plain text, which is what it did).
+    ...({ renderBlock: renderChecklistBlock } as object),
   };
+}
+
+/** The host's own drawing of a transcluded block: only the checklist of a to-do is Papyra's. */
+function renderChecklistBlock(ctx: { note: string; blockId: string; status: 'loading' | 'resolved' | 'unresolved'; content: string | null }): ReactNode {
+  if (ctx.blockId !== CHECKLIST_BLOCK) return null;
+  return createElement(TodoEmbed, { note: ctx.note, status: ctx.status, content: ctx.content });
+}
+
+/** The day a `[[` query names, as a typeahead row. */
+function dayHit(queryClient: QueryClient, query: string): { id: string; title: string } | null {
+  const today = queryClient.getQueryData<JournalToday>(['journal', 'today'])?.date ?? todayIn(new Date(), undefined);
+  const day = parseLooseDay(query, today);
+  return day ? { id: `journal-${day}`, title: day } : null;
 }
 
 /** `@` typeahead: people on this Papyra (signed in only). */

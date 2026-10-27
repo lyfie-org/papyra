@@ -40,7 +40,8 @@ export const FEATURES = [
   'Email alerts through your own SMTP server',
   'Works offline as an installable web app; edits sync when you reconnect',
   'Pictures, PDFs and video in notes, previewed inline',
-  'Import from Google Keep (Takeout) and Obsidian; drag in any .md file',
+  'A journal: one page a day with moods, a streak, a calendar, voice notes and lockable days — plain files like everything else',
+  'Import from Google Keep (Takeout), Obsidian and Day One; drag in any .md file',
   'Backups: Git sync (optionally encrypted), zip export, encrypted archives',
   'Smart collections, tags, to-do lists, focus mode, light and dark themes',
   'Multiple private accounts on one server',
@@ -63,7 +64,7 @@ export const FAQ: { q: string; a: string }[] = [
   },
   {
     q: 'Can I move my notes from Google Keep or Obsidian?',
-    a: 'Yes. Import a Google Keep Takeout archive — checklists, labels, colours and pins come with it — or upload an Obsidian vault with its links and attachments. Any Markdown file can also be dragged onto the desk.',
+    a: 'Yes. Import a Google Keep Takeout archive — checklists, labels, colours and pins come with it — or upload an Obsidian vault with its links and attachments. A Day One journal comes in as days of the journal. Any Markdown file can also be dragged onto the desk.',
   },
   {
     q: 'What do I need to run it?',

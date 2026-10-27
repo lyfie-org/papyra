@@ -58,8 +58,9 @@ public static class MediaLimits
     /// oversized file before uploading it (same numbers, one source). The server
     /// still decides by the sniffed bytes; this is only the early, friendly no.
     /// </summary>
-    public static object Describe() => new
+    public static object Describe(bool transcription = false) => new
     {
+        transcription,
         limits = new { image = Image, gif = Gif, audio = Audio, video = Video, document = Document, other = Other },
         extensions = new
         {

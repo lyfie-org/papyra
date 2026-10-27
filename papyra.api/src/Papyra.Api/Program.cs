@@ -14,6 +14,7 @@ using Microsoft.AspNetCore.HttpOverrides;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.AspNetCore.StaticFiles;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Options;
 using Papyra.Api.Collab;
 using Papyra.Api.Data;
@@ -92,6 +93,12 @@ builder.Services.AddSingleton<OrderStore>();
 // Per-user category registry (promoted tags + colours), persisted under .papyra/.
 builder.Services.AddSingleton<CategoryStore>();
 
+// The journal: day-wise entries (Kind=journal notes) and the person's journal preferences.
+builder.Services.TryAddSingleton(TimeProvider.System);
+builder.Services.AddSingleton<JournalSettings>();
+builder.Services.AddSingleton<JournalTemplates>();
+builder.Services.AddSingleton<JournalService>();
+
 // ── Reactive observer: keep the in-memory vault in sync with the .md files ────
 builder.Services.AddMemoryCache();
 builder.Services.AddSingleton<VaultState>();
@@ -166,6 +173,7 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<OrphanPruneService
 
 // Permanently purges trashed notes once they outlive the retention window.
 builder.Services.AddHostedService<TrashPurgeService>();
+builder.Services.AddHostedService<JournalReminderJob>();
 // Daily search rebuild — the safety net under live indexing (see SearchRebuildJob).
 builder.Services.AddHostedService<SearchRebuildJob>();
 // Readable file names for notes still stored under an id (see NoteFileNamingJob).
@@ -971,6 +979,7 @@ app.Use(async (context, next) =>
                         // Which key: a live note's presence and history name it.
                         new Claim(LiveAgentEdits.KeyIdClaim, key.Id.ToString()),
                         new Claim(LiveAgentEdits.KeyNameClaim, key.Name),
+                        new Claim(ApiKeyScopes.ClaimType, ApiKeyScopes.Normalize(key.Scope)),
                     ], "ApiKey"));
                 }
             }
@@ -1101,6 +1110,31 @@ app.Use(async (context, next) =>
                     statusCode: StatusCodes.Status403Forbidden).ExecuteAsync(context);
                 return;
             }
+        }
+    }
+    await next();
+});
+
+// ── API-key scope: deny by default ───────────────────────────────────────────────
+// A "journal" key reaches the journal API and nothing else; a "notes" key reaches
+// everything but the journal (including any route that names a journal entry's id,
+// so a route added later can't leak it). Cookie sessions are the owner and skip this.
+app.Use(async (context, next) =>
+{
+    if (context.User.Identity?.AuthenticationType == "ApiKey")
+    {
+        var scope = ApiKeyScopes.Normalize(context.User.FindFirstValue(ApiKeyScopes.ClaimType));
+        var path = context.Request.Path;
+        var inJournal = path.StartsWithSegments("/api/journal");
+        var allowed = scope == ApiKeyScopes.Journal
+            ? inJournal || path.StartsWithSegments("/health")
+            : !inJournal && !JournalPaths.NamesAnEntry(path.Value + context.Request.QueryString.Value);
+        if (!allowed)
+        {
+            await Results.Json(
+                new { error = scope == ApiKeyScopes.Journal ? "This key can only use the journal." : "This key can't reach the journal.", code = "key_scope" },
+                statusCode: StatusCodes.Status403Forbidden).ExecuteAsync(context);
+            return;
         }
     }
     await next();
@@ -1968,7 +2002,7 @@ vault.MapPost("/pin", async (
         authorised = true;
     }
     if (!authorised && !pinSet && string.IsNullOrEmpty(user.PasswordHash)
-        && !state.Snapshot(uid.ToString()).Any(n => n.Secure))
+        && !state.SnapshotAll(uid.ToString()).Any(n => n.Secure))
         authorised = true;
 
     if (!authorised)
@@ -3485,7 +3519,7 @@ var notes = app.MapGroup("/api/notes").RequireAuthorization().WithTags("Notes");
 
 notes.MapGet("/", (ClaimsPrincipal user, VaultState state, DateTime? from, DateTime? to) =>
 {
-    var snap = state.Snapshot(Uid(user));
+    var snap = state.SnapshotDesk(Uid(user));
     // Inclusive day-range filter (heatmap cell → dashboard filter).
     if (from is not null || to is not null)
         snap = snap.Where(n =>
@@ -3499,7 +3533,7 @@ notes.MapGet("/", (ClaimsPrincipal user, VaultState state, DateTime? from, DateT
 
 // Note activity by day (year → month → day → count) for the knowledge heatmap.
 notes.MapGet("/activity", (ClaimsPrincipal user, VaultState state) =>
-    Results.Ok(TemporalActivity.Group(state.Snapshot(Uid(user)).Where(n => !n.Trashed).Select(n => n.Updated))))
+    Results.Ok(TemporalActivity.Group(state.SnapshotDesk(Uid(user)).Where(n => !n.Trashed).Select(n => n.Updated))))
     .WithSummary("Note activity heatmap");
 
 // Reveal a `secure: true` note's body. The ONLY route that serves it, and only in
@@ -3575,6 +3609,10 @@ notes.MapPut("/{id}", async (
     var priorPath = state.PathFor(uid, id);
     Note? prior = null;
     if (priorPath is not null) state.TryGet(uid, priorPath, out prior);
+    // A journal entry is written through /api/journal (its own day, mood and lock
+    // rules); the generic save would rebuild it as a plain note.
+    if (prior is not null ? JournalPaths.IsJournal(prior) : JournalPaths.IsJournalId(id))
+        return JournalGuards.NotHere();
 
     // Resolve under the caller's vault and verify it can't escape (→ 403).
     // Where it is now; a new note's file is named below, once its title is known.
@@ -3616,9 +3654,8 @@ notes.MapPut("/{id}", async (
         // never saw — and writing that through erased the note. Only that exact
         // shape is caught: the open editor's autosave carries no unlock token
         // either, so any non-empty body must still land as written.
-        Body = wasSecure && wantsSecure && string.IsNullOrEmpty(body.Body)
-               && !UnlockedNow(http, uid) && prior is not null
-            ? prior.Body
+        Body = NoteWriteGuards.KeepsLockedBody(wasSecure, wantsSecure, body.Body, UnlockedNow(http, uid), prior is not null)
+            ? prior!.Body
             : body.Body ?? string.Empty,
         Kind = string.Equals(body.Kind, "todo", StringComparison.OrdinalIgnoreCase) ? "todo" : "note",
         // Omitted `secure` keeps whatever the note already had — a client that
@@ -3800,6 +3837,7 @@ notes.MapPatch("/{id}/sections", async (
 {
     var uid = Uid(user);
     if (!PathGuard.IsValidNoteId(id)) return Results.NotFound();
+    if (JournalPaths.IsJournalId(id)) return JournalGuards.NotHere();
     var ops = body.Ops ?? [];
 
     IResult Done(Note note)
@@ -3975,6 +4013,11 @@ notes.MapPost("/bulk", async (
         if (path is null || !state.TryGet(uid, path, out var note) || note is null)
         {
             results.Add(new { id, status = "notFound" });
+            continue;
+        }
+        if (JournalPaths.IsJournal(note))
+        {
+            results.Add(new { id, status = "journalEntry" });
             continue;
         }
 
@@ -4214,7 +4257,10 @@ notes.MapGet("/{id}/blocks/{blockId}", async (
     // resolving a block IS a body read.
     if (note.Secure) return Results.Forbid();
 
-    var text = BlockResolver.Resolve(note.Body, blockId);
+    // `![[Todo#^checklist]]`: the whole checklist of a to-do (see Checklist) — a list has no
+    // anchor of its own, and this id is one the editor never makes. A real anchor of that name wins.
+    var text = BlockResolver.Resolve(note.Body, blockId)
+        ?? (blockId == Checklist.BlockId && note.Kind == "todo" && !note.Trashed ? Checklist.Render(note.Body) : null);
     if (text is null) return Results.NotFound();
 
     return Results.Ok(new { noteId = id, blockId, text, title = note.Title });
@@ -4232,10 +4278,11 @@ notes.MapGet("/{id}/backlinks", (string id, ClaimsPrincipal user, VaultState sta
     if (string.IsNullOrWhiteSpace(title)) return Results.Ok(Array.Empty<object>());
 
     var needle = $"[[{title}]]";
-    var results = state.Snapshot(uid)
+    var results = state.SnapshotAll(uid)
         // A secure note is left out entirely: even its title next to a snippet of
         // this note would confirm what it links to.
         .Where(n => !n.Trashed && !n.Secure && n.Id != id && !string.IsNullOrEmpty(n.Body)
+                    && !(IsApiKey(user) && JournalPaths.IsJournal(n))
                     && n.Body.Contains(needle, StringComparison.OrdinalIgnoreCase))
         .Select(n => new
         {
@@ -4243,6 +4290,7 @@ notes.MapGet("/{id}/backlinks", (string id, ClaimsPrincipal user, VaultState sta
             title = n.Title,
             snippet = search.BuildSnippet(title, n.Body),
             color = n.Color,
+            kind = n.Kind,
         })
         .ToList();
 
@@ -4264,7 +4312,7 @@ categories.MapGet("/", (ClaimsPrincipal user, VaultState state, CategoryStore st
     var uid = Uid(user);
     var counts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
     var display = new Dictionary<string, string>(StringComparer.OrdinalIgnoreCase);
-    foreach (var note in state.Snapshot(uid).Where(n => !n.Trashed))
+    foreach (var note in state.SnapshotDesk(uid).Where(n => !n.Trashed))
         foreach (var tag in note.Tags)
         {
             if (string.IsNullOrWhiteSpace(tag)) continue;
@@ -4321,7 +4369,7 @@ categories.MapDelete("/{name}", async (
     {
         var snapRoot = PapyraPaths.UserSnapshotsDir(config, env.ContentRootPath, uid);
         var logger = loggerFactory.CreateLogger("PathGuard");
-        foreach (var note in state.Snapshot(uid).Where(n => n.Tags.Any(t => string.Equals(t, name, StringComparison.OrdinalIgnoreCase))))
+        foreach (var note in state.SnapshotAll(uid).Where(n => n.Tags.Any(t => string.Equals(t, name, StringComparison.OrdinalIgnoreCase))))
         {
             var path = state.PathFor(uid, note.Id);
             if (path is null) continue;
@@ -4350,7 +4398,7 @@ keys.MapGet("/", async (ClaimsPrincipal user, AppDbContext db, CancellationToken
     return Results.Ok(await db.ApiKeys
         .Where(k => k.UserId == uid)
         .OrderByDescending(k => k.CreatedUtc)
-        .Select(k => new { k.Id, k.Name, k.Prefix, k.CreatedUtc, k.LastUsedUtc })
+        .Select(k => new { k.Id, k.Name, k.Prefix, k.CreatedUtc, k.LastUsedUtc, k.Scope })
         .ToListAsync(ct));
 });
 
@@ -4377,7 +4425,9 @@ keys.MapPost("/", async (
     // a safe, fast lookup key.
     var raw = System.Security.Cryptography.RandomNumberGenerator.GetBytes(32);
     var secret = Convert.ToBase64String(raw).Replace("+", "").Replace("/", "").Replace("=", "");
-    var token = $"papyra_{secret}";
+    var scope = ApiKeyScopes.Normalize(body.Scope);
+    // A journal key's token announces itself, so a pasted one is recognisable.
+    var token = scope == ApiKeyScopes.Journal ? $"{ApiKeyScopes.JournalTokenPrefix}_{secret}" : $"papyra_{secret}";
     var prefix = token[..14];
 
     var key = new ApiKey
@@ -4387,6 +4437,7 @@ keys.MapPost("/", async (
         Prefix = prefix,
         TokenHash = Sha256Hex(token),
         CreatedUtc = DateTime.UtcNow,
+        Scope = scope,
     };
     db.ApiKeys.Add(key);
     await db.SaveChangesAsync(ct);
@@ -4394,12 +4445,14 @@ keys.MapPost("/", async (
     if (await db.Users.FindAsync([uid], ct) is { } owner)
         email.NotifyInBackground(owner, NotificationCatalog.ApiKeyCreated,
             "A new API key was created on your Papyra account",
-            "A key that can read and change your notes from scripts and other apps was just created.\n\n"
+            (scope == ApiKeyScopes.Journal
+                ? "A key that can read and append to your journal from scripts and other apps was just created.\n\n"
+                : "A key that can read and change your notes from scripts and other apps was just created.\n\n")
             + "If that wasn't you, delete it under Settings → API Keys and change your password.",
-            [new("Key name", name), new("Starts with", prefix), .. RequestDetails(owner, http)]);
+            [new("Key name", name), new("Reach", scope == ApiKeyScopes.Journal ? "Journal only" : "Notes"), new("Starts with", prefix), .. RequestDetails(owner, http)]);
 
     // token is shown to the caller this once, never persisted in the clear.
-    return Results.Ok(new { key.Id, key.Name, key.Prefix, key.CreatedUtc, token });
+    return Results.Ok(new { key.Id, key.Name, key.Prefix, key.CreatedUtc, key.Scope, token });
 })
     .WithSummary("Create API key")
     .WithDescription("Generates a personal access token. The raw token is returned once — store it; only its hash is kept.");
@@ -4510,7 +4563,7 @@ collections.MapGet("/{id:int}/notes", async (
     if (rules is null) return Results.Ok(Array.Empty<Note>());
 
     // Same rule as the note list: a secure note rides as metadata, body withheld.
-    return Results.Ok(state.Snapshot(uid)
+    return Results.Ok(state.SnapshotDesk(uid)
         .Where(n => !n.Trashed && SmartCollectionEvaluator.Matches(n, rules))
         .Select(RedactSecure));
 });
@@ -5170,6 +5223,7 @@ notes.MapPost("/{id}/shares", async (
     // biometric unlock. A share is another read path, so this is where that
     // promise would otherwise be worth nothing.
     var subject = await storage.ReadAsync(OwnerNotePath(state, vault, lf, uid.ToString(), id), ct);
+    if (subject is not null && JournalPaths.IsJournal(subject)) return JournalGuards.NotHere();
     if (subject?.Secure == true)
         return Results.BadRequest(new { error = "This note is locked. Unlock it before sharing it." });
 
@@ -5280,6 +5334,11 @@ shares.MapPost("/bulk", async (
         if (path is null || !state.TryGet(uid.ToString(), path, out var note) || note is null || note.Trashed)
         {
             results.Add(new { id, status = "notFound" });
+            continue;
+        }
+        if (JournalPaths.IsJournal(note))
+        {
+            results.Add(new { id, status = "journalEntry" });
             continue;
         }
         if (note.Secure)
@@ -5602,7 +5661,7 @@ shares.MapGet("/incoming/{shareId:int}/link", async (
     var wanted = target?.Trim();
     if (string.IsNullOrEmpty(wanted)) return Results.BadRequest(new { error = "Which note?" });
     var ownerUid = from.OwnerId.ToString();
-    var linked = state.Snapshot(ownerUid)
+    var linked = state.SnapshotDesk(ownerUid)
         .Where(n => !n.Trashed && !n.Secure)
         .FirstOrDefault(n => string.Equals(n.Title.Trim(), wanted, StringComparison.OrdinalIgnoreCase) || n.Id == wanted);
     if (linked is null) return Results.NotFound(new { error = "not_shared" });
@@ -6070,8 +6129,12 @@ app.MapGet("/api/search", (string? q, ClaimsPrincipal user, SearchIndexService s
     // Locked titles aren't in the index (it's on disk; they're encrypted there),
     // so they're matched here, against the vault in memory, and merged in.
     var hits = search.Search(uid, q).ToDictionary(h => h.Id, StringComparer.Ordinal);
-    foreach (var t in search.MatchTitles(q, state.Snapshot(uid).Where(n => n.Secure && !n.Trashed)))
+    foreach (var t in search.MatchTitles(q, state.SnapshotAll(uid).Where(n => n.Secure && !n.Trashed)))
         hits[t.Id] = hits.TryGetValue(t.Id, out var h) ? h with { Score = h.Score + t.Score } : t;
+    // A script on a key never finds the journal through the notes search.
+    if (IsApiKey(user))
+        foreach (var hitId in hits.Keys.ToList())
+            if (JournalPaths.IsJournalId(hitId)) hits.Remove(hitId);
     var results = hits.Values.OrderByDescending(h => h.Score).Select(hit =>
     {
         var note = state.PathFor(uid, hit.Id) is { } p && state.TryGet(uid, p, out var n) ? n : null;
@@ -6079,7 +6142,7 @@ app.MapGet("/api/search", (string? q, ClaimsPrincipal user, SearchIndexService s
         // through a search snippet — that would defeat the unlock gate.
         var snippet = note is not null && !note.Secure ? search.BuildSnippet(q, note.Body) : string.Empty;
         var title = note?.Secure == true ? note.Title : hit.Title;
-        return new { id = hit.Id, title, snippet, score = hit.Score, secure = note?.Secure ?? false };
+        return new { id = hit.Id, title, snippet, score = hit.Score, secure = note?.Secure ?? false, kind = note?.Kind ?? "note" };
     }).ToArray();
 
     return Results.Ok(results);
@@ -6492,7 +6555,7 @@ app.MapPost("/api/system/rebuild-embeddings", (
 {
     var uid = Uid(user);
     var queued = 0;
-    foreach (var note in state.Snapshot(uid).Where(n => !n.Trashed && !n.Secure))
+    foreach (var note in state.SnapshotDesk(uid).Where(n => !n.Trashed && !n.Secure))
     {
         embeddings.Enqueue(uid, note.Id, note.Body);
         queued++;
@@ -6544,8 +6607,8 @@ app.MapPost("/api/import/{provider}", async (
     if (file is null || file.Length == 0) return Results.BadRequest(new { error = "No file." });
 
     provider = provider.Trim().ToLowerInvariant();
-    if (provider is not ("obsidian" or "keep"))
-        return Results.BadRequest(new { error = "Unknown provider. Use 'obsidian' or 'keep'." });
+    if (provider is not ("obsidian" or "keep" or "dayone" or "journal"))
+        return Results.BadRequest(new { error = "Unknown provider. Use 'obsidian', 'keep', 'dayone' or 'journal'." });
 
     // Park the upload so the worker (not this request) owns the long parse.
     var tmp = Path.Combine(Path.GetTempPath(), $"papyra-import-{Guid.NewGuid():N}.zip");
@@ -6969,7 +7032,7 @@ app.MapGet("/api/export", async (
         }
     }
 
-    var secureFiles = state.Snapshot(uid).Where(n => n.Secure)
+    var secureFiles = state.SnapshotAll(uid).Where(n => n.Secure)
         .Select(n => state.PathFor(uid, n.Id))
         .Where(p => p is not null)
         .Select(p => Path.GetFullPath(p!))
@@ -7258,6 +7321,8 @@ app.MapFallback("/api/{**rest}", (HttpContext http) =>
 
 app.MapCollab();
 app.MapComments();
+app.MapJournal();
+app.MapChecklist();
 app.MapFallbackToFile("index.html");
 
 app.Run();
@@ -8048,7 +8113,7 @@ public sealed record NotificationPrefsWrite(bool? Mention, bool? Share, Notifica
 public sealed record UserSuggestion(string Username, string Name);
 
 // API key creation payload (just a human label).
-public sealed record ApiKeyWrite(string? Name, string? Code = null);
+public sealed record ApiKeyWrite(string? Name, string? Code = null, string? Scope = null);
 public sealed record RenameRequest(string? Name);
 public sealed record AdminProfileRequest(string? Username, string? Name, string? Email);
 

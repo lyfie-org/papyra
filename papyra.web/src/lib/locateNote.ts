@@ -20,7 +20,10 @@ export interface NoteLocation {
 }
 
 /** The page a note is listed on, from the same rules the pages filter by. */
-export function noteLocation(note: Pick<Note, 'archived' | 'trashed' | 'kind' | 'secure'>): NoteLocation {
+export function noteLocation(
+  note: Pick<Note, 'archived' | 'trashed' | 'secure'> & { kind: Note['kind'] | 'journal' },
+): NoteLocation {
+  if (note.kind === 'journal') return { label: 'Journal', path: '/journal' };
   if (note.trashed) return { label: 'Trash', path: '/trash' };
   if (note.archived) return { label: 'Archive', path: '/archive' };
   if (note.kind === 'inbox') return { label: 'Inbox', path: '/inbox' };

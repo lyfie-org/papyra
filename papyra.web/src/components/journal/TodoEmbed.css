@@ -1,0 +1,72 @@
+/* A to-do list shown inside a day: a small card of real checkboxes. */
+.todo-embed {
+  margin: var(--space-3) 0;
+  padding: var(--space-3) var(--space-4);
+  border: 1px solid var(--paper-edge);
+  border-radius: var(--radius-md);
+  background: var(--code-bg);
+  color: var(--text-h);
+  font: 400 var(--fs-sm)/1.45 var(--sans);
+  text-align: start;
+}
+
+.todo-embed--note {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  color: var(--text);
+  font-size: var(--fs-xs);
+}
+
+.todo-embed__head {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-2);
+  color: var(--text);
+}
+.todo-embed__title {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font: 400 var(--fs-md)/1.2 var(--heading);
+  color: var(--text-h);
+  text-decoration: none;
+}
+a.todo-embed__title:hover { background: var(--accent-bg); }
+.todo-embed__count { font: 400 var(--fs-2xs)/1 var(--mono); white-space: nowrap; }
+.todo-embed__link { color: var(--accent-text); font-size: var(--fs-xs); text-decoration: none; margin-inline-start: var(--space-2); }
+.todo-embed__link:hover { background: var(--accent-bg); }
+
+.todo-embed__list { list-style: none; margin: 0; padding: 0; }
+.todo-embed__item { padding: 2px 0; }
+.todo-embed__item label {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--space-2);
+  cursor: pointer;
+}
+.todo-embed__item input[type='checkbox'] {
+  flex: none;
+  width: 16px;
+  height: 16px;
+  margin-top: 3px;
+  accent-color: var(--accent);
+  cursor: inherit;
+}
+.todo-embed__item input[type='checkbox']:disabled { cursor: default; }
+.todo-embed__item.is-done span { color: var(--text); text-decoration: line-through; }
+
+.todo-embed__empty,
+.todo-embed__offline { margin: 0; font-size: var(--fs-xs); color: var(--text); }
+.todo-embed__offline { margin-top: var(--space-2); color: var(--warn); }
+
+/* luthor wraps a transcluded block like a quotation; a host-drawn card brings its own frame. */
+.luthor-preset-papyra .luthor-transclusion--custom {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+}

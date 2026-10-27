@@ -10,6 +10,8 @@ import sessions from '../components/SessionsSection.tsx?raw';
 import usersPanel from '../pages/ManageUsersPage.tsx?raw';
 import account from '../components/AccountDetails.tsx?raw';
 import sso from '../components/SsoGuide.tsx?raw';
+import journalSettings from '../components/journal/JournalSettingsPanel.tsx?raw';
+import journalTemplates from '../components/journal/JournalTemplatesGroup.tsx?raw';
 import { SETTINGS_INDEX, searchSettings, settingsHref } from './settingsIndex';
 
 describe('settingsIndex', () => {
@@ -46,7 +48,7 @@ describe('settingsIndex', () => {
       ...[...src.matchAll(/<Setting(?:Group|Row)[^>]*?id="([a-z-]+)"/gs)].map(m => m[1]),
     ];
     const ids = new Set([
-      ...anchors(settingsPage), ...anchors(logsPanel), ...anchors(account), ...anchors(sso), ...anchors(authenticator), ...anchors(sessions),
+      ...anchors(settingsPage), ...anchors(logsPanel), ...anchors(account), ...anchors(sso), ...anchors(authenticator), ...anchors(sessions), ...anchors(journalSettings), ...anchors(journalTemplates),
       // The About tab is its own component.
       ...[...aboutPanel.matchAll(/<h2 id="([a-z-]+)"/g)].map(m => m[1]),
       ...[...deleteAccount.matchAll(/<h2 id="([a-z-]+)"/g)].map(m => m[1]),

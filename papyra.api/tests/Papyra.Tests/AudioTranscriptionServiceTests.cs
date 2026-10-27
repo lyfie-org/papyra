@@ -1,3 +1,4 @@
+using Papyra.Api.Models;
 using Papyra.Api.Storage;
 
 namespace Papyra.Tests;
@@ -22,5 +23,14 @@ public sealed class AudioTranscriptionServiceTests
     {
         var result = AudioTranscriptionService.AppendTranscription("Body.\n\n\n", "  spaced  ");
         Assert.Equal("Body.\n\n> [Transcription]: spaced\n", result);
+    }
+
+    [Fact]
+    public void ADay_OfTheJournal_IsNeverWrittenToBehindTheWritersBack()
+    {
+        Assert.True(AudioTranscriptionService.TakesTranscript(new Note { Id = "n1", Title = "Meeting", Kind = "note" }));
+        Assert.False(AudioTranscriptionService.TakesTranscript(new Note { Id = "journal-2026-10-24", Title = "2026-10-24", Kind = "journal" }));
+        Assert.False(AudioTranscriptionService.TakesTranscript(new Note { Id = "n2", Title = "Locked", Secure = true }));
+        Assert.False(AudioTranscriptionService.TakesTranscript(new Note { Id = "n3", Title = "Gone", Trashed = true }));
     }
 }

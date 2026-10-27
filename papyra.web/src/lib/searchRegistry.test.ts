@@ -1,6 +1,6 @@
 import { describe, it, expect } from 'vitest';
 import {
-  GROUP_ORDER, tagResults, collectionResults, noteResult, orderResults, settingsResults,
+  GROUP_ORDER, tagResults, collectionResults, dayJumpResults, noteResult, orderResults, settingsResults,
   type SearchResult,
 } from './searchRegistry';
 
@@ -116,6 +116,44 @@ describe('searchRegistry', () => {
   it('returns nothing for a blank query', () => {
     expect(tagResults([{ name: 'Any', color: null, count: 1 }], '  ')).toEqual([]);
     expect(collectionResults([{ id: 1, name: 'Any', rulesJson: '{}', createdUtc: '' }], '')).toEqual([]);
+  });
+
+  describe('jumping to a day', () => {
+    const today = '2026-10-25';
+    const go = (q: string) => dayJumpResults(q, today).map((r) => r.to);
+
+    it('understands the dates people type', () => {
+      expect(go('2024-03-02')).toEqual(['/journal/2024-03-02']);
+      expect(go('sep 14')).toEqual(['/journal/2026-09-14']);
+      expect(go('14 sep')).toEqual(['/journal/2026-09-14']);
+      expect(go('yesterday')).toEqual(['/journal/2026-10-24']);
+      expect(go('3 days ago')).toEqual(['/journal/2026-10-22']);
+      expect(go('last fri')).toEqual(['/journal/2026-10-23']);
+    });
+
+    it('reads as a day of the journal, named in full', () => {
+      const [result] = dayJumpResults('2024-03-02', today);
+      expect(result.source).toBe('journal');
+      expect(result.title).toMatch(/March 2, 2024/);
+      expect(result.breadcrumb).toEqual(['Journal', 'Go to day']);
+    });
+
+    it('leaves a plain word to the note search, and never jumps ahead', () => {
+      expect(go('mon')).toEqual([]);
+      expect(go('march')).toEqual([]);
+      expect(go('groceries')).toEqual([]);
+      expect(go('2999-01-01')).toEqual([]);
+      expect(go('   ')).toEqual([]);
+      expect(dayJumpResults('yesterday', null)).toEqual([]);
+    });
+
+    it('comes first in its group', () => {
+      const ordered = orderResults([
+        { key: 'n', source: 'journal', title: 'A day', breadcrumb: ['Journal'], to: '/journal/2020-01-01', rank: 0 },
+        ...dayJumpResults('2024-03-02', today),
+      ]);
+      expect(ordered[0].key).toBe('journal-day:2024-03-02');
+    });
   });
 
   it('has a label for every group it can order', () => {

@@ -209,7 +209,7 @@ public sealed class MediaReferences(VaultState state, IConfiguration config, IHo
 
     /// <summary>The user's live notes that reference the attachment.</summary>
     public IEnumerable<Note> Referrers(string userId, string filename) =>
-        state.Snapshot(userId).Where(n => References(n, filename));
+        state.SnapshotAll(userId).Where(n => References(n, filename));
 
     /// <summary>
     /// Every attachment name the user references anywhere: live notes (trashed
@@ -219,7 +219,7 @@ public sealed class MediaReferences(VaultState state, IConfiguration config, IHo
     public HashSet<string> AllReferenced(string userId)
     {
         var all = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        foreach (var note in state.Snapshot(userId)) all.UnionWith(Of(note));
+        foreach (var note in state.SnapshotAll(userId)) all.UnionWith(Of(note));
 
         var snapshots = PapyraPaths.UserSnapshotsDir(config, env.ContentRootPath, userId);
         if (Directory.Exists(snapshots))

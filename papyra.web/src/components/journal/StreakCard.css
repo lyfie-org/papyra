@@ -1,0 +1,13 @@
+.streak-card { color: var(--text); font: 400 var(--fs-sm)/1.4 var(--sans); }
+.streak-card__line {
+  display: flex;
+  align-items: center;
+  gap: var(--space-2);
+  margin: 0 0 var(--space-3);
+  color: var(--accent-text);
+  font-weight: 500;
+}
+.streak-card__stats { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: var(--space-3); margin: 0; }
+.streak-card__stats div { min-width: 0; }
+.streak-card__stats dt { font: 500 var(--fs-2xs)/1.2 var(--sans); letter-spacing: 0.12em; text-transform: uppercase; }
+.streak-card__stats dd { margin: var(--space-1) 0 0; font: 400 var(--fs-xl)/1 var(--heading); color: var(--text-h); font-variant-numeric: lining-nums; }

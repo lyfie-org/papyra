@@ -1,0 +1,30 @@
+.year-view {
+  display: grid;
+  /* Wide enough that each day's square is a 24px target (WCAG 2.2 target size). */
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: var(--space-5) var(--space-4);
+}
+.year-view__title { margin: 0 0 var(--space-2); font: 400 var(--fs-md)/1.2 var(--heading); }
+.year-view__title a { color: var(--text-h); text-decoration: none; }
+.year-view__title a:hover { background: var(--accent-bg); }
+
+.year-view__grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; }
+.year-view__pad { aspect-ratio: 1; }
+
+.year-view__day {
+  display: block;
+  aspect-ratio: 1;
+  border: 1px solid var(--paper-edge);
+  border-radius: 3px;
+  background: transparent;
+}
+a.year-view__day:hover { border-color: var(--border-hover); }
+a.year-view__day:focus-visible { outline: 2px solid var(--border-focus); outline-offset: 1px; }
+.year-view__day--written { background: var(--accent-bg); border-color: var(--accent-border); }
+.year-view__day--mood-1 { background: color-mix(in srgb, var(--mood-1) 55%, var(--paper)); border-color: var(--mood-1); }
+.year-view__day--mood-2 { background: color-mix(in srgb, var(--mood-2) 55%, var(--paper)); border-color: var(--mood-2); }
+.year-view__day--mood-3 { background: color-mix(in srgb, var(--mood-3) 55%, var(--paper)); border-color: var(--mood-3); }
+.year-view__day--mood-4 { background: color-mix(in srgb, var(--mood-4) 55%, var(--paper)); border-color: var(--mood-4); }
+.year-view__day--mood-5 { background: color-mix(in srgb, var(--mood-5) 55%, var(--paper)); border-color: var(--mood-5); }
+.year-view__day--today { outline: 2px solid var(--ribbon); outline-offset: 1px; }
+.year-view__day--future { opacity: 0.35; border-style: dashed; }

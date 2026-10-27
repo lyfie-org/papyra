@@ -4,6 +4,8 @@ import { useQueryClient } from '@tanstack/react-query';
 import WorkspaceLayout from './layout/WorkspaceLayout';
 import NotesPage from './pages/NotesPage';
 import TodoPage from './pages/TodoPage';
+import { JournalDayPage, JournalHomePage } from './pages/JournalPage';
+import JournalCalendarPage from './pages/JournalCalendarPage';
 import CollectionsPage from './pages/CollectionsPage';
 import ArchivePage from './pages/ArchivePage';
 import VaultPage from './pages/VaultPage';
@@ -103,6 +105,10 @@ export default function App() {
       <Route element={<RequireAuth />}>
         <Route path="/" element={<NotesPage />} />
         <Route path="todo" element={<TodoPage />} />
+        {/* The journal: a day-wise page of its own, a sibling of Notes and To Do. */}
+        <Route path="journal" element={<JournalHomePage />} />
+        <Route path="journal/calendar" element={<JournalCalendarPage />} />
+        <Route path="journal/:date" element={<JournalDayPage />} />
         {/* The inbox became the bell in the top bar; old links open it. */}
         <Route path="inbox" element={<Navigate to="/?notifications=1" replace />} />
         {/* Tags now live on the Collections page. */}

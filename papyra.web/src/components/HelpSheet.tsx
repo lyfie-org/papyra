@@ -5,7 +5,7 @@ import './HelpSheet.css';
 
 const SHORTCUTS: Array<[string, string]> = [
   ['⌘K / Ctrl+K', 'Search every note'],
-  ['/', 'In a note: add a heading, list, table, picture, map or any link'],
+  ['/', 'In a note: add a heading, list, table, picture, map or any link. In the journal: the date, a mood, a voice note, a to-do list'],
   ['Shift+Enter', 'On a search result: show it where it lives, instead of opening it'],
   ['↑ / ↓ on the outline', 'Pick a heading in a long note’s outline rail; Enter jumps to it'],
   ['⌘↵ / Ctrl+Enter', 'In a code block, quote, list or table: jump out to a new line below it'],
@@ -39,6 +39,10 @@ const CONCEPTS: Array<[string, string]> = [
   [
     'Notes shared with you work like your own',
     'Pin them, give them your own tags, copy them, download them or copy their link from the card. With edit access you can also change a note’s colour (everyone sees it) and share it with someone else — it stays its owner’s note. Its [[links]] open the notes they point to when those are shared with you too. Sharing a note that links to others? The share dialog can send those along.',
+  ],
+  [
+    'The journal is one page a day',
+    'Journal, in the sidebar, opens today’s page. Pick how the day felt, write, and it saves itself like any note; a day only exists once it has words. The Calendar shows the month by mood and keeps your streak, which you can hide in Settings. Lock any day with your vault PIN, record a voice note, or start a blank day from a template. It is private: nothing in it is ever shared, and an @name stays plain text.',
   ],
   [
     'Link notes with [[double brackets]]',

@@ -17,10 +17,11 @@ public sealed record BackupManifest(
 {
     public const string FileName = "papyra-backup.json";
     public const string FormatName = "papyra-backup";
-    public const int CurrentVersion = 2;
+    // 3 adds journal/ (day-wise entries). Older backups still restore: they just have none.
+    public const int CurrentVersion = 3;
 }
 
-public sealed record BackupCounts(int Notes, int Todos, int Vault, int Media);
+public sealed record BackupCounts(int Notes, int Todos, int Vault, int Media, int Journal = 0);
 
 /// <summary>
 /// The account preferences a backup carries, so a restore on a fresh install
@@ -44,6 +45,7 @@ public sealed record BackupSummary(int Version, bool Legacy, BackupCounts Counts
 /// README.md                 how to read and restore it
 /// notes/                    ordinary notes (.md, frontmatter + markdown)
 /// todos/                    to-do lists
+/// journal/                  journal entries, as journal/yyyy/MM/yyyy-MM-dd.md
 /// vault/                    locked (secure) notes — readable inside an encrypted
 ///                           backup; sealed in a plain one (see below)
 /// media/images|documents|videos|audio|other/
@@ -69,6 +71,8 @@ public sealed class BackupLayout
     };
 
     private static readonly string[] NoteFolders = ["notes", "todos", "vault"];
+    // Journal entries keep their dated folders inside the live notes dir (journal/yyyy/MM/…).
+    private const string JournalFolder = "journal";
     public static readonly string[] MediaFolders = ["images", "documents", "videos", "audio", "other"];
     public const string DerivedFolder = "media-derived";
 
@@ -84,6 +88,7 @@ public sealed class BackupLayout
     }
 
     public const string VaultKeysFile = "vault-keys.json";
+    private const string JournalSettingsFile = "journal.json";
 
     private readonly MarkdownStorageService _storage;
     private readonly IConfiguration _config;
@@ -125,7 +130,7 @@ public sealed class BackupLayout
         var root = _env.ContentRootPath;
         var uid = user.Id.ToString();
         Directory.CreateDirectory(dest);
-        int notes = 0, todos = 0, vault = 0, media = 0;
+        int notes = 0, todos = 0, vault = 0, media = 0, journal = 0;
 
         var notesDir = PapyraPaths.UserNotesDir(_config, root, uid);
         if (Directory.Exists(notesDir))
@@ -140,6 +145,7 @@ public sealed class BackupLayout
                     if (note?.Secure == true)
                     {
                         vault++;
+                        if (JournalPaths.IsJournal(note)) journal++;
                         if (!sealedVault)
                         {
                             var target = Path.Combine(dest, "vault", rel);
@@ -151,6 +157,14 @@ public sealed class BackupLayout
                         folder = "vault";
                     }
                     else if (note?.Kind == "todo") { folder = "todos"; todos++; }
+                    else if (note is not null && JournalPaths.IsJournal(note))
+                    {
+                        // Dated folders are the layout; the live "journal/" prefix is the backup folder's name.
+                        folder = JournalFolder;
+                        journal++;
+                        var prefix = JournalFolder + Path.DirectorySeparatorChar;
+                        if (rel.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)) rel = rel[prefix.Length..];
+                    }
                     else notes++;
                 }
                 CopyInto(file, Path.Combine(dest, folder, rel));
@@ -188,8 +202,13 @@ public sealed class BackupLayout
         await WriteJsonAsync(Path.Combine(settings, "collections.json"), collections, ct);
 
         var dot = PapyraPaths.UserDotPapyra(_config, root, uid);
-        foreach (var name in new[] { "order.json", "categories.json" })
+        foreach (var name in new[] { "order.json", "categories.json", JournalSettingsFile })
             if (File.Exists(Path.Combine(dot, name))) CopyInto(Path.Combine(dot, name), Path.Combine(settings, name));
+        // The pages a journal day starts from are the person's own writing.
+        var templateDir = Path.Combine(dot, JournalTemplates.Folder);
+        if (Directory.Exists(templateDir))
+            foreach (var file in Directory.EnumerateFiles(templateDir, "*.md"))
+                CopyInto(file, Path.Combine(settings, JournalTemplates.Folder, Path.GetFileName(file)));
         if (Directory.Exists(dot))
             foreach (var avatar in Directory.EnumerateFiles(dot, "avatar.*"))
                 CopyInto(avatar, Path.Combine(settings, Path.GetFileName(avatar)));
@@ -197,7 +216,7 @@ public sealed class BackupLayout
         if (sealedVault && vault > 0 && _cipher?.SealedBundle(uid) is { } bundle)
             await WriteJsonAsync(Path.Combine(settings, VaultKeysFile), bundle, ct);
 
-        var counts = new BackupCounts(notes, todos, vault, media);
+        var counts = new BackupCounts(notes, todos, vault, media, journal);
         await WriteJsonAsync(Path.Combine(dest, BackupManifest.FileName),
             new BackupManifest(BackupManifest.FormatName, BackupManifest.CurrentVersion, false, counts), ct);
         await File.WriteAllTextAsync(Path.Combine(dest, "README.md"), Readme(encrypted: false), ct);
@@ -212,7 +231,7 @@ public sealed class BackupLayout
           password can unlock. File names are hashed; the folders say what kind of
           thing each file is:
 
-          - `notes/`, `todos/`, `vault/` — notes, to-do lists and locked notes
+          - `notes/`, `todos/`, `journal/`, `vault/` — notes, to-do lists, journal entries and locked notes
           - `media/images`, `media/documents`, `media/videos`, `media/audio`, `media/other`
           - `settings/` — your profile and preferences
 
@@ -227,6 +246,7 @@ public sealed class BackupLayout
 
           - `notes/` — your notes, as Markdown with YAML frontmatter
           - `todos/` — your to-do lists
+          - `journal/` — your journal, one file per day (`journal/2026/10/2026-10-25.md`)
           - `vault/` — your locked notes, **encrypted**: their titles and text are
             sealed, and `settings/vault-keys.json` holds the key, itself locked with
             your Papyra password. Restoring asks for that password.
@@ -306,7 +326,7 @@ public sealed class BackupLayout
             ? Directory.EnumerateFiles(Path.Combine(root, sub), "*.md", SearchOption.AllDirectories).Count() : 0;
         var mediaCount = Directory.Exists(Path.Combine(root, "media"))
             ? Directory.EnumerateFiles(Path.Combine(root, "media"), "*", SearchOption.AllDirectories).Count() : 0;
-        var counts = new BackupCounts(Count("notes"), Count("todos"), Count("vault"), mediaCount);
+        var counts = new BackupCounts(Count("notes"), Count("todos"), Count("vault"), mediaCount, Count("journal") + Count(Path.Combine("vault", "journal")));
         return new BackupSummary(manifest?.Version ?? 1, legacy, counts, ReadAccount(root));
     }
 
@@ -357,6 +377,7 @@ public sealed class BackupLayout
             Directory.CreateDirectory(mediaOut);
             foreach (var folder in NoteFolders)
                 MergeInto(Path.Combine(root, folder), notesOut);
+            MergeInto(Path.Combine(root, JournalFolder), Path.Combine(notesOut, JournalFolder));
 
             var mediaIn = Path.Combine(root, "media");
             var categorised = MediaFolders.Any(f => Directory.Exists(Path.Combine(mediaIn, f)));
@@ -395,8 +416,13 @@ public sealed class BackupLayout
 
         var dot = PapyraPaths.UserDotPapyra(_config, contentRoot, uid);
         Directory.CreateDirectory(dot);
-        foreach (var name in new[] { "order.json", "categories.json" })
+        foreach (var name in new[] { "order.json", "categories.json", JournalSettingsFile })
             if (File.Exists(Path.Combine(settings, name))) AtomicCopy(Path.Combine(settings, name), Path.Combine(dot, name));
+        var restoredTemplates = Path.Combine(settings, JournalTemplates.Folder);
+        if (Directory.Exists(restoredTemplates))
+            foreach (var file in Directory.EnumerateFiles(restoredTemplates, "*.md").Take(JournalTemplates.MaxTemplates))
+                if (JournalTemplates.Clean(Path.GetFileNameWithoutExtension(file)) is { } templateName)
+                    AtomicCopy(file, Path.Combine(dot, JournalTemplates.Folder, templateName + ".md"));
         var avatars = Directory.EnumerateFiles(settings, "avatar.*")
             .Where(a => Path.GetExtension(a).ToLowerInvariant() is ".png" or ".jpg" or ".jpeg" or ".webp").ToList();
         if (avatars.Count > 0)
@@ -468,6 +494,7 @@ public sealed class BackupLayout
 
     private static void AtomicCopy(string source, string dest)
     {
+        Directory.CreateDirectory(Path.GetDirectoryName(dest)!);
         var tmp = dest + $".{Guid.NewGuid():N}.tmp";
         File.Copy(source, tmp, overwrite: true);
         File.Move(tmp, dest, overwrite: true);

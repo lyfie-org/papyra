@@ -93,7 +93,7 @@ public sealed class ColdBootDiffServiceTests
             await NewService(usersDir, state, search).RunDiffAsync(db, default);
 
             // Used to be skipped outright: gone from the list after every restart.
-            var note = Assert.Single(state.Snapshot(Uid));
+            var note = Assert.Single(state.SnapshotAll(Uid));
             Assert.True(PathGuard.IsValidNoteId(note.Id));
             Assert.Equal("Made in Obsidian", note.Title);
             Assert.Equal(note.Id, search.Search(Uid, "quokkatoken").Single().Id);
@@ -103,7 +103,7 @@ public sealed class ColdBootDiffServiceTests
 
             var next = new VaultState();
             await NewService(usersDir, next, search).RunDiffAsync(db, default);
-            Assert.Equal(note.Id, Assert.Single(next.Snapshot(Uid)).Id);
+            Assert.Equal(note.Id, Assert.Single(next.SnapshotAll(Uid)).Id);
             Assert.Equal(1, await db.NoteCache.CountAsync());
         }
         finally
@@ -133,7 +133,7 @@ public sealed class ColdBootDiffServiceTests
             var state = new VaultState();
             await NewService(usersDir, state, search).RunDiffAsync(db, default);
 
-            var notes = state.Snapshot(Uid);
+            var notes = state.SnapshotAll(Uid);
             Assert.Equal(2, notes.Count);
             Assert.Equal(wanted, notes.Single(n => n.Title == "Holder").Id);
             var adopted = notes.Single(n => n.Title != "Holder");

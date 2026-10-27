@@ -30,6 +30,7 @@ import { installClientErrorLog } from './lib/clientLog.ts';
 import { installSelectionGuards } from './lib/selectionGuards.ts';
 import { installResumeRefresh } from './lib/resume.ts';
 import { installAutoTooltips } from './lib/autoTooltips.ts';
+import { installChecklistRoles } from './lib/checklistRoles.ts';
 
 // Before anything fetches: a server 500 anywhere surfaces its reference.
 installServerErrorWatch();
@@ -39,6 +40,8 @@ installClientErrorLog();
 installSelectionGuards();
 // Icon-only buttons show their aria-label as a hover tooltip.
 installAutoTooltips();
+// A checklist is a group of checkboxes, not a list (axe and screen readers both ask).
+installChecklistRoles();
 
 // Demo mode: stand up the in-browser fake server BEFORE React mounts, so the
 // very first request the app makes (the /api/auth/me session probe) is already

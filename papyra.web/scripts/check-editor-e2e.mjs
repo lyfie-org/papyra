@@ -601,7 +601,138 @@ async function checkPerf(browser) {
   check(deskOriginals.length === 0, `perf: the desk loaded originals (${deskOriginals.slice(0, 3).join(', ')})`);
   check(media.filter((u) => u.includes('/thumb')).length < BUDGET.deskRequests, `perf: the desk fetched ${media.length} thumbnails up front (lazy loading should keep it near the viewport)`);
   check(deskCls < BUDGET.cls, `perf: the desk shifted ${deskCls.toFixed(4)} while loading (budget ${BUDGET.cls})`);
+
+  // A journal day with thirty photos: the same budgets as a note — on screen fast,
+  // nothing jumping, thumbnails only, only what is near the viewport.
+  console.log('· perf: 30-photo journal day');
+  // Yesterday: today's page was locked by the journal check above.
+  const todayPage = await (await page.request.get(`${API_ORIGIN}/api/journal/today`)).json();
+  const [ty, tm, td] = todayPage.date.split('-').map(Number);
+  const earlier = new Date(Date.UTC(ty, tm - 1, td - 1));
+  const day = { date: earlier.toISOString().slice(0, 10) };
+  const thirty = pictures.slice(0, 30);
+  await page.request.put(`${API_ORIGIN}/api/journal/${day.date}`, {
+    data: { body: `Thirty pictures from the trip.\n\n${thirty.map((p) => `![[${p}]]`).join('\n\n')}`, mood: 5 },
+  });
+  media.length = 0;
+  maxInFlight = 0;
+  await page.evaluate(() => { window.__cls = 0; window.__shifts = []; });
+  await page.goto(`${API_ORIGIN}/journal/${day.date}`);
+  await page.waitForFunction(() => document.querySelectorAll('.luthor-media').length >= 30, null, { timeout: 30_000 });
+  const journalPaint = await page.evaluate(() => performance.now());
+  await page.waitForTimeout(2500);
+  const journalCls = await page.evaluate(() => window.__cls);
+  const journalOriginals = media.filter((u) => /\/api\/media\/perf-[^/?]+\.png$/.test(u.split('?')[0]) && !u.includes('/thumb'));
+  console.log(JSON.stringify({ journal: { firstPaintMs: Math.round(journalPaint), cls: journalCls, requests: media.length } }));
+  check(journalPaint < BUDGET.firstPaintMs, `perf: a 30-photo journal day took ${Math.round(journalPaint)} ms to show (budget ${BUDGET.firstPaintMs})`);
+  check(journalCls < BUDGET.cls, `perf: a 30-photo journal day shifted ${journalCls.toFixed(4)} (budget ${BUDGET.cls})`);
+  check(journalOriginals.length === 0, `perf: the journal day loaded ${journalOriginals.length} full-size originals`);
+  check(await page.locator('.photo-strip__item').count() === 30, 'perf: the photo strip did not list all thirty pictures');
   await context.close();
+}
+
+// The journal page is the same editor on a day: what it adds (the `/` commands, the
+// drag handle, a mood, a photo strip, a lock) must survive a reload without the
+// reopen rewriting the day.
+async function checkJournal(page) {
+  console.log('· journal: setup');
+  const today = (await (await page.request.get(`${ORIGIN}/api/journal/today`)).json()).date;
+  const [a, b, c] = await makePngs(page, ['#7aaa8a', '#c9a37a', '#6a7fa0'].map((color, i) => ({ name: `j-${i}.png`, w: 400, h: 260, color })));
+  const names = [];
+  for (const f of [a, b, c]) {
+    const up = await page.request.post(`${ORIGIN}/api/media/upload`, {
+      multipart: { file: { name: f.name, mimeType: 'image/png', buffer: Buffer.from(f.base64, 'base64') } },
+    });
+    names.push((await up.json()).filename);
+  }
+  const start = `Walked by the river.\n\n${names.map((n) => `![[${n}]]`).join('\n\n')}\n\nHome by six.`;
+  const day = async () => (await page.request.get(`${ORIGIN}/api/journal/${today}`)).json();
+  await page.request.put(`${ORIGIN}/api/journal/${today}`, { data: { body: start, mood: 4, tags: ['walk'] } });
+
+  const open = async () => {
+    await page.goto(`${ORIGIN}/journal/${today}`);
+    await page.locator('.journal-sheet .luthor-content-editable').waitFor({ timeout: 30_000 });
+    await page.waitForTimeout(1500);
+  };
+  await open();
+  check((await day()).body === start, 'journal: opening a day rewrote it');
+  check(await page.locator('.photo-strip__item').count() === 3, "journal: the photo strip did not list the day's three pictures");
+  check(await page.getByRole('radio', { name: 'Good' }).getAttribute('aria-checked') === 'true', "journal: the day's mood is not shown as chosen");
+
+  // The drag handle belongs to the journal only.
+  console.log('· journal: drag handle');
+  await page.locator('.journal-sheet .luthor-content-editable > p').first().hover();
+  await page.waitForTimeout(400);
+  check(await page.locator('.luthor-draggable-handle').count() > 0, 'journal: no drag handle beside a block');
+
+  // `/` offers the day's own commands; a mood sets the day's mood and leaves no text behind.
+  console.log('· journal: slash commands');
+  // Below the last block, the way a person continues a day (a click in the middle would select a picture).
+  const caretToEnd = async () => {
+    const editable = page.locator('.journal-sheet .luthor-content-editable');
+    await editable.evaluate((el) => el.lastElementChild?.scrollIntoView({ block: 'center' }));
+    const box = await editable.boundingBox();
+    await page.mouse.click(box.x + 40, box.y + box.height - 3);
+    await page.keyboard.press('Control+End');
+  };
+  await caretToEnd();
+  await page.keyboard.press('Enter');
+  await page.keyboard.type('/great');
+  await page.locator('.luthor-slash-menu-item-title', { hasText: 'Mood: Great' }).waitFor({ timeout: 5000 });
+  check(await page.locator('.luthor-slash-menu-group-title', { hasText: 'Journal' }).count() > 0, 'journal: the slash menu has no Journal group');
+  await page.keyboard.press('Enter');
+  await page.waitForTimeout(1500);
+  const moodSet = await day();
+  check(moodSet.mood === 5, `journal: "/great" did not set the mood (${moodSet.mood})`);
+  check(!/\/mood/.test(moodSet.body), 'journal: the slash command left its text in the day');
+
+  await page.keyboard.type('/date');
+  await page.locator('.luthor-slash-menu-item-title', { hasText: 'date' }).first().waitFor({ timeout: 5000 });
+  await page.keyboard.press('Enter');
+  const withDate = await waitForBodyOf(page, `/api/journal/${today}`, (b) => /\b20\d\d\b/.test(b));
+  check(!!withDate, `journal: "/date" wrote nothing (${JSON.stringify((await day()).body.slice(-120))})`);
+
+  // Reload: the same day, the same mood, no placeholder text.
+  await open();
+  const reloaded = await day();
+  check(reloaded.mood === 5 && reloaded.body === withDate, 'journal: a reload changed the day');
+  check(!/Unsupported/.test(reloaded.body), 'journal: the day holds an [Unsupported …] placeholder');
+  check(await page.locator('.luthor-media').count() === 3, 'journal: the pictures did not come back after a reload');
+
+  // A voice note is offered (the headless browser has no microphone: it says so, and nothing is added).
+  console.log('· journal: voice note');
+  await caretToEnd();
+  await page.keyboard.press('Enter');
+  await page.keyboard.type('/voice');
+  await page.locator('.luthor-slash-menu-item-title', { hasText: 'Voice note' }).waitFor({ timeout: 5000 });
+  await page.keyboard.press('Enter');
+  await page.locator('.voice-recorder').waitFor({ timeout: 5000 });
+  const voiceText = await page.locator('.voice-recorder').innerText();
+  check(/microphone|record/i.test(voiceText), `journal: the voice note bar said nothing useful (${JSON.stringify(voiceText)})`);
+  await page.locator('.voice-recorder').getByRole('button', { name: /cancel|close/i }).click();
+
+  // Lock: the page becomes a card, the server withholds the words. (Needs a vault PIN, like any lock.)
+  console.log('· journal: lock');
+  await page.request.post(`${ORIGIN}/api/auth/vault/pin`, { data: { pin: '480913', password: 'Tr0ub4dor&3-papyra-e2e!' } });
+  await page.reload();
+  await page.locator('.journal-sheet .luthor-content-editable').waitFor({ timeout: 30_000 });
+  await page.getByRole('button', { name: /^Lock$/ }).click();
+  await page.locator('.secure-gate').waitFor({ timeout: 8000 });
+  const locked = await day();
+  check(locked.locked === true && locked.body === '', 'journal: a locked day still sent its words');
+  check(await page.locator('.luthor-content-editable').count() === 0, 'journal: the editor stayed on screen over a locked day');
+  const listed = JSON.stringify(await (await page.request.get(`${ORIGIN}/api/journal?from=${today}&to=${today}`)).json());
+  check(!listed.includes('Walked by the river'), "journal: a locked day's words reached the calendar list");
+}
+
+async function waitForBodyOf(page, path, test, timeout = 15_000) {
+  const deadline = Date.now() + timeout;
+  for (;;) {
+    const b = (await (await page.request.get(`${ORIGIN}${path}`)).json()).body ?? '';
+    if (test(b)) return b;
+    if (Date.now() > deadline) return null;
+    await page.waitForTimeout(300);
+  }
 }
 
 // A link card is an embed like any other: selected by a click (not followed),
@@ -957,7 +1088,7 @@ try {
   await page.goto(`${ORIGIN}/note/${NOTE}`);
   await page.locator('.luthor-toolbar').waitFor({ timeout: 30_000 });
 
-  // E2E_ONLY=cards: just the link-card / drag section (a quick loop while working on it).
+  // E2E_ONLY=cards (or journal): just the link-card / drag section (a quick loop while working on it).
   if (!ONLY) {
 
   // 1. Toolbar → Insert → Upload image (PNG) → ![[…png]]
@@ -1194,11 +1325,17 @@ ${(await body()).slice(0, 400)}`);
   }
 
   // ── Link cards and moving media by dragging ─────────────────────────────────
-  await checkCardsAndDrag(page);
+  if (ONLY !== 'journal') await checkCardsAndDrag(page);
+
+  // E2E_ONLY=journal: just the journal section.
+  if (ONLY === 'journal') await checkJournal(page);
 
   if (!ONLY) {
     // ── Attachments: select, resize, upload pipeline (media overhaul S4–S6) ───
     await checkMedia(page);
+
+    // ── The journal: the same editor on a day (journal plan J5–J7) ────────────
+    await checkJournal(page);
 
     // ── Performance budgets on a media-heavy vault (media overhaul S9) ─────────
     await checkPerf(browser);
@@ -1228,4 +1365,4 @@ if (ONLY) {
   console.log(`check-editor (${ONLY} only) ✓`);
   process.exit(0);
 }
-console.log('check-editor: every insert path round-trips (upload, GIF, attach, drag & drop, paste, image link, YouTube, embedded link, link, /image, hand-written markdown); every embed keeps its alignment; link cards align, caption, resize and move; media drags to a new place; attachments select, resize, upload in order, cancel, refuse, keep posters, survive theme switches, documents show as icons and PDFs preview, and cards use thumbnails ✓');
+console.log('check-editor: every insert path round-trips (upload, GIF, attach, drag & drop, paste, image link, YouTube, embedded link, link, /image, hand-written markdown); the journal (slash commands, drag handle, mood, photo strip, lock) round-trips; every embed keeps its alignment; link cards align, caption, resize and move; media drags to a new place; attachments select, resize, upload in order, cancel, refuse, keep posters, survive theme switches, documents show as icons and PDFs preview, and cards use thumbnails ✓');
