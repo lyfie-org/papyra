@@ -29,6 +29,22 @@ in git. Running it has no effect on the next release.
 
    To pin one build, use `PAPYRA_TAG=dev-<shortsha>`. Leave it unset to go back to `latest`.
 
+## What version the app shows
+
+Every build names itself exactly, in the sidebar, Settings → About and error reports:
+
+| Build | Shows as |
+|---|---|
+| Release (`release.yml`) | `v1.1.0` (the `VERSION` file, bumped before the final image build) |
+| Dev image (`docker-dev.yml`) | `v1.0.0-dev.abc1234`: the last release plus the commit it was built from, matching the `dev-abc1234` tag |
+| Dev site demo (`site.yml` on `development`) | the same `-dev.<shortsha>` form |
+| Local `pnpm dev` | `dev build` |
+
+The pipeline passes `PAPYRA_BUILD_VERSION` (a Docker build arg for the image, an env var for
+the demo); `papyra.web/vite.config.ts` bakes it into the bundle and `/version.json`, and falls
+back to `VERSION` when it is unset. An open tab compares the two strings, so a newer dev image
+asks for a reload just as a new release does.
+
 Pushing to `development` deploys nothing. Both dev workflows run only when you
 start them. CI (`ci.yml`) still runs on every push.
 

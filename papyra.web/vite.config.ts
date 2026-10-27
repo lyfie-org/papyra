@@ -52,11 +52,15 @@ const API_TARGET = process.env.PAPYRA_API ?? 'http://localhost:5220';
 // the demo IS the app, so it can never drift from it. VITE_DEMO comes from
 // .env.demo, which Vite loads for this mode.
 /**
- * The release version, from the repo-root VERSION file the release workflow
- * bumps — the one place a version is recorded. Baked into the bundle so the
- * sidebar shows what is actually running; "dev" when built outside the repo.
+ * The exact build, baked into the bundle so the sidebar, About and error reports
+ * show what is actually running. A pipeline that makes a build other than a release
+ * names it in PAPYRA_BUILD_VERSION (the dev image: "1.0.0-dev.abc1234"); otherwise it
+ * is the repo-root VERSION file the release workflow bumps. "dev" when built outside
+ * the repo.
  */
 function appVersion(): string {
+  const stamped = process.env.PAPYRA_BUILD_VERSION?.trim();
+  if (stamped) return stamped;
   try {
     return readFileSync(new URL('../VERSION', import.meta.url), 'utf8').trim() || 'dev';
   } catch {

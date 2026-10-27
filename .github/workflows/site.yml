@@ -82,8 +82,15 @@ jobs:
 
       # Must run BEFORE the site build: it writes into papyra.app/public/demo,
       # which Astro then copies into dist.
+      # The dev site's demo names its exact build the way the dev image does (see
+      # docker-dev.yml); prod is just VERSION.
       - name: Build the in-browser demo
-        run: pnpm --filter papyra-web run build:demo
+        run: |
+          if [ "${{ steps.channel.outputs.channel }}" = "dev" ]; then
+            export PAPYRA_BUILD_VERSION="$(tr -d '[:space:]' < VERSION)-dev.$(git rev-parse --short=7 HEAD)"
+            echo "Demo build shows as v$PAPYRA_BUILD_VERSION"
+          fi
+          pnpm --filter papyra-web run build:demo
 
       - name: Build the site
         env:
