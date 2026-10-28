@@ -294,10 +294,14 @@
   .journal-sheet__canvas .luthor-toolbar::-webkit-scrollbar { display: none; }
   .journal-sheet__canvas .luthor-toolbar-section { flex-shrink: 0; }
 }
+/* Room to read: a little more leading than luthor's 1.5, and a new paragraph is a visible step
+   (luthor's paragraphs read the line-height variable, not the canvas's own line-height). */
+.journal-sheet__canvas { --luthor-default-line-height: 1.7; --journal-para-gap: 0.75em; }
+.journal-sheet__canvas .luthor-paragraph + .luthor-paragraph { margin-top: var(--journal-para-gap); }
 /* A note is written a line at a time: close the gaps luthor leaves between blocks. */
 .journal-sheet__canvas .luthor-list-li { margin: 1px 0; }
 .journal-sheet__canvas :is(.luthor-list-ul, .luthor-list-ol) { margin-block: 4px; }
 .journal-sheet__canvas .luthor-list-li :is(.luthor-list-ul, .luthor-list-ol) { margin-block: 0; }
 
 /* Focus mode reads like a page in a book: a wider leading. */
-.journal-sheet--focus .journal-sheet__canvas { font-size: 1.075rem; line-height: 1.9; }
+.journal-sheet--focus .journal-sheet__canvas { font-size: 1.075rem; line-height: 1.9; --luthor-default-line-height: 1.9; --journal-para-gap: 0.9em; }

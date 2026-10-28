@@ -27,9 +27,12 @@ export default function YearView({ year, entries, today, monthHref }: {
                 const e = byDay.get(day);
                 const label = `${weekdayName(day)} ${longDate(day)}${e?.mood ? `, felt ${moodLabel(e.mood).toLowerCase()}` : ''}${e && !e.trashed ? (e.locked ? ', locked' : `, ${e.words} words`) : ''}`;
                 const cls = `year-view__day${e?.mood ? ` year-view__day--mood-${e.mood}` : ''}${e && !e.mood && !e.trashed ? ' year-view__day--written' : ''}${day === today ? ' year-view__day--today' : ''}${day > today ? ' year-view__day--future' : ''}`;
+                // The number is a faint orientation aid, drawn by CSS from data-day: the label already says
+                // the whole date, so it adds nothing for a screen reader and is not text to select.
+                const dayNo = Number(day.slice(8));
                 return day > today
-                  ? <span key={i} className={cls} aria-hidden="true" />
-                  : <Link key={i} to={`/journal/${day}`} className={cls} aria-label={label} title={label} />;
+                  ? <span key={i} className={cls} data-day={dayNo} aria-hidden="true" />
+                  : <Link key={i} to={`/journal/${day}`} className={cls} data-day={dayNo} aria-label={label} title={label} />;
               })}
             </div>
           </section>
