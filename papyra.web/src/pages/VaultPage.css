@@ -41,3 +41,5 @@
   font-size: var(--fs-lg);
   color: var(--text-h);
 }
+
+.vault-section { margin-bottom: var(--space-6); }

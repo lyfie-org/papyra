@@ -71,6 +71,13 @@ describe('the demo journal', () => {
     expect((await get<{ entries: unknown[] }>('/api/journal/bin?state=archived')).entries).toHaveLength(0);
   });
 
+  it('lists the locked days for the Vault, never in the Trash', async () => {
+    const locked = await get<{ state: string; entries: JournalSummary[] }>('/api/journal/bin?state=locked');
+    expect(locked.state).toBe('locked');
+    expect(locked.entries.length).toBeGreaterThan(0);
+    expect(locked.entries.every((e) => e.locked && !e.trashed)).toBe(true);
+  });
+
   it('keeps templates and a default, and lets go of the default when it is removed', async () => {
     expect((await get<{ templates: { name: string }[] }>('/api/journal/templates')).templates.map((t) => t.name)).toEqual(['Evening review']);
     await put('/api/journal/templates/Morning', { body: '## {{date}}' });

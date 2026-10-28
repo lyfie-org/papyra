@@ -67,8 +67,8 @@ export function useSaveJournalPrefs() {
   });
 }
 
-/** Days set aside: archived ones or the ones in the Trash, newest first. */
-export function useJournalBin(state: 'archived' | 'trashed') {
+/** Days set aside (archived, in the Trash) or locked (the Vault page), newest first. */
+export function useJournalBin(state: 'archived' | 'trashed' | 'locked') {
   return useQuery<JournalSummary[]>({
     queryKey: [...JOURNAL_KEY, 'bin', state],
     queryFn: () => fetchBin(state),

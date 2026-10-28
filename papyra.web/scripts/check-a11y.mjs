@@ -94,6 +94,18 @@ const FLOWS = [
     await page.goto(`${ORIGIN}/demo/todo`);
     await page.waitForLoadState('networkidle');
   } },
+  // Pinned and Others fold away: the headings are buttons, one of them pressed.
+  { name: 'notes grid with a section folded', run: async (page) => {
+    await page.goto(`${ORIGIN}/demo/`);
+    await page.locator('.note-card').first().waitFor();
+    await page.locator('.section-toggle__btn').first().click();
+    await page.waitForTimeout(300);
+  } },
+  { name: 'vault', run: async (page) => {
+    await page.goto(`${ORIGIN}/demo/vault`);
+    await page.locator('.vault-section').first().waitFor();
+    await page.waitForTimeout(300);
+  } },
   { name: 'collections', run: async (page) => {
     await page.goto(`${ORIGIN}/demo/collections`);
     await page.waitForLoadState('networkidle');

@@ -28,6 +28,8 @@
 .export-dialog__lede { margin: var(--space-3) 0 var(--space-4); color: var(--text); font-size: var(--fs-sm); line-height: 1.6; }
 .export-dialog__lede code { padding: 1px 6px; font-size: var(--fs-xs); }
 
+.export-dialog__summary { margin: 0 0 var(--space-4); color: var(--text-h); font: 500 var(--fs-sm)/1.5 var(--sans); }
+
 .export-dialog__steps { display: grid; gap: var(--space-4); margin: 0; padding: 0; list-style: none; }
 .export-dialog__step {
   display: grid;

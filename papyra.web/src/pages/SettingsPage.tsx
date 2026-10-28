@@ -5,7 +5,7 @@ import {
   User as UserIcon, Palette, Database, Info, Camera,
   Sun, Moon, Monitor, Upload, Download, KeyRound, Copy, Trash2, Lock, ShieldAlert,
   Fingerprint, CheckCircle2, GitBranch, AlertTriangle, Bell, Mail, KeySquare, Send, UserPlus,
-  Sparkles, Play, Cog, LockOpen, Eye, LogOut, X, Users, ScrollText, Repeat, Clock, Hand, BookOpen,
+  Sparkles, Play, Cog, LockOpen, Eye, LogOut, X, Users, ScrollText, Repeat, Clock, Hand, BookOpen, FileText,
 } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { useDismiss } from '../hooks/useDismiss';
@@ -54,13 +54,14 @@ import { useActivityTask, useBusy } from '../hooks/useBusy';
 import AboutPanel from '../components/AboutPanel';
 import JournalSettingsPanel from '../components/journal/JournalSettingsPanel';
 import LogsPanel from '../components/LogsPanel';
-import ExportDialog from '../components/ExportDialog';
+import ExportDialog, { type ExportScope } from '../components/ExportDialog';
 import DeleteAccountSection from '../components/DeleteAccountSection';
 import CodeField from '../components/CodeField';
 import { requestEmailCode } from '../lib/emailCode';
 import SsoSettings from '../components/SsoGuide';
 import AccountDetails from '../components/AccountDetails';
 import SettingRow, { SettingGroup } from '../components/SettingRow';
+import NavOrderSetting from '../components/NavOrderSetting';
 import SessionsSection from '../components/SessionsSection';
 import RenameForm from '../components/RenameForm';
 import AuthenticatorSection from '../components/AuthenticatorSection';
@@ -454,6 +455,10 @@ function AppearanceTab() {
       </div>
       {preference === 'schedule' && <ThemeScheduleFields />}
 
+      <h2 id="sidebar-order" className="settings__subhead">Sidebar order</h2>
+      <p className="settings__hint">Where Notes, To Do and Journal sit in the sidebar.</p>
+      <NavOrderSetting />
+
       <h2 id="formatting-toolbar" className="settings__subhead">Formatting toolbar</h2>
       <p className="settings__hint">Formatting tools above each note.</p>
       <label className="settings__field settings__field--inline">
@@ -652,7 +657,8 @@ function DataTab() {
   const [uploading, setUploading] = useState(false);
   const [uploaded, setUploaded] = useState(0);
   const importRef = useRef<HTMLInputElement | null>(null);
-  const [exporting, setExporting] = useState(false);
+  const [exporting, setExporting] = useState<ExportScope | null>(null);
+  const [journalFormat, setJournalFormat] = useState<'md' | 'pdf'>('md');
   const queryClient = useQueryClient();
   // Server-tracked, so the bar is back when this tab remounts mid-import.
   const { data: importStatus } = useImportStatus();
@@ -734,10 +740,35 @@ function DataTab() {
 
       <h2 id="export" className="settings__subhead">Export</h2>
       <p className="settings__hint">Every note as a zip of plain Markdown files.</p>
-      <button type="button" className="settings__btn" onClick={() => setExporting(true)}>
+      <button type="button" className="settings__btn" onClick={() => setExporting({ kind: 'all' })}>
         <Download size={16} /> Export all notes
       </button>
-      {exporting && <ExportDialog onClose={() => setExporting(false)} />}
+
+      {/* The journal has no server in the demo. */}
+      {!import.meta.env.VITE_DEMO && (
+        <>
+          <h2 id="journal-export" className="settings__subhead">Journal export</h2>
+          <p className="settings__hint">Just your journal: Markdown files, or a book.</p>
+          <div className="settings__segment" role="radiogroup" aria-label="Journal export format">
+            {([['md', 'Markdown files', FileText], ['pdf', 'PDF book', BookOpen]] as const).map(([id, label, Icon]) => (
+              <button
+                key={id} type="button" role="radio" aria-checked={journalFormat === id}
+                className={`settings__segment-btn${journalFormat === id ? ' is-active' : ''}`}
+                onClick={() => setJournalFormat(id)}
+              ><Icon size={18} /> {label}</button>
+            ))}
+          </div>
+          <p className="settings__hint">
+            {journalFormat === 'md'
+              ? 'A zip laid out like your journal folder: year, then month, one file per day.'
+              : 'Every day with writing in one PDF: a cover, contents, then each month in turn.'}
+          </p>
+          <button type="button" className="settings__btn" onClick={() => setExporting({ kind: 'journal', format: journalFormat })}>
+            <Download size={16} /> Export journal
+          </button>
+        </>
+      )}
+      {exporting && <ExportDialog scope={exporting} onClose={() => setExporting(null)} />}
 
       <EncryptedBackupSection />
 
@@ -1227,15 +1258,40 @@ function SyncTab() {
 
       <GitSetupGuide />
 
-      <div className="settings__callout" role="note">
-        <AlertTriangle size={18} aria-hidden="true" />
-        <div>
-          <strong>Anyone who can read the repository can read your notes.</strong>
-          <p>
-            Notes are stored as plain text, locked notes included. Keep it private.
-          </p>
+      {/* What the repository holds depends on the mode: say the one that is true. */}
+      {data?.remoteUrl && data.mode === 'encrypted' ? (
+        <div className="settings__callout" role="note">
+          <Lock size={18} aria-hidden="true" />
+          <div>
+            <strong>Your backup is encrypted.</strong>
+            <p>
+              Notes, locked notes and attachments are sealed before they leave this server, so the repository
+              holds nothing readable. Only your Papyra password opens it — keep that safe, and keep the repository private.
+            </p>
+          </div>
         </div>
-      </div>
+      ) : data?.remoteUrl ? (
+        <div className="settings__callout" role="note">
+          <AlertTriangle size={18} aria-hidden="true" />
+          <div>
+            <strong>Anyone who can read the repository can read your notes.</strong>
+            <p>
+              Notes are stored as plain text, locked notes included. Keep it private, or switch on encryption above.
+            </p>
+          </div>
+        </div>
+      ) : (
+        <div className="settings__callout" role="note">
+          <AlertTriangle size={18} aria-hidden="true" />
+          <div>
+            <strong>Choose how the repository is kept.</strong>
+            <p>
+              Encrypted, it holds only sealed files that your Papyra password opens. As readable files, anyone who
+              can read the repository can read your notes, locked notes included. Either way, keep it private.
+            </p>
+          </div>
+        </div>
+      )}
 
       <details className="settings__advanced">
         <summary>Another git host, or a different branch</summary>

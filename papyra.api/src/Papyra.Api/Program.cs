@@ -7322,6 +7322,7 @@ app.MapFallback("/api/{**rest}", (HttpContext http) =>
 app.MapCollab();
 app.MapComments();
 app.MapJournal();
+app.MapJournalExport();
 app.MapChecklist();
 app.MapFallbackToFile("index.html");
 

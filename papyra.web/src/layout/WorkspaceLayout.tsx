@@ -30,15 +30,17 @@ import { useToast } from '../lib/toastContext';
 import VaultOpenPill from '../components/VaultOpenPill';
 import { useVaultOpen } from '../hooks/useVault';
 import { useLocateEffect } from '../lib/locateNote';
+import { useNavOrder } from '../lib/navOrder';
 
 // Settings deliberately lives with Trash at the foot of the rail, not in this
 // list — the top group is "places your notes are", the bottom group is app
-// chrome.
-const NAV_ITEMS = [
-  { to: '/', label: 'Notes', icon: StickyNote, end: true },
-  { to: '/todo', label: 'To Do', icon: ListTodo, end: false },
-  // A day-wise journal; the demo has no server for it.
-  ...(import.meta.env.VITE_DEMO ? [] : [{ to: '/journal', label: 'Journal', icon: BookOpen, end: false }] as const),
+// chrome. The first three (where you write) can be put in any order in Settings.
+const WRITING_NAV = {
+  notes: { to: '/', label: 'Notes', icon: StickyNote, end: true },
+  todo: { to: '/todo', label: 'To Do', icon: ListTodo, end: false },
+  journal: { to: '/journal', label: 'Journal', icon: BookOpen, end: false },
+} as const;
+const OTHER_NAV = [
   { to: '/shared-with-me', label: 'Shared with me', icon: Users, end: false },
   { to: '/collections', label: 'Collections', icon: Layers, end: false },
   { to: '/vault', label: 'Vault', icon: ShieldCheck, end: false },
@@ -81,6 +83,12 @@ export default function WorkspaceLayout() {
   const menuRef = useRef<HTMLDivElement | null>(null);
   const serverStatus = useSignalR();
   const vaultOpen = useVaultOpen();
+  const order = useNavOrder();
+  // A day-wise journal; the demo has no server for it.
+  const navItems = [
+    ...order.filter((id) => id !== 'journal' || !import.meta.env.VITE_DEMO).map((id) => WRITING_NAV[id]),
+    ...OTHER_NAV,
+  ];
 
   // Connectivity + outbox telemetry. The dot now answers the question a
   // local-first app actually has to answer — "is my writing safe?" — not just
@@ -236,7 +244,7 @@ export default function WorkspaceLayout() {
           // Off-screen on a phone until opened: out of the tab order too.
           inert={phone && !drawerOpen}>
           <ul>
-            {NAV_ITEMS.map(({ to, label, icon: Icon, end }) => (
+            {navItems.map(({ to, label, icon: Icon, end }) => (
               <li key={to}>
                 <NavLink
                   to={to}

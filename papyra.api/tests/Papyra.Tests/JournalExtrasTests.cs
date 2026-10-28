@@ -39,6 +39,26 @@ public sealed class JournalExtrasTests
         Assert.Equal(HttpStatusCode.Forbidden, (await key.GetAsync("/api/journal/bin")).StatusCode);
     });
 
+    [Fact]
+    public Task TheBin_ListsLockedDays_ForTheVault_WithoutTheirWords_AndNotTheOnesInTheTrash() => WithAppAsync(async app =>
+    {
+        await PutDay(app.Client, app.Day(1), new { body = "an open day" });
+        await PutDay(app.Client, app.Day(2), new { body = "a secret zebracode", secure = true });
+        await PutDay(app.Client, app.Day(3), new { body = "an older secret", secure = true, archived = true });
+        await PutDay(app.Client, app.Day(4), new { body = "a secret in the bin", secure = true });
+        await app.Client.PostAsync($"/api/notes/journal-{app.Day(4)}/trash", null);
+
+        var res = await app.Client.GetAsync("/api/journal/bin?state=locked");
+        var text = await res.Content.ReadAsStringAsync();
+        Assert.Equal(HttpStatusCode.OK, res.StatusCode);
+        Assert.DoesNotContain("zebracode", text);
+        var locked = JsonDocument.Parse(text).RootElement;
+        Assert.Equal("locked", locked.GetProperty("state").GetString());
+        var days = locked.GetProperty("entries").EnumerateArray().ToList();
+        Assert.Equal([app.Day(2), app.Day(3)], days.Select(e => e.GetProperty("date").GetString()!).ToArray());
+        Assert.All(days, e => Assert.True(e.GetProperty("locked").GetBoolean()));
+    });
+
     // ── Templates ────────────────────────────────────────────────────────────────
 
     [Fact]
@@ -265,6 +285,100 @@ public sealed class JournalExtrasTests
         Assert.Contains("open day zebracode", Read(open));
         Assert.Contains("closed day zebracode", Read(closed)); // sealed on disk, readable in the export
         Assert.Contains("kind: journal", Read(open));
+    });
+
+    // The one-time ticket the full export uses: a code and an open vault earn it.
+    private static async Task<string> TicketAsync(App app)
+    {
+        var token = app.Factory.Services.GetRequiredService<UnlockTokenStore>().Issue(app.Uid);
+        var authorize = new HttpRequestMessage(HttpMethod.Post, "/api/export/authorize") { Content = JsonContent.Create(new { code = await TestAuth.CodeAsync(app.Client) }) };
+        authorize.Headers.Add("X-Unlock-Token", token);
+        return (await Json(await app.Client.SendAsync(authorize))).GetProperty("ticket").GetString()!;
+    }
+
+    [Fact]
+    public Task TheJournalExport_Markdown_LaysDaysOutAsStored_LockedReadable_NoTrash_WithTheirPictures() => WithAppAsync(async app =>
+    {
+        var media = PapyraPaths.UserMediaDir(app.Factory.Services.GetRequiredService<IConfiguration>(),
+            app.Factory.Services.GetRequiredService<IHostEnvironment>().ContentRootPath, app.Uid);
+        Directory.CreateDirectory(media);
+        await File.WriteAllBytesAsync(Path.Combine(media, "view.png"), [137, 80, 78, 71, 13, 10, 26, 10]);
+        await File.WriteAllBytesAsync(Path.Combine(media, "unused.png"), [137, 80, 78, 71, 13, 10, 26, 10]);
+        await PutDay(app.Client, app.Day(1), new { body = "open day zebracode" + Environment.NewLine + Environment.NewLine + "![[view.png]]" });
+        await PutDay(app.Client, app.Day(40), new { body = "closed day zebracode", secure = true });
+        await PutDay(app.Client, app.Day(3), new { body = "in the bin" });
+        await app.Client.PostAsync($"/api/notes/journal-{app.Day(3)}/trash", null);
+        await app.Client.PutAsJsonAsync("/api/notes/plain-note", new { title = "A note", body = "not a journal day" });
+
+        var res = await app.Client.GetAsync($"/api/export/journal?ticket={await TicketAsync(app)}");
+        Assert.Equal(HttpStatusCode.OK, res.StatusCode);
+        Assert.Equal("application/zip", res.Content.Headers.ContentType?.MediaType);
+        Assert.Contains("papyra-journal-", res.Content.Headers.ContentDisposition?.FileName);
+        using var zip = new ZipArchive(await res.Content.ReadAsStreamAsync());
+        string Read(string name) => new StreamReader(zip.GetEntry(name)!.Open()).ReadToEnd();
+        string Path_(string d) => $"journal/{d[..4]}/{d.Substring(5, 2)}/{d}.md";
+
+        Assert.Contains("open day zebracode", Read(Path_(app.Day(1))));
+        Assert.Contains("closed day zebracode", Read(Path_(app.Day(40)))); // sealed on disk, readable here, in the same folders
+        Assert.Contains("kind: journal", Read(Path_(app.Day(1))));
+        Assert.Null(zip.GetEntry(Path_(app.Day(3))));        // the Trash stays out
+        Assert.NotNull(zip.GetEntry("media/view.png"));       // the picture the day uses…
+        Assert.Null(zip.GetEntry("media/unused.png"));        // …and only that
+        Assert.DoesNotContain(zip.Entries, e => e.FullName.Contains("plain-note") || e.FullName.StartsWith("vault/"));
+    });
+
+    [Fact]
+    public Task TheJournalExport_Pdf_IsABookOfThePagesWithWriting_IncludingLockedDays() => WithAppAsync(async app =>
+    {
+        var body = string.Join(Environment.NewLine + Environment.NewLine,
+            "# A heading", "Some **bold** words and a [[Linked note]].",
+            string.Join(Environment.NewLine, "- [x] done", "- [ ] not yet"), "> a quote",
+            string.Join(Environment.NewLine, "```", "code here", "```"));
+        await PutDay(app.Client, app.Day(1), new { body, mood = 4 });
+        await PutDay(app.Client, app.Day(40), new { body = "closed day", secure = true });
+        await PutDay(app.Client, app.Day(70), new { mood = 2 });
+
+        var res = await app.Client.GetAsync($"/api/export/journal?format=pdf&ticket={await TicketAsync(app)}");
+        Assert.Equal(HttpStatusCode.OK, res.StatusCode);
+        Assert.Equal("application/pdf", res.Content.Headers.ContentType?.MediaType);
+        Assert.EndsWith(".pdf", res.Content.Headers.ContentDisposition?.FileName?.Trim('"'));
+        var bytes = await res.Content.ReadAsByteArrayAsync();
+        Assert.Equal("%PDF-", Encoding.ASCII.GetString(bytes, 0, 5));
+        // A cover, a contents page and a page for each month that has days.
+        var pages = System.Text.RegularExpressions.Regex.Matches(Encoding.Latin1.GetString(bytes), @"/Type\s*/Page[^s]").Count;
+        Assert.True(pages >= 5, $"expected at least five pages, got {pages}");
+
+        // An API key is not a person: it cannot see the summary or download.
+        var key = KeyClient(app, await NewKeyAsync(app, "journal"));
+        Assert.Equal(HttpStatusCode.Forbidden, (await key.GetAsync("/api/export/journal/summary")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await key.GetAsync("/api/export/journal?ticket=anything")).StatusCode);
+    });
+
+    [Fact]
+    public Task TheJournalExport_NeedsATicket_APersonNotAKey_AndSaysWhenThereIsNothing() => WithAppAsync(async app =>
+    {
+        Assert.Equal(HttpStatusCode.Forbidden, (await app.Client.GetAsync("/api/export/journal")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await app.Client.GetAsync("/api/export/journal?ticket=made-up")).StatusCode);
+
+        var empty = await Json(await app.Client.GetAsync("/api/export/journal/summary"));
+        Assert.Equal(0, empty.GetProperty("days").GetInt32());
+        var none = await app.Client.GetAsync($"/api/export/journal?ticket={await TicketAsync(app)}");
+        Assert.Equal(HttpStatusCode.NotFound, none.StatusCode);
+        Assert.Equal("empty", (await Json(none)).GetProperty("code").GetString());
+
+        await PutDay(app.Client, app.Day(2), new { body = "one two three" });
+        await PutDay(app.Client, app.Day(1), new { mood = 3 });
+        var summary = await Json(await app.Client.GetAsync("/api/export/journal/summary"));
+        Assert.Equal(2, summary.GetProperty("days").GetInt32());
+        Assert.Equal(3, summary.GetProperty("words").GetInt64());
+        Assert.Equal(app.Day(2), summary.GetProperty("first").GetString());
+        Assert.Equal(app.Day(1), summary.GetProperty("last").GetString());
+
+        // A ticket is spent by its download.
+        var ticket = await TicketAsync(app);
+        Assert.Equal(HttpStatusCode.OK, (await app.Client.GetAsync($"/api/export/journal?ticket={ticket}")).StatusCode);
+        Assert.Equal(HttpStatusCode.Forbidden, (await app.Client.GetAsync($"/api/export/journal?ticket={ticket}")).StatusCode);
+        Assert.Equal(HttpStatusCode.UnprocessableEntity, (await app.Client.GetAsync("/api/export/journal?format=docx")).StatusCode);
     });
 
     // ── Scale ────────────────────────────────────────────────────────────────────

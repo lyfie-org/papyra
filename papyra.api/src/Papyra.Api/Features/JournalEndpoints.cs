@@ -46,8 +46,8 @@ public static class JournalEndpoints
         g.MapPut("/templates/{name}", PutTemplate).WithSummary("Save a template")
             .WithDescription("The person only. Markdown with {{date}}, {{weekday}} and {{streak}}; at most 20 templates of 20 KB.");
         g.MapDelete("/templates/{name}", DeleteTemplate).WithSummary("Remove a template");
-        g.MapGet("/bin", Bin).WithSummary("Archived or trashed days")
-            .WithDescription("The person only. ?state=archived (default) or trashed, newest day first; a trashed day says when it went. Locked days carry no words.");
+        g.MapGet("/bin", Bin).WithSummary("Archived, trashed or locked days")
+            .WithDescription("The person only. ?state=archived (default), trashed or locked, newest day first; a trashed day says when it went. Locked days carry no words. ?state=locked is what the Vault page lists: every locked day that isn't in the Trash.");
         g.MapPost("/lock-all", LockAll).WithSummary("Lock every entry")
             .WithDescription("The person only. Seals each unlocked, untrashed entry with the vault cipher; needs a vault PIN. Answers { locked }.");
         g.MapGet("/{date}", GetEntry).WithSummary("One day's entry")
@@ -289,9 +289,9 @@ public static class JournalEndpoints
     {
         var me = await WhoAsync(user, db, ct);
         if (me.IsKey) return KeyForbidden();
-        if (state is not (null or "archived" or "trashed"))
-            return Results.Json(new { error = "state is archived or trashed.", code = "invalid" }, statusCode: 422);
-        return Results.Ok(new { state = state ?? "archived", entries = journal.Bin(me.Uid, state == "trashed") });
+        if (state is not (null or "archived" or "trashed" or "locked"))
+            return Results.Json(new { error = "state is archived, trashed or locked.", code = "invalid" }, statusCode: 422);
+        return Results.Ok(new { state = state ?? "archived", entries = journal.Bin(me.Uid, state ?? "archived") });
     }
 
     private static async Task<IResult> LockAll(

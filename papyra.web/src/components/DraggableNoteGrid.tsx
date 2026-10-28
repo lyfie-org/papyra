@@ -1,4 +1,4 @@
-import { memo, useCallback, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react';
+import { memo, useCallback, useEffect, useId, useLayoutEffect, useMemo, useRef, useState, type RefObject } from 'react';
 import { Pin, PinOff } from 'lucide-react';
 import {
   DndContext, PointerSensor, useSensor, useSensors, useDraggable,
@@ -15,6 +15,8 @@ import NoteCard from './NoteCard';
 import TodoCard from './TodoCard';
 import BulkBar from './BulkBar';
 import SelectTick from './SelectTick';
+import SectionToggle from './SectionToggle';
+import { useCollapsed } from '../hooks/useCollapsed';
 import {
   pack, columnsFor, indexFromPoint, EST_H,
   type Box, type Placed,
@@ -49,6 +51,11 @@ interface Props {
   shared?: IncomingShare[];
   /** Say on each shared card when it was shared (the Shared with me page). */
   showSharedDate?: boolean;
+  /**
+   * Lets the Pinned and Others headings fold their section, remembered on this device under
+   * this name (`notes`, `todo`). Without it the headings are plain labels.
+   */
+  collapseScope?: string;
 }
 
 type Section = 'pinned' | 'others';
@@ -222,7 +229,7 @@ const SharedAbsCard = memo(function SharedAbsCard({
 
 export default function DraggableNoteGrid({
   notes, conflictsByParent, onResolveConflict, includeTodos = false, todosOnly = false, shared = [],
-  showSharedDate = false,
+  showSharedDate = false, collapseScope,
 }: Props) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
@@ -230,6 +237,9 @@ export default function DraggableNoteGrid({
   const saveOrder = useSaveOrder();
 
   const wrapRef = useRef<HTMLDivElement | null>(null);
+  const sectionId = useId();
+  const [pinnedFolded, togglePinned, setPinnedFolded] = useCollapsed(`${collapseScope ?? 'grid'}:pinned`);
+  const [othersFolded, toggleOthers, setOthersFolded] = useCollapsed(`${collapseScope ?? 'grid'}:others`);
   const pinnedRef = useRef<HTMLDivElement | null>(null);
   const othersRef = useRef<HTMLDivElement | null>(null);
 
@@ -273,9 +283,17 @@ export default function DraggableNoteGrid({
   const others = useMemo(() => items.filter(i => !i.pinned).sort(byKey), [items]);
   const byId = useMemo(() => new Map(items.map(i => [i.id, i])), [items]);
   const allOrdered = useMemo(() => [...pinned, ...others].map(i => i.id), [pinned, others]);
-  // What selection and the bulk bar cover: every card on the desk, yours and
+  // A folded section shows no cards. Others can only be folded while it has its heading,
+  // which it gets beside a Pinned section.
+  const foldable = collapseScope !== undefined;
+  const pinnedOut = foldable && pinnedFolded && pinned.length > 0;
+  const othersOut = foldable && othersFolded && pinned.length > 0 && others.length > 0;
+  // What selection and the bulk bar cover: every card showing on the desk, yours and
   // those shared with you.
-  const ordered = allOrdered;
+  const ordered = useMemo(
+    () => [...(pinnedOut ? [] : pinned), ...(othersOut ? [] : others)].map(i => i.id),
+    [pinned, others, pinnedOut, othersOut],
+  );
   const { width, resizedAt, sticky, recordColumns } = useGridWidth(wrapRef, items.length > 0);
   const selection = useSelection(ordered);
   const sharedPin = useSharedPin();
@@ -304,8 +322,8 @@ export default function DraggableNoteGrid({
   // re-measure hundreds of them.
   const total = items.length;
   const { shown: budget, sentinelRef } = useRevealMore(total, cols, locateAt + 1);
-  const pinnedShown = pinned.length > budget ? pinned.slice(0, budget) : pinned;
-  const othersShown = others.slice(0, Math.max(0, budget - pinned.length));
+  const pinnedShown = pinnedOut ? [] : pinned.length > budget ? pinned.slice(0, budget) : pinned;
+  const othersShown = othersOut ? [] : others.slice(0, Math.max(0, budget - (pinnedOut ? 0 : pinned.length)));
   const shownIds = new Set([...pinnedShown, ...othersShown].map(i => i.id));
 
   // On a touch screen the desk is read and scrolled, not rearranged: no sensor
@@ -313,6 +331,14 @@ export default function DraggableNoteGrid({
   const touch = useTouchDevice();
   const pointerSensor = useSensor(PointerSensor, { activationConstraint: { distance: 8 } });
   const sensors = useSensors(touch ? undefined : pointerSensor);
+
+  // A note a search asked to show opens the section that holds it.
+  useEffect(() => {
+    const hit = locateId ? byId.get(locateId) : undefined;
+    if (!hit) return;
+    if (hit.pinned && pinnedOut) setPinnedFolded(false);
+    else if (!hit.pinned && othersOut) setOthersFolded(false);
+  }, [locateId, byId, pinnedOut, othersOut, setPinnedFolded, setOthersFolded]);
 
   // Section id lists, minus everything being carried; the gap goes in the target section.
   const carried = useMemo(() => new Set(group), [group]);
@@ -392,7 +418,9 @@ export default function DraggableNoteGrid({
     const othRect = othersRef.current?.getBoundingClientRect();
     // Pick the section whose vertical band the dragged centre sits in.
     let section: Section = 'others';
-    if (pinRect && othRect) section = cy < othRect.top ? 'pinned' : 'others';
+    if (pinnedOut) section = 'others';
+    else if (othersOut) section = 'pinned';
+    else if (pinRect && othRect) section = cy < othRect.top ? 'pinned' : 'others';
     else if (pinRect) section = 'pinned';
     const rect = section === 'pinned' ? pinRect : othRect;
     if (!rect) return;
@@ -563,13 +591,17 @@ export default function DraggableNoteGrid({
           e.stopPropagation();
         }}
       >
-        {showPinnedHeading && <h2 className="note-grid__heading">PINNED</h2>}
-        <div className="dnd-canvas" ref={pinnedRef} style={{ height: pinnedLayout.height }}>
+        {showPinnedHeading && (foldable
+          ? <SectionToggle label="Pinned" count={pinned.length} open={!pinnedOut} onToggle={togglePinned} controls={`${sectionId}-pinned`} />
+          : <h2 className="note-grid__heading">PINNED</h2>)}
+        <div className="dnd-canvas" id={`${sectionId}-pinned`} ref={pinnedRef} style={{ height: pinnedLayout.height }}>
           {pinnedShown.map(i => renderCard(i, pinnedLayout))}
         </div>
 
-        {showOthersHeading && <h2 className="note-grid__heading">OTHERS</h2>}
-        <div className="dnd-canvas" ref={othersRef} style={{ height: othersLayout.height }}>
+        {showOthersHeading && (foldable
+          ? <SectionToggle label="Others" count={others.length} open={!othersOut} onToggle={toggleOthers} controls={`${sectionId}-others`} />
+          : <h2 className="note-grid__heading">OTHERS</h2>)}
+        <div className="dnd-canvas" id={`${sectionId}-others`} ref={othersRef} style={{ height: othersLayout.height }}>
           {othersShown.map(i => renderCard(i, othersLayout))}
         </div>
         {budget < total && <div ref={sentinelRef} className="note-grid__more" aria-hidden="true" />}

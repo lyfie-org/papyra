@@ -1,0 +1,7 @@
+Fonts embedded for the journal PDF export (static instances cut from the web fonts Papyra already serves):
+
+  Sora            SIL Open Font License 1.1   https://github.com/sora-xor/sora-font
+  Marcellus       SIL Open Font License 1.1   https://github.com/clauseggers/Marcellus
+  Roboto Mono     Apache License 2.0          https://github.com/googlefonts/robotomono
+
+Latin and Latin Extended only; other scripts fall back to a system face when the host has one.

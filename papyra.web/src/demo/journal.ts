@@ -195,12 +195,13 @@ export function journalRoutes(): Route[] {
       return new Response(null, { status: 204 });
     }],
     ['GET', /^\/api\/journal\/bin$/, ({ url }) => {
-      const trashed = url.searchParams.get('state') === 'trashed';
+      const which = url.searchParams.get('state');
+      const state = which === 'trashed' || which === 'locked' ? which : 'archived';
       const entries = Object.entries(getState().journal)
-        .filter(([, d]) => (trashed ? d.trashed : d.archived && !d.trashed))
+        .filter(([, d]) => (state === 'trashed' ? d.trashed : state === 'locked' ? d.locked && !d.trashed : d.archived && !d.trashed))
         .sort(([a], [b]) => (a < b ? 1 : -1))
         .map(([date, d]) => summary(date, d));
-      return json({ state: trashed ? 'trashed' : 'archived', entries });
+      return json({ state, entries });
     }],
     ['POST', /^\/api\/journal\/lock-all$/, () => {
       let locked = 0;

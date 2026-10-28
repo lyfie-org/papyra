@@ -73,9 +73,28 @@ On disk the text is scrambled; the mood and the size of the day stay readable so
 calendar and the streak keep working. *Settings → Journal → Locking* can lock new days
 as they are made, or every day you have already written.
 
+Locked days are listed on the **Vault** page too, in their own *Journal* section beside
+locked notes and to-do lists: you see the date (and the mood, if you set one), never the
+words. Each section there folds away; Papyra remembers which ones on that device.
+
 This protects the folder, a Git remote and your backups. The server holds the key, so
 anyone who can run your Papyra can read what you wrote; it is not a diary that even
 you cannot recover.
+
+## Exporting your journal
+
+*Settings → Data & Storage → Journal export* downloads just the journal, two ways:
+
+- **Markdown files** — a zip laid out like your journal folder: `journal/2026/10/2026-10-27.md`, one file per day,
+  with the pictures and recordings those days use under `media/`.
+- **PDF book** — every day with writing (or a mood) in one small book: a cover, a contents page, then each month on
+  a fresh page with its days run on, in Papyra's own typefaces. Headings, lists, ticked and unticked tasks, quotes,
+  code and pictures are laid out; `[[links]]` print as their names. Latin scripts print from the book's own faces;
+  other scripts print only if the server has a font for them, so use the Markdown export when you need every character.
+
+Both are guarded like the full export: unlock your vault (PIN or passkey) and enter a code from your authenticator
+app (or the one emailed to you). Locked days are included, readable, because you opened the vault to ask for them; days
+in the Trash are not. Your account gets an email saying that a journal export happened.
 
 ## Templates and a reminder
 

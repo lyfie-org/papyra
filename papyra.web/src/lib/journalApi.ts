@@ -254,7 +254,7 @@ export async function lockAllEntries(): Promise<{ locked: number }> {
 
 // ── Days set aside, and the pages a day can start from ────────────────────────
 
-export async function fetchBin(state: 'archived' | 'trashed'): Promise<JournalSummary[]> {
+export async function fetchBin(state: 'archived' | 'trashed' | 'locked'): Promise<JournalSummary[]> {
   const data = await read<{ entries: JournalSummary[] }>(await fetch(`/api/journal/bin?state=${state}`));
   return data.entries;
 }

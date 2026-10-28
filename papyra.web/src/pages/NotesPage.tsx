@@ -201,6 +201,7 @@ export default function NotesPage() {
           conflictsByParent={conflictsByParent}
           onResolveConflict={setResolving}
           includeTodos={activeRules !== null}
+          collapseScope="notes"
         />
       )}
 

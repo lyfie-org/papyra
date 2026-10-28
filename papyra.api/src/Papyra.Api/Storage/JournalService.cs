@@ -130,13 +130,22 @@ public sealed partial class JournalService(
             note.Trashed && note.TrashedAt is { } at ? DateTime.SpecifyKind(at, DateTimeKind.Utc) : null);
     }
 
-    /// <summary>The days set aside: archived ones, or the ones in the Trash (with when they went), newest day first.</summary>
-    public IReadOnlyList<JournalSummary> Bin(string uid, bool trashed)
+    /// <summary>
+    /// The days set aside — archived ones, or the ones in the Trash (with when they went) — or the locked
+    /// ones the Vault page lists (<paramref name="which"/> is "archived", "trashed" or "locked"), newest day first.
+    /// </summary>
+    public IReadOnlyList<JournalSummary> Bin(string uid, string which)
     {
         var list = new List<JournalSummary>();
         foreach (var note in state.SnapshotJournal(uid))
         {
-            if (!(trashed ? note.Trashed : note.Archived && !note.Trashed)) continue;
+            var wanted = which switch
+            {
+                "trashed" => note.Trashed,
+                "locked" => note.Secure && !note.Trashed,
+                _ => note.Archived && !note.Trashed,
+            };
+            if (!wanted) continue;
             if (!JournalPaths.TryDateFromId(note.Id, out var day)) continue;
             list.Add(Summarize(note, day));
         }
