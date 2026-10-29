@@ -123,7 +123,15 @@ Open **http://localhost:8080** and create the first account. That's it.
   </tr>
 </table>
 
-**Also in the box:** pictures and PDFs inside notes · to-do lists · tags and smart collections · sharing with people or by link (with expiry) · passkeys, an authenticator app and single sign-on (OIDC) · a day-by-day journal (mood, streak, calendar, voice notes, lockable days) · import from Obsidian, Google Keep and Day One · export everything to a zip · sealed backups · backup to a private GitHub repo · installs as an app on your phone.
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="papyra.app/src/assets/shots/journal-desktop-dark.png" />
+    <img alt="A day of the Papyra journal: the date, how the day felt, a few lines of writing and a ticked list" src="papyra.app/src/assets/shots/journal-desktop-light.png" width="760" />
+  </picture>
+  <br/><sub><b>📔 A journal, too.</b> A page for each day, with moods, a calendar, voice notes and days you can lock. Still plain Markdown files, and it exports as files or a PDF book.</sub>
+</p>
+
+**Also in the box:** pictures and PDFs inside notes · to-do lists · tags and smart collections · sharing with people or by link (with expiry) · passkeys, an authenticator app and single sign-on (OIDC) · import from Obsidian, Google Keep and Day One · export everything to a zip · sealed backups · backup to a private GitHub repo · installs as an app on your phone.
 
 <p align="center">
   <picture>

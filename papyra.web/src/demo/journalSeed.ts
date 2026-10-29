@@ -18,7 +18,7 @@ export interface DemoDay {
 
 
 const OFFSET_WORDS: [number, Mood, string, string[]][] = [
-  [1, 4, 'Slow morning, then the long walk by the river. The light was low and gold the whole way home.\n\n- [ ] book flights\n- [x] call mum', ['walk']],
+  [1, 4, 'Slow morning, then the long walk by the river. The light was low and gold the whole way home.\n\nCooked properly for once: a big pot of soup, the radio on, nobody to answer to. Wrote a few pages of the thing I keep putting off, badly, and that was enough.\n\n- [ ] book flights\n- [x] call mum', ['walk']],
   [2, 3, 'A grey day. Spent most of it on the quarterly numbers; ended with soup and nothing else.', ['work']],
   [3, 5, 'Finished the draft. Told nobody yet, just sat with it for an hour, which felt right.', ['work', 'writing']],
   [4, 4, 'Coffee with Priya. We talked about the move and neither of us said the obvious thing.', ['people']],

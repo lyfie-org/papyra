@@ -3,7 +3,7 @@ name: site
 # Builds and deploys the product website. Two lines (see .github/RELEASE_LINES.md):
 #
 #   main        → production, https://papyra.app  (push, daily schedule, or by hand)
-#   development → dev preview, https://dev.papyra.app  (by hand only)
+#   development → dev preview, https://dev.papyra.app  (push, or by hand)
 #
 # The dev build sets PUBLIC_SITE_CHANNEL=dev: every page is noindex, robots.txt
 # blocks all crawlers, no sitemap ships, and a banner points at papyra.app and
@@ -22,11 +22,12 @@ name: site
 
 # Push-only on purpose: a PR from development → main would otherwise run the
 # same build twice (once for the push, once for the PR). The merge into main is
-# itself a push, so production still deploys. development is not here: the dev
-# site moves only when you run this workflow on it by hand.
+# itself a push, so production still deploys. A push to development redeploys the
+# dev site, but only when something the site is built from changed (the paths
+# below); the dev site has no daily rebuild, only the production one does.
 on:
   push:
-    branches: [main]
+    branches: [main, development]
     paths:
       - 'papyra.app/**'
       - 'papyra.web/**'
@@ -40,8 +41,8 @@ on:
       - 'pnpm-lock.yaml'
       - '.github/workflows/site.yml'
       - '.github/actions/**'
-  # Re-run production without an empty commit, or — run on development — deploy
-  # the dev site.
+  # Re-run a site without an empty commit: run on main for production, or on
+  # development for the dev site.
   workflow_dispatch:
   # Daily rebuild of main, so the Docker Hub pull count, GitHub star count and install
   # count baked into the pages stay current (src/lib/stats.mjs). The site itself stays
