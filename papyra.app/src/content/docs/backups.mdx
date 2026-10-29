@@ -1,6 +1,6 @@
 ---
 title: Backups and git
-summary: Four ways to get your notes out — copying the folder, zip export, encrypted archives, and an automatic git mirror.
+summary: Four ways to back up your notes. Copy the folder, export a zip, make an encrypted archive, or keep an automatic git mirror.
 group: Living with it
 order: 2
 ---
@@ -12,14 +12,14 @@ actually keep doing.
 ## Copy the folder
 
 The whole of `/data` is the backup. `rsync` it, snapshot the volume, point your
-existing backup tool at it — nothing here needs Papyra's cooperation.
+existing backup tool at it. None of this needs Papyra's help.
 
 ```bash
 rsync -a --delete /var/lib/docker/volumes/papyra-data/_data/ /backup/papyra/
 ```
 
 Restoring is putting the folder back. The SQLite cache and Lucene index inside
-`.papyra/` are rebuildable, so a backup that skips them is still complete — but
+`.papyra/` are rebuildable, so a backup that skips them is still complete. But
 **do keep `/data/.papyra/keys/`**, or every signed-in browser is logged out on
 restore.
 
@@ -34,7 +34,7 @@ on demand, no scheduling. Good for taking a copy before you change something.
 key derived from a password you choose. **Settings → Backup → Restore** takes one
 back.
 
-Use this when the backup will sit somewhere you do not fully trust — object
+Use this when the backup will sit somewhere you do not fully trust: object
 storage, a USB stick, a friend's NAS.
 
 > The password is not recoverable. Papyra does not store it and cannot reset it.
@@ -51,7 +51,7 @@ remembering. It also gives you a full history of every note, browsable with any
 git tool.
 
 **It will never force-push over a diverged remote.** If the remote's history has
-moved apart from Papyra's — you pushed from elsewhere, or rewrote history — the
+moved apart from Papyra's (you pushed from elsewhere, or rewrote history), the
 sync stops and reports it rather than overwriting whatever is there. Resolve it
 by hand and it resumes.
 
@@ -79,10 +79,10 @@ search index if search looks stale afterwards.
 
 ## Trash is not a backup
 
-Deleted notes sit in Trash for the retention period — 30 days by default,
+Deleted notes sit in Trash for the retention period (30 days by default,
 configurable in **Settings → Data & Storage**, including "keep forever" and
-"delete immediately". Once retention expires the note is erased for good.
+"delete immediately"). Once retention expires the note is erased for good.
 
 Snapshots of overwritten text are a different mechanism again, kept per note and
-reachable from **File recovery** and **Time machine** in the note toolbar.
-Neither of those is a substitute for having the folder somewhere else.
+reachable from **History** in the note toolbar. That is not a substitute for
+having the folder somewhere else.

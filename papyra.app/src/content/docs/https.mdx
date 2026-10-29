@@ -16,9 +16,9 @@ Two things break without HTTPS, and both fail in confusing ways:
 HTTPS. Sign-in appears to succeed and then bounces you straight back to the
 login screen, with nothing in the logs to explain it.
 
-**Passkeys.** WebAuthn requires a secure context. Vault notes cannot be unlocked
-over plain HTTP outside `localhost`, and no Papyra setting overrides that — it
-is the browser's rule, not ours.
+**Passkeys.** WebAuthn requires a secure context, so passkeys do not work over
+plain HTTP outside `localhost`, and no Papyra setting overrides that. It is the
+browser's rule, not ours. The vault PIN still works.
 
 ## Caddy
 
@@ -58,8 +58,8 @@ server {
 ```
 
 The websocket lines are the ones people forget. Papyra keeps working without
-them — it falls back and retries — but live updates stop and the connection
-indicator stays stubbornly offline.
+them. It falls back and retries, but live updates stop and the connection
+indicator stays offline.
 
 ## Tell Papyra about the proxy
 
@@ -86,7 +86,7 @@ PAPYRA_WEBAUTHN_DOMAIN: "notes.example.com"
 PAPYRA_WEBAUTHN_ORIGINS: "https://notes.example.com"
 ```
 
-`PAPYRA_WEBAUTHN_DOMAIN` is the bare hostname — no `https://`, no port, no
+`PAPYRA_WEBAUTHN_DOMAIN` is the bare hostname, with no `https://`, no port and no
 trailing slash. `PAPYRA_WEBAUTHN_ORIGINS` is the full origin.
 
 Passkeys registered against one domain do not work on another. If you move
@@ -95,7 +95,7 @@ re-registered.
 
 ## No HTTPS at all?
 
-On a genuinely private network — a home LAN, Tailscale, WireGuard — you can run
+On a private network (a home LAN, Tailscale or WireGuard) you can run
 without TLS:
 
 ```yaml

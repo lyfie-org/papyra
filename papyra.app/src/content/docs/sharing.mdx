@@ -9,22 +9,20 @@ order: 2
 
 Open a note, use the share control, and create a link. Choose how it ends:
 
-- **On a date** — the link stops working then.
-- **After N views** — it burns out once used up.
-- **Never** — until you revoke it.
+- **On a date**: the link stops working then.
+- **After N views**: it burns out once used up.
+- **Never**: until you revoke it.
 
 Anyone with the link can read the note, with no account. A link can also grant
 editing.
 
 Expired and exhausted links are tidied up by a background job rather than
-lingering; you can revoke any link by hand at any time from the note's share
-menu.
+lingering. You can revoke any link yourself from the note's share menu.
 
 ## Sharing with someone on your server
 
 Share directly with another account and the note appears in their **Shared with
-me**. They get exactly what you granted — view or edit — and it ends when you
-revoke it.
+me**. They get the access you granted (view or edit) until you revoke it.
 
 When the note links to other notes of yours, the share dialog offers **Also share
 the notes it links to**: all of them, or just the ones you tick. They go to the
@@ -36,14 +34,14 @@ A note shared with you sits on your desk like your own, with its owner's face
 (their initials until they add a picture) at the foot, and **Can view** when you
 can only read it. Hover over it for the same actions as your own notes:
 
-- **Pin** it, and give it **your own tags** — they organise your desk and filters,
+- **Pin** it, and give it **your own tags**. They organise your desk and filters
   and nobody else's. The owner's tags stay the owner's.
 - **Make a copy** into your own notes, **copy its link**, or **download** it as a
   `.md` file.
-- With edit access, also change its **colour** — colour belongs to the note, so
-  the owner and everyone else see it — and **share it onward** with someone else.
-  It stays the owner's note: they see who you added (and who added them), and can
-  change or remove that access like any other.
+- With edit access, you can also change its **colour** (the colour belongs to the
+  note, so the owner and everyone else see it) and **share it onward** with
+  someone else. It stays the owner's note: they see who you added (and who added
+  them), and can change or remove that access like any other.
 
 Shared notes can be selected along with your own; the selection bar pins them,
 and leaves archiving, sharing and deleting to their owners.
@@ -53,22 +51,21 @@ it is shared with, and tells anyone else it isn't shared with them.
 
 Either way, the note's card in your grid carries a badge showing it has left the
 vault, with the names on hover. This is on the card rather than two clicks away
-on purpose: "who else can read this one" is the question the whole product is
-built around.
+on purpose, because "who else can read this one" is the question that matters most.
 
 ## Mentions invite, access is the whole note
 
 Type `@` and a username. They get a notice in their Inbox, and Papyra asks
 whether to share the note with them:
 
-- **Can edit** (the default) — they open the note and write in it with you.
-- **Can view** — they read it, and can ask you for edit access.
-- **Don't share** — they see who mentioned them and when, nothing of the note,
-  and a **Request access** button.
+- **Can edit** (the default): they open the note and write in it with you.
+- **Can view**: they read it, and can ask you for edit access.
+- **Don't share**: they see who mentioned them and when, but nothing of the
+  note, and there is a **Request access** button.
 
 Access is always the whole note or nothing. Requests land in your Inbox, where
 you approve (as editor or viewer) or decline. If the note is later deleted or
-locked, the inbox entry says so plainly.
+locked, the inbox entry says so.
 
 ## Locked notes never leave
 
@@ -102,11 +99,11 @@ Import** on any Papyra. A name they already use gets a number.
 
 ## Revoking
 
-Everything is revocable, and revocation is immediate:
+You can revoke anything you shared, and it takes effect immediately:
 
-- A link — the note's share menu.
-- A person's access — the same place.
-- A mention — the recipient dismisses it from their Inbox, which drops the grant.
+- A link: from the note's share menu.
+- A person's access: from the same place.
+- A mention: the recipient dismisses it from their Inbox, which drops the grant.
 
 Once revoked, the next request from that link or person is refused. There is no
 grace period, and nothing is cached on their side that would keep working.

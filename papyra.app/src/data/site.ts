@@ -18,7 +18,7 @@ export const DOCKER_IMAGE = IS_DEV_SITE ? 'lyfie/papyra:dev' : 'lyfie/papyra:lat
 export const LICENSE = 'GNU GPL v3.0';
 
 /** The one-line description used in the manifest and the app's About tab. */
-export const TAGLINE = 'A calm, self-hosted home for your notes.';
+export const TAGLINE = 'A self-hosted notes app.';
 
 export const NAV = [
   { href: '/#features', label: 'Features' },
@@ -39,4 +39,4 @@ export const SITE_URL = 'https://papyra.app';
 
 /** One description, used by meta tags, structured data and llms.txt. */
 export const DESCRIPTION =
-  'Papyra is a free, open-source, self-hosted note-taking app — a private Google Keep alternative. Every note is a plain Markdown file on your own server. No tracking; one optional daily update check.';
+  'Papyra is a free, open-source, self-hosted note-taking app and a private alternative to Google Keep. Every note is a plain Markdown file on your own server. No tracking; one optional daily update check.';

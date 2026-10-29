@@ -118,7 +118,7 @@ import Icon from './Icon.astro';
         })
         .join('');
       status.textContent = hits.length ? `${hits.length} result${hits.length === 1 ? '' : 's'}` : 'No matches';
-      if (!hits.length) list.innerHTML = '<li class="dsearch__empty" role="presentation">Nothing matches — try fewer words.</li>';
+      if (!hits.length) list.innerHTML = '<li class="dsearch__empty" role="presentation">Nothing matches. Try fewer words.</li>';
       list.hidden = false;
       input.setAttribute('aria-expanded', 'true');
       setActive(hits.length ? 0 : -1);

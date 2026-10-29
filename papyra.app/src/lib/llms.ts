@@ -39,9 +39,9 @@ async function intro(): Promise<string> {
     '',
     `> ${DESCRIPTION}`,
     '',
-    'Papyra is for anyone who wants a calm, beautiful notes app they own outright: home-labbers, privacy-minded people, families and small teams.',
-    'It feels like Google Keep — a desk of colourful note cards — and goes as deep as a wiki: links, backlinks, search, history and live collaboration.',
-    'Every note stays an ordinary Markdown file on the user’s own server, so nothing is ever locked in.',
+    'Papyra is for people who want a notes app they host themselves: home-labbers, privacy-minded people, families and small teams.',
+    'It works like Google Keep, with colourful note cards on a desk, and also has wiki features: links, backlinks, search, history and live collaboration.',
+    'Every note is an ordinary Markdown file on the user’s own server, so nothing is locked in.',
     '',
     `- Website: ${SITE_URL}`,
     `- Live demo (runs entirely in the browser, no sign-up): ${SITE_URL}/demo/`,
@@ -67,7 +67,7 @@ const INSTALL = `## Install
 \`\`\`bash
 curl -O https://raw.githubusercontent.com/lyfie-org/papyra/main/docker-compose.hub.yml
 docker compose -f docker-compose.hub.yml up -d
-# then open http://localhost:8080 — the first account created is the admin
+# then open http://localhost:8080 and create the first account, which becomes the admin
 \`\`\`
 `;
 

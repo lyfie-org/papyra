@@ -1,23 +1,23 @@
 # Contributing to Papyra
 
-Thanks for wanting to help. Papyra is young, so every bug report, idea and pull
-request genuinely shapes it.
+Thanks for wanting to help. Papyra is young, so bug reports, ideas and pull
+requests all make a difference.
 
-## Ways to help — no code needed
+## Ways to help without code
 
 - **Use it and tell us what breaks.** Try the [live demo](https://papyra.app/demo/)
   or run your own copy, then [open an issue](https://github.com/lyfie-org/papyra/issues/new)
   with what you did, what you expected and what happened. Screenshots help.
 - **Ask for what's missing.** Feature ideas are issues too. Say what you are trying
-  to do, not only the button you want.
+  to do, not just which button you want.
 - **Improve the docs.** Anything that confused you on [papyra.app/docs](https://papyra.app/docs/)
   will confuse the next person. The pages live in `papyra.app/src/content/docs/`.
 - **Come say hello on [Discord](https://discord.gg/KQNsjGAUUz).** Papyra has its own
   help, ideas and issues channels there, and it's the quickest way to ask
   "is this a bug or me?" before opening an issue.
-- **Star the repo and tell a friend.** Honestly, this helps more than you'd think.
+- **Star the repo and tell a friend.** It helps people find Papyra.
 
-Found a security problem? Please don't open a public issue — report it privately
+Found a security problem? Please don't open a public issue. Report it privately
 through [GitHub's security advisories](https://github.com/lyfie-org/papyra/security/advisories/new).
 
 ## Building on Papyra
@@ -59,8 +59,8 @@ pnpm dev        # API on :5220, web app on :5173, live-editing engine on :5231
 - **The `.md` files are the source of truth.** SQLite and the search index are
   caches that can be rebuilt from the folder. Never make them the only copy of
   anything.
-- **Writes are atomic** — temp file, flush, replace. A crash must never leave half
-  a note.
+- **Writes are atomic**: write a temp file, flush, then replace. A crash must never
+  leave half a note.
 - **Papyra's own state lives in `.papyra/`**, never inside the notes folder.
 - **Never move someone's caret.** A remote change must not hijack the editor.
 - **Design tokens only.** Colours come from `var(--token)`; fonts are Marcellus,
@@ -76,7 +76,7 @@ dotnet build Papyra.slnx
 dotnet test papyra.api/tests/Papyra.Tests/Papyra.Tests.csproj
 
 # Web app (from papyra.web/)
-pnpm run build          # type-check + bundle — catches more than tsc --noEmit
+pnpm run build          # type-check + bundle, catches more than tsc --noEmit
 pnpm test
 pnpm run check:a11y     # WCAG 2.2 AA in real Chromium (CI fails on any violation)
 
@@ -90,7 +90,7 @@ pnpm run build
 Then:
 
 1. Branch from **`development`** and open your pull request against
-   **`development`** — `main` only receives releases.
+   **`development`**. `main` only receives releases.
 2. Use [Conventional Commit](https://www.conventionalcommits.org) prefixes
    (`feat:`, `fix:`, `docs:`, `chore:`…). The changelog is generated from them.
 3. Keep it focused: one change per pull request, with a sentence on *why*.

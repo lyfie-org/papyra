@@ -40,7 +40,7 @@ export const FEATURES = [
   'Email alerts through your own SMTP server',
   'Works offline as an installable web app; edits sync when you reconnect',
   'Pictures, PDFs and video in notes, previewed inline',
-  'A journal: one page a day with moods, a streak, a calendar, voice notes and lockable days — plain files like everything else',
+  'A journal: one page a day with moods, a streak, a calendar, voice notes and lockable days, stored as plain files like everything else',
   'Import from Google Keep (Takeout), Obsidian and Day One; drag in any .md file',
   'Backups: Git sync (optionally encrypted), zip export, encrypted archives',
   'Smart collections, tags, to-do lists, focus mode, light and dark themes',
@@ -56,7 +56,7 @@ export const FAQ: { q: string; a: string }[] = [
   },
   {
     q: 'Is Papyra really private?',
-    a: 'Yes. Papyra has no tracking, analytics or crash reports, and its interface makes no third-party requests — even its fonts come from your server. The server makes one request of its own: a daily check for a newer version, which the maker also uses as a count of installs to stay motivated. It is optional: set PAPYRA_UPDATE_CHECK_ENABLED=false and it never calls out (details at papyra.app/docs/update-check). Your notes only leave your server if you share one, set up a Git backup, or configure email alerts. Locked notes are encrypted on disk.',
+    a: 'Yes. Papyra has no tracking, analytics or crash reports, and its interface makes no third-party requests, and even its fonts come from your server. The server makes one request of its own: a daily check for a newer version, which I also use as a count of installs to stay motivated. It is optional. Set PAPYRA_UPDATE_CHECK_ENABLED=false and it never calls out (details at papyra.app/docs/update-check). Your notes only leave your server if you share one, set up a Git backup, or configure email alerts. Locked notes are encrypted on disk.',
   },
   {
     q: 'Is Papyra free?',
@@ -64,11 +64,11 @@ export const FAQ: { q: string; a: string }[] = [
   },
   {
     q: 'Can I move my notes from Google Keep or Obsidian?',
-    a: 'Yes. Import a Google Keep Takeout archive — checklists, labels, colours and pins come with it — or upload an Obsidian vault with its links and attachments. A Day One journal comes in as days of the journal. Any Markdown file can also be dragged onto the desk.',
+    a: 'Yes. Import a Google Keep Takeout archive (checklists, labels, colours and pins come with it) or upload an Obsidian vault with its links and attachments. A Day One journal comes in as days of the journal. You can also drag any Markdown file into the app.',
   },
   {
     q: 'What do I need to run it?',
-    a: 'Docker. Papyra is one container with one volume, and runs on amd64 and arm64 — a NAS, a Raspberry Pi or a small VPS. Install takes one command.',
+    a: 'Docker. Papyra is one container with one volume, and runs on amd64 and arm64, so a NAS, a Raspberry Pi or a small VPS all work. Installing takes one command.',
   },
   {
     q: 'Does it work offline and on my phone?',
@@ -76,7 +76,7 @@ export const FAQ: { q: string; a: string }[] = [
   },
   {
     q: 'What happens to my notes if I stop using Papyra?',
-    a: 'Nothing. They are ordinary Markdown files in a folder you own. Keep the folder and they stay readable in any text editor.',
+    a: 'Nothing happens to them. They are ordinary Markdown files in a folder you own, and any text editor can open them.',
   },
   {
     q: 'Who makes Papyra?',

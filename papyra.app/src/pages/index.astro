@@ -45,45 +45,45 @@ const facts: { icon: IconName; text: string }[] = [
 const showcase = [
   {
     clip: 'drop',
-    eyebrow: 'Bring your notes',
-    title: 'Drop in any Markdown.',
-    text: 'Drag a .md file onto your desk and it’s a note — headings, checklists and all.',
+    eyebrow: 'Drag and drop',
+    title: 'Import by dragging.',
+    text: 'Drag a .md file into the app and it becomes a note. Headings and checklists stay as they were.',
     link: { href: '/demo/', label: 'Try it in the demo' },
     alt: 'A Markdown file is dragged onto the Papyra desk, becomes a note card, and opens fully formatted',
   },
   {
     clip: 'write',
     eyebrow: 'Write',
-    title: 'It saves itself.',
-    text: 'No save button, ever. Type / for headings, checklists, tables, maps and more — or [[ to link another note. Every version is kept, so you can always go back.',
+    title: 'Autosave.',
+    text: 'There is no save button. Type / to insert headings, checklists, tables or maps, and [[ to link to another note. Every version is kept, so you can go back to an earlier one.',
     alt: 'Typing a new note: a heading, a [[ link to another note picked from a list, a bulleted list, then “Saved”',
   },
   {
     clip: 'journal',
-    eyebrow: 'Reflect',
-    title: 'A page for every day.',
-    text: 'Write the day, tick off how it felt, and see it all on a calendar. Link the notes and to-dos you touched — or lock a day for your eyes only.',
+    eyebrow: 'Journal',
+    title: 'One page per day.',
+    text: 'Write about your day, pick a mood, and browse the days on a calendar. You can link the notes and to-dos you worked on, or lock a day so only you can open it.',
     alt: 'Writing today’s journal page, picking a mood, opening the side panel of notes and to-dos, then the month calendar',
   },
   {
     clip: 'search',
-    eyebrow: 'Find',
-    title: 'Anything, in a keystroke.',
-    text: 'Press Ctrl K. Every word of every note, to-do and collection — matches highlighted.',
+    eyebrow: 'Search',
+    title: 'Press Ctrl K.',
+    text: 'Search covers the text of every note, to-do and collection, and the matches are highlighted.',
     alt: 'Searching for “pricing”: results from notes, to-dos and collections appear with the word highlighted',
   },
   {
     clip: 'vault',
-    eyebrow: 'Protect',
-    title: 'Lock what’s private.',
-    text: 'Locked notes are encrypted on disk and open only with your PIN — or your fingerprint.',
+    eyebrow: 'Locked notes',
+    title: 'Lock a note.',
+    text: 'Locked notes are encrypted on disk. You open them with your PIN or your fingerprint.',
     alt: 'A locked note stays blurred until the vault PIN is typed, then its contents appear',
   },
 ];
 
 const everything: { icon: IconName; title: string; text: string }[] = [
   { icon: 'users', title: 'Live collaboration', text: 'Edit shared notes together, cursors and all.' },
-  { icon: 'history', title: 'Version history', text: 'Every change kept. Restore any of them.' },
+  { icon: 'history', title: 'Version history', text: 'Every change is kept and you can restore any of them.' },
   { icon: 'link', title: 'Slash commands, links', text: 'Type / for any block, [[ to link a note.' },
   { icon: 'image', title: 'Pictures, maps, any link', text: 'Drop files in, or paste a map, video or page link.' },
   { icon: 'message', title: 'Share and comment', text: 'Share a note, @mention, reply in threads.' },
@@ -92,35 +92,35 @@ const everything: { icon: IconName; title: string; text: string }[] = [
   { icon: 'layers', title: 'Smart collections', text: 'Tags and filters that sort themselves.' },
   { icon: 'list-check', title: 'To-dos', text: 'Checklists that live beside your notes.' },
   { icon: 'book', title: 'A journal', text: 'A page a day, with moods, a calendar and lockable days.' },
-  { icon: 'smartphone', title: 'On every device', text: 'Install it on your phone, tablet and laptop.' },
-  { icon: 'lock', title: 'For the whole family', text: 'Separate, private accounts on one server.' },
+  { icon: 'smartphone', title: 'Installable', text: 'Install it as an app on a phone, tablet or laptop.' },
+  { icon: 'lock', title: 'Several accounts', text: 'Separate, private accounts on one server.' },
 ];
 
 const imports: { icon: IconName; title: string; text: string }[] = [
   { icon: 'note', title: 'Google Keep', text: 'Import your Takeout archive. Checklists, labels, colours and pins come with it.' },
   { icon: 'gem', title: 'Obsidian', text: 'Upload your vault. Links, frontmatter and attachments arrive intact.' },
-  { icon: 'file', title: 'Any Markdown', text: 'Drag files onto the desk. That’s the whole import.' },
+  { icon: 'file', title: 'Any Markdown', text: 'Drag the files into the app.' },
 ];
 
 const notCollected = ['Your IP address', 'Your notes', 'Usernames or emails', 'Server name', 'Usage events', 'Crash reports', 'Cookies', 'An account with us'];
 
 const security: { icon: IconName; title: string; text: string }[] = [
-  { icon: 'lock', title: 'Locked notes, sealed on disk', text: 'Encrypted at rest. Opened with your PIN — or your fingerprint.' },
-  { icon: 'key', title: 'Sign-in, done properly', text: 'Passkeys, authenticator codes, SSO, and devices you can sign out.' },
-  { icon: 'mail', title: 'Alerts from your own mail server', text: 'Add your SMTP: new sign-ins, password changes, failed backups.' },
-  { icon: 'globe', title: 'Zero third-party requests', text: 'No CDNs, no trackers. Even the fonts come from your server.' },
+  { icon: 'lock', title: 'Locked notes', text: 'Encrypted on disk. You open them with your PIN or your fingerprint.' },
+  { icon: 'key', title: 'Sign-in options', text: 'Passkeys, authenticator codes and SSO, and you can sign out other devices.' },
+  { icon: 'mail', title: 'Email alerts', text: 'Add your SMTP server and Papyra emails you about new sign-ins, password changes and failed backups.' },
+  { icon: 'globe', title: 'No third-party requests', text: 'No CDNs or trackers. Even the fonts are served from your own server.' },
 ];
 
 const backups: { icon: IconName; title: string; text: string; featured?: boolean }[] = [
   {
     icon: 'git',
     title: 'Git sync',
-    text: 'Papyra commits and pushes your notes to a private repo on a schedule — encrypted if you like, so even GitHub can’t read them. Full history, never force-pushed.',
+    text: 'Papyra commits and pushes your notes to a private repo on a schedule. You can encrypt them first so GitHub can’t read them. It never force-pushes, so the history stays intact.',
     featured: true,
   },
-  { icon: 'download', title: 'One-click export', text: 'Your whole vault as a zip, whenever you want it.' },
-  { icon: 'archive', title: 'Encrypted archives', text: 'A sealed backup only your password opens.' },
-  { icon: 'folder', title: 'Or just copy the folder', text: 'rsync, snapshots, your NAS backup — it all just works.' },
+  { icon: 'download', title: 'Export', text: 'Download everything as a zip whenever you like.' },
+  { icon: 'archive', title: 'Encrypted archives', text: 'An encrypted backup that needs your password to open.' },
+  { icon: 'folder', title: 'Or copy the folder', text: 'rsync, snapshots and NAS backups all work, because it is only files.' },
 ];
 
 const helps: { icon: IconName; title: string; text: string; href: string }[] = [
@@ -135,7 +135,7 @@ const when = (m: (typeof JOURNEY)[number]) => dayFmt.format(new Date(`${m.date}T
 ---
 
 <Base
-  title="Papyra — private, self-hosted Markdown notes app"
+  title="Papyra: a private, self-hosted Markdown notes app"
   description={DESCRIPTION}
   bareTitle
 >
@@ -146,27 +146,22 @@ const when = (m: (typeof JOURNEY)[number]) => dayFmt.format(new Date(`${m.date}T
     <div class="hero__glow" aria-hidden="true"></div>
     <div class="wrap hero__grid">
     <div class="hero__copy">
-      <p class="chip hero__chip">
-        <span class="chip__dot"></span>
-        Papyra 1.0 · Free and open source
-      </p>
       <h1 class="hero__title">
-        <span class="sr-only">Your thoughts deserve a beautiful home.</span>
+        <span class="sr-only">Keep your notes on your own server.</span>
         <span aria-hidden="true">
-          Your <span class="hero__typed" data-typed data-words="thoughts,ideas,notes,plans,recipes,memories,journals">thoughts</span><br />deserve
-          a<br />beautiful home.
+          Keep your <span class="hero__typed" data-typed data-words="notes,ideas,plans,recipes,journals">notes</span><br />on your own<br />server.
         </span>
       </h1>
       <p class="hero__lede">
-        A calm, self-hosted notes app — as easy as sticky notes, as deep as a wiki. Every note
-        stays a plain Markdown file on your own server.
+        A self-hosted notes app that is as easy as sticky notes and links notes together like a
+        wiki. Every note is a plain Markdown file on your own server.
       </p>
       <div class="hero__actions">
         <a class="btn btn--lg" href="/demo/">
           <Icon name="play" size={16} />
           Try the live demo
         </a>
-        <a class="btn btn--ghost btn--lg" href="#install">Install in a minute</a>
+        <a class="btn btn--ghost btn--lg" href="#install">Install</a>
       </div>
       <p class="hero__note">No sign-up. The demo runs entirely in your browser.</p>
     </div>
@@ -195,8 +190,8 @@ const when = (m: (typeof JOURNEY)[number]) => dayFmt.format(new Date(`${m.date}T
     <div class="wrap wrap--wide features" data-vine-root>
       <Vine />
       <header class="intro" data-reveal data-vine-start>
-        <p class="eyebrow">Made for writing</p>
-        <h2>Calm on the surface.<br />Powerful underneath.</h2>
+        <p class="eyebrow">Features</p>
+        <h2>What it does</h2>
       </header>
 
       <div class="rows">
@@ -222,9 +217,9 @@ const when = (m: (typeof JOURNEY)[number]) => dayFmt.format(new Date(`${m.date}T
 
       <div class="theme-band" data-reveal data-vine-anchor>
         <div class="theme-band__copy">
-          <p class="eyebrow">Day and night</p>
-          <h3>Easy on the eyes.</h3>
-          <p>Warm paper by day. Calm graphite by night.</p>
+          <p class="eyebrow">Themes</p>
+          <h3>Light and dark.</h3>
+          <p>A warm paper look for the day and a dark graphite one for the evening.</p>
         </div>
         <Clip
           class="theme-band__clip"
@@ -240,8 +235,8 @@ const when = (m: (typeof JOURNEY)[number]) => dayFmt.format(new Date(`${m.date}T
   <section class="section section--tint">
     <div class="wrap">
       <header class="intro" data-reveal>
-        <p class="eyebrow">And the rest</p>
-        <h2>Everything you’d expect.<br />Nothing you won’t use.</h2>
+        <p class="eyebrow">More</p>
+        <h2>Also in Papyra</h2>
       </header>
       <ul class="tiles">
         {
@@ -261,8 +256,8 @@ const when = (m: (typeof JOURNEY)[number]) => dayFmt.format(new Date(`${m.date}T
   <section class="section" id="import">
     <div class="wrap">
       <header class="intro" data-reveal>
-        <p class="eyebrow">Move in tonight</p>
-        <h2>Bring everything with you.</h2>
+        <p class="eyebrow">Import</p>
+        <h2>Bring your notes over</h2>
       </header>
       <div class="imports">
         {
@@ -278,7 +273,7 @@ const when = (m: (typeof JOURNEY)[number]) => dayFmt.format(new Date(`${m.date}T
         }
       </div>
       <p class="imports__foot" data-reveal>
-        Re-import any time — Papyra never duplicates a note.{' '}
+        You can import again later; Papyra won’t create duplicate notes.{' '}
         <a href="/docs/importing/">How importing works</a>
       </p>
     </div>
@@ -288,14 +283,14 @@ const when = (m: (typeof JOURNEY)[number]) => dayFmt.format(new Date(`${m.date}T
   <section class="section section--tint" id="privacy">
     <div class="wrap privacy">
       <div class="privacy__copy" data-reveal>
-        <p class="eyebrow">Private by default</p>
-        <h2>Your notes stay yours.</h2>
+        <p class="eyebrow">Privacy</p>
+        <h2>Your notes stay on your server.</h2>
         <p>
-          Your notes never leave your server — unless you share one, back it up to Git, or email
-          yourself a sign-in alert. The one thing Papyra sends anywhere is a daily check for a newer
-          version, and you can turn that off.
+          Your notes never leave your server unless you share one, back it up to Git, or email
+          yourself a sign-in alert. The only other thing Papyra sends anywhere is a daily check for
+          a newer version, and you can turn that off.
         </p>
-        <p class="nope__label">What many apps collect, and Papyra never does:</p>
+        <p class="nope__label">Things Papyra never collects:</p>
         <ul class="nope" aria-label="What Papyra never collects">
           {
             notCollected.map((item) => (
@@ -307,18 +302,17 @@ const when = (m: (typeof JOURNEY)[number]) => dayFmt.format(new Date(`${m.date}T
           }
         </ul>
         <aside class="census" aria-labelledby="census-title" data-census>
-          <h3 id="census-title" class="census__title">The one thing I count</h3>
+          <h3 id="census-title" class="census__title">What I count</h3>
           <p class="census__numbers" aria-live="polite">
             <span><strong data-census-installs>{countText(census?.installs)}</strong> installs</span>
             <span><strong>{countText(pulls ?? undefined)}</strong> Docker pulls</span>
           </p>
           <p class="census__what">
-            The only daily call home checks for updates. I use it as a count of installs to
-            keep myself motivated and to see where to take Papyra next — it feels good to know it’s
-            being used.
+            The daily update check is the only thing that calls home. I use it as a count of
+            installs, because it helps me stay motivated and see where to take Papyra next.
           </p>
           <p class="census__off">
-            It’s optional: <code>PAPYRA_UPDATE_CHECK_ENABLED: "false"</code> turns it off.
+            It’s optional. Set <code>PAPYRA_UPDATE_CHECK_ENABLED: "false"</code> to turn it off.
             <a href="/docs/update-check/">Exactly what is sent</a>
           </p>
         </aside>
@@ -326,7 +320,7 @@ const when = (m: (typeof JOURNEY)[number]) => dayFmt.format(new Date(`${m.date}T
       <div class="privacy__side">
         <figure class="quote" data-reveal>
           <blockquote>
-            I’m a home-labber. Keeping my own data alive is hard enough — I have zero interest in
+            I run a home lab. Keeping my own data alive is hard enough, and I have no interest in
             storing yours.
           </blockquote>
         </figure>
@@ -353,7 +347,7 @@ const when = (m: (typeof JOURNEY)[number]) => dayFmt.format(new Date(`${m.date}T
       <header class="intro" data-reveal>
         <p class="eyebrow">Backups</p>
         <h2>Your notes are just files.</h2>
-        <p class="intro__lede">A folder of Markdown on your server. Four easy ways to keep a copy somewhere else.</p>
+        <p class="intro__lede">Everything is a folder of Markdown on your server. Here are four ways to keep a copy somewhere else.</p>
       </header>
       <ul class="vaults">
         {
@@ -372,10 +366,10 @@ const when = (m: (typeof JOURNEY)[number]) => dayFmt.format(new Date(`${m.date}T
         <Icon name="shield" size={20} class="warning__icon" />
         <div>
           <p>
-            <strong>Back it up anyway.</strong> Papyra is young software. Keep at least one copy off
-            the machine — and copy the whole <code>/data</code> folder, hidden <code>.papyra</code>
-            folders included. Locked notes are encrypted on disk; without those keys nobody can open
-            them, including you.
+            <strong>Back it up anyway.</strong> Papyra is young software, so keep at least one copy
+            off the machine. Copy the whole <code>/data</code> folder, including the hidden
+            <code>.papyra</code> folders. Locked notes are encrypted on disk, and without those keys
+            nobody can open them, including you.
           </p>
           <a href="/docs/backups/">Backup guide</a>
         </div>
@@ -388,7 +382,7 @@ const when = (m: (typeof JOURNEY)[number]) => dayFmt.format(new Date(`${m.date}T
     <div class="wrap wrap--narrow">
       <header class="intro" data-reveal>
         <p class="eyebrow">Roadmap</p>
-        <h2>Where Papyra has been, and where it’s going.</h2>
+        <h2>What’s done and what’s next</h2>
       </header>
 
       <ol class="journey" data-journey>
@@ -460,16 +454,16 @@ const when = (m: (typeof JOURNEY)[number]) => dayFmt.format(new Date(`${m.date}T
   <section class="section" id="install">
     <div class="wrap install">
       <div data-reveal>
-        <p class="eyebrow">Get started</p>
-        <h2>Up in a minute.</h2>
+        <p class="eyebrow">Install</p>
+        <h2>Install with Docker</h2>
         <p>
-          Save one file, run one command, open your browser. The first account you create is the
-          admin.
+          Download one compose file, run one command and open the site in your browser. The first
+          account you create becomes the admin.
         </p>
         <ul class="ticks">
-          <li><Icon name="check" size={16} />Runs on amd64 and arm64 — a NAS, a Pi, a VPS</li>
+          <li><Icon name="check" size={16} />Runs on amd64 and arm64: a NAS, a Raspberry Pi or a VPS</li>
           <li><Icon name="check" size={16} />One container, one volume</li>
-          <li><Icon name="check" size={16} />No accounts with us, no licence keys, no phoning home</li>
+          <li><Icon name="check" size={16} />No account with us and no licence key</li>
         </ul>
         <p class="install__links">
           <a class="btn btn--ghost" href="/docs/install/">
@@ -489,11 +483,11 @@ const when = (m: (typeof JOURNEY)[number]) => dayFmt.format(new Date(`${m.date}T
     <div class="wrap contribute">
       <div data-reveal>
         <p class="eyebrow">Open source</p>
-        <h2>Help shape what comes next.</h2>
-        <p>Papyra is free, GPL-licensed and built in the open. Every bug report, idea and pull request counts.</p>
+        <h2>Contributing</h2>
+        <p>Papyra is free software under the GPL, and the code is on GitHub. Bug reports, ideas and pull requests are all welcome.</p>
         <p class="contribute__star">
-          <strong>Like it? Star it.</strong> A star on GitHub is the easiest way to show support —
-          and it helps other people find Papyra.
+          <strong>Starring it on GitHub</strong> is an easy way to support the project, and it helps
+          other people find it.
         </p>
         <p class="contribute__actions">
           <a class="btn" href={GITHUB_URL} rel="noopener noreferrer">
@@ -529,7 +523,7 @@ const when = (m: (typeof JOURNEY)[number]) => dayFmt.format(new Date(`${m.date}T
     <div class="wrap wrap--narrow">
       <header class="intro" data-reveal>
         <p class="eyebrow">Questions</p>
-        <h2>Good to know.</h2>
+        <h2>FAQ</h2>
       </header>
       <div class="faq" data-reveal>
         {
@@ -663,10 +657,6 @@ const when = (m: (typeof JOURNEY)[number]) => dayFmt.format(new Date(`${m.date}T
     display: flex;
     flex-direction: column;
     align-items: flex-start;
-  }
-
-  .hero__chip {
-    margin-bottom: var(--space-6);
   }
 
   .hero__title {
