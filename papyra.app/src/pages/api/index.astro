@@ -31,7 +31,7 @@ curl -s "$PAPYRA/api/search?q=pricing" -H "X-API-Key: $PAPYRA_TOKEN"`;
 
 <Base
   title="API reference"
-  description="Papyra's HTTP API. Authenticate with a personal access token, drive your notes from anywhere. Every endpoint, grouped, with the shape of each request."
+  description="Papyra's HTTP API. Authenticate with a personal access token and read or write your notes from scripts. Every endpoint is listed with its request shape."
 >
   <section class="section">
     <div class="wrap api">
@@ -52,13 +52,13 @@ curl -s "$PAPYRA/api/search?q=pricing" -H "X-API-Key: $PAPYRA_TOKEN"`;
           </p>
           <p>
             Send it as <code>X-API-Key</code>, or as <code>Authorization: Bearer</code> if that
-            suits your client better — the two are equivalent. It is an opaque token, <em>not</em>
-            a JWT; there is nothing to decode.
+            suits your client better. The two are equivalent. It is an opaque token, <em>not</em>
+            a JWT, so there is nothing to decode.
           </p>
           <CodeBlock lang="bash" label="Terminal" code={authSample} />
           <p>
-            A token inherits the account that made it, including its folder. It can reach exactly
-            that person's notes and nothing else.
+            A token inherits the account that made it, including its folder. It can reach that
+            person's notes and nothing else.
           </p>
 
           <h2 id="notes">Creating and updating a note</h2>
@@ -74,18 +74,18 @@ curl -s "$PAPYRA/api/search?q=pricing" -H "X-API-Key: $PAPYRA_TOKEN"`;
           <CodeBlock lang="bash" label="Terminal" code={searchSample} />
           <h2 id="try-it">Trying requests</h2>
           <p>
-            This page is a reference, not a console — there is no public Papyra instance for it to
-            call. <strong>Your own instance serves a live, interactive portal at
-            <code>/docs</code></strong>, where you paste your token and actually issue requests.
-            That is deliberately reachable in production so self-hosters have real documentation
-            for their own server.
+            This page is a reference, not a console, because there is no public Papyra instance for
+            it to call. <strong>Your own instance serves an interactive portal at
+            <code>/docs</code></strong>, where you paste your token and send requests. It is left
+            reachable in production on purpose, so self-hosters have documentation for their own
+            server.
           </p>
           <p>
-            The document behind this page is at <code>/openapi/v1.json</code> on your instance —
-            point any OpenAPI tool at it.
+            The document behind this page is at <code>/openapi/v1.json</code> on your instance.
+            You can point any OpenAPI tool at it.
           </p>
 
-          <h2 id="notes-on-reading">Two things to know while reading</h2>
+          <h2 id="notes-on-reading">Two notes on reading this page</h2>
           <ul>
             <li>
               Everything needs authentication except <code>/api/shared/&#123;token&#125;</code>,
@@ -93,8 +93,8 @@ curl -s "$PAPYRA/api/search?q=pricing" -H "X-API-Key: $PAPYRA_TOKEN"`;
             </li>
             <li>
               Only {api.documented} of {api.operationCount} operations carry a written summary
-              today. The rest are listed with their real shape — method, path, parameters and
-              request body — but no prose. That gap is{' '}
+              today. The rest are listed with their method, path, parameters and request body,
+              but no description. That gap is{' '}
               <a href={`${GITHUB_URL}/issues`}>tracked upstream</a>.
             </li>
           </ul>
@@ -163,7 +163,7 @@ curl -s "$PAPYRA/api/search?q=pricing" -H "X-API-Key: $PAPYRA_TOKEN"`;
 
                       {op.bodyFields.length > 0 && (
                         <div class="op__section">
-                          <h3>Request body{op.bodyName ? ` — ${op.bodyName}` : ''}</h3>
+                          <h3>Request body{op.bodyName ? `: ${op.bodyName}` : ''}</h3>
                           <ul class="op__fields">
                             {op.bodyFields.map((f) => (
                               <li>

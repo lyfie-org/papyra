@@ -11,14 +11,19 @@ plainly what it does and does not do, so you can decide how to run it.
 ## Accounts and sessions
 
 - Passwords are hashed with **BCrypt**.
-- Sign-in is **throttled per account** — ten attempts per fifteen minutes — and
-  the auth endpoints are additionally rate-limited per IP.
+- Sign-in is **throttled per account** (ten attempts per fifteen minutes), and
+  the auth endpoints are also rate-limited per IP.
 - Sessions are cookie-based: `HttpOnly`, `SameSite=Lax`, and `Secure` in
   production unless you explicitly turn that off for a private network.
 - The signing keys live on the data volume, so restarting or upgrading the
   container does not silently sign everybody out.
 - An account created or reset by an administrator must set its own password
   before the API will do anything else for it.
+- Every account sets up an **authenticator app**. Administrators always sign in
+  with a password and a code; other accounts can turn that on. "Remember this
+  device" skips the code on that browser for 30 days.
+- Sensitive actions (exporting your notes, creating an API key, changing your
+  email, deleting the account) ask for a fresh code as well.
 
 ## Isolation between accounts
 
@@ -30,14 +35,15 @@ This is enforced in the storage layer rather than by filtering results, so it
 holds on code paths nobody thought about specifically. Personal access tokens
 inherit the same boundary as the account that made them.
 
-Administrators can manage accounts but cannot read other people's notes — there
-is no screen for it because there is no code path that would produce one.
+Administrators can manage accounts but cannot read other people's notes. There
+is no screen for it and no code that would produce one.
 
 ## Vault notes
 
 A note marked secure has its **body withheld by the server**. The API returns
-metadata and an empty body until a passkey unlock issues a short-lived token,
-which the server checks before sending any text.
+metadata and an empty body until you unlock the vault with its PIN (or a
+passkey), which issues a short-lived token the server checks before sending any
+text.
 
 The blur in the UI is cosmetic. The lock is that the bytes were never sent.
 
@@ -46,8 +52,8 @@ Vault notes are never shareable and never deliver a mention.
 ## Tokens and secrets
 
 - Personal access tokens are stored **hashed** and shown once, at creation.
-- API keys for OpenAI/Anthropic and the SMTP password are **write-only** over
-  the API: the server reports whether one is set, never its value.
+- The SMTP password is **write-only** over the API: the server reports whether
+  one is set, never its value.
 - Outbound webhooks are **HMAC-signed** so the receiver can verify the delivery
   came from your instance.
 
@@ -62,21 +68,27 @@ an unlisted proxy cannot spoof a client address past the rate limiter.
 - **Ordinary notes are not encrypted at rest.** They are plain files on your
   disk, which is the entire point of the design. Use full-disk encryption if you
   need it. Encrypted *backups* are a separate, supported thing.
-- **Locked notes are encrypted at rest — with a key on the same server.** Their
+- **Locked notes are encrypted at rest, with the key on the same server.** Their
   files are sealed with a per-account key ring kept in `.papyra/`, so a copied
   notes folder or a plain git mirror does not expose them. Someone with the
-  whole disk, keys included, could still open them. Lose the keys and nobody
-  can — back up the whole `/data` folder, hidden folders included.
+  whole disk, keys included, could still open them. If you lose the keys, nobody
+  can, so back up the whole `/data` folder, hidden folders included.
 - **No third-party audit** has been performed.
-- **This is young software.** 1.0 is the first stable release; it has been in
-  daily use, but not for years. Keep backups.
+- **This is young software.** It has been in daily use, but not for years. Keep
+  backups.
 
 ## The developer portal is reachable in production
 
 Your instance serves live API documentation at `/docs`, deliberately, so
 self-hosters have real documentation for their own server. It documents the same
-authenticated endpoints and grants nothing — the reader supplies their own
+authenticated endpoints and grants nothing. The reader has to supply their own
 personal access token to try anything.
+
+## The update check
+
+Once a day the server asks `versions.papyra.app` for the newest release. That is
+the only request it makes on its own, and you can turn it off. See
+[The update check](/docs/update-check/).
 
 ## Reporting a problem
 
@@ -84,5 +96,5 @@ Report security issues privately through
 [GitHub's security advisories](https://github.com/lyfie-org/papyra/security/advisories/new)
 rather than opening a public issue.
 
-Papyra is GPL-3.0. All of the above is claims you can check against the source
-rather than take on trust.
+Papyra is GPL-3.0, so you can check all of the above against the source instead
+of taking it on trust.

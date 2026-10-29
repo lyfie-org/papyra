@@ -5,7 +5,7 @@ group: Getting started
 order: 2
 ---
 
-Papyra is configured by environment variables. Every one is optional — the
+Papyra is configured by environment variables. Every one is optional. The
 defaults are what most installations want.
 
 ## The full list
@@ -26,8 +26,8 @@ defaults are what most installations want.
 
 Lists are comma-separated, as in every other container image.
 
-> Papyra also accepts .NET's own spelling — `Papyra__AllowInsecureCookies`,
-> `Cors__AllowedOrigins__0` — and anything set that way wins. The plain-English
+> Papyra also accepts .NET's own spelling (`Papyra__AllowInsecureCookies`,
+> `Cors__AllowedOrigins__0`), and anything set that way wins. The plain-English
 > names exist because the .NET convention fails silently: get the casing or the
 > doubled underscore subtly wrong and the setting is ignored with no error at
 > all, which is the worst possible failure for something you touch once.
@@ -56,7 +56,7 @@ See [The update check](/docs/update-check/) for exactly what is sent.
 ### `PAPYRA_TRUSTED_PROXIES`
 
 Behind a reverse proxy, every request arrives from the proxy's address. Without
-this, your rate limits and logs see one client — the proxy — and a single
+this, your rate limits and logs see one client (the proxy), and a single
 visitor can exhaust everybody's budget.
 
 List the proxy's IP and Papyra will believe its forwarded headers:
@@ -76,8 +76,8 @@ you leave this out entirely.
 
 ### `PAPYRA_WEBAUTHN_DOMAIN` and `PAPYRA_WEBAUTHN_ORIGINS`
 
-Passkeys are bound to a domain by the browser, and it must be the bare hostname
-— no scheme, no port, no path:
+Passkeys are bound to a domain by the browser, and it must be the bare hostname,
+with no scheme, port or path:
 
 ```yaml
 PAPYRA_WEBAUTHN_DOMAIN: "notes.example.com"
@@ -85,17 +85,17 @@ PAPYRA_WEBAUTHN_ORIGINS: "https://notes.example.com"
 ```
 
 Passkeys require real HTTPS. They will not work over plain HTTP outside
-`localhost`, and no configuration flag changes that — it is the browser's rule.
+`localhost`, and no configuration flag changes that. It is the browser's rule.
 
 ## Configured in the app, not the environment
 
 Deliberately **not** environment variables, because changing them should not mean
 editing a compose file and restarting a container:
 
-- **SSO / OIDC** — Settings → SSO, applied without a restart
-- **SMTP** — Settings → Email
-- **Trash retention** — Settings → Data & Storage
-- **Git backup** — Settings → Backup, per account
+- **SSO / OIDC**: Settings → SSO, applied without a restart
+- **SMTP**: Settings → Email
+- **Trash retention**: Settings → Data & Storage
+- **Git backup**: Settings → Backup, per account
 
 ## Optional extras, off unless configured
 

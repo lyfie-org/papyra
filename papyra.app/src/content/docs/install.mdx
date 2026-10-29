@@ -1,26 +1,26 @@
 ---
 title: Install Papyra
-summary: One compose file, one command. Papyra is a single container — no sidecars, no reverse proxy, no database to run.
+summary: One compose file, one command. Papyra is a single container with no sidecars, no reverse proxy and no database to run.
 group: Getting started
 order: 1
 ---
 
 Papyra ships as a Docker image, `lyfie/papyra`. The published recipe brings up
-a single container — there is nothing else to run alongside it.
+a single container. There is nothing else to run alongside it.
 
 ```bash
 curl -O https://raw.githubusercontent.com/lyfie-org/papyra/main/docker-compose.hub.yml
 docker compose -f docker-compose.hub.yml up -d
 ```
 
-Open `http://localhost:8080`. The first account you create is the administrator
-— there is no default password to change, because there is no default account.
+Open `http://localhost:8080`. The first account you create is the administrator.
+There is no default account, so there is no default password to change.
 
 ## What you just started
 
-**`papyra`** — the whole application. One .NET process serves both the API and
-the web app, so there is no separate frontend container and no reverse proxy
-required to glue them together. It listens on `8080` inside the container.
+One container, `papyra`, which is the whole application. One .NET process serves
+both the API and the web app, so there is no separate frontend container. It
+listens on `8080` inside the container.
 
 ## The data volume
 
@@ -28,10 +28,10 @@ Everything lives under `/data`. Back that up and you have backed up everything.
 
 ```
 /data
-├── .papyra/              instance state — all of it disposable except keys/
+├── .papyra/              instance state, all of it disposable except keys/
 │   ├── papyra.db         SQLite cache, rebuildable from the notes
 │   ├── lucene-index/     full-text index, rebuildable
-│   └── keys/             data-protection keys — NOT disposable, see below
+│   └── keys/             data-protection keys, NOT disposable, see below
 └── users/
     └── <user>/
         ├── notes/        your notes, as .md files. This is the real thing.
@@ -56,8 +56,8 @@ root. Find them with `id -u` and `id -g`.
 
 > **`.papyra/keys` is the one directory you must not lose.** It holds the keys
 > your session cookies are signed with. Delete it and every signed-in browser is
-> silently logged out. It lives on the volume precisely so a container upgrade
-> does not invalidate every session.
+> logged out. It lives on the volume so that upgrading the container does not
+> invalidate every session.
 
 ## Changing the port
 
@@ -76,9 +76,8 @@ docker compose -f docker-compose.hub.yml up -d
 ```
 
 On start-up Papyra reconciles the folder against its cache **before** it opens
-the port, so files that changed while it was down are folded in first. A green
-health check therefore means more than "the process is up" — it means disk and
-cache already agree.
+the port, so files that changed while it was down are folded in first. So a green
+health check means more than "the process is up": disk and cache already agree.
 
 Roll back by pinning the previous tag instead of `latest`.
 
@@ -86,8 +85,8 @@ Roll back by pinning the previous tag instead of `latest`.
 
 If you reach Papyra at a bare address like `http://192.168.1.50:8080`, signing
 in will appear to work and then drop you straight back to the login screen.
-Browsers refuse to keep a session cookie for a site that is not HTTPS —
-`localhost` excepted.
+Browsers refuse to keep a session cookie for a site that is not HTTPS, except
+on `localhost`.
 
 On a network that is already private (a LAN, Tailscale, WireGuard):
 
