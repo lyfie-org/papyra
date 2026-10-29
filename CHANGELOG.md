@@ -6,6 +6,10 @@ a Docker Hub tag and a GitHub Release.
 
 <!-- new releases are inserted directly below this line -->
 
+## [1.1.1] - 2026-10-29
+
+- feat: make the daily update check optional (0e339b0)
+
 ## [1.1.0] - 2026-10-29
 
 - Update docker-compose.hub.yml (6ca63b1)
