@@ -38,6 +38,7 @@ import GhostCards from '../GhostCards';
 import MoodPicker from './MoodPicker';
 import type { JournalBridge } from '../../lib/journalBridge';
 import { insertTodoEmbed, insertTranscript, insertWikilink } from '../../lib/journalEditorOps';
+import { placeCaretNear } from '../../lib/nearestCaret';
 import { createJournalSlashCommands } from '../../lib/journalSlash';
 import { newRefs } from '../../lib/journalMedia';
 import { canRecordVoice } from '../../lib/journalVoice';
@@ -436,6 +437,12 @@ export default function EntrySheet({ date, streakLine, bridge }: Props) {
       aria-label={`Journal, ${longDate(day)}`}
       role={focus ? 'dialog' : undefined}
       aria-modal={focus || undefined}
+      // A click on the paper outside the writing puts the caret at the nearest spot in it. (A portal's
+      // clicks bubble here through React: only what is really inside the sheet counts.)
+      onClick={(e) => {
+        const editable = sheetRef.current?.querySelector<HTMLElement>('.luthor-content-editable');
+        if (editable && e.currentTarget.contains(e.target as Node)) placeCaretNear(editable, e.target, e.clientX, e.clientY);
+      }}
     >
       {isToday && <span className="journal-sheet__ribbon" aria-hidden="true" />}
 

@@ -12,7 +12,7 @@
   </p>
 
   <p>
-    <a href="https://papyra.app/demo"><strong>▶ Try the live demo</strong></a> (no signup) ·
+    <a href="https://papyra.app/demo"><strong>Demo</strong></a> ·
     <a href="https://papyra.app">Website</a> ·
     <a href="https://papyra.app/docs">Docs</a> ·
     <a href="https://discord.gg/KQNsjGAUUz">Discord</a>

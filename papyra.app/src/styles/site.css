@@ -456,6 +456,14 @@ a.card:hover {
   text-align: left;
 }
 
+/* Inline code may break anywhere (above), and that makes its minimum width one
+   letter, so a table squeezes a key column down to "arc / h". Inside a table
+   keep each code word whole: the table scrolls in its box instead. */
+.prose td code,
+.prose th code {
+  overflow-wrap: break-word;
+}
+
 .prose th {
   font-weight: 500;
   color: var(--text-h);

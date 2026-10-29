@@ -269,6 +269,11 @@
   /* `clip` still clips but isn't a scroll container, so the toolbar can stick. */
   overflow: clip;
 }
+/* The paper's grain is drawn behind the writing. luthor paints its own opaque surface, which hid
+   it, so the writing read as a flat, slightly darker box on the page — let the paper show through. */
+.journal-sheet__canvas :is(.luthor-preset, .luthor-editor-wrapper, .luthor-editor, .luthor-richtext-container, .luthor-preset-papyra__content) {
+  background: transparent;
+}
 /* The writing fills the page: each box down the chain grows, so a click anywhere on the empty
    paper is a click in the editor. There is no drag-handle gutter: the writing starts at the page's own edge. */
 .journal-sheet__canvas .luthor-editor-wrapper { flex: 1 1 auto; min-height: 0; }

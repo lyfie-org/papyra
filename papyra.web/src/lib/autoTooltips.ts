@@ -3,7 +3,7 @@
 // aria-label but no title of its own borrows the label as its title. Buttons
 // that already show their label as text are skipped (the tooltip would only
 // repeat it), as are ones with a tooltip of their own (`title`, or luthor's
-// `data-tooltip`).
+// `data-tooltip`, or the page's own instant `data-tip`).
 //
 // Delegated from the document so it also covers luthor's toolbars and
 // anything rendered later. The borrowed title is tagged so it can follow the
@@ -35,7 +35,7 @@ export function installAutoTooltips() {
       return;
     }
 
-    if (!label || title !== null || el.hasAttribute('data-tooltip')) return;
+    if (!label || title !== null || el.hasAttribute('data-tooltip') || el.hasAttribute('data-tip')) return;
     const text = el.innerText.trim().toLowerCase();
     if (text && text === label.toLowerCase()) return;
     el.title = label;
