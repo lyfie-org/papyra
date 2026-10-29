@@ -221,12 +221,16 @@
   padding: 0 0.35rem;
   border-radius: var(--radius-pill);
   background: var(--tag-tint);
-  color: var(--tint-ink);
+  /* The plain well is a wash of the accent: the page's own heading ink reads on it in both themes.
+     (--tint-ink is the light theme's dark brown at the root, which vanished on a dark page.) */
+  color: var(--text-h);
   font-family: var(--mono);
   font-size: var(--fs-2xs);
   line-height: 1.4rem;
   text-align: center;
 }
+
+.tag-pill--tinted .tag-pill__count { color: var(--tint-ink); }
 
 .tag-pill__del {
   display: grid;

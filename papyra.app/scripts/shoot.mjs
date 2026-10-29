@@ -96,6 +96,18 @@ const SHOTS = [
       await page.waitForTimeout(400);
     },
   },
+  {
+    // Yesterday's page of the journal: a few lines, a ticked list and the day's mood.
+    name: 'journal',
+    path: '/journal',
+    wait: '.journal-sheet .luthor-content-editable',
+    viewports: ['desktop', 'mobile'],
+    then: async (page) => {
+      await page.getByRole('button', { name: 'Previous day' }).click();
+      await page.locator('.journal-sheet .luthor-content-editable').waitFor();
+      await page.waitForTimeout(700);
+    },
+  },
 ];
 
 // `--only a,b`: capture just those shots (the rest stay as committed).

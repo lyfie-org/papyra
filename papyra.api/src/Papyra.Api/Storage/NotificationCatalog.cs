@@ -54,6 +54,9 @@ public static class NotificationCatalog
     public const string BackupFailed = "data.backup_failed";
     public const string ImportFinished = "data.import_finished";
 
+    // Your journal.
+    public const string JournalReminder = "journal.reminder";
+
     // Other people.
     public const string Mention = "collab.mention";
     public const string Shared = "collab.shared";
@@ -103,6 +106,10 @@ public static class NotificationCatalog
         new(ImportFinished, "data", "Import finished",
             "A large import you started has finished, with how many notes came in."),
 
+        // Switched on here, but sent only to someone who turned the reminder on in Settings → Journal.
+        new(JournalReminder, "journal", "Journal reminder",
+            "A nudge at the time you chose, if today's journal page is still blank."),
+
         new(Mention, "collab", "Mentions",
             "Someone @mentions you in one of their notes."),
         new(Shared, "collab", "Shared with you",
@@ -124,6 +131,7 @@ public static class NotificationCatalog
     {
         ["security"] = "Security & account",
         ["data"] = "Your notes & backups",
+        ["journal"] = "Your journal",
         ["collab"] = "Other people",
         ["admin"] = "Running this Papyra",
     };

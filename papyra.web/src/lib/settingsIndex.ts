@@ -46,7 +46,14 @@ export const SETTINGS_INDEX: SettingsEntry[] = [
 
   { tab: 'appearance', tabLabel: 'Appearance', keywords: ['look', 'colours', 'colors'] },
   { tab: 'appearance', tabLabel: 'Appearance', section: 'theme', sectionLabel: 'Theme', keywords: ['dark mode', 'light mode', 'night'] },
+  { tab: 'appearance', tabLabel: 'Appearance', section: 'sidebar-order', sectionLabel: 'Sidebar order', keywords: ['navigation', 'menu', 'left bar', 'notes', 'to do', 'journal', 'reorder', 'arrange'] },
   { tab: 'appearance', tabLabel: 'Appearance', section: 'formatting-toolbar', sectionLabel: 'Formatting toolbar', keywords: ['editor', 'toolbar', 'table', 'bullet list', 'heading', 'embed', 'always show'] },
+
+  { tab: 'journal', tabLabel: 'Journal', keywords: ['diary', 'day', 'write'] },
+  { tab: 'journal', tabLabel: 'Journal', section: 'journal-day', sectionLabel: 'The day', keywords: ['day starts', 'midnight', 'night owl', 'prompts', 'streak', 'hide streak'] },
+  { tab: 'journal', tabLabel: 'Journal', section: 'journal-templates', sectionLabel: 'Templates', keywords: ['template', 'prompt', 'start from', 'daily page', 'morning pages'] },
+  { tab: 'journal', tabLabel: 'Journal', section: 'journal-reminder', sectionLabel: 'Reminder', keywords: ['remind', 'nudge', 'email', 'daily', 'notification'] },
+  { tab: 'journal', tabLabel: 'Journal', section: 'journal-locking', sectionLabel: 'Locking', keywords: ['lock', 'private', 'pin', 'seal', 'encrypt', 'lock all', 'lock new'] },
 
   { tab: 'notifications', tabLabel: 'Notifications', keywords: ['alerts'] },
   { tab: 'notifications', tabLabel: 'Notifications', section: 'email-notifications', sectionLabel: 'What Papyra tells you about', keywords: ['email', 'mentions', 'shares', 'backup', 'new sign-in', 'login alert', 'security email', 'push'] },
@@ -60,6 +67,7 @@ export const SETTINGS_INDEX: SettingsEntry[] = [
   { tab: 'data', tabLabel: 'Data & Storage', keywords: ['storage', 'files'] },
   { tab: 'data', tabLabel: 'Data & Storage', section: 'import', sectionLabel: 'Import', keywords: ['obsidian', 'google keep', 'migrate', 'bring notes in'] },
   { tab: 'data', tabLabel: 'Data & Storage', section: 'export', sectionLabel: 'Export', keywords: ['download all notes', 'zip'] },
+  { tab: 'data', tabLabel: 'Data & Storage', section: 'journal-export', sectionLabel: 'Journal export', keywords: ['journal', 'diary', 'pdf', 'book', 'markdown', 'download', 'zip', 'backup'] },
   { tab: 'data', tabLabel: 'Data & Storage', section: 'encrypted-backup', sectionLabel: 'Encrypted backup', keywords: ['password protected', 'archive'] },
   { tab: 'data', tabLabel: 'Data & Storage', section: 'restore-backup', sectionLabel: 'Restore from encrypted backup', keywords: ['recover', 'restore'] },
   { tab: 'data', tabLabel: 'Data & Storage', section: 'trash-retention', sectionLabel: 'Trash auto-delete', keywords: ['trash', 'retention', 'delete after'] },

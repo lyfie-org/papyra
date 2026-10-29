@@ -11,7 +11,7 @@ import { GITHUB_URL, DESCRIPTION, LUTHOR_URL, LYFIE_URL, SITE_URL } from '../dat
 import { FAQ, homeGraph } from '../data/about';
 import { JOURNEY, NEXT } from '../data/journey';
 import { readChangelog } from '../lib/changelog.mjs';
-import { dockerPulls, roundedCount, starCount } from '../lib/stats.mjs';
+import { dockerPulls, installCounts, roundedCount, starCount } from '../lib/stats.mjs';
 import type { IconName } from '../lib/icons';
 
 const { version } = readChangelog();
@@ -20,6 +20,8 @@ const stars = await starCount();
 const starLabel = stars !== null && stars >= 10 ? `Star on GitHub · ${stars.toLocaleString('en-GB')}` : 'Star on GitHub';
 
 const pulls = await dockerPulls();
+const census = await installCounts();
+const countText = (n: number | undefined) => (typeof n === 'number' ? n.toLocaleString('en') : '—');
 const pullsLabel = pulls !== null && pulls >= 1000 ? roundedCount(pulls) : null;
 
 // Structured data: who publishes Papyra (Lyfie), what it is, and its FAQ — so
@@ -33,7 +35,7 @@ docker compose -f docker-compose.hub.yml up -d
 
 const facts: { icon: IconName; text: string }[] = [
   { icon: 'file', text: 'Plain Markdown files' },
-  { icon: 'shield', text: 'No telemetry, ever' },
+  { icon: 'shield', text: 'No tracking' },
   pullsLabel
     ? { icon: 'docker', text: `${pullsLabel} Docker pulls` }
     : { icon: 'box', text: 'One Docker container' },
@@ -57,6 +59,13 @@ const showcase = [
     alt: 'Typing a new note: a heading, a [[ link to another note picked from a list, a bulleted list, then “Saved”',
   },
   {
+    clip: 'journal',
+    eyebrow: 'Reflect',
+    title: 'A page for every day.',
+    text: 'Write the day, tick off how it felt, and see it all on a calendar. Link the notes and to-dos you touched — or lock a day for your eyes only.',
+    alt: 'Writing today’s journal page, picking a mood, opening the side panel of notes and to-dos, then the month calendar',
+  },
+  {
     clip: 'search',
     eyebrow: 'Find',
     title: 'Anything, in a keystroke.',
@@ -76,13 +85,13 @@ const everything: { icon: IconName; title: string; text: string }[] = [
   { icon: 'users', title: 'Live collaboration', text: 'Edit shared notes together, cursors and all.' },
   { icon: 'history', title: 'Version history', text: 'Every change kept. Restore any of them.' },
   { icon: 'link', title: 'Slash commands, links', text: 'Type / for any block, [[ to link a note.' },
-  { icon: 'wifi-off', title: 'Works offline', text: 'Keep writing on a plane. It syncs when you land.' },
   { icon: 'image', title: 'Pictures, maps, any link', text: 'Drop files in, or paste a map, video or page link.' },
   { icon: 'message', title: 'Share and comment', text: 'Share a note, @mention, reply in threads.' },
   { icon: 'key', title: 'Passkeys and 2FA', text: 'Fingerprint sign-in, authenticator codes, SSO.' },
   { icon: 'git', title: 'Encrypted backups', text: 'Push your notes to a private Git repo, sealed.' },
   { icon: 'layers', title: 'Smart collections', text: 'Tags and filters that sort themselves.' },
   { icon: 'list-check', title: 'To-dos', text: 'Checklists that live beside your notes.' },
+  { icon: 'book', title: 'A journal', text: 'A page a day, with moods, a calendar and lockable days.' },
   { icon: 'smartphone', title: 'On every device', text: 'Install it on your phone, tablet and laptop.' },
   { icon: 'lock', title: 'For the whole family', text: 'Separate, private accounts on one server.' },
 ];
@@ -93,7 +102,7 @@ const imports: { icon: IconName; title: string; text: string }[] = [
   { icon: 'file', title: 'Any Markdown', text: 'Drag files onto the desk. That’s the whole import.' },
 ];
 
-const notCollected = ['Telemetry', 'Analytics', 'Crash reports', 'Usage pings', 'An account with us'];
+const notCollected = ['Your IP address', 'Your notes', 'Usernames or emails', 'Server name', 'Usage events', 'Crash reports', 'Cookies', 'An account with us'];
 
 const security: { icon: IconName; title: string; text: string }[] = [
   { icon: 'lock', title: 'Locked notes, sealed on disk', text: 'Encrypted at rest. Opened with your PIN — or your fingerprint.' },
@@ -122,9 +131,7 @@ const helps: { icon: IconName; title: string; text: string; href: string }[] = [
 
 const SHOWN = 6;
 const dayFmt = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
-const monthFmt = new Intl.DateTimeFormat('en-GB', { month: 'short', year: 'numeric', timeZone: 'UTC' });
-const when = (m: (typeof JOURNEY)[number]) =>
-  (m.current ? monthFmt : dayFmt).format(new Date(`${m.date}T00:00:00Z`));
+const when = (m: (typeof JOURNEY)[number]) => dayFmt.format(new Date(`${m.date}T00:00:00Z`));
 ---
 
 <Base
@@ -282,11 +289,13 @@ const when = (m: (typeof JOURNEY)[number]) =>
     <div class="wrap privacy">
       <div class="privacy__copy" data-reveal>
         <p class="eyebrow">Private by default</p>
-        <h2>Nothing phones home.</h2>
+        <h2>Your notes stay yours.</h2>
         <p>
           Your notes never leave your server — unless you share one, back it up to Git, or email
-          yourself a sign-in alert.
+          yourself a sign-in alert. The one thing Papyra sends anywhere is a daily check for a newer
+          version.
         </p>
+        <p class="nope__label">What many apps collect, and Papyra never does:</p>
         <ul class="nope" aria-label="What Papyra never collects">
           {
             notCollected.map((item) => (
@@ -297,26 +306,43 @@ const when = (m: (typeof JOURNEY)[number]) =>
             ))
           }
         </ul>
-        <figure class="quote">
+        <aside class="census" aria-labelledby="census-title" data-census>
+          <h3 id="census-title" class="census__title">The one thing I count</h3>
+          <p class="census__numbers" aria-live="polite">
+            <span><strong data-census-installs>{countText(census?.installs)}</strong> installs</span>
+            <span><strong data-census-active>{countText(census?.active)}</strong> active this month</span>
+          </p>
+          <p class="census__what">
+            The only daily call home checks for updates. I use it as a count of active installs to
+            keep myself motivated and to see where to take Papyra next — it feels good to know it’s
+            being used.
+          </p>
+          <p class="census__off">
+            <a href="/docs/update-check/">Exactly what is sent</a>
+          </p>
+        </aside>
+      </div>
+      <div class="privacy__side">
+        <figure class="quote" data-reveal>
           <blockquote>
             I’m a home-labber. Keeping my own data alive is hard enough — I have zero interest in
             storing yours.
           </blockquote>
         </figure>
+        <ul class="shields">
+          {
+            security.map((s, i) => (
+              <li class="shields__card" data-reveal style={`--reveal-delay:${i * 80}ms`}>
+                <span class="shields__icon">
+                  <Icon name={s.icon} size={20} />
+                </span>
+                <h3>{s.title}</h3>
+                <p>{s.text}</p>
+              </li>
+            ))
+          }
+        </ul>
       </div>
-      <ul class="shields">
-        {
-          security.map((s, i) => (
-            <li class="shields__card" data-reveal style={`--reveal-delay:${i * 80}ms`}>
-              <span class="shields__icon">
-                <Icon name={s.icon} size={20} />
-              </span>
-              <h3>{s.title}</h3>
-              <p>{s.text}</p>
-            </li>
-          ))
-        }
-      </ul>
     </div>
   </section>
 
@@ -530,6 +556,23 @@ const when = (m: (typeof JOURNEY)[number]) =>
   </section>
 
 </Base>
+
+<script>
+  // The install count, refreshed from our own versions.papyra.app (the same place the daily update check
+  // goes). The page already carries the numbers from its last build, so if this can't be reached they simply stay.
+  const census = document.querySelector<HTMLElement>('[data-census]');
+  if (census) {
+    fetch('https://versions.papyra.app/stats.json')
+      .then((res) => (res.ok ? res.json() : Promise.reject(new Error(String(res.status)))))
+      .then((stats: { installs: number; active: number }) => {
+        if (typeof stats.installs !== 'number' || typeof stats.active !== 'number') return;
+        const n = new Intl.NumberFormat('en');
+        census.querySelector('[data-census-installs]')!.textContent = n.format(stats.installs);
+        census.querySelector('[data-census-active]')!.textContent = n.format(stats.active);
+      })
+      .catch(() => {});
+  }
+</script>
 
 <script>
   // The hero's changing word: type it, hold it, backspace it fast, type the
@@ -978,15 +1021,27 @@ const when = (m: (typeof JOURNEY)[number]) =>
     font-size: clamp(30px, 3vw + 14px, 48px);
   }
 
+  /* The quote sits above the security cards, in the same column. */
+  .privacy__side {
+    display: grid;
+    gap: var(--space-5);
+  }
+
   .privacy__copy > p:not(.eyebrow) {
     font-size: var(--fs-md);
     line-height: 1.6;
     max-width: 38ch;
   }
 
+  .nope__label {
+    margin: var(--space-5) 0 var(--space-2);
+    font-size: var(--fs-xs);
+    color: var(--text);
+  }
+
   .nope {
     list-style: none;
-    margin: var(--space-5) 0 var(--space-8);
+    margin: 0 0 var(--space-6);
     padding: 0;
     display: flex;
     flex-wrap: wrap;
@@ -1010,6 +1065,48 @@ const when = (m: (typeof JOURNEY)[number]) =>
     color: var(--danger);
     flex: none;
   }
+
+  .census {
+    margin: 0 0 var(--space-6);
+    padding: var(--space-4) var(--space-5);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--surface);
+  }
+
+  .census__title {
+    margin: 0 0 var(--space-2);
+    font: 500 var(--fs-xs) / 1.2 var(--mono);
+    letter-spacing: 0.14em;
+    text-transform: uppercase;
+    color: var(--text);
+  }
+
+  .census__numbers {
+    margin: 0 0 var(--space-3);
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2) var(--space-6);
+    font-size: var(--fs-sm);
+    color: var(--text);
+  }
+
+  .census__numbers strong {
+    font: 400 var(--fs-2xl) / 1.1 var(--heading);
+    color: var(--text-h);
+    margin-right: 4px;
+  }
+
+  .census__what,
+  .census__off {
+    margin: 0 0 var(--space-2);
+    font-size: var(--fs-xs);
+    line-height: 1.6;
+    color: var(--text);
+  }
+
+  .census__off { margin-bottom: 0; }
+  .census__off a { color: var(--accent-text); }
 
   .quote {
     margin: 0;

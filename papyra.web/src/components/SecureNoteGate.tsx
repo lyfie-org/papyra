@@ -16,9 +16,12 @@ import './SecureNoteGate.css';
 export default function SecureNoteGate({
   noteId,
   onUnlocked,
+  noun = 'note',
 }: {
   noteId: string;
   onUnlocked: (body: string) => void;
+  /** What is locked, in the card's own words ("note", or "day" in the journal). */
+  noun?: 'note' | 'day';
 }) {
   const { status, open } = useVault();
   const [error, setError] = useState<string | null>(null);
@@ -30,7 +33,7 @@ export default function SecureNoteGate({
     try {
       const res = await vaultFetch(`/api/notes/${encodeURIComponent(noteId)}/secure`);
       if (res.status === 401) { forgetUnlock(); return; } // the unlock lapsed — ask again
-      if (!res.ok) { setError('Could not open this note.'); return; }
+      if (!res.ok) { setError(`Could not open this ${noun}.`); return; }
       const note = await res.json();
       onUnlocked(note.body ?? '');
     } catch {
@@ -38,7 +41,7 @@ export default function SecureNoteGate({
     } finally {
       revealing.current = false;
     }
-  }, [noteId, onUnlocked]);
+  }, [noteId, onUnlocked, noun]);
 
   // Already open on this session: no prompt.
   useEffect(() => {
@@ -57,13 +60,13 @@ export default function SecureNoteGate({
         <p>█████ ███████ ████ ██</p>
       </div>
 
-      <div className="secure-gate__panel" role="group" aria-label="Locked note">
+      <div className="secure-gate__panel" role="group" aria-label={`Locked ${noun}`}>
         <Lock size={22} className="secure-gate__icon" />
-        <h2 className="secure-gate__title">This note is locked</h2>
+        <h2 className="secure-gate__title">This {noun} is locked</h2>
         {pinSet === false ? (
           <>
             <p className="secure-gate__hint">
-              Set a vault PIN to open locked notes. It works on every device, with biometrics as an optional
+              Set a vault PIN to open locked {noun === 'day' ? 'days' : 'notes'}. It works on every device, with biometrics as an optional
               shortcut you can add later in Settings.
             </p>
             <VaultPinForm />

@@ -149,3 +149,45 @@ describe('media', () => {
     expect(items.find((i) => i.id === 'papyra.move-down')!.disabled).toBe(false);
   });
 });
+
+describe('days of the journal', () => {
+  it('opens [[2026-09-14]] as that day, not as a note', () => {
+    adapter().openNote({ title: '2026-09-14' });
+    expect(navigate).toHaveBeenCalledWith('/journal/2026-09-14');
+    expect(onUnresolvedLink).not.toHaveBeenCalled();
+  });
+
+  it('does not take other date-looking text for a day', () => {
+    adapter().openNote({ title: '2026-9-14' });
+    expect(navigate).not.toHaveBeenCalled();
+    expect(onUnresolvedLink).toHaveBeenCalledWith('2026-9-14');
+  });
+
+  it('offers the day a [[ query names, as the canonical link text, ahead of notes', async () => {
+    const list = await adapter().searchNotes('2024-03-02');
+    expect(list[0]).toEqual({ id: 'journal-2024-03-02', title: '2024-03-02' });
+    expect((await adapter().searchNotes('garden')).some((r) => r.id.startsWith('journal-'))).toBe(false);
+  });
+
+  it('understands words for days', async () => {
+    const queryClient = new QueryClient();
+    queryClient.setQueryData(['notes'], notes);
+    queryClient.setQueryData(['journal', 'today'], { date: '2026-10-25' });
+    const a = createPapyraEditorAdapter({ noteId: 'x', navigate, queryClient, onUnresolvedLink });
+    expect((await a.searchNotes('yesterday'))[0].title).toBe('2026-10-24');
+    expect((await a.searchNotes('last fri'))[0].title).toBe('2026-10-23');
+    expect((await a.searchNotes('sep 14'))[0].title).toBe('2026-09-14');
+  });
+});
+
+describe('mentions', () => {
+  it('are offered by default', () => {
+    expect(adapter().searchUsers).toBeTypeOf('function');
+  });
+
+  it('are off for the journal: no people to look up, @ stays plain text', () => {
+    const queryClient = new QueryClient();
+    const a = createPapyraEditorAdapter({ noteId: 'journal-2026-10-25', navigate, queryClient, mentions: false });
+    expect(a.searchUsers).toBeUndefined();
+  });
+});

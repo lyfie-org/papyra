@@ -106,6 +106,30 @@ public sealed class MediaJobsTests
     }
 
     [Fact]
+    public async Task APictureAddedToAJournalDayThatAlreadyExists_IsReadToo()
+    {
+        var ocr = new FakeOcr();
+        var (factory, dir) = NewApp(ocr);
+        try
+        {
+            var owner = await OwnerAsync(factory);
+            var today = (await owner.GetFromJsonAsync<JsonElement>("/api/journal/today")).GetProperty("date").GetString();
+            var receipt = await UploadAsync(owner, Png, "receipt.png");
+
+            // The day exists first; the picture arrives in a later save (the editor's autosave).
+            Assert.True((await owner.PutAsJsonAsync($"/api/journal/{today}", new { body = "A start." })).IsSuccessStatusCode);
+            Assert.True((await owner.PutAsJsonAsync($"/api/journal/{today}", new { body = $"A start.\n\n![[{receipt}]]" })).IsSuccessStatusCode);
+            Assert.True(await EventuallyAsync(() => Task.FromResult(ocr.Calls == 1)), "a picture added to an existing day was never read");
+
+            // Saving the same text again doesn't read it again.
+            Assert.True((await owner.PutAsJsonAsync($"/api/journal/{today}", new { body = $"A start, edited.\n\n![[{receipt}]]" })).IsSuccessStatusCode);
+            await Task.Delay(1500);
+            Assert.Equal(1, ocr.Calls);
+        }
+        finally { Cleanup(factory, dir); }
+    }
+
+    [Fact]
     public async Task AFailingJob_Retries_ThenGivesUp_AndIsRemembered()
     {
         var ocr = new FakeOcr { FailuresLeft = 1000 };

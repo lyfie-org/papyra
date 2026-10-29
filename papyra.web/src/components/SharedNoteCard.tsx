@@ -1,11 +1,13 @@
 import type { CSSProperties } from 'react';
 import { Link, useSearchParams } from 'react-router-dom';
-import { Pin } from 'lucide-react';
-import { useSharedPin, type IncomingShare } from '../hooks/useShares';
+import { Clock, Pin, Trash2 } from 'lucide-react';
+import { useRemoveExpiredShare, useSharedPin, type IncomingShare } from '../hooks/useShares';
 import { useResolvedTheme } from '../hooks/useTheme';
 import { tintInkClass } from '../lib/noteColors';
+import { useToast } from '../lib/toastContext';
 import MarkdownPreview from './MarkdownPreview';
 import Avatar from './Avatar';
+import BusyButton from './BusyButton';
 import SharedNoteActions from './SharedNoteActions';
 import { dayLabel, fullStamp, useMinuteTick, useTimeZone } from '../lib/timeZone';
 import './NoteCard.css';
@@ -17,12 +19,78 @@ import './SharedNoteCard.css';
  * preview, same actions on hover — with the owner's face at its foot, and
  * "Can view" when you can only read it. Opens over the current page via
  * `?open=<shareId>`.
+ *
+ * A share that has ended is drawn as a blurred stub instead (see ExpiredCard):
+ * the server sends nothing of the note for it.
  */
 export default function SharedNoteCard({ share, showSharedDate = false }: {
   share: IncomingShare;
   /** Add "Shared 12 Sep" under the owner (the Shared with me page). */
   showSharedDate?: boolean;
 }) {
+  return share.expired
+    ? <ExpiredCard share={share} />
+    : <LiveCard share={share} showSharedDate={showSharedDate} />;
+}
+
+/**
+ * What is left of a share once it has ended: a blurred ghost of a note under a
+ * "Share expired" label. Opening it explains what happened; the bin clears it.
+ * Nothing here comes from the note — the bars are decoration.
+ */
+function ExpiredCard({ share }: { share: IncomingShare }) {
+  const zone = useTimeZone();
+  const now = useMinuteTick();
+  const [params] = useSearchParams();
+  const remove = useRemoveExpiredShare();
+  const { toast } = useToast();
+  const owner = share.ownerName && share.ownerName !== share.owner ? `${share.ownerName} (@${share.owner})` : `@${share.owner}`;
+  const ended = share.expiredUtc ? dayLabel(share.expiredUtc, zone, now) : null;
+  const next = new URLSearchParams(params);
+  next.set('open', String(share.shareId));
+
+  return (
+    <Link
+      to={{ search: next.toString() }}
+      className="note-card__link"
+      aria-label={`Expired share from ${owner}. Open for details.`}
+    >
+      <article className="note-card shared-card shared-card--expired">
+        <div className="shared-card__ghost" aria-hidden="true">
+          <span /><span /><span /><span />
+        </div>
+        <div className="shared-card__veil">
+          <span className="shared-card__pill"><Clock size={14} aria-hidden="true" /> Share expired</span>
+        </div>
+        <p className="shared-card__foot" title={`Shared with you by ${owner}`}>
+          <Avatar username={share.owner} name={share.ownerName} size={22} className="shared-card__face" />
+          {ended && (
+            <time dateTime={share.expiredUtc} title={share.expiredUtc ? fullStamp(share.expiredUtc, zone) : undefined}>
+              Ended {ended}
+            </time>
+          )}
+        </p>
+        <div className="note-card__actions">
+          <BusyButton
+            type="button"
+            className="note-card__action"
+            aria-label="Remove expired share"
+            title="Remove from my notes"
+            onClick={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              return remove.mutateAsync(share.shareId).catch((err: Error) => toast(err.message));
+            }}
+          >
+            <Trash2 size={16} />
+          </BusyButton>
+        </div>
+      </article>
+    </Link>
+  );
+}
+
+function LiveCard({ share, showSharedDate }: { share: IncomingShare; showSharedDate: boolean }) {
   const theme = useResolvedTheme();
   const zone = useTimeZone();
   const now = useMinuteTick();

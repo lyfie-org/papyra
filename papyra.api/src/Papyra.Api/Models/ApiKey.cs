@@ -14,4 +14,23 @@ public class ApiKey
     public string TokenHash { get; set; } = string.Empty;
     public DateTime CreatedUtc { get; set; }
     public DateTime? LastUsedUtc { get; set; }
+    // What the key may reach: "notes" (everything but the journal — the default,
+    // and what every key made before scopes existed is) or "journal" (the
+    // journal API and nothing else). See ApiKeyScopes.
+    public string Scope { get; set; } = ApiKeyScopes.Notes;
+}
+
+public static class ApiKeyScopes
+{
+    public const string Notes = "notes";
+    public const string Journal = "journal";
+
+    /// <summary>The claim the API-key middleware adds beside the user's own.</summary>
+    public const string ClaimType = "papyra:api_key_scope";
+
+    /// <summary>A journal key's visible prefix, so a pasted token is recognisable.</summary>
+    public const string JournalTokenPrefix = "papyra_j";
+
+    public static string Normalize(string? scope) =>
+        string.Equals(scope?.Trim(), Journal, StringComparison.OrdinalIgnoreCase) ? Journal : Notes;
 }

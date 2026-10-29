@@ -12,7 +12,7 @@
   </p>
 
   <p>
-    <a href="https://papyra.app/demo"><strong>▶ Try the live demo</strong></a> (no signup) ·
+    <a href="https://papyra.app/demo"><strong>Demo</strong></a> ·
     <a href="https://papyra.app">Website</a> ·
     <a href="https://papyra.app/docs">Docs</a> ·
     <a href="https://discord.gg/KQNsjGAUUz">Discord</a>
@@ -35,7 +35,7 @@
 - **Your notes are just files.** Every note is a `.md` file with a small YAML header, in a folder you own. If you ever stop using Papyra, you still have a normal folder of Markdown.
 - **One container, one volume.** No database server, no search server, no sidecars. amd64 and arm64, so a Raspberry Pi 4 or 5 is plenty.
 - **Plays well with your other tools.** Obsidian, VS Code, `grep`, Syncthing and git can all work on the same folder. Papyra notices outside changes and catches up live.
-- **Private by default.** No telemetry, no hosted service, nothing phoning home. GPLv3.
+- **Private by default.** No tracking, analytics or crash reports, and your notes stay on your server. The only call home is a daily check for updates, and I use it as a count of active installs to keep myself motivated. GPLv3.
 
 <p align="center">
   <img src="assets/readme/shell-edit.gif" alt="A shell appends a line to a note's file and the open app updates on its own" width="760" />
@@ -123,7 +123,15 @@ Open **http://localhost:8080** and create the first account. That's it.
   </tr>
 </table>
 
-**Also in the box:** pictures and PDFs inside notes · to-do lists · tags and smart collections · sharing with people or by link (with expiry) · passkeys, an authenticator app and single sign-on (OIDC) · import from Obsidian and Google Keep · export everything to a zip · sealed backups · backup to a private GitHub repo · installs as an app on your phone.
+<p align="center">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="papyra.app/src/assets/shots/journal-desktop-dark.png" />
+    <img alt="A day of the Papyra journal: the date, how the day felt, a few lines of writing and a ticked list" src="papyra.app/src/assets/shots/journal-desktop-light.png" width="760" />
+  </picture>
+  <br/><sub><b>📔 A journal, too.</b> A page for each day, with moods, a calendar, voice notes and days you can lock. Still plain Markdown files, and it exports as files or a PDF book.</sub>
+</p>
+
+**Also in the box:** pictures and PDFs inside notes · to-do lists · tags and smart collections · sharing with people or by link (with expiry) · passkeys, an authenticator app and single sign-on (OIDC) · import from Obsidian, Google Keep and Day One · export everything to a zip · sealed backups · backup to a private GitHub repo · installs as an app on your phone.
 
 <p align="center">
   <picture>
@@ -135,7 +143,7 @@ Open **http://localhost:8080** and create the first account. That's it.
 ## 👣 Your first ten minutes
 
 1. **Create your account.** A short setup walks you through a username, an authenticator app, email, a password and a vault PIN. (Restoring a backup instead? That's an option on the first screen.)
-2. **Bring your notes.** *Settings → Data & Storage* imports an Obsidian vault (.zip) or a Google Keep Takeout. ([Importing](https://papyra.app/docs/importing/))
+2. **Bring your notes.** *Settings → Data & Storage* imports an Obsidian vault (.zip), a Google Keep Takeout, or a Day One journal. ([Importing](https://papyra.app/docs/importing/))
 3. **Write.** Click **New note**, or press <kbd>/</kbd> in a note for headings, lists, tables, images and embeds. ([Writing](https://papyra.app/docs/writing/))
 4. **Lock what's private.** Lock any note with the vault PIN from setup; add your fingerprint or face in *Settings → Security*.
 5. **Put it on your phone.** Open Papyra in your phone's browser and choose *Add to Home Screen*.
@@ -151,6 +159,16 @@ Stuck? Check [Troubleshooting](https://papyra.app/docs/troubleshooting/) or ask 
 - **Want to help?** See [CONTRIBUTING.md](CONTRIBUTING.md). Bug reports, docs fixes and ideas all count.
 
 Papyra is a [Lyfie](https://www.lyfie.org) project, alongside [luthor](https://www.luthor.fyi), the editor it's built on. It was vibe-coded: designed, tested and steered by a person, with AI coding assistants writing most of the code.
+
+## ⭐ Star history
+
+<a href="https://star-history.com/#lyfie-org/papyra&Date">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=lyfie-org/papyra&type=Date&theme=dark" />
+    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=lyfie-org/papyra&type=Date" />
+    <img alt="Star history chart for lyfie-org/papyra" src="https://api.star-history.com/svg?repos=lyfie-org/papyra&type=Date" width="600" />
+  </picture>
+</a>
 
 ---
 

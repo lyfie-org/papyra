@@ -57,10 +57,12 @@ public static class MediaEndpoints
 
         // What the upload will accept, so the web app can say no before sending
         // 600 MB. A literal segment: it outranks `/api/media/{filename}`.
-        app.MapGet("/api/media/limits", (HttpResponse response) =>
+        // `transcription`: a recording of the .wav kind gets its words read out, so a page that
+        // records (the journal) knows whether to hand over a WAV.
+        app.MapGet("/api/media/limits", (HttpResponse response, AudioTranscriptionService transcription) =>
         {
             response.Headers.CacheControl = "private, max-age=3600";
-            return Results.Ok(MediaLimits.Describe());
+            return Results.Ok(MediaLimits.Describe(transcription.Enabled));
         }).RequireAuthorization();
 
         app.MapMethods("/api/media/{filename}", GetOrHead, (string filename, HttpContext http, MediaReferences refs,
@@ -578,7 +580,8 @@ public sealed class SharedMedia(
     public async Task<Grant> EditableGrantAsync(int shareId, HttpContext http, CancellationToken ct)
     {
         await LoadGrantAsync(shareId, http, ct);
-        var (_, share, note, _) = _resolved!.Value;
+        var (_, share, note, refusal) = _resolved!.Value;
+        if (refusal is { } r) return new(null, null, r.Error);
         if (share is null || note is null || note.Secure) return new(null, null, Results.NotFound());
         if (share.Access != "edit")
             return new(null, null, Results.Json(new { error = "You can only view this note." },
@@ -615,7 +618,11 @@ public sealed class SharedMedia(
         {
             var uid = int.Parse(http.User.FindFirstValue(ClaimTypes.NameIdentifier)!);
             var share = await db.Shares.FirstOrDefaultAsync(s => s.Id == shareId && s.GranteeUserId == uid, ct);
-            _resolved = (key, share, share is null ? null : await NoteOf(share, ct), share is null ? NotFound() : null);
+            // An ended share hands out nothing, attachments included.
+            var ended = share?.IsExpired(DateTime.UtcNow) == true;
+            _resolved = (key, share,
+                share is null || ended ? null : await NoteOf(share, ct),
+                share is null ? NotFound() : ended ? Gone("This share has expired.") : null);
         }
     }
 

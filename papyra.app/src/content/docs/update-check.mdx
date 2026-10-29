@@ -1,0 +1,51 @@
+---
+title: The update check
+summary: The one request Papyra makes on its own, what it sends, when, and what the project does with it.
+group: Reference
+order: 3
+---
+
+Papyra has no tracking, analytics or crash reports. It makes **one** request of its own, once a day: a check for a newer version.
+
+## What it does
+
+Your server asks `versions.papyra.app` for the newest release. If one is newer, admins see a warning icon beside the version in the sidebar, with a popup linking to the release notes. Other accounts never see it.
+
+The whole client is [`UpdateCheck.cs`](https://github.com/lyfie-org/papyra/blob/main/papyra.api/src/Papyra.Api/Storage/UpdateCheck.cs). The whole server is [`papyra.versions`](https://github.com/lyfie-org/papyra/tree/main/papyra.versions).
+
+## What it sends
+
+Four values, in the request address:
+
+```
+GET https://versions.papyra.app/latest.json?id=2d1f0c2e-…&v=1.0.0&arch=arm64&os=linux
+```
+
+| Value | Meaning |
+| --- | --- |
+| `id` | A random ID the server made the first time it asked, kept in `.papyra/instance-id`. Not derived from anything. It only says "the same install again". Delete the file for a new one. |
+| `v` | The version you run, e.g. `1.0.0`. Dev images send theirs, e.g. `1.1.0-dev.abc1234`. |
+| `arch` | Processor family: `x64`, `arm64` or `arm`. |
+| `os` | OS family: `linux`, `windows` or `macos`. |
+
+Never sent: notes, titles, usernames, emails, your server's name or address, number of accounts, or anything about how you use Papyra.
+
+## When it asks
+
+- Once a day, at a time of day fixed per install (derived from its ID). Check-ins spread across the day.
+- Never between 02:30 and 03:30 UTC. That hour is when the site is rebuilt from the day's numbers.
+- A restart doesn't ask again.
+- If a check fails, it retries after 1 hour, then 2, 4 and 6. The time a retry gets through becomes the install's new daily time.
+
+## What the project keeps
+
+- **Your IP address is never stored.** Cloudflare turns the connection into a two-letter country code at its edge, and only that code reaches the counting code. The Worker has no request logs.
+- **One row per install:** ID, version, processor and OS family, country, first and last day seen ([`schema.sql`](https://github.com/lyfie-org/papyra/blob/main/papyra.versions/schema.sql)).
+- **Public numbers:** installs ever seen, installs active in the last 30 days, and their countries, versions, processors and operating systems, at [`versions.papyra.app/stats.json`](https://versions.papyra.app/stats.json) and on the [home page](/#privacy).
+- **Gaps:** "active" is counted back from the newest check-in, not from today, so a few quiet days don't drain it. Installs only ever go up, and the last good numbers are kept if the live ones can't be worked out.
+
+## Why I count
+
+It keeps me motivated to build more, and it feels good to see Papyra is being used. That, plus telling you about updates, is all it's for.
+
+A server with no release version (`dotnet run`, the test suite) never makes the request, so developing Papyra doesn't count as installs.

@@ -72,6 +72,7 @@ public static partial class CommentEndpoints
         int uid, NoteComment comment, CancellationToken ct)
     {
         string? access = comment.OwnerId == uid ? "owner" : await db.Shares
+            .Live(DateTime.UtcNow)
             .Where(s => s.OwnerId == comment.OwnerId && s.NoteId == comment.NoteId && s.Kind == "user" && s.GranteeUserId == uid)
             .Select(s => s.Access).FirstOrDefaultAsync(ct);
         if (access is null) return (null, Results.NotFound());
@@ -93,6 +94,7 @@ public static partial class CommentEndpoints
     private static async Task<List<int>> AudienceAsync(AppDbContext db, Target t, CancellationToken ct)
     {
         var people = await db.Shares
+            .Live(DateTime.UtcNow)
             .Where(s => s.OwnerId == t.OwnerId && s.NoteId == t.NoteId && s.Kind == "user" && s.GranteeUserId != null)
             .Select(s => s.GranteeUserId!.Value).ToListAsync(ct);
         people.Add(t.OwnerId);

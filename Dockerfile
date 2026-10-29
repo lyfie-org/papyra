@@ -16,8 +16,12 @@ COPY papyra.web/package.json papyra.web/
 RUN pnpm install --frozen-lockfile
 
 COPY papyra.web/ papyra.web/
-# The sidebar shows this version; vite.config reads it at build time.
+# The sidebar shows this version; vite.config reads it at build time. A release is
+# the VERSION file; a pipeline that builds anything else (the dev image) names the
+# exact build with PAPYRA_BUILD_VERSION, e.g. 1.0.0-dev.abc1234.
 COPY VERSION ./
+ARG PAPYRA_BUILD_VERSION=""
+ENV PAPYRA_BUILD_VERSION=$PAPYRA_BUILD_VERSION
 
 RUN pnpm --filter ./papyra.web build
 

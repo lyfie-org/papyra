@@ -9,7 +9,8 @@ import { useCollections, useDeleteCollection } from '../hooks/useCollections';
 import { useCreateTag, useDeleteTag, useTags } from '../hooks/useTags';
 import { useNotes } from '../hooks/useNotes';
 import { useConfirm } from '../lib/confirmContext';
-import { NOTE_SWATCHES, swatchName } from '../lib/noteColors';
+import { NOTE_SWATCHES, swatchName, tintInkClass } from '../lib/noteColors';
+import { useResolvedTheme } from '../hooks/useTheme';
 import { MAX_TAG_LENGTH } from '../lib/tags';
 import { describeRule, matchesRules, parseRules, type SmartRules } from '../lib/smartCollections';
 import './CollectionsPage.css';
@@ -28,6 +29,7 @@ const TAG_COLOURS = NOTE_SWATCHES.filter((s) => s.value).map((s) => s.value!);
  */
 export default function CollectionsPage() {
   const navigate = useNavigate();
+  const theme = useResolvedTheme();
   const confirm = useConfirm();
   const { data: notes } = useNotes();
   const { data: collections, isLoading: loadingCollections } = useCollections();
@@ -248,7 +250,7 @@ export default function CollectionsPage() {
       {tags && tags.length > 0 && (
         <ul className="collections__tags">
           {tags.map((t) => (
-            <li key={t.name} className="tag-pill" style={t.color ? { ['--tag-tint' as string]: t.color } : undefined}>
+            <li key={t.name} className={`tag-pill${t.color ? ` tag-pill--tinted${tintInkClass(t.color, theme)}` : ''}`} style={t.color ? { ['--tag-tint' as string]: t.color } : undefined}>
               <button
                 type="button"
                 className="tag-pill__open"

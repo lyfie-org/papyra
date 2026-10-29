@@ -4,13 +4,17 @@ import EmptyState from '../components/EmptyState';
 import VaultPinForm from '../components/VaultPinForm';
 import { useNotes } from '../hooks/useNotes';
 import { useVault } from '../hooks/useVault';
+import { useJournalBin } from '../hooks/useJournal';
+import VaultSection from '../components/VaultSection';
+import LockedDays from '../components/journal/LockedDays';
 import './NotesPage.css';
 import './VaultPage.css';
 import LoadingBar from '../components/LoadingBar';
 
 import BusyButton from '../components/BusyButton';
 /**
- * The locked vault: every note marked `secure: true`.
+ * The locked vault: every note, to-do list and journal day marked `secure: true`, in a
+ * foldable section each.
  *
  * The server withholds these bodies until the vault is unlocked — with the vault
  * PIN, or a registered device's biometric check — and the editor renders a lock
@@ -21,6 +25,10 @@ export default function VaultPage() {
   const { data: notes, isLoading, isError } = useNotes();
   const { status, open, lock } = useVault();
   const secure = (notes ?? []).filter((n) => n.secure && !n.trashed);
+  const secureNotes = secure.filter((n) => n.kind !== 'todo');
+  const secureTodos = secure.filter((n) => n.kind === 'todo');
+  // The journal's own entries are not in the notes list; they come from its API.
+  const lockedDays = useJournalBin('locked').data ?? [];
   const pinSet = status.data?.pinSet;
 
   return (
@@ -35,7 +43,7 @@ export default function VaultPage() {
       </header>
 
       <p className="notes-page__lede">
-        Locked notes. Their contents stay on the server until you unlock your vault with your PIN (or a
+        Locked notes, to-do lists and journal days. Their contents stay on the server until you unlock your vault with your PIN (or a
         registered device) — nothing is sent to this page before then.
         {pinSet && open && <span className="vault-page__open"><LockOpen size={13} /> Open on this device</span>}
       </p>
@@ -54,18 +62,32 @@ export default function VaultPage() {
       {isLoading && <LoadingBar label="Loading vault" />}
       {isError && <p className="notes-page__status">Couldn’t reach the server.</p>}
       {!isLoading && !isError && pinSet !== false && (
-        <NoteGrid
-          notes={secure}
-          variant="active"
-          empty={
-            <EmptyState
-              icon={Lock}
-              title="No locked notes"
-              body="Locking a note keeps its contents hidden until you unlock your vault. Locked notes stay out of search results and out of anything that reads across your vault, so nothing can quote them back at you."
-              hint="To lock a note, open it and choose Lock in its toolbar."
-            />
-          }
-        />
+        secure.length + lockedDays.length === 0 ? (
+          <EmptyState
+            icon={Lock}
+            title="Nothing locked"
+            body="Locking a note, to-do list or journal day keeps its contents hidden until you unlock your vault. Locked things stay out of search results and out of anything that reads across your vault, so nothing can quote them back at you."
+            hint="To lock one, open it and choose Lock in its toolbar."
+          />
+        ) : (
+          <>
+            {secureNotes.length > 0 && (
+              <VaultSection name="notes" label="Notes" count={secureNotes.length}>
+                <NoteGrid notes={secureNotes} variant="active" />
+              </VaultSection>
+            )}
+            {secureTodos.length > 0 && (
+              <VaultSection name="todo" label="To do" count={secureTodos.length}>
+                <NoteGrid notes={secureTodos} variant="active" />
+              </VaultSection>
+            )}
+            {lockedDays.length > 0 && (
+              <VaultSection name="journal" label="Journal" count={lockedDays.length}>
+                <LockedDays days={lockedDays} />
+              </VaultSection>
+            )}
+          </>
+        )
       )}
     </section>
   );

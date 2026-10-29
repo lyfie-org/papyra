@@ -70,48 +70,10 @@ public static class ImageProcessor
     /// </summary>
     public static bool WriteThumbnail(string source, int maxWidth, string dest, int quality = 78)
     {
-        if (!CanDecode(source)) return false;
+        using var resized = DecodeUpright(source, maxWidth);
+        if (resized is null) return false;
         try
         {
-            using var codec = SKCodec.Create(source);
-            if (codec is null) return false;
-            var origin = codec.EncodedOrigin;
-            var swaps = SwapsAxes(origin);
-            var info = codec.Info;
-            var uprightWidth = swaps ? info.Height : info.Width;
-            if (info.Width <= 0 || info.Height <= 0) return false;
-
-            // Ask the codec for the smallest size it can decode that still covers
-            // the target (JPEG decodes at 1/2, 1/4, 1/8 for almost nothing).
-            var targetWidth = Math.Min(maxWidth, uprightWidth);
-            var scale = Math.Min(1f, (float)targetWidth / uprightWidth);
-            var decodeSize = codec.GetScaledDimensions(scale);
-            if (decodeSize.Width <= 0 || decodeSize.Height <= 0) decodeSize = info.Size;
-            if ((long)decodeSize.Width * decodeSize.Height > MaxDecodePixels) return false;
-
-            var decodeInfo = new SKImageInfo(decodeSize.Width, decodeSize.Height, SKColorType.Rgba8888, SKAlphaType.Premul);
-            var decoded = new SKBitmap(decodeInfo);
-            var result = codec.GetPixels(decodeInfo, decoded.GetPixels());
-            if (result == SKCodecResult.InvalidScale && decodeSize != info.Size)
-            {
-                // Not every codec scales while decoding: fall back to full size.
-                decoded.Dispose();
-                if ((long)info.Width * info.Height > MaxDecodePixels) return false;
-                decodeInfo = new SKImageInfo(info.Width, info.Height, SKColorType.Rgba8888, SKAlphaType.Premul);
-                decoded = new SKBitmap(decodeInfo);
-                result = codec.GetPixels(decodeInfo, decoded.GetPixels());
-            }
-            using var _ = decoded;
-            if (result is not (SKCodecResult.Success or SKCodecResult.IncompleteInput)) return false;
-
-            using var upright = Orient(decoded, origin);
-            var targetHeight = Math.Max(1, (int)Math.Round((double)upright.Height * targetWidth / upright.Width));
-            using var resized = upright.Width == targetWidth && upright.Height == targetHeight
-                ? upright.Copy()
-                : upright.Resize(new SKImageInfo(targetWidth, targetHeight, SKColorType.Rgba8888, SKAlphaType.Premul),
-                    new SKSamplingOptions(SKCubicResampler.Mitchell));
-            if (resized is null) return false;
-
             using var image = SKImage.FromBitmap(resized);
             using var data = image.Encode(SKEncodedImageFormat.Webp, quality);
             if (data is null) return false;
@@ -134,6 +96,56 @@ public static class ImageProcessor
             return true;
         }
         catch (Exception) { return false; }
+    }
+
+    /// <summary>
+    /// The picture upright (EXIF rotation applied), at most <paramref name="maxWidth"/> wide and never
+    /// upscaled — or <c>null</c> when it can't be decoded safely. The caller owns the bitmap.
+    /// </summary>
+    public static SKBitmap? DecodeUpright(string source, int maxWidth)
+    {
+        if (!CanDecode(source)) return null;
+        try
+        {
+            using var codec = SKCodec.Create(source);
+            if (codec is null) return null;
+            var origin = codec.EncodedOrigin;
+            var swaps = SwapsAxes(origin);
+            var info = codec.Info;
+            var uprightWidth = swaps ? info.Height : info.Width;
+            if (info.Width <= 0 || info.Height <= 0) return null;
+
+            // Ask the codec for the smallest size it can decode that still covers
+            // the target (JPEG decodes at 1/2, 1/4, 1/8 for almost nothing).
+            var targetWidth = Math.Min(maxWidth, uprightWidth);
+            var scale = Math.Min(1f, (float)targetWidth / uprightWidth);
+            var decodeSize = codec.GetScaledDimensions(scale);
+            if (decodeSize.Width <= 0 || decodeSize.Height <= 0) decodeSize = info.Size;
+            if ((long)decodeSize.Width * decodeSize.Height > MaxDecodePixels) return null;
+
+            var decodeInfo = new SKImageInfo(decodeSize.Width, decodeSize.Height, SKColorType.Rgba8888, SKAlphaType.Premul);
+            var decoded = new SKBitmap(decodeInfo);
+            var result = codec.GetPixels(decodeInfo, decoded.GetPixels());
+            if (result == SKCodecResult.InvalidScale && decodeSize != info.Size)
+            {
+                // Not every codec scales while decoding: fall back to full size.
+                decoded.Dispose();
+                if ((long)info.Width * info.Height > MaxDecodePixels) return null;
+                decodeInfo = new SKImageInfo(info.Width, info.Height, SKColorType.Rgba8888, SKAlphaType.Premul);
+                decoded = new SKBitmap(decodeInfo);
+                result = codec.GetPixels(decodeInfo, decoded.GetPixels());
+            }
+            using var _ = decoded;
+            if (result is not (SKCodecResult.Success or SKCodecResult.IncompleteInput)) return null;
+
+            using var upright = Orient(decoded, origin);
+            var targetHeight = Math.Max(1, (int)Math.Round((double)upright.Height * targetWidth / upright.Width));
+            return upright.Width == targetWidth && upright.Height == targetHeight
+                ? upright.Copy()
+                : upright.Resize(new SKImageInfo(targetWidth, targetHeight, SKColorType.Rgba8888, SKAlphaType.Premul),
+                    new SKSamplingOptions(SKCubicResampler.Mitchell));
+        }
+        catch (Exception) { return null; }
     }
 
     private static bool SwapsAxes(SKEncodedOrigin origin) =>

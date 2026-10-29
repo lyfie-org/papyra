@@ -43,6 +43,14 @@ export function importSummary(s: ImportStatus): string {
   if (s.error) return `Import failed: ${s.error}`;
   const parts: string[] = [];
   const n = (count: number, one: string, many = `${one}s`) => `${count} ${count === 1 ? one : many}`;
+  // A journal comes in by the day: what was already written stays, and the import goes beneath it.
+  if (s.provider === 'dayone' || s.provider === 'journal') {
+    parts.push(n(s.imported, 'new day'));
+    if (s.updated) parts.push(`${n(s.updated, 'day')} already had writing — the import was added beneath it`);
+    if (s.unchanged) parts.push(`${n(s.unchanged, 'day')} already here — not added again`);
+    if (s.skipped) parts.push(`${s.skipped} left out (locked, in the Trash, not begun yet, or nothing in it)`);
+    return `Import finished: ${parts.join(', ')}.`;
+  }
   parts.push(`${n(s.imported, 'new note')}`);
   if (s.updated) parts.push(`${n(s.updated, 'note')} updated to the imported version`);
   if (s.unchanged) parts.push(`${n(s.unchanged, 'note')} already here and identical — not imported again`);

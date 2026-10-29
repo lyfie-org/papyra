@@ -193,7 +193,9 @@ export default function ShareDialog({ note, onClose }: { note: Note; onClose: ()
                   {s.grantee}
                   {s.sharedBy && <span className="share__by"> · added by @{s.sharedBy}</span>}
                 </span>
-                <span className="share__access">{s.access === 'edit' ? 'Can edit' : 'Can view'}</span>
+                <span className="share__access">
+                  {s.expired ? 'Expired' : s.access === 'edit' ? 'Can edit' : 'Can view'}
+                </span>
                 <button type="button" className="share__revoke" aria-label="Revoke" onClick={() => void revoke.mutate(s.id)}>
                   <Trash2 size={14} />
                 </button>

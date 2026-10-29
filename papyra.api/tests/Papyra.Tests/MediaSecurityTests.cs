@@ -339,7 +339,8 @@ public sealed class MediaSecurityTests
             var pic = await UploadAsync(owner, Png, "p.png");
             await WriteNoteAsync(owner, "n1", $"![[{pic}]]");
 
-            var expired = await LinkAsync(owner, "n1", maxViews: null, expires: DateTime.UtcNow.AddMinutes(-1));
+            var expired = await LinkAsync(owner, "n1", maxViews: null, expires: DateTime.UtcNow.AddHours(1));
+            await ShareClock.ExpireLinkAsync(factory, expired);
             Assert.Equal(HttpStatusCode.Gone, (await factory.CreateClient().GetAsync($"/api/shared/{expired}/media/{pic}")).StatusCode);
 
             var once = await LinkAsync(owner, "n1", maxViews: 1);
@@ -444,7 +445,8 @@ public sealed class MediaSecurityTests
             Assert.Equal(HttpStatusCode.NotFound,
                 (await anon.GetAsync($"/api/shared/nope/link-preview?url={Uri.EscapeDataString("http://127.0.0.1/inside")}")).StatusCode);
 
-            var expired = await LinkAsync(owner, "n1", maxViews: null, expires: DateTime.UtcNow.AddMinutes(-1));
+            var expired = await LinkAsync(owner, "n1", maxViews: null, expires: DateTime.UtcNow.AddHours(1));
+            await ShareClock.ExpireLinkAsync(factory, expired);
             Assert.Equal(HttpStatusCode.Gone,
                 (await anon.GetAsync($"/api/shared/{expired}/link-preview?url={Uri.EscapeDataString("http://127.0.0.1/inside")}")).StatusCode);
         }

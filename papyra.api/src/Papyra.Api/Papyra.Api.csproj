@@ -48,6 +48,8 @@
   <ItemGroup>
     <!-- The logo at the top of every email, sent as an inline (cid:) image. -->
     <EmbeddedResource Include="Assets\email-logo.png" LogicalName="Papyra.EmailLogo.png" />
+    <!-- The faces the journal PDF is set in (Sora, Marcellus: SIL OFL 1.1; Roboto Mono: Apache 2.0). -->
+    <EmbeddedResource Include="Storage\Fonts\*.ttf" LogicalName="Papyra.Fonts.%(Filename)%(Extension)" />
   </ItemGroup>
 
   <ItemGroup>

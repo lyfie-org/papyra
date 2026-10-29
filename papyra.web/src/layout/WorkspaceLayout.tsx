@@ -2,7 +2,7 @@ import { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { Link, NavLink, Outlet, matchPath, useLocation, useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import {
-  Menu, StickyNote, ListTodo, Archive, Settings, Trash2, ShieldCheck, LockOpen,
+  Menu, StickyNote, ListTodo, BookOpen, Archive, Settings, Trash2, ShieldCheck, LockOpen,
   User, LogOut, Sun, Moon, Layers, Sparkles, CircleQuestionMark, Users,
 } from 'lucide-react';
 import ChatPanel from '../components/ChatPanel';
@@ -30,13 +30,18 @@ import { useToast } from '../lib/toastContext';
 import VaultOpenPill from '../components/VaultOpenPill';
 import { useVaultOpen } from '../hooks/useVault';
 import { useLocateEffect } from '../lib/locateNote';
+import { useNavOrder } from '../lib/navOrder';
+import UpdateNotice from '../components/UpdateNotice';
 
 // Settings deliberately lives with Trash at the foot of the rail, not in this
 // list — the top group is "places your notes are", the bottom group is app
-// chrome.
-const NAV_ITEMS = [
-  { to: '/', label: 'Notes', icon: StickyNote, end: true },
-  { to: '/todo', label: 'To Do', icon: ListTodo, end: false },
+// chrome. The first three (where you write) can be put in any order in Settings.
+const WRITING_NAV = {
+  notes: { to: '/', label: 'Notes', icon: StickyNote, end: true },
+  todo: { to: '/todo', label: 'To Do', icon: ListTodo, end: false },
+  journal: { to: '/journal', label: 'Journal', icon: BookOpen, end: false },
+} as const;
+const OTHER_NAV = [
   { to: '/shared-with-me', label: 'Shared with me', icon: Users, end: false },
   { to: '/collections', label: 'Collections', icon: Layers, end: false },
   { to: '/vault', label: 'Vault', icon: ShieldCheck, end: false },
@@ -79,6 +84,11 @@ export default function WorkspaceLayout() {
   const menuRef = useRef<HTMLDivElement | null>(null);
   const serverStatus = useSignalR();
   const vaultOpen = useVaultOpen();
+  const order = useNavOrder();
+  const navItems = [
+    ...order.map((id) => WRITING_NAV[id]),
+    ...OTHER_NAV,
+  ];
 
   // Connectivity + outbox telemetry. The dot now answers the question a
   // local-first app actually has to answer — "is my writing safe?" — not just
@@ -234,7 +244,7 @@ export default function WorkspaceLayout() {
           // Off-screen on a phone until opened: out of the tab order too.
           inert={phone && !drawerOpen}>
           <ul>
-            {NAV_ITEMS.map(({ to, label, icon: Icon, end }) => (
+            {navItems.map(({ to, label, icon: Icon, end }) => (
               <li key={to}>
                 <NavLink
                   to={to}
@@ -308,6 +318,8 @@ Papyra ${versionText}${server.stale ? ' — reload to finish updating' : ''} —
                 <span className="workspace__build-sep workspace__nav-label" aria-hidden="true" />
                 <span className="workspace__version workspace__nav-label">{versionText}</span>
               </Link>
+              {/* Admins only, and only when a newer release is out: a bar under the version. */}
+              <UpdateNotice />
             </footer>
           </div>
         </nav>

@@ -49,7 +49,7 @@ public sealed record ImportJob(string JobId, string UserId, string Provider, str
 //
 // Writes go through the same atomic engine as the live editor — Write-Ring logged so
 // the watcher ignores the echo — then mirrored into VaultState + Lucene and broadcast.
-public sealed class ImportService : BackgroundService
+public sealed partial class ImportService : BackgroundService
 {
     public const string ImportKeyField = "papyraImport";
 
@@ -70,6 +70,7 @@ public sealed class ImportService : BackgroundService
     private readonly ILogger<ImportService> _logger;
     private readonly IServiceScopeFactory? _scopes;
     private readonly EmailSender? _email;
+    private readonly JournalService? _journal;
 
     public ImportService(
         MarkdownStorageService storage,
@@ -85,8 +86,10 @@ public sealed class ImportService : BackgroundService
         ILogger<ImportService> logger,
         IServiceScopeFactory? scopes = null,
         EmailSender? email = null,
-        MediaJobQueue? mediaJobs = null)
+        MediaJobQueue? mediaJobs = null,
+        JournalService? journal = null)
     {
+        _journal = journal;
         _mediaJobs = mediaJobs;
         _scopes = scopes;
         _email = email;
@@ -198,6 +201,13 @@ public sealed class ImportService : BackgroundService
         using var zip = ZipFile.OpenRead(job.ZipPath);
         var budget = new ImportBudget();
         budget.CheckArchive(zip);
+
+        // A journal comes in day by day, through the journal's own write.
+        if (job.Provider is "dayone" or "journal")
+        {
+            await ImportJournalAsync(job, zip, budget, mediaDir, ct);
+            return;
+        }
 
         var keep = job.Provider == "keep";
         var vaultRoot = keep ? string.Empty : ObsidianVaultRoot(zip);

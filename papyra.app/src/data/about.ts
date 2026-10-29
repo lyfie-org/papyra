@@ -22,14 +22,14 @@ export const KEYWORDS = [
   'open-source Google Keep alternative',
   'Markdown notes',
   'self-hosted Markdown editor',
-  'notes app with no telemetry',
+  'notes app with no tracking',
   'Docker notes app',
   'home lab',
 ];
 
 export const FEATURES = [
   'Every note is a plain Markdown (.md) file with YAML frontmatter, on your own server',
-  'No telemetry, analytics, crash reports or usage pings — nothing is sent anywhere',
+  'No tracking, analytics or crash reports; the only call home is a daily update check, which the maker also uses as a count of active installs',
   'Autosave with full version history; scrub back to any earlier version',
   'Full-text search across notes, to-dos and collections, with highlighted matches',
   'Wiki links ([[note]]) and backlinks',
@@ -40,7 +40,8 @@ export const FEATURES = [
   'Email alerts through your own SMTP server',
   'Works offline as an installable web app; edits sync when you reconnect',
   'Pictures, PDFs and video in notes, previewed inline',
-  'Import from Google Keep (Takeout) and Obsidian; drag in any .md file',
+  'A journal: one page a day with moods, a streak, a calendar, voice notes and lockable days — plain files like everything else',
+  'Import from Google Keep (Takeout), Obsidian and Day One; drag in any .md file',
   'Backups: Git sync (optionally encrypted), zip export, encrypted archives',
   'Smart collections, tags, to-do lists, focus mode, light and dark themes',
   'Multiple private accounts on one server',
@@ -55,7 +56,7 @@ export const FAQ: { q: string; a: string }[] = [
   },
   {
     q: 'Is Papyra really private?',
-    a: 'Yes. Papyra collects no telemetry, analytics or crash reports, and makes no third-party requests of its own — even its fonts come from your server. Your notes only leave it if you share one, set up a Git backup, or configure email alerts. Locked notes are encrypted on disk.',
+    a: 'Yes. Papyra has no tracking, analytics or crash reports, and its interface makes no third-party requests — even its fonts come from your server. The server makes one request of its own: a daily check for a newer version, which the maker also uses as a count of active installs to stay motivated (details at papyra.app/docs/update-check). Your notes only leave your server if you share one, set up a Git backup, or configure email alerts. Locked notes are encrypted on disk.',
   },
   {
     q: 'Is Papyra free?',
@@ -63,7 +64,7 @@ export const FAQ: { q: string; a: string }[] = [
   },
   {
     q: 'Can I move my notes from Google Keep or Obsidian?',
-    a: 'Yes. Import a Google Keep Takeout archive — checklists, labels, colours and pins come with it — or upload an Obsidian vault with its links and attachments. Any Markdown file can also be dragged onto the desk.',
+    a: 'Yes. Import a Google Keep Takeout archive — checklists, labels, colours and pins come with it — or upload an Obsidian vault with its links and attachments. A Day One journal comes in as days of the journal. Any Markdown file can also be dragged onto the desk.',
   },
   {
     q: 'What do I need to run it?',

@@ -5,6 +5,8 @@
 // this only by its extension, and until the table has loaded every file passes.
 
 export interface MediaLimitTable {
+  /** The server reads the words out of a .wav recording (a Whisper model is set up). */
+  transcription?: boolean;
   limits: { image: number; gif: number; audio: number; video: number; document: number; other: number };
   extensions: { image: string[]; audio: string[]; video: string[]; document: string[] };
 }

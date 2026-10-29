@@ -24,16 +24,15 @@
 
 /* Attachments in the body: framed like a print on the page. luthor sizes and
    places them (width, alignment, aspect); this only dresses them. */
-.note-editor__canvas .luthor-file-embed-shell { margin: var(--space-3) 0; }
-.note-editor__canvas .luthor-file-embed-shell--inline { margin: 0; }
-.note-editor__canvas .luthor-media--block .luthor-media__element {
+:is(.note-editor__canvas, .journal-sheet__canvas) .luthor-file-embed-shell { margin: var(--space-3) 0; }
+:is(.note-editor__canvas, .journal-sheet__canvas) .luthor-file-embed-shell--inline { margin: 0; }
+:is(.note-editor__canvas, .journal-sheet__canvas) .luthor-media--block .luthor-media__element {
   border-radius: var(--radius-md);
   box-shadow: var(--shadow-card);
 }
 /* The attachment toolbar (luthor's buttons + Papyra's) wraps onto a second
    row on a narrow picture rather than scrolling its last buttons out of view. */
-.note-editor__canvas .luthor-media__toolbar,
-.shared-note__canvas .luthor-media__toolbar {
+:is(.note-editor__canvas, .shared-note__canvas, .journal-sheet__canvas) .luthor-media__toolbar {
   width: max-content;
   flex-wrap: wrap;
   justify-content: center;
@@ -43,7 +42,7 @@
   translate: var(--media-toolbar-shift, 0px) var(--media-toolbar-shift-y, 0px);
 }
 /* A document's type and size lead its bar, set off from the buttons. */
-:is(.note-editor__canvas, .shared-note__canvas) .luthor-media__tool-label[data-media-label="papyra.file-info"] {
+:is(.note-editor__canvas, .shared-note__canvas, .journal-sheet__canvas) .luthor-media__tool-label[data-media-label="papyra.file-info"] {
   order: -1;
   margin-right: 2px;
   padding-right: 10px;
@@ -52,35 +51,35 @@
 }
 /* Fewer, clearer buttons: no size presets (the drag handles size a picture),
    no alt text, no open-in-tab. luthor builds them; Papyra leaves them out. */
-:is(.note-editor__canvas, .shared-note__canvas) .luthor-media__tool:is([data-media-action^="size-"], [data-media-action="alt"], [data-media-action="open"]) {
+:is(.note-editor__canvas, .shared-note__canvas, .journal-sheet__canvas) .luthor-media__tool:is([data-media-action^="size-"], [data-media-action="alt"], [data-media-action="open"]) {
   display: none;
 }
 /* A card (document, PDF, audio) is too short to host the bar on top of it —
    it would cover the file's name — so the bar sits just above it instead. */
-.note-editor__canvas .luthor-media:not([data-luthor-media-kind="image"]):not([data-luthor-media-kind="video"]) .luthor-media__toolbar:not(.is-compact) {
+:is(.note-editor__canvas, .journal-sheet__canvas) .luthor-media:not([data-luthor-media-kind="image"]):not([data-luthor-media-kind="video"]) .luthor-media__toolbar:not(.is-compact) {
   top: auto;
   bottom: calc(100% + 6px);
 }
 /* The drag grip beside a media block: just its dots — no tab, no border. A
    hover washes it in its own ink so it still reads as something to grab. */
-:is(.note-editor__canvas, .shared-note__canvas) .luthor-block-drag-grip,
-:is(.note-editor__canvas, .shared-note__canvas) .luthor-block-drag-grip:hover {
+:is(.note-editor__canvas, .shared-note__canvas, .journal-sheet__canvas) .luthor-block-drag-grip,
+:is(.note-editor__canvas, .shared-note__canvas, .journal-sheet__canvas) .luthor-block-drag-grip:hover {
   border-color: transparent;
   background: transparent;
 }
-:is(.note-editor__canvas, .shared-note__canvas) .luthor-block-drag-grip:hover {
+:is(.note-editor__canvas, .shared-note__canvas, .journal-sheet__canvas) .luthor-block-drag-grip:hover {
   background: color-mix(in srgb, currentColor 12%, transparent);
 }
 /* Moving a block by dragging is a pointer thing: on a phone (or any narrow
    sheet) the grip only crowds the media's edge — Move up/down on its bar do
    the same job. */
 @media (max-width: 640px), (hover: none) and (pointer: coarse) {
-  :is(.note-editor__canvas, .shared-note__canvas) .luthor-block-drag-grip { display: none; }
+  :is(.note-editor__canvas, .shared-note__canvas, .journal-sheet__canvas) .luthor-block-drag-grip { display: none; }
 }
 
 /* A caption written the old way — an italic line right under the picture —
    set small and centred beneath it. */
-.note-editor__canvas .luthor-file-embed-shell + p:has(> .luthor-text-italic:only-child) {
+:is(.note-editor__canvas, .journal-sheet__canvas) .luthor-file-embed-shell + p:has(> .luthor-text-italic:only-child) {
   margin-top: calc(-1 * var(--space-2));
   color: var(--text);
   font-size: var(--fs-sm);
@@ -91,7 +90,8 @@
   .media-drop { animation: none; }
   /* luthor gates its own entrances; these are the leftover small motions
      (handle hover growth, the upload bar sliding to its width). */
-  .note-editor__canvas .luthor-media__handle,
-  .note-editor__canvas .luthor-media__toolbar,
-  .note-editor__canvas .luthor-upload__bar { transition: none; animation: none; }
+  :is(.note-editor__canvas, .journal-sheet__canvas) .luthor-media__handle,
+  :is(.note-editor__canvas, .journal-sheet__canvas) .luthor-media__toolbar,
+  :is(.note-editor__canvas, .journal-sheet__canvas) .luthor-upload__bar { transition: none; animation: none; }
 }
+

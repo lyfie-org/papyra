@@ -60,7 +60,7 @@ public sealed class TrashPurgeService : PeriodicJob
 
         foreach (var userId in _state.Users)
         {
-            foreach (var note in _state.Snapshot(userId))
+            foreach (var note in _state.SnapshotAll(userId))
             {
                 if (!note.Trashed) continue;
                 // days == 0 → immediate; else only once the window has elapsed.

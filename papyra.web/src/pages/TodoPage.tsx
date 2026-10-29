@@ -43,7 +43,7 @@ export default function TodoPage() {
       {/* Same desk as Notes: drag to arrange, tick to select many, pin to the top. */}
       {todos.length > 0 && (
         <div className="todo-grid">
-          <DraggableNoteGrid notes={notes ?? []} todosOnly />
+          <DraggableNoteGrid notes={notes ?? []} todosOnly collapseScope="todo" />
         </div>
       )}
     </section>

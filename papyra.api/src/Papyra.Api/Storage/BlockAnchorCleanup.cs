@@ -37,7 +37,7 @@ public sealed class BlockAnchorCleanup
     {
         var keep = new HashSet<string>(StringComparer.Ordinal);
         foreach (var uid in _state.Users)
-            foreach (var note in _state.Snapshot(uid))
+            foreach (var note in _state.SnapshotAll(uid))
                 foreach (var id in BlockResolver.References(note.Body)) keep.Add(id);
 
         using var scope = _scopes.CreateScope();
@@ -54,7 +54,7 @@ public sealed class BlockAnchorCleanup
         var changed = 0;
         foreach (var uid in _state.Users)
         {
-            foreach (var note in _state.Snapshot(uid))
+            foreach (var note in _state.SnapshotAll(uid))
             {
                 ct.ThrowIfCancellationRequested();
                 var cleaned = BlockResolver.StripAnchors(note.Body, keep);

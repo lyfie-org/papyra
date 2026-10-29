@@ -15,8 +15,9 @@ import { setSync } from '../lib/syncStatus';
 import { stripBlockAnchors } from '../lib/plainText';
 import { getState, loadState, mutate, nextId, recountCategories } from './store';
 import { CHAT_FALLBACK, CHAT_SCRIPT, DEMO_USER } from './seed';
+import { journalRoutes, journalSearchHits } from './journal';
 
-type Handler = (ctx: {
+export type Handler = (ctx: {
   match: RegExpMatchArray;
   url: URL;
   request: Request;
@@ -24,7 +25,7 @@ type Handler = (ctx: {
   body: () => Promise<unknown>;
 }) => Response | Promise<Response>;
 
-type Route = [method: string, pattern: RegExp, handler: Handler];
+export type Route = [method: string, pattern: RegExp, handler: Handler];
 
 const json = (data: unknown, status = 200): Response =>
   new Response(JSON.stringify(data), {
@@ -204,6 +205,9 @@ function chatStream(question: string, sessionId: number | null): Response {
 // id pattern (/api/notes/:id) that would otherwise swallow them.
 
 const routes: Route[] = [
+  // The journal first: its `journal-…` note ids must not fall into the generic note routes below.
+  ...journalRoutes(),
+
   // ---------------------------------------------------------------- identity
   ['GET', /^\/api\/auth\/me$/, () => json(DEMO_USER)],
   ['GET', /^\/api\/auth\/providers$/, () => json({ password: true, oidc: null })],
@@ -709,14 +713,15 @@ const routes: Route[] = [
         .filter((x) => x.score > 0)
         .sort((a, b) => b.score - a.score)
         .slice(0, 12);
-      return json(
-        scored.map(({ n }) => ({
+      return json([
+        ...journalSearchHits(q),
+        ...scored.map(({ n }) => ({
           id: n.id,
           title: n.title,
           snippet: n.secure ? 'Locked — unlock to read this note.' : snippetFor(n.body, q),
           secure: n.secure,
         })),
-      );
+      ].slice(0, 12));
     },
   ],
 

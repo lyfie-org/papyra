@@ -76,7 +76,7 @@ public sealed class RenamePropagationService(
 
     private async Task RenameLinksAsync(LinkJob job, CancellationToken ct)
     {
-        var notes = state.Snapshot(job.OwnerUid);
+        var notes = state.SnapshotAll(job.OwnerUid);
         // Links resolve by title: if another note still has the old title, the
         // links were (or now are) its links — leave them.
         if (notes.Any(n => n.Id != job.NoteId && !n.Trashed
@@ -102,7 +102,8 @@ public sealed class RenamePropagationService(
         var needle = "@" + job.OldName;
         foreach (var uid in state.Users)
         {
-            foreach (var note in state.Snapshot(uid).Where(n => !n.Secure && n.Body.Contains(needle, StringComparison.OrdinalIgnoreCase)))
+            // A journal is a private space: an @name there is literal text, so it never follows a rename.
+            foreach (var note in state.SnapshotAll(uid).Where(n => !n.Secure && !JournalPaths.IsJournal(n) && n.Body.Contains(needle, StringComparison.OrdinalIgnoreCase)))
             {
                 await writer.ChangeAsync(uid, note.Id, current =>
                 {

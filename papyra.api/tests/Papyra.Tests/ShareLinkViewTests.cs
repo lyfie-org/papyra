@@ -137,7 +137,8 @@ public sealed class ShareLinkViewTests
         var (factory, dir, owner) = await OwnerAppAsync();
         try
         {
-            var expired = await LinkAsync(owner, 1, DateTime.UtcNow.AddMinutes(-1));
+            var expired = await LinkAsync(owner, 1, DateTime.UtcNow.AddHours(1));
+            await ShareClock.ExpireLinkAsync(factory, expired);
             Assert.Equal(HttpStatusCode.Gone, (await factory.CreateClient().SendAsync(Load(expired, "a"))).StatusCode);
             Assert.Equal(0, await ViewCountAsync(owner, expired));
 

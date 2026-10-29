@@ -2,8 +2,11 @@ import { useEffect, useRef } from 'react';
 import { useSearchParams } from 'react-router-dom';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { X } from 'lucide-react';
-import { resolveSharedLink, useIncomingShares, useRequestAccess, useSharedPin } from '../hooks/useShares';
+import {
+  resolveSharedLink, ShareExpiredError, useIncomingShares, useRemoveExpiredShare, useRequestAccess, useSharedPin,
+} from '../hooks/useShares';
 import SharedNoteActions from './SharedNoteActions';
+import BusyButton from './BusyButton';
 import { useDialogFocus } from '../hooks/useDialogFocus';
 import { useToast } from '../lib/toastContext';
 import SharedNoteView, { type SharedNote } from './SharedNoteView';
@@ -27,14 +30,19 @@ export default function SharedNoteModal({ shareId, onClose }: { shareId: number;
   const entry = incoming?.find((s) => s.shareId === shareId);
   const pinned = !!entry?.pinned;
   const sharedPin = useSharedPin();
+  const removeExpired = useRemoveExpiredShare();
   const [, setParams] = useSearchParams();
 
   // Under ['shares', 'incoming'] so an approval pushed over the hub (which
   // invalidates that prefix) refetches the open note and flips it editable.
-  const { data: note, isError } = useQuery({
+  const { data: note, isError, error } = useQuery({
     queryKey: ['shares', 'incoming', shareId],
     queryFn: async (): Promise<SharedNote> => {
       const res = await fetch(`/api/shares/incoming/${shareId}`);
+      if (res.status === 410) {
+        const data = await res.json().catch(() => null);
+        if (data?.code === 'share_expired') throw new ShareExpiredError();
+      }
       if (!res.ok) throw new Error(res.status === 410 ? 'The owner locked this note.' : 'This note is no longer shared with you.');
       return res.json();
     },
@@ -43,6 +51,7 @@ export default function SharedNoteModal({ shareId, onClose }: { shareId: number;
     // unless the access itself changed (the editor is keyed on that).
     refetchOnWindowFocus: false,
   });
+  const ended = error instanceof ShareExpiredError;
 
   useEffect(() => {
     // An Escape a menu inside the note already used (it marks it handled) is
@@ -83,6 +92,13 @@ export default function SharedNoteModal({ shareId, onClose }: { shareId: number;
     } catch (e) { toast((e as Error).message); }
   }
 
+  async function removeEnded() {
+    try {
+      await removeExpired.mutateAsync(shareId);
+      onClose();
+    } catch (e) { toast((e as Error).message); }
+  }
+
   async function requestEdit() {
     try {
       await request.mutateAsync({ shareId, access: 'edit' });
@@ -97,7 +113,19 @@ export default function SharedNoteModal({ shareId, onClose }: { shareId: number;
         <button type="button" className="shared-modal__close" aria-label="Close" onClick={onClose}>
           <X size={18} />
         </button>
-        {isError && <p className="shared-modal__status">This note is no longer shared with you.</p>}
+        {isError && ended && (
+          <div className="shared-modal__status shared-modal__ended">
+            <h2 className="shared-modal__ended-title">This share has expired</h2>
+            <p>
+              {entry?.owner ? `@${entry.owner} was sharing` : 'This was shared'} this note with you for a limited
+              time, and that time is up, so it can’t be opened any more. If you still need it, ask them to share it again.
+            </p>
+            <BusyButton type="button" className="shared-modal__ended-remove" busyLabel="Removing…" onClick={removeEnded}>
+              Remove from my notes
+            </BusyButton>
+          </div>
+        )}
+        {isError && !ended && <p className="shared-modal__status">This note is no longer shared with you.</p>}
         {!isError && (note ? (
           <SharedNoteView
             note={note}

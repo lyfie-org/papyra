@@ -65,6 +65,9 @@ public static partial class NoteFileNamer
     /// <summary>The name a note should have (no extension), or null when it has nothing to be named after yet.</summary>
     public static string? DesiredBaseName(Note note)
     {
+        // A journal entry's path is its date (JournalPaths) — locked or not, never renamed.
+        if (JournalPaths.IsJournal(note)) return null;
+
         // Random, so the name says nothing — not even which note it is. TargetPath
         // keeps whichever locked name the file already has.
         if (note.Secure) return LockedPrefix + Convert.ToHexStringLower(System.Security.Cryptography.RandomNumberGenerator.GetBytes(6));

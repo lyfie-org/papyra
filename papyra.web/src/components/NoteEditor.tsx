@@ -14,6 +14,7 @@ import { useMediaMetaReady } from '../lib/mediaMeta';
 import { tintInkClass } from '../lib/noteColors';
 import { PAPYRA_EDITOR_FEATURES, PAPYRA_EDITOR_THEME, PAPYRA_TOOLBAR_LAYOUT, createToolbarItems } from '../lib/editorToolbar';
 import { putNote } from '../lib/notesApi';
+import { uuid } from '../lib/uuid';
 import { patchNoteInCache } from '../lib/notesCache';
 import { patchDraft } from '../lib/noteDrafts';
 import { vaultFetch } from '../lib/vault';
@@ -152,7 +153,7 @@ export default function NoteEditor({ note, isDraft = false }: { note: Note; isDr
     toast(`No note called “${target}”.`, {
       label: 'Create it',
       onClick: () => void (async () => {
-        const id = crypto.randomUUID();
+        const id = uuid();
         await putNote(id, {
           title: target, tags: [], color: null, pinned: false, archived: false, kind: 'note', body: '',
         });

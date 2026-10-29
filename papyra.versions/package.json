@@ -1,0 +1,12 @@
+{
+  "name": "papyra-versions",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "description": "versions.papyra.app: the latest-release answer and the install count. Not part of the workspace; no dependencies.",
+  "scripts": {
+    "test": "node --test \"test/*.test.js\"",
+    "dev": "wrangler dev --local --persist-to .wrangler/state",
+    "deploy": "wrangler deploy"
+  }
+}

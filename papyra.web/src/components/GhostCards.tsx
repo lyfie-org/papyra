@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useNavigate } from 'react-router-dom';
-import { Link2 } from 'lucide-react';
+import { BookOpen, Link2 } from 'lucide-react';
+import { shortDate } from '../lib/journalDay';
 import './GhostCards.css';
 
 interface Backlink {
@@ -8,6 +9,8 @@ interface Backlink {
   title: string;
   snippet: string;
   color: string | null;
+  /** Where the reference lives: a note, a to-do, or a day of the journal. */
+  kind?: string;
 }
 
 // Split a highlighter snippet (plain text with <mark>…</mark> spans) into React
@@ -33,15 +36,19 @@ export default function GhostCards({ noteId }: { noteId: string }) {
   });
 
   if (!backlinks || backlinks.length === 0) return null;
+  const days = backlinks.filter((b) => b.kind === 'journal').sort((a, b) => b.noteId.localeCompare(a.noteId));
+  const notes = backlinks.filter((b) => b.kind !== 'journal');
 
   return (
+    <>
+    {notes.length > 0 && (
     <section className="ghost-cards" aria-label="Linked mentions">
       <h2 className="ghost-cards__head">
         <Link2 size={15} /> Linked Mentions
-        <span className="ghost-cards__count">{backlinks.length}</span>
+        <span className="ghost-cards__count">{notes.length}</span>
       </h2>
       <ul className="ghost-cards__list">
-        {backlinks.map((b) => (
+        {notes.map((b) => (
           <li key={b.noteId}>
             <button
               type="button"
@@ -56,5 +63,28 @@ export default function GhostCards({ noteId }: { noteId: string }) {
         ))}
       </ul>
     </section>
+    )}
+    {days.length > 0 && (
+      // Days of the journal that point here — dated chips, newest first.
+      <section className="ghost-cards ghost-cards--days" aria-label="In your journal">
+        <h2 className="ghost-cards__head">
+          <BookOpen size={15} /> In your journal
+          <span className="ghost-cards__count">{days.length}</span>
+        </h2>
+        <ul className="ghost-cards__chips">
+          {days.map((b) => {
+            const day = b.noteId.replace(/^journal-/, '');
+            return (
+              <li key={b.noteId}>
+                <button type="button" className="ghost-cards__day" onClick={() => navigate(`/journal/${day}`)} title={b.snippet.replace(/<\/?mark>/g, '')}>
+                  {shortDate(day)} <span className="ghost-cards__year">{day.slice(0, 4)}</span>
+                </button>
+              </li>
+            );
+          })}
+        </ul>
+      </section>
+    )}
+    </>
   );
 }

@@ -1,0 +1,153 @@
+---
+title: The journal
+summary: One page for each day, kept as plain Markdown files. Moods, a streak you can hide, a calendar, voice notes, lockable days, and how to bring one in from Day One.
+group: In depth
+order: 4
+---
+
+The journal is a part of Papyra, next to Notes and To Do. One page for each day,
+kept as an ordinary Markdown file in your own folder. It is private: it is never
+shared, never read by the assistant, never sent to a webhook, and an `@name` in a
+journal page stays plain text.
+
+## Where the files are
+
+Each day is one file, in a folder for its year and month:
+
+```
+/data/users/<you>/notes/journal/2026/10/2026-10-25.md
+```
+
+A day is only a file once it has something in it. Opening a blank page makes
+nothing, and a page you only open and leave never counts as a day. The front matter
+carries `kind: journal`, and `mood:` (1 to 5) when you chose one. Everything else is the
+text you wrote.
+
+## Writing a day
+
+- **A new day begins at midnight** in your time zone, or later if you ask:
+  *Settings → Journal → A new day starts at* goes up to 5 a.m., so something written
+  at half past one still belongs to the day that felt like today.
+- **How the day felt** is five small pictures, Rough to Great, beside the date. The shape
+  of each carries the meaning, not only its colour. Once you choose one it folds into a
+  small chip with its name; tap the chip to change it.
+- **The page fills the window**, empty or not, so there is always room to start; a long
+  day simply runs past the bottom and scrolls.
+- **The date opens the calendar**, on that day's month.
+- **Notes & to-dos** (top right) opens a panel beside the page with to-dos that still have
+  something open and recent notes, each a tap from a link; it stays closed until asked for.
+- **Focus** takes the day over the whole browser, with only the date and the writing.
+  <kbd>Esc</kbd> leaves the text, then leaves Focus.
+- **Type `/`** for what a day is made of: the date, a link to another day or a to-do,
+  a photo, a voice note, an embedded to-do list, and the five moods.
+- **`[[`** links to a note, a to-do or another day. Say a day the way you would out
+  loud: `yesterday`, `last fri`, `sep 14`, `3 days ago`, `2024-03-02`.
+- **A to-do inside the day.** *Embed a to-do* shows its checklist in the page. Ticking a
+  box there ticks the real to-do. The day's file only holds a reference, so nothing is
+  copied and nothing drifts.
+- **Carry over** brings the unticked items of the latest earlier day into this one.
+
+## Calendar, streak and "on this day"
+
+*Journal → Calendar* is a month laid out like an almanac page: a wash for each day's
+mood, a dot for writing without a mood, a small lock for a locked day, a thumbnail
+when the day has a picture. A year view sits beside it. A day counts for the streak
+when it has words or a mood. *Settings → Journal → Hide the streak* removes the count
+and keeps the totals. "On this day" shows the same date in earlier years.
+
+## Photos and voice notes
+
+Drop, paste or pick pictures as you would in a note. A day with two or more pictures
+shows a strip of small thumbnails under the page; choosing one scrolls to it.
+
+**Voice note** records in the browser (it asks for the microphone once) and puts the
+recording in the page like any attachment. If your Papyra has a speech model set up
+(`Whisper:ModelPath`), the recording is sent as a 16 kHz WAV and, a little later, the
+words appear under the player as an italic line. Without one, you simply keep the
+recording. A single recording stops at ten minutes.
+
+## Locking a day
+
+**Lock** in the page's footer seals the day with the same vault PIN as locked notes.
+On disk the text is scrambled; the mood and the size of the day stay readable so the
+calendar and the streak keep working. *Settings → Journal → Locking* can lock new days
+as they are made, or every day you have already written.
+
+Locked days are listed on the **Vault** page too, in their own *Journal* section beside
+locked notes and to-do lists: you see the date (and the mood, if you set one), never the
+words. Each section there folds away; Papyra remembers which ones on that device.
+
+This protects the folder, a Git remote and your backups. The server holds the key, so
+anyone who can run your Papyra can read what you wrote; it is not a diary that even
+you cannot recover.
+
+## Exporting your journal
+
+*Settings → Data & Storage → Journal export* downloads just the journal, two ways:
+
+- **Markdown files** — a zip laid out like your journal folder: `journal/2026/10/2026-10-27.md`, one file per day,
+  with the pictures and recordings those days use under `media/`.
+- **PDF book** — every day with writing (or a mood) in one small book: a cover, a contents page, then each month on
+  a fresh page with its days run on, in Papyra's own typefaces. Headings, lists, ticked and unticked tasks, quotes,
+  code and pictures are laid out; `[[links]]` print as their names. What a page can't play is drawn as the
+  small card it is in the journal: a voice note as a mini player with its name and length, a video as its still with a
+  play button, a map, a web page or a document as a card saying what it is and where it points — each with its
+  caption underneath. Latin scripts print from the book's own faces;
+  other scripts print only if the server has a font for them, so use the Markdown export when you need every character.
+
+Both are guarded like the full export: unlock your vault (PIN or passkey) and enter a code from your authenticator
+app (or the one emailed to you). Locked days are included, readable, because you opened the vault to ask for them; days
+in the Trash are not. Your account gets an email saying that a journal export happened.
+
+## Templates and a reminder
+
+*Settings → Journal → Templates* keeps pages a blank day can start from, with
+`{{date}}`, `{{weekday}}` and `{{streak}}` filled in. They show as "Start from" chips
+on an empty day; one can be the first offered. Starting from one saves nothing until
+you add words of your own. Templates are plain `.md` files under
+`.papyra/journal-templates/`, outside the notes folder, and they travel in backups.
+
+*Settings → Journal → Reminder* sends one short email at the time you choose, only if
+that day is still blank, and never says anything about what the journal holds. It is
+off until you turn it on and needs email to be set up.
+
+## Bringing a journal in
+
+*Settings → Data & Storage → Import* has two journal options:
+
+- **Day One (.zip):** the JSON export, with its photos and recordings. Each entry lands
+  on the day it was written, in the time zone it was written in.
+- **Daily notes (.zip):** any zip with files named for their day, such as
+  `2024-03-02.md`, in any folders. This is how an Obsidian daily-notes folder looks.
+
+A day that already has writing keeps it: what comes in is added underneath, under
+"Imported from …". Importing the same file again adds nothing. Locked days, days in
+the Trash and days that have not begun are left alone, and the summary says how many.
+
+## Scripts and agents
+
+Make a key with scope **The journal only** (*Settings → API Keys*); its token starts
+with `papyra_j_`. It reaches `/api/journal` and nothing else:
+
+```bash
+# What's today's page?
+curl -H "X-API-Key: $TOKEN" https://papyra.example.com/api/journal/today
+
+# Add a line to today, without reading it first
+curl -X POST -H "X-API-Key: $TOKEN" -H "Content-Type: application/json" \
+  -d '{"text":"Shipped the release."}' \
+  https://papyra.example.com/api/journal/2026-10-25/append
+```
+
+A key can read and write days, but never archive, lock or delete one and never change
+settings. It sees a locked day's date, mood and size, never its words, and cannot write to
+one. A key for notes cannot touch the journal at all. Writes are credited to the key in the
+day's history.
+
+## Backups and export
+
+Backups and the zip export carry `journal/` along with everything else, and the templates and
+journal settings come with a backup. In a backup, locked days travel sealed under
+`vault/journal/` and need your password to restore; in the zip export, which you confirm
+with your vault open, they come out readable in the same folder. See
+[Backups and git](/docs/backups/).

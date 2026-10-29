@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useSyncExternalStore } from 'react';
 import { useQueryClient } from '@tanstack/react-query';
 import { flushOutbox } from '../lib/notesApi';
+import { flushJournalOutbox } from '../lib/journalApi';
 import { getSyncState, refreshPending, setSync, subscribeSync, type SyncState } from '../lib/syncStatus';
 import { checkServerVersion } from '../lib/serverVersion';
 
@@ -25,6 +26,9 @@ export function useSyncEngine(): SyncState {
     if (getSyncState().pending === 0) return;
     const { synced } = await flushOutbox();
     if (synced > 0) await queryClient.invalidateQueries({ queryKey: ['notes'] });
+    // Days written offline in the journal go up the same way.
+    const days = await flushJournalOutbox();
+    if (days.synced > 0) await queryClient.invalidateQueries({ queryKey: ['journal'] });
   }, [queryClient]);
 
   // Back online after an outage is when the server most likely changed under us

@@ -49,29 +49,31 @@ export function createMediaToolbarItems({ upload, readOnly, getEditor, notify }:
           onSelect: () => openDocument({ url: ctx.url, target: ctx.target, fragment: ctx.fragment, name: ctx.alt || ctx.target }),
         });
       }
-      if (!readOnly && ctx.requestInput) {
-        const ask = ctx.requestInput;
-        items.push({
-          id: 'papyra.rename',
-          label: 'Rename',
-          icon: <PenLine {...ICON} />,
-          onSelect: () => {
-            void ask({
-              title: 'Rename',
-              submitLabel: 'Save',
-              fields: [{ name: 'name', label: 'Name shown in the note', value: ctx.alt || ctx.target, placeholder: ctx.target }],
-            }).then((values) => {
-              if (!values) return;
-              // The file keeps its stored name; the note shows this one
-              // (`![[q3.pdf|Q3 report]]`). Back to the file's name clears it.
-              const name = values.name.trim();
-              ctx.update({ alt: name && name !== ctx.target ? name : null });
-            });
-          },
-        });
-      }
     }
-    if (!readOnly) {
+    // A document or a recording can be named: its card shows the name, not the stored file name.
+    if (!readOnly && (isDocument || ctx.kind === 'audio') && ctx.requestInput) {
+      const ask = ctx.requestInput;
+      items.push({
+        id: 'papyra.rename',
+        label: 'Rename',
+        icon: <PenLine {...ICON} />,
+        onSelect: () => {
+          void ask({
+            title: 'Rename',
+            submitLabel: 'Save',
+            fields: [{ name: 'name', label: 'Name shown in the note', value: ctx.alt || ctx.target, placeholder: ctx.target }],
+          }).then((values) => {
+            if (!values) return;
+            // The file keeps its stored name; the note shows this one
+            // (`![[q3.pdf|Q3 report]]`). Back to the file's name clears it.
+            const name = values.name.trim();
+            ctx.update({ alt: name && name !== ctx.target ? name : null });
+          });
+        },
+      });
+    }
+    // A recording is made once: swapping the file for another one is for pictures and video.
+    if (!readOnly && ctx.kind !== 'audio') {
       items.push({
         id: 'papyra.replace',
         label: 'Replace',

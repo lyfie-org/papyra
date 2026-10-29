@@ -33,7 +33,10 @@ public sealed class ShareCleanupServiceTests
                         MaxViews = 1, ViewCount = 1 },                                        // view cap hit → gone
                     new Share { NoteId = "n3", OwnerId = 1, Kind = "link", Token = "live",
                         ExpiresUtc = DateTime.UtcNow.AddDays(1), MaxViews = 5, ViewCount = 2 },// still valid → kept
-                    new Share { NoteId = "n4", OwnerId = 1, Kind = "user", GranteeUserId = 2 }); // no limits → kept
+                    new Share { NoteId = "n4", OwnerId = 1, Kind = "user", GranteeUserId = 2 }, // no limits → kept
+                    // An ended person share stays: its recipient clears it from their desk.
+                    new Share { NoteId = "n5", OwnerId = 1, Kind = "user", GranteeUserId = 2,
+                        ExpiresUtc = DateTime.UtcNow.AddMinutes(-5) });
                 await db.SaveChangesAsync();
             }
 
@@ -49,7 +52,7 @@ public sealed class ShareCleanupServiceTests
             {
                 var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
                 var tokens = await db.Shares.Select(s => s.NoteId).OrderBy(x => x).ToListAsync();
-                Assert.Equal(["n3", "n4"], tokens);
+                Assert.Equal(["n3", "n4", "n5"], tokens);
             }
         }
         finally

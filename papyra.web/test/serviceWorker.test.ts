@@ -43,7 +43,19 @@ function loadWorker(networkResponse: Response) {
     return { handled: responded !== undefined };
   }
 
-  return { navigate, put };
+  /** A same-origin GET (an API read), optionally with request headers. */
+  async function read(path: string, headers: Record<string, string> = {}) {
+    let responded: Promise<Response> | undefined;
+    listeners.fetch({
+      request: { method: 'GET', mode: 'cors', url: `https://papyra.test${path}`, headers: new Headers(headers) },
+      respondWith: (p: Promise<Response>) => { responded = p; },
+    });
+    if (responded) await responded;
+    await new Promise((r) => setTimeout(r, 0));
+    return { handled: responded !== undefined };
+  }
+
+  return { navigate, read, put };
 }
 
 const html = () => new Response('<!doctype html><div id="root"></div>', {
@@ -80,5 +92,31 @@ describe('service worker shell cache', () => {
     const text = loadWorker(new Response('hello', { headers: { 'content-type': 'text/plain' } }));
     await text.navigate('/');
     expect(text.put).not.toHaveBeenCalled();
+  });
+});
+
+describe('service worker and the journal', () => {
+  const json = () => new Response('{"date":"2026-10-25"}', { status: 200, headers: { 'content-type': 'application/json' } });
+
+  it('keeps today and any one day, so a page you were writing opens offline', async () => {
+    for (const path of ['/api/journal/today', '/api/journal/2026-10-25']) {
+      const sw = loadWorker(json());
+      expect((await sw.read(path)).handled).toBe(true);
+      expect(sw.put).toHaveBeenCalledTimes(1);
+    }
+  });
+
+  it('leaves ranges, stats, settings and everything else in the journal API alone', async () => {
+    for (const path of ['/api/journal', '/api/journal/stats', '/api/journal/settings', '/api/journal/2026-10-25/append', '/api/journal/on-this-day']) {
+      const sw = loadWorker(json());
+      expect((await sw.read(path)).handled).toBe(false);
+    }
+  });
+
+  it('never keeps a response fetched with the vault open: it could hold a locked day', async () => {
+    const sw = loadWorker(json());
+    const { handled } = await sw.read('/api/journal/2026-10-25', { 'X-Unlock-Token': 'abc' });
+    expect(handled).toBe(false);
+    expect(sw.put).not.toHaveBeenCalled();
   });
 });

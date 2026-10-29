@@ -171,6 +171,18 @@
   --ease:       cubic-bezier(0.22, 1, 0.36, 1);
   --ease-inout: cubic-bezier(0.4, 0, 0.2, 1);
 
+  /* The journal: how a day felt (Rough → Great), as a graphic on paper — every
+     one holds 3:1 (WCAG non-text) on --surface, --bg and the lifted dark paper.
+     The shape of the glyph carries the value too, never the hue alone. */
+  --mood-1: #a8432f;
+  --mood-2: #a15f14;
+  --mood-3: #566f80;
+  --mood-4: #3c7a55;
+  --mood-5: #8f6a05;
+  /* The ribbon bookmark on today's page, and the grain laid faintly over the sheet. */
+  --ribbon: #a8432f;
+  --grain-opacity: 0.035;
+
   /* PapyraEditor (luthor) token bridge. The preset reads these and otherwise
      falls back to its own light palette — which is why the editor ignored the
      app theme. They point at the design tokens above, so dark mode re-resolves
@@ -256,6 +268,14 @@
   --warn:        #e0a45c;
   --warn-bg:     rgba(224, 164, 92, 0.14);
   --warn-border: rgba(224, 164, 92, 0.30);
+
+  --mood-1: #e8917d;
+  --mood-2: #e3a85f;
+  --mood-3: #9db6c6;
+  --mood-4: #7fc79a;
+  --mood-5: #e8c565;
+  --ribbon: #d9735c;
+  --grain-opacity: 0.05;
 
   --file-pdf:     #e8887a;
   --file-doc:     #86aee0;

@@ -54,3 +54,44 @@ describe('Copy text', () => {
     await vi.waitFor(() => expect(notify).toHaveBeenCalledWith('Couldn’t copy the text.'));
   });
 });
+
+describe('Replace and Rename', () => {
+  const upload = vi.fn();
+  const ids = (over: Record<string, unknown>, deps: { readOnly?: boolean } = {}) =>
+    createMediaToolbarItems({ upload, ...deps })(ctx(null, { requestInput: vi.fn(), ...over })).map((i) => i.id);
+
+  it('a recording can be renamed but not replaced', () => {
+    const audio = ids({ kind: 'audio', target: 'voice-1.wav' });
+    expect(audio).toContain('papyra.rename');
+    expect(audio).not.toContain('papyra.replace');
+  });
+
+  it('a picture can be replaced but is not renamed', () => {
+    const image = ids({ kind: 'image' });
+    expect(image).toContain('papyra.replace');
+    expect(image).not.toContain('papyra.rename');
+  });
+
+  it('a document can be renamed and replaced', () => {
+    const doc = ids({ kind: 'pdf', target: 'q3.pdf' });
+    expect(doc).toEqual(expect.arrayContaining(['papyra.rename', 'papyra.replace']));
+  });
+
+  it('a read-only view offers neither', () => {
+    const readOnly = ids({ kind: 'audio', target: 'voice-1.wav' }, { readOnly: true });
+    expect(readOnly).not.toContain('papyra.rename');
+    expect(readOnly).not.toContain('papyra.replace');
+  });
+
+  it('naming a recording writes the name into the embed, and the file name clears it', async () => {
+    const update = vi.fn();
+    const ask = vi.fn(async () => ({ name: 'Walk, Tuesday' }));
+    const rename = createMediaToolbarItems({ upload })(ctx(null, { kind: 'audio', target: 'voice-1.wav', update, requestInput: ask }))
+      .find((i) => i.id === 'papyra.rename')!;
+    rename.onSelect();
+    await vi.waitFor(() => expect(update).toHaveBeenCalledWith({ alt: 'Walk, Tuesday' }));
+    ask.mockResolvedValueOnce({ name: 'voice-1.wav' });
+    rename.onSelect();
+    await vi.waitFor(() => expect(update).toHaveBeenCalledWith({ alt: null }));
+  });
+});

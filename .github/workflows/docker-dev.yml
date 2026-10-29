@@ -37,8 +37,12 @@ jobs:
         id: tags
         run: |
           SHORT=$(git rev-parse --short=7 HEAD)
+          # What the app itself shows (sidebar, Settings → About, error reports): the
+          # last release this build is on top of, plus the commit it was built from.
+          BUILD="$(tr -d '[:space:]' < VERSION)-dev.$SHORT"
           echo "short=$SHORT" >> "$GITHUB_OUTPUT"
-          echo "Publishing $IMAGE:dev and $IMAGE:dev-$SHORT ($(cat VERSION) + development)"
+          echo "build=$BUILD" >> "$GITHUB_OUTPUT"
+          echo "Publishing $IMAGE:dev and $IMAGE:dev-$SHORT (shows as v$BUILD)"
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -55,6 +59,7 @@ jobs:
           platforms: linux/amd64
           load: true
           tags: papyra:smoketest
+          build-args: PAPYRA_BUILD_VERSION=${{ steps.tags.outputs.build }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -106,6 +111,7 @@ jobs:
           tags: |
             ${{ env.IMAGE }}:dev
             ${{ env.IMAGE }}:dev-${{ steps.tags.outputs.short }}
+          build-args: PAPYRA_BUILD_VERSION=${{ steps.tags.outputs.build }}
           labels: |
             org.opencontainers.image.revision=${{ github.sha }}
             org.opencontainers.image.source=https://github.com/${{ github.repository }}
@@ -119,6 +125,8 @@ jobs:
             echo ""
             echo "- \`$IMAGE:dev\`"
             echo "- \`$IMAGE:dev-${{ steps.tags.outputs.short }}\`"
+            echo ""
+            echo "The app shows it as \`v${{ steps.tags.outputs.build }}\` (sidebar, Settings → About)."
             echo ""
             echo "Try it: \`PAPYRA_TAG=dev docker compose -f docker-compose.hub.yml up -d\`"
           } >> "$GITHUB_STEP_SUMMARY"

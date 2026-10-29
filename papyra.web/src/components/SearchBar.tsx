@@ -6,11 +6,13 @@ import { useSyncState } from '../hooks/useSync';
 import { useAuth } from '../hooks/useAuth';
 import { useTags } from '../hooks/useTags';
 import { useCollections } from '../hooks/useCollections';
+import { useTimeZone } from '../lib/timeZone';
+import { todayIn } from '../lib/journalDay';
 import { flattenMarkdown, normaliseLines } from '../lib/plainText';
 import { highlightParts } from '../lib/highlight';
 import {
-  GROUP_LABEL, tagResults, collectionResults, noteResult, orderResults, settingsResults,
-  type SearchResult,
+  GROUP_LABEL, tagResults, collectionResults, dayJumpResults, noteResult, orderResults, settingsResults,
+  type ResultKind, type SearchResult,
 } from '../lib/searchRegistry';
 import type { Note } from '../types/note';
 import './SearchBar.css';
@@ -24,6 +26,8 @@ interface Hit {
   title: string;
   snippet: string;
   secure?: boolean;
+  /** Set by the server for a journal day; a desk note's kind comes from the cache. */
+  kind?: ResultKind;
 }
 
 const DEBOUNCE_MS = 180;
@@ -100,6 +104,7 @@ export default function SearchBar() {
 
   const cached = useMemo(() => notes ?? [], [notes]);
   const isAdmin = user?.role === 'Admin';
+  const zone = useTimeZone();
 
   const close = useCallback(() => { setOpen(false); setSummoned(false); setActive(0); }, []);
 
@@ -153,15 +158,16 @@ export default function SearchBar() {
     if (!q) return [];
     const byId = new Map(cached.map(n => [n.id, n]));
     return orderResults([
+      ...dayJumpResults(q, todayIn(new Date(), zone)),
       ...noteHits.map(hit => {
         const n = byId.get(hit.id);
-        return noteResult(hit, n?.kind ?? 'note', hit.rank, n);
+        return noteResult(hit, hit.kind === 'journal' ? 'journal' : n?.kind ?? 'note', hit.rank, n);
       }),
       ...settingsResults(q, isAdmin),
       ...tagResults(tags ?? [], q),
       ...collectionResults(collections ?? [], q),
     ]);
-  }, [query, noteHits, cached, isAdmin, tags, collections]);
+  }, [query, noteHits, cached, isAdmin, tags, collections, zone]);
 
   // The keyboard walks a flat list; the headings are drawn from it, not around
   // it. Clamp on read rather than in an effect — the list shrinks on every
@@ -226,7 +232,7 @@ export default function SearchBar() {
   const raised = showPanel || (open && summoned);
   // Only note results come from the index, so the offline and partial notices
   // would be lying if a settings match were the only thing on screen.
-  const hasNoteResults = results.some(r => r.source === 'note' || r.source === 'todo' || r.source === 'inbox');
+  const hasNoteResults = results.some(r => r.source === 'note' || r.source === 'todo' || r.source === 'inbox' || r.source === 'journal');
 
   return (
     <div className={`search${raised ? ' search--open' : ''}`} ref={wrapRef}>

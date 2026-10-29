@@ -9,6 +9,7 @@ import { usePopoverMenu } from '../hooks/usePopoverMenu';
 import { useDismiss } from '../hooks/useDismiss';
 import { useDialogFocus } from '../hooks/useDialogFocus';
 import { putNote } from '../lib/notesApi';
+import { uuid } from '../lib/uuid';
 import { useToast } from '../lib/toastContext';
 import PalettePicker from './PalettePicker';
 import TagEditor from './TagEditor';
@@ -128,7 +129,7 @@ function SharedMenu({ share, className, size, onTags }: {
   async function duplicate() {
     // Into your own notes: yours to change, keep and organise. Its attachments
     // stay the owner's.
-    await putNote(crypto.randomUUID(), {
+    await putNote(uuid(), {
       title: share.title.trim() ? `${share.title} copy` : '',
       tags: share.tags ?? [], color: share.color, pinned: false, archived: false, kind: 'note', body: share.body,
     });

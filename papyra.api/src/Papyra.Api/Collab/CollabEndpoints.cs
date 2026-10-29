@@ -96,6 +96,8 @@ public static class CollabEndpoints
         VaultState state, MarkdownStorageService storage, VaultObserverOptions vault, ILoggerFactory lf,
         CancellationToken ct)
     {
+        // A journal is personal: no sharing, so no room to join (answered before anything else).
+        if (JournalPaths.IsJournalId(body.NoteId)) return Papyra.Api.Features.JournalGuards.NotHere();
         if (engine.Status != CollabStatus.Ok)
             return Results.Json(new { error = "Live editing is unavailable right now.", code = "collab_unavailable" },
                 statusCode: StatusCodes.Status503ServiceUnavailable);
@@ -106,6 +108,8 @@ public static class CollabEndpoints
 
         var note = await ReadOwnerNoteAsync(state, storage, vault, lf, access.OwnerId.ToString(), access.NoteId, ct);
         if (note is null || note.Trashed) return Results.NotFound();
+        // A journal is personal: no sharing, so no room to join.
+        if (JournalPaths.IsJournal(note)) return Papyra.Api.Features.JournalGuards.NotHere();
         // A locked note never enters a room: its body is withheld everywhere else.
         if (note.Secure) return Results.Json(new { error = "This note is locked.", code = "locked" },
             statusCode: StatusCodes.Status410Gone);
@@ -214,6 +218,7 @@ public static class CollabEndpoints
 
         await hub.Clients.User(ownerUid).SendAsync("NoteUpdated", NoteMetadata.From(note), ct);
         var grantees = await db.Shares
+            .Live(DateTime.UtcNow)
             .Where(s => s.OwnerId == owner && s.NoteId == noteId && s.Kind == "user" && s.GranteeUserId != null)
             .Select(s => s.GranteeUserId!.Value.ToString()).Distinct().ToListAsync(ct);
         if (grantees.Count > 0)

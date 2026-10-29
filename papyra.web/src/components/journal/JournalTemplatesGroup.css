@@ -1,0 +1,2 @@
+.journal-template-editor { display: grid; gap: var(--space-3); }
+.journal-template-editor__text { min-height: 9lh; font-family: var(--mono); font-size: var(--fs-sm); resize: vertical; }

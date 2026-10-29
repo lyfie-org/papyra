@@ -1,0 +1,319 @@
+/* One day of the journal: a single sheet of paper on the desk. */
+
+.journal-sheet {
+  position: relative;
+  background: var(--paper);
+  border: 1px solid var(--paper-edge);
+  border-radius: var(--radius-lg);
+  box-shadow: var(--shadow-card);
+  /* Roomy to write in, not roomy to look at: the page itself is the point. */
+  --sheet-pad-x: clamp(var(--space-4), 4vw, var(--space-10));
+  padding: var(--space-6) var(--sheet-pad-x) var(--space-3);
+  display: flex;
+  flex-direction: column;
+  flex: 1 1 auto;
+  min-height: 0;
+  color: var(--text);
+  /* The luthor canvas paints --papyra-surface; keep it on the same paper. */
+  --papyra-surface: var(--paper);
+  font-family: var(--sans);
+  isolation: isolate;
+  overflow: clip;
+  /* The page-turn between days: a short slide that settles. */
+  animation: journal-sheet-in var(--dur-slow) var(--ease) both;
+}
+
+/* A faint grain laid over the paper, under the writing. */
+.journal-sheet::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  z-index: -1;
+  pointer-events: none;
+  opacity: var(--grain-opacity);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix values='0 0 0 0 .24 0 0 0 0 .17 0 0 0 0 .12 0 0 0 1 0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+}
+
+@keyframes journal-sheet-in {
+  from { opacity: 0; transform: translateX(var(--journal-turn, 12px)); }
+  to   { opacity: 1; transform: none; }
+}
+
+.journal-sheet--loading { min-height: 60vh; animation: none; }
+.journal-sheet__skeleton {
+  height: 220px;
+  border-radius: var(--radius-md);
+  background: linear-gradient(90deg, transparent, var(--accent-bg), transparent) 0 0 / 200% 100%;
+  animation: journal-shimmer 1.4s var(--ease-inout) infinite;
+}
+@keyframes journal-shimmer { to { background-position: -200% 0; } }
+
+/* Today wears a ribbon bookmark. It hangs in the page's side margin so it never covers the header
+   (the mood chip sits at its right end); where the margin is too thin it shortens to a tab that
+   stays inside the top padding. */
+.journal-sheet__ribbon {
+  position: absolute;
+  top: -1px;
+  right: max(0px, calc((var(--sheet-pad-x) - 22px) / 2));
+  width: 22px;
+  height: 58px;
+  background: var(--ribbon);
+  clip-path: polygon(0 0, 100% 0, 100% 100%, 50% 82%, 0 100%);
+}
+@media (max-width: 560px) {
+  .journal-sheet__ribbon { height: 22px; }
+}
+
+/* The date on the left, how the day felt on the same line: one slim header. */
+.journal-sheet__head {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-4);
+  padding-bottom: var(--space-3);
+  border-bottom: 1px solid var(--paper-edge);
+}
+.journal-sheet__titles { display: flex; flex-direction: column; align-items: flex-start; gap: var(--space-1); min-width: 0; }
+
+.journal-sheet__weekday {
+  margin: 0;
+  font: 500 var(--fs-xs)/1.2 var(--sans);
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  color: var(--text);
+}
+
+.journal-sheet__date {
+  margin: 0;
+  font: 400 var(--fs-2xl)/1.1 var(--heading);
+  letter-spacing: 0.01em;
+  color: var(--text-h);
+}
+/* The date is the way into the calendar. */
+.journal-sheet__date-link {
+  color: inherit;
+  text-decoration: none;
+  border-radius: var(--radius-sm);
+  margin-inline: calc(var(--space-1) * -1);
+  padding-inline: var(--space-1);
+  transition: background var(--dur-fast) var(--ease);
+}
+.journal-sheet__date-link:hover { background: var(--accent-bg); }
+.journal-sheet__date-link:focus-visible { outline: 2px solid var(--border-focus); outline-offset: 2px; }
+
+.journal-sheet__streak {
+  margin: var(--space-1) 0 0;
+  font: 500 var(--fs-xs)/1.3 var(--sans);
+  color: var(--accent-text);
+}
+
+.journal-sheet__mood { display: flex; align-items: center; }
+
+/* Notices sit between the header and the page. */
+.journal-sheet__notice {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  margin: var(--space-2) 0;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--code-bg);
+  color: var(--text-h);
+  font: 400 var(--fs-sm)/1.4 var(--sans);
+}
+.journal-sheet__notice--warn { background: var(--warn-bg); border-color: var(--warn-border); }
+.journal-sheet__notice--error { background: var(--danger-bg); border-color: var(--danger-border); }
+.journal-sheet__notice-actions { display: inline-flex; flex-wrap: wrap; gap: var(--space-2); margin-inline-start: auto; }
+
+.journal-sheet__action,
+.journal-sheet__link {
+  font: 500 var(--fs-xs)/1 var(--sans);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text-h);
+  cursor: pointer;
+}
+.journal-sheet__link { padding: 0; border: 0; background: none; color: var(--accent-text); }
+.journal-sheet__action:hover { border-color: var(--border-hover); }
+
+/* Pages a blank day can start from. */
+.journal-sheet__starts { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2); margin: var(--space-2) 0; }
+.journal-sheet__starts-label { font: 500 var(--fs-xs)/1 var(--sans); color: var(--text); }
+.journal-sheet__chip {
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill, 999px);
+  background: var(--surface);
+  color: var(--text-h);
+  font: 500 var(--fs-xs)/1.4 var(--sans);
+  cursor: pointer;
+}
+.journal-sheet__chip:hover { border-color: var(--border-hover); }
+.journal-sheet__chip:focus-visible { border-color: var(--border-focus); }
+
+/* The page itself: it takes whatever height the window leaves, so an empty day is a whole
+   inviting page to write on, and a long one simply runs past the bottom and scrolls. */
+.journal-sheet__body { position: relative; flex: 1 1 auto; display: flex; flex-direction: column; min-height: 38vh; }
+.journal-sheet__diff-slot { margin-bottom: var(--space-4); }
+.journal-sheet__canvas { position: relative; flex: 1 1 auto; display: flex; flex-direction: column; padding-bottom: var(--space-4); }
+
+/* The first letter of the opening paragraph is set larger, in the heading face: a small ceremony for
+   starting the day. Inline on purpose — a sunk or floated capital makes the next block wrap around it. */
+.journal-sheet__canvas .luthor-content-editable > p:first-child:not(:empty)::first-letter {
+  font-family: var(--heading);
+  font-size: 1.7em;
+  line-height: 1;
+  color: var(--text-h);
+}
+
+.journal-sheet__foot {
+  position: relative;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-2) var(--space-4);
+  margin-top: var(--space-2);
+  padding: var(--space-3) 0 var(--space-2);
+  border-top: 1px solid var(--paper-edge);
+  font: 400 var(--fs-xs)/1.3 var(--sans);
+  color: var(--text);
+}
+.journal-sheet__foot-left,
+.journal-sheet__foot-right { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-2) var(--space-3); }
+
+.journal-sheet__words { font-variant-numeric: tabular-nums; }
+.journal-sheet__status { min-width: 4ch; }
+.journal-sheet__status--error { color: var(--danger); }
+.journal-sheet__status--queued { color: var(--warn); }
+
+.journal-sheet__tool {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid transparent;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text);
+  font: 500 var(--fs-xs)/1.2 var(--sans);
+  cursor: pointer;
+}
+.journal-sheet__tool:hover:not(:disabled) { border-color: var(--border-hover); color: var(--text-h); }
+.journal-sheet__tool[aria-pressed='true'] { background: var(--accent-bg); border-color: var(--accent-border); color: var(--text-h); }
+.journal-sheet__tool:disabled { opacity: 0.45; cursor: default; }
+
+/* Focus mode: the sheet takes the whole browser, over the sidebar and the bar, the way a note
+   does. Nothing but the date and the writing; the measure stays readable and is centred. */
+.journal-sheet--focus {
+  --focus-gutter: max(var(--space-5), calc((100vw - 52rem) / 2));
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+  width: auto;
+  max-width: none;
+  margin: 0;
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  background: var(--paper);
+  overflow-y: auto;
+  padding: var(--space-8) var(--focus-gutter) var(--space-12);
+  animation: none;
+}
+.journal-sheet--focus::before { content: none; }
+.journal-sheet--focus .journal-sheet__ribbon { display: none; }
+.journal-sheet--focus .journal-sheet__head { border-bottom-color: transparent; padding-bottom: var(--space-2); }
+.journal-sheet--focus .journal-sheet__body { min-height: 0; }
+/* Reads like a page in a book: a wider leading. The writing fills the window; a long day scrolls. */
+.journal-sheet--focus .journal-sheet__canvas { font-size: 1.075rem; line-height: 1.9; padding-bottom: var(--space-6); }
+
+.journal-sheet__exit {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  color: var(--text-h);
+  font: 500 var(--fs-xs)/1.4 var(--sans);
+  cursor: pointer;
+}
+.journal-sheet__exit:hover { border-color: var(--border-hover); }
+.journal-sheet__exit:focus-visible { outline: 2px solid var(--border-focus); outline-offset: 2px; }
+
+@media (max-width: 640px) {
+  .journal-sheet { padding-top: var(--space-5); border-radius: var(--radius-md); }
+  .journal-sheet__date { font-size: var(--fs-xl); }
+  .journal-sheet__foot { flex-direction: column; align-items: stretch; }
+  .journal-sheet--focus { padding: var(--space-5) var(--space-4) var(--space-8); border-radius: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .journal-sheet { animation: journal-sheet-fade var(--dur) linear both; }
+  .journal-sheet__skeleton { animation: none; }
+}
+@keyframes journal-sheet-fade { from { opacity: 0; } to { opacity: 1; } }
+
+/* The luthor canvas sits on the paper: no boxed input, the sheet's own padding. */
+.journal-sheet__canvas .luthor-editor-wrapper {
+  border: 0;
+  border-radius: 0;
+  box-shadow: none;
+  /* `clip` still clips but isn't a scroll container, so the toolbar can stick. */
+  overflow: clip;
+}
+/* The paper's grain is drawn behind the writing. luthor paints its own opaque surface, which hid
+   it, so the writing read as a flat, slightly darker box on the page — let the paper show through. */
+.journal-sheet__canvas :is(.luthor-preset, .luthor-editor-wrapper, .luthor-editor, .luthor-richtext-container, .luthor-preset-papyra__content) {
+  background: transparent;
+}
+/* The writing fills the page: each box down the chain grows, so a click anywhere on the empty
+   paper is a click in the editor. There is no drag-handle gutter: the writing starts at the page's own edge. */
+.journal-sheet__canvas .luthor-editor-wrapper { flex: 1 1 auto; min-height: 0; }
+/* The wrapper clips (so the toolbar can stick), and a selected picture or recording draws its ring and its
+   side handles just outside its edge — which a flush clip cut off, most visibly on a left- or right-aligned
+   one. The clip box is a little wider than the writing, which stays where it was. */
+.journal-sheet__canvas .luthor-editor-wrapper { --ring-room: 14px; margin-inline: calc(var(--ring-room) * -1); padding-inline: var(--ring-room); }
+.journal-sheet__canvas .luthor-editor { min-height: 0; }
+.journal-sheet__canvas .luthor-richtext-container { display: flex; flex-direction: column; }
+/* Lexical writes display:block on this wrapper inline, so it takes !important to become a column. */
+.journal-sheet__canvas .luthor-richtext-container > div { display: flex !important; flex-direction: column; flex: 1 1 auto; }
+.journal-sheet__canvas .luthor-preset-papyra__content { flex: 1 1 auto; padding-inline: 0; min-height: 40vh; }
+.journal-sheet__canvas .luthor-richtext-container {
+  /* luthor positions the placeholder from its own padding variable, not the body's: keep both at 0. */
+  --luthor-editor-content-padding-x: 0px;
+  --luthor-first-block-offset: 2px;
+}
+
+/* The `/` menu follows the caret, and luthor hides it for a frame every time it moves it — a scroll,
+   of the page or of the menu's own list, moves it every frame, so it blinked out until the scroll
+   stopped. Keep it showing; it is already placed before it first paints. */
+.luthor-slash-menu { visibility: visible !important; }
+.journal-sheet__canvas .luthor-editor-toolbar-slot {
+  background: var(--paper);
+  border-bottom: 1px solid var(--paper-edge);
+}
+.journal-sheet__canvas .luthor-toolbar { padding-inline: 0; justify-content: safe center; }
+@media (max-width: 620px) {
+  .journal-sheet__canvas .luthor-toolbar { flex-wrap: nowrap; overflow-x: auto; scrollbar-width: none; }
+  .journal-sheet__canvas .luthor-toolbar::-webkit-scrollbar { display: none; }
+  .journal-sheet__canvas .luthor-toolbar-section { flex-shrink: 0; }
+}
+/* Room to read: a little more leading than luthor's 1.5, and a new paragraph is a visible step
+   (luthor's paragraphs read the line-height variable, not the canvas's own line-height). */
+.journal-sheet__canvas { --luthor-default-line-height: 1.7; --journal-para-gap: 0.75em; }
+.journal-sheet__canvas .luthor-paragraph + .luthor-paragraph { margin-top: var(--journal-para-gap); }
+/* A note is written a line at a time: close the gaps luthor leaves between blocks. */
+.journal-sheet__canvas .luthor-list-li { margin: 1px 0; }
+.journal-sheet__canvas :is(.luthor-list-ul, .luthor-list-ol) { margin-block: 4px; }
+.journal-sheet__canvas .luthor-list-li :is(.luthor-list-ul, .luthor-list-ol) { margin-block: 0; }
+
+/* Focus mode reads like a page in a book: a wider leading. */
+.journal-sheet--focus .journal-sheet__canvas { font-size: 1.075rem; line-height: 1.9; --luthor-default-line-height: 1.9; --journal-para-gap: 0.9em; }

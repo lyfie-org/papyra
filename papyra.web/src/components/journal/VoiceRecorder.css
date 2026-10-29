@@ -1,0 +1,45 @@
+/* A voice note being made: a slim bar between the page and its footer. */
+.voice-recorder {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2) var(--space-3);
+  margin: var(--space-2) 0;
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--code-bg);
+  color: var(--text-h);
+  font: 400 var(--fs-sm)/1.3 var(--sans);
+}
+.voice-recorder.is-recording { border-color: var(--danger-border); background: var(--danger-bg); }
+
+.voice-recorder__icon { flex: none; color: var(--text); }
+.is-recording .voice-recorder__icon { color: var(--danger); animation: voice-pulse 1.4s var(--ease-inout) infinite; }
+@keyframes voice-pulse { 50% { opacity: 0.35; } }
+
+.voice-recorder__state { flex: 1; min-width: 8ch; margin: 0; }
+.voice-recorder__clock { font: 400 var(--fs-xs)/1 var(--mono); font-variant-numeric: tabular-nums; color: var(--text); }
+.voice-recorder__actions { display: inline-flex; gap: var(--space-2); margin-inline-start: auto; }
+
+.voice-recorder__stop,
+.voice-recorder__cancel {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-2) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text-h);
+  font: 500 var(--fs-xs)/1 var(--sans);
+  cursor: pointer;
+}
+.voice-recorder__stop:hover:not(:disabled),
+.voice-recorder__cancel:hover { border-color: var(--border-hover); }
+.voice-recorder__stop { background: var(--danger); border-color: var(--danger); color: var(--danger-fg); }
+.voice-recorder__stop:hover:not(:disabled) { background: var(--danger-hover); border-color: var(--danger-hover); }
+
+@media (prefers-reduced-motion: reduce) {
+  .is-recording .voice-recorder__icon { animation: none; }
+}

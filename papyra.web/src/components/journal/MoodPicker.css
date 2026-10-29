@@ -1,0 +1,108 @@
+/* Mood glyphs: the shape carries the value; the colour only echoes it. */
+.mood-glyph { flex: none; }
+.mood-glyph--1 { color: var(--mood-1); }
+.mood-glyph--2 { color: var(--mood-2); }
+.mood-glyph--3 { color: var(--mood-3); }
+.mood-glyph--4 { color: var(--mood-4); }
+.mood-glyph--5 { color: var(--mood-5); }
+
+.mood-picker {
+  display: inline-flex;
+  gap: var(--space-1);
+  align-items: stretch;
+}
+
+.mood-picker__btn {
+  display: inline-flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--space-1);
+  min-width: 52px;
+  padding: var(--space-2) var(--space-2) var(--space-1);
+  border: 1px solid transparent;
+  border-radius: var(--radius-md);
+  background: transparent;
+  color: var(--text);
+  font: 500 var(--fs-2xs)/1.2 var(--sans);
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease), border-color var(--dur-fast) var(--ease), transform var(--dur-fast) var(--ease);
+}
+.mood-picker--compact .mood-picker__btn { min-width: 36px; padding: var(--space-1); }
+
+.mood-picker__btn:hover:not(:disabled) { background: var(--accent-bg); border-color: var(--border-hover); }
+.mood-picker__btn:active:not(:disabled) { transform: scale(0.95); }
+.mood-picker__btn:disabled { opacity: 0.5; cursor: default; }
+
+/* The sage border is for what is selected — and only that. */
+.mood-picker__btn--on {
+  background: var(--accent-bg);
+  border-color: var(--accent-border);
+  color: var(--text-h);
+}
+
+.mood-picker__label { white-space: nowrap; }
+
+@media (prefers-reduced-motion: reduce) {
+  .mood-picker__btn { transition: none; }
+  .mood-picker__btn:active:not(:disabled) { transform: none; }
+}
+
+@media (max-width: 480px) {
+  .mood-picker__btn { min-width: 44px; padding-inline: var(--space-1); }
+}
+
+/* A chosen mood folds into one small chip; the five come back when it is tapped. */
+.mood-picker-wrap { display: inline-flex; align-items: center; gap: var(--space-3); }
+.mood-picker__prompt { font: 400 var(--fs-xs)/1 var(--sans); color: var(--text); white-space: nowrap; }
+@media (max-width: 520px) { .mood-picker__prompt { display: none; } }
+
+.mood-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-2);
+  padding: var(--space-1) var(--space-3) var(--space-1) var(--space-2);
+  border: 1px solid var(--accent-border);
+  border-radius: var(--radius-pill);
+  background: var(--accent-bg);
+  color: var(--text-h);
+  font: 500 var(--fs-xs)/1.4 var(--sans);
+  cursor: pointer;
+  transition: border-color var(--dur-fast) var(--ease), background var(--dur-fast) var(--ease);
+}
+.mood-chip:hover:not(:disabled) { border-color: var(--border-hover); }
+.mood-chip:focus-visible { outline: 2px solid var(--border-focus); outline-offset: 2px; }
+.mood-chip:disabled { opacity: 0.5; cursor: default; }
+@media (prefers-reduced-motion: reduce) { .mood-chip { transition: none; } }
+
+/* A tip that shows the instant the pointer rests on a button (or it takes keyboard focus) and goes the
+   instant it leaves — the browser's own title waits a second or more. */
+.mood-picker__btn[data-tip],
+.mood-chip[data-tip] { position: relative; }
+.mood-picker__btn[data-tip]::after,
+.mood-chip[data-tip]::after {
+  content: attr(data-tip);
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 50%;
+  translate: -50% 0;
+  z-index: 30;
+  display: none;
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  box-shadow: var(--shadow-card);
+  color: var(--text-h);
+  font: 500 var(--fs-xs)/1.2 var(--sans);
+  letter-spacing: 0.01em;
+  white-space: nowrap;
+  pointer-events: none;
+}
+.mood-picker__btn[data-tip]:hover::after,
+.mood-picker__btn[data-tip]:focus-visible::after,
+.mood-chip[data-tip]:hover::after,
+.mood-chip[data-tip]:focus-visible::after { display: block; }
+/* At the page's right edge a centred tip would hang past it: the chip, and the last glyph, line the tip up with their own right edge. */
+.mood-chip[data-tip]::after,
+.mood-picker__btn:last-child[data-tip]::after { left: auto; right: 0; translate: none; }

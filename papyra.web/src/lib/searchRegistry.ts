@@ -16,8 +16,12 @@ import type { TagEntry } from '../hooks/useTags';
 import type { SmartCollection } from '../hooks/useCollections';
 import { searchSettings, settingsHref } from './settingsIndex';
 import { locateHref, noteLocation } from './locateNote';
+import { longDate, parseLooseDay, type Day } from './journalDay';
 
-export type ResultSource = 'note' | 'todo' | 'inbox' | 'settings' | 'page' | 'tag' | 'collection';
+export type ResultSource = 'note' | 'todo' | 'inbox' | 'journal' | 'settings' | 'page' | 'tag' | 'collection';
+
+/** What a search hit can be: a desk note, a to-do, the inbox, or a day of the journal. */
+export type ResultKind = Note['kind'] | 'journal';
 
 export interface SearchResult {
   /** Unique across sources — a note and a tag may share a name. */
@@ -44,12 +48,13 @@ export interface SearchResult {
  * group, never between them — mixing a settings page in among notes by score
  * makes the list feel arbitrary, and the note is nearly always what was wanted.
  */
-export const GROUP_ORDER: ResultSource[] = ['note', 'todo', 'inbox', 'settings', 'page', 'tag', 'collection'];
+export const GROUP_ORDER: ResultSource[] = ['note', 'todo', 'inbox', 'journal', 'settings', 'page', 'tag', 'collection'];
 
 export const GROUP_LABEL: Record<ResultSource, string> = {
   note: 'Notes',
   todo: 'To Do',
   inbox: 'Inbox',
+  journal: 'Journal',
   settings: 'Settings',
   page: 'Pages',
   tag: 'Tags',
@@ -62,23 +67,41 @@ export const GROUP_LABEL: Record<ResultSource, string> = {
  * first — "Archive › Note" — since opening it shows it over whatever page you are
  * on, which reads as if it belonged there.
  */
-function noteBreadcrumb(kind: Note['kind'], where: string): string[] {
+function noteBreadcrumb(kind: ResultKind, where: string): string[] {
+  if (kind === 'journal') return ['Journal'];
   const what = kind === 'todo' ? 'To Do' : kind === 'inbox' ? 'Inbox' : 'Note';
   return where === 'Archive' || where === 'Vault' || where === 'Trash' ? [where, what] : [what];
 }
 
-function sourceForKind(kind: Note['kind']): ResultSource {
-  return kind === 'todo' ? 'todo' : kind === 'inbox' ? 'inbox' : 'note';
+function sourceForKind(kind: ResultKind): ResultSource {
+  return kind === 'todo' ? 'todo' : kind === 'inbox' ? 'inbox' : kind === 'journal' ? 'journal' : 'note';
 }
+
+/** `journal-2026-10-25` → `2026-10-25`. */
+const dayOfEntryId = (id: string) => id.replace(/^journal-/, '');
 
 /** A note hit, whether it came from Lucene or the offline fallback. */
 export function noteResult(
   hit: { id: string; title: string; snippet?: string; secure?: boolean },
-  kind: Note['kind'],
+  kind: ResultKind,
   rank: number,
   /** What the cache knows about where the note lives. */
   state?: Pick<Note, 'archived' | 'trashed' | 'secure'>,
 ): SearchResult {
+  // A day of the journal opens as a day: its title is the date, shown long.
+  if (kind === 'journal') {
+    const day = dayOfEntryId(hit.id);
+    return {
+      key: `note:${hit.id}`,
+      source: 'journal',
+      title: /^\d{4}-\d{2}-\d{2}$/.test(day) ? longDate(day) : day,
+      breadcrumb: ['Journal'],
+      to: `/journal/${encodeURIComponent(day)}`,
+      snippet: hit.snippet,
+      secure: hit.secure,
+      rank,
+    };
+  }
   const where = noteLocation({ kind, archived: !!state?.archived, trashed: !!state?.trashed, secure: !!(state?.secure ?? hit.secure) });
   return {
     key: `note:${hit.id}`,
@@ -92,6 +115,27 @@ export function noteResult(
     secure: hit.secure,
     rank,
   };
+}
+
+/**
+ * Typing a date jumps to that day of the journal: "sep 14", "yesterday", "3 days ago",
+ * "2024-03-02". A bare word like "mon" is far more likely the start of a note search
+ * than "last Monday", so a weekday needs its "last"; a day that hasn't begun is no jump.
+ */
+export function dayJumpResults(query: string, today: Day | null): SearchResult[] {
+  const q = query.trim();
+  if (!today || !q) return [];
+  if (/^[a-z]{3,9}$/i.test(q) && !/^(today|yesterday|yday)$/i.test(q)) return [];
+  const day = parseLooseDay(q, today);
+  if (!day || day > today) return [];
+  return [{
+    key: `journal-day:${day}`,
+    source: 'journal',
+    title: longDate(day),
+    breadcrumb: ['Journal', 'Go to day'],
+    to: `/journal/${day}`,
+    rank: -1,
+  }];
 }
 
 export function settingsResults(query: string, isAdmin: boolean): SearchResult[] {

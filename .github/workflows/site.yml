@@ -3,7 +3,7 @@ name: site
 # Builds and deploys the product website. Two lines (see .github/RELEASE_LINES.md):
 #
 #   main        → production, https://papyra.app  (push, daily schedule, or by hand)
-#   development → dev preview, https://dev.papyra.app  (by hand only)
+#   development → dev preview, https://dev.papyra.app  (push, or by hand)
 #
 # The dev build sets PUBLIC_SITE_CHANNEL=dev: every page is noindex, robots.txt
 # blocks all crawlers, no sitemap ships, and a banner points at papyra.app and
@@ -22,11 +22,12 @@ name: site
 
 # Push-only on purpose: a PR from development → main would otherwise run the
 # same build twice (once for the push, once for the PR). The merge into main is
-# itself a push, so production still deploys. development is not here: the dev
-# site moves only when you run this workflow on it by hand.
+# itself a push, so production still deploys. A push to development redeploys the
+# dev site, but only when something the site is built from changed (the paths
+# below); the dev site has no daily rebuild, only the production one does.
 on:
   push:
-    branches: [main]
+    branches: [main, development]
     paths:
       - 'papyra.app/**'
       - 'papyra.web/**'
@@ -40,14 +41,17 @@ on:
       - 'pnpm-lock.yaml'
       - '.github/workflows/site.yml'
       - '.github/actions/**'
-  # Re-run production without an empty commit, or — run on development — deploy
-  # the dev site.
+  # Re-run a site without an empty commit: run on main for production, or on
+  # development for the dev site.
   workflow_dispatch:
-  # Daily rebuild of main, so the Docker Hub pull count and GitHub star count
-  # baked into the pages stay current (src/lib/stats.mjs). The site itself stays
+  # Daily rebuild of main, so the Docker Hub pull count, GitHub star count and install
+  # count baked into the pages stay current (src/lib/stats.mjs). The site itself stays
   # fully static — no Functions or Workers — so traffic never meets a limit.
+  # 03:00 UTC (08:30 IST) is the middle of the quiet hour, 02:30–03:30 UTC, in which no
+  # Papyra install sends its update check (papyra.api Storage/UpdateSchedule.cs), so the
+  # install count is steady while it is read. Move both together.
   schedule:
-    - cron: '17 3 * * *'
+    - cron: '0 3 * * *'
 
 concurrency:
   group: site-${{ github.ref }}
@@ -82,8 +86,15 @@ jobs:
 
       # Must run BEFORE the site build: it writes into papyra.app/public/demo,
       # which Astro then copies into dist.
+      # The dev site's demo names its exact build the way the dev image does (see
+      # docker-dev.yml); prod is just VERSION.
       - name: Build the in-browser demo
-        run: pnpm --filter papyra-web run build:demo
+        run: |
+          if [ "${{ steps.channel.outputs.channel }}" = "dev" ]; then
+            export PAPYRA_BUILD_VERSION="$(tr -d '[:space:]' < VERSION)-dev.$(git rev-parse --short=7 HEAD)"
+            echo "Demo build shows as v$PAPYRA_BUILD_VERSION"
+          fi
+          pnpm --filter papyra-web run build:demo
 
       - name: Build the site
         env:
