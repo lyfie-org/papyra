@@ -59,6 +59,13 @@ const showcase = [
     alt: 'Typing a new note: a heading, a [[ link to another note picked from a list, a bulleted list, then “Saved”',
   },
   {
+    clip: 'journal',
+    eyebrow: 'Reflect',
+    title: 'A page for every day.',
+    text: 'Write the day, tick off how it felt, and see it all on a calendar. Link the notes and to-dos you touched — or lock a day for your eyes only.',
+    alt: 'Writing today’s journal page, picking a mood, opening the side panel of notes and to-dos, then the month calendar',
+  },
+  {
     clip: 'search',
     eyebrow: 'Find',
     title: 'Anything, in a keystroke.',
@@ -78,7 +85,6 @@ const everything: { icon: IconName; title: string; text: string }[] = [
   { icon: 'users', title: 'Live collaboration', text: 'Edit shared notes together, cursors and all.' },
   { icon: 'history', title: 'Version history', text: 'Every change kept. Restore any of them.' },
   { icon: 'link', title: 'Slash commands, links', text: 'Type / for any block, [[ to link a note.' },
-  { icon: 'wifi-off', title: 'Works offline', text: 'Keep writing on a plane. It syncs when you land.' },
   { icon: 'image', title: 'Pictures, maps, any link', text: 'Drop files in, or paste a map, video or page link.' },
   { icon: 'message', title: 'Share and comment', text: 'Share a note, @mention, reply in threads.' },
   { icon: 'key', title: 'Passkeys and 2FA', text: 'Fingerprint sign-in, authenticator codes, SSO.' },
@@ -125,9 +131,7 @@ const helps: { icon: IconName; title: string; text: string; href: string }[] = [
 
 const SHOWN = 6;
 const dayFmt = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
-const monthFmt = new Intl.DateTimeFormat('en-GB', { month: 'short', year: 'numeric', timeZone: 'UTC' });
-const when = (m: (typeof JOURNEY)[number]) =>
-  (m.current ? monthFmt : dayFmt).format(new Date(`${m.date}T00:00:00Z`));
+const when = (m: (typeof JOURNEY)[number]) => dayFmt.format(new Date(`${m.date}T00:00:00Z`));
 ---
 
 <Base
@@ -317,26 +321,28 @@ const when = (m: (typeof JOURNEY)[number]) =>
             <a href="/docs/update-check/">Exactly what is sent</a>
           </p>
         </aside>
-        <figure class="quote">
+      </div>
+      <div class="privacy__side">
+        <figure class="quote" data-reveal>
           <blockquote>
             I’m a home-labber. Keeping my own data alive is hard enough — I have zero interest in
             storing yours.
           </blockquote>
         </figure>
+        <ul class="shields">
+          {
+            security.map((s, i) => (
+              <li class="shields__card" data-reveal style={`--reveal-delay:${i * 80}ms`}>
+                <span class="shields__icon">
+                  <Icon name={s.icon} size={20} />
+                </span>
+                <h3>{s.title}</h3>
+                <p>{s.text}</p>
+              </li>
+            ))
+          }
+        </ul>
       </div>
-      <ul class="shields">
-        {
-          security.map((s, i) => (
-            <li class="shields__card" data-reveal style={`--reveal-delay:${i * 80}ms`}>
-              <span class="shields__icon">
-                <Icon name={s.icon} size={20} />
-              </span>
-              <h3>{s.title}</h3>
-              <p>{s.text}</p>
-            </li>
-          ))
-        }
-      </ul>
     </div>
   </section>
 
@@ -1013,6 +1019,12 @@ const when = (m: (typeof JOURNEY)[number]) =>
 
   .privacy__copy h2 {
     font-size: clamp(30px, 3vw + 14px, 48px);
+  }
+
+  /* The quote sits above the security cards, in the same column. */
+  .privacy__side {
+    display: grid;
+    gap: var(--space-5);
   }
 
   .privacy__copy > p:not(.eyebrow) {

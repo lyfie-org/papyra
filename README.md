@@ -160,6 +160,16 @@ Stuck? Check [Troubleshooting](https://papyra.app/docs/troubleshooting/) or ask 
 
 Papyra is a [Lyfie](https://www.lyfie.org) project, alongside [luthor](https://www.luthor.fyi), the editor it's built on. It was vibe-coded: designed, tested and steered by a person, with AI coding assistants writing most of the code.
 
+## ⭐ Star history
+
+<a href="https://star-history.com/#lyfie-org/papyra&Date">
+  <picture>
+    <source media="(prefers-color-scheme: dark)" srcset="https://api.star-history.com/svg?repos=lyfie-org/papyra&type=Date&theme=dark" />
+    <source media="(prefers-color-scheme: light)" srcset="https://api.star-history.com/svg?repos=lyfie-org/papyra&type=Date" />
+    <img alt="Star history chart for lyfie-org/papyra" src="https://api.star-history.com/svg?repos=lyfie-org/papyra&type=Date" width="600" />
+  </picture>
+</a>
+
 ---
 
 ## 🧑‍💻 For developers

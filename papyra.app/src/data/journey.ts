@@ -23,7 +23,7 @@ export interface Milestone {
 
 export const JOURNEY: Milestone[] = [
   {
-    date: '2026-10-15',
+    date: '2026-10-16',
     version: '1.0',
     icon: 'rocket',
     title: 'Papyra 1.0',

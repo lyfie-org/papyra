@@ -268,6 +268,34 @@ const CLIPS = {
     },
   },
 
+  // A page a day: write a few lines, tick off the mood, then open the calendar.
+  journal: {
+    themes: ['light', 'dark'],
+    path: '/journal',
+    stage: {},
+    async run(page) {
+      let pos = { x: VIEW.width * 0.6, y: VIEW.height * 0.6 };
+      await page.mouse.move(pos.x, pos.y);
+      await page.waitForTimeout(700);
+      const body = page.locator('.journal-sheet .luthor-content-editable').first();
+      await body.waitFor();
+      pos = await clickOn(page, pos, body, 700);
+      await page.waitForTimeout(300);
+      await type(page, 'Slow morning, then a long walk by the river.', 60);
+      await page.keyboard.press('Enter');
+      await type(page, 'Cooked a big pot of soup, radio on, nobody to answer to.', 50);
+      await page.waitForTimeout(700);
+      // A day with no mood yet shows all five glyphs.
+      pos = await clickOn(page, pos, page.getByRole('radio', { name: 'Great' }), 700);
+      await page.waitForTimeout(1000);
+      pos = await clickOn(page, pos, page.getByRole('button', { name: /Notes & to-dos/ }), 700);
+      await page.waitForTimeout(1500);
+      pos = await clickOn(page, pos, page.locator('.journal-sheet__date-link'), 700);
+      await page.locator('.journal-calendar').waitFor({ timeout: 5000 }).catch(() => {});
+      await page.waitForTimeout(2200);
+    },
+  },
+
   // Light to dark and back — the same calm either way.
   theme: {
     themes: ['light'],

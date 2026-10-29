@@ -85,9 +85,8 @@ export default function WorkspaceLayout() {
   const serverStatus = useSignalR();
   const vaultOpen = useVaultOpen();
   const order = useNavOrder();
-  // A day-wise journal; the demo has no server for it.
   const navItems = [
-    ...order.filter((id) => id !== 'journal' || !import.meta.env.VITE_DEMO).map((id) => WRITING_NAV[id]),
+    ...order.map((id) => WRITING_NAV[id]),
     ...OTHER_NAV,
   ];
 

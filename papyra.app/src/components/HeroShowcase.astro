@@ -2,8 +2,8 @@
 import { Image } from 'astro:assets';
 
 // The hero's product shot: a browser window and a phone, cycling together
-// through eight real screens of the app. Dashboard, search, focus and slash
-// commands come from the in-browser demo (scripts/shoot.mjs); collaboration, comments and history need a
+// through six real screens of the app. Dashboard, search and slash
+// commands come from the in-browser demo (scripts/shoot.mjs); collaboration and comments need a
 // real server and two accounts, so they are captured from a throwaway instance
 // (blog/launch/capture/hero.mjs). Both themes exist for every screen; CSS shows
 // the one matching the page, and the hidden theme's images are never fetched.
@@ -21,13 +21,11 @@ const shot = (name: string, device: string, theme: string) => {
 
 const slides = [
   { name: 'desk', label: 'Dashboard', alt: 'The Papyra dashboard: colourful note cards with tags and pins, in a masonry grid' },
-  { name: 'collab', label: 'Collaboration', alt: 'Two people editing the same note at once, each with a named cursor' },
-  { name: 'comments', label: 'Comments', alt: 'Comments threaded beside highlighted sentences in a note' },
-  { name: 'history', label: 'History', alt: 'Version history: a timeline of saved versions and what changed, line by line' },
-  { name: 'search', label: 'Global Search', alt: 'Global search over notes, to-dos and collections, with every match highlighted' },
-  { name: 'slash', label: 'Slash commands', alt: 'Typing / in a note opens a menu of headings, lists, tables, pictures and embeds' },
   { name: 'journal', label: 'Journal', alt: 'A day of the journal: the date, how the day felt, a few lines of writing and a ticked list' },
-  { name: 'focus', label: 'Focus', alt: 'A note open in focus mode, with nothing on screen but the writing' },
+  { name: 'collab', label: 'Collaboration', alt: 'Two people editing the same note at once, each with a named cursor' },
+  { name: 'slash', label: 'Slash commands', alt: 'Typing / in a note opens a menu of headings, lists, tables, pictures and embeds' },
+  { name: 'comments', label: 'Comments', alt: 'Comments threaded beside highlighted sentences in a note' },
+  { name: 'search', label: 'Global Search', alt: 'Global search over notes, to-dos and collections, with every match highlighted' },
 ];
 
 const THEMES = ['light', 'dark'] as const;
