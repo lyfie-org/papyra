@@ -21,6 +21,7 @@ public static class UpdateEndpoints
     private static object Describe(UpdateStatus s) => new
     {
         enabled = s.Enabled,
+        turnedOff = s.TurnedOff,
         current = s.Current,
         available = s.Available,
         latest = s.Latest?.Version,

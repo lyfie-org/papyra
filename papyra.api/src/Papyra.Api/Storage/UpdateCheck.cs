@@ -20,18 +20,30 @@ namespace Papyra.Api.Storage;
 // Nothing about notes, users or settings is sent. A host with no release version at all (`dotnet run`,
 // the test suite) never calls out, so developing Papyra doesn't count as installs. Why it exists: so admins hear about updates, and so the person building Papyra can see that it
 // is being used. What the other end does with it: papyra.versions/README.md.
+//
+// It is optional: PAPYRA_UPDATE_CHECK_ENABLED=false (Features:UpdateCheck) and the server never asks, never makes
+// an id, and admins simply don't hear about updates.
 
 /// <summary>The newest release, as versions.papyra.app answers it.</summary>
 public sealed record UpdateInfo(string Version, string Url);
 
 /// <summary>What this server knows about updates; the admin UI reads it, the checker fills it.</summary>
-public sealed class UpdateStatus(string current, bool production)
+public sealed class UpdateStatus(string current, bool production, bool optedIn = true)
 {
+    /// <summary>The config key behind <c>PAPYRA_UPDATE_CHECK_ENABLED</c>; on unless set to false.</summary>
+    public const string FeatureKey = "Features:UpdateCheck";
+
     /// <summary>The release this server runs ("dev" for a development build).</summary>
     public string Current { get; } = current;
 
-    /// <summary>True on a real deployment of a release or a development image; false on a development host or a build with no release number.</summary>
-    public bool Enabled { get; } = production && SemVer.IsRelease(current);
+    /// <summary>
+    /// True on a real deployment of a release or a development image that hasn't turned the check off;
+    /// false on a development host, a build with no release number, or when <c>PAPYRA_UPDATE_CHECK_ENABLED=false</c>.
+    /// </summary>
+    public bool Enabled { get; } = production && optedIn && SemVer.IsRelease(current);
+
+    /// <summary>The operator turned the check off.</summary>
+    public bool TurnedOff { get; } = !optedIn;
 
     public UpdateInfo? Latest { get; private set; }
     public DateTime? CheckedUtc { get; private set; }

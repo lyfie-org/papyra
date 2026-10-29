@@ -87,12 +87,12 @@ public sealed class UpdateCheckTests
         new(HttpStatusCode.OK) { Content = new StringContent(body, System.Text.Encoding.UTF8, "application/json") };
 
     private static (UpdateChecker Checker, UpdateStatus Status, Handler Handler, string Dir) Make(
-        string version, Func<HttpRequestMessage, HttpResponseMessage> answer, bool production = true)
+        string version, Func<HttpRequestMessage, HttpResponseMessage> answer, bool production = true, bool optedIn = true)
     {
         var dir = Path.Combine(Path.GetTempPath(), "papyra-update-" + Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(dir);
         var config = new ConfigurationBuilder().AddInMemoryCollection(new Dictionary<string, string?> { ["Papyra:DataDir"] = dir }).Build();
-        var status = new UpdateStatus(version, production);
+        var status = new UpdateStatus(version, production, optedIn);
         var handler = new Handler(answer);
         var checker = new UpdateChecker(status, new Factory(handler), config, new Env(dir), TimeProvider.System, NullLogger<UpdateChecker>.Instance);
         return (checker, status, handler, dir);
@@ -186,6 +186,32 @@ public sealed class UpdateCheckTests
             Assert.False(status.Available);
         }
         finally { Directory.Delete(dir, recursive: true); }
+    }
+
+    [Fact]
+    public async Task TurnedOff_NothingIsSentAndNoIdIsMade()
+    {
+        // PAPYRA_UPDATE_CHECK_ENABLED=false on a real release: the same silence as a development host.
+        var (checker, status, handler, dir) = Make("1.0.0", _ => Json("""{"version":"9.9.9"}"""), optedIn: false);
+        try
+        {
+            Assert.False(status.Enabled);
+            Assert.True(status.TurnedOff);
+            Assert.False(await checker.CheckNowAsync(CancellationToken.None));
+            Assert.Equal(0, handler.Calls);
+            Assert.False(Directory.Exists(Path.Combine(dir, ".papyra")));
+            Assert.False(status.Available);
+        }
+        finally { Directory.Delete(dir, recursive: true); }
+    }
+
+    [Fact]
+    public void TheEnvironmentVariableFeedsTheOptOut()
+    {
+        var resolved = EnvAliases.Resolve(new Dictionary<string, string?> { ["PAPYRA_UPDATE_CHECK_ENABLED"] = "false" });
+        var config = new ConfigurationBuilder().AddInMemoryCollection(resolved).Build();
+        Assert.False(config.GetValue(UpdateStatus.FeatureKey, true));
+        Assert.True(new ConfigurationBuilder().Build().GetValue(UpdateStatus.FeatureKey, true));   // on unless said otherwise
     }
 
     [Fact]

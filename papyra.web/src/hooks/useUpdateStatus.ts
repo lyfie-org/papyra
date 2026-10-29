@@ -5,6 +5,8 @@ import { useAuth } from './useAuth';
 export interface UpdateStatus {
   /** False on a build with no release number (a development build). */
   enabled: boolean;
+  /** The operator set PAPYRA_UPDATE_CHECK_ENABLED=false; nothing is sent and nothing is shown. */
+  turnedOff: boolean;
   current: string;
   available: boolean;
   latest: string | null;

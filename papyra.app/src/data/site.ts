@@ -39,4 +39,4 @@ export const SITE_URL = 'https://papyra.app';
 
 /** One description, used by meta tags, structured data and llms.txt. */
 export const DESCRIPTION =
-  'Papyra is a free, open-source, self-hosted note-taking app — a private Google Keep alternative. Every note is a plain Markdown file on your own server. No tracking; one daily update check.';
+  'Papyra is a free, open-source, self-hosted note-taking app — a private Google Keep alternative. Every note is a plain Markdown file on your own server. No tracking; one optional daily update check.';

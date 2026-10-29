@@ -20,6 +20,7 @@ defaults are what most installations want.
 | `PAPYRA_WEBAUTHN_ORIGINS` | — | Full origins passkeys may be used from. |
 | `PAPYRA_WHISPER_MODEL_PATH` | — | Enables audio transcription. |
 | `PAPYRA_OCR_TESSDATA_PATH` | — | Enables OCR of images. |
+| `PAPYRA_UPDATE_CHECK_ENABLED` | `true` | The daily check for a newer version. Set `false` to turn it off. |
 | `PUID` / `PGID` | `1000` | Who owns the files on disk. |
 | `TZ` | `UTC` | Default time zone, as an IANA name (`Europe/London`, `Asia/Kolkata`). Each person can pick their own under Settings → Profile. |
 
@@ -38,6 +39,19 @@ Lists are comma-separated, as in every other container image.
 Set `true` only when Papyra is reached over plain HTTP on a network that is
 already private. It makes the session cookie non-`Secure`, which is exactly the
 thing HTTPS is protecting. See [HTTPS and reverse proxies](/docs/https/).
+
+### `PAPYRA_UPDATE_CHECK_ENABLED`
+
+Once a day Papyra asks `versions.papyra.app` whether a newer version is out, so
+admins can be told, and the maker counts it as an install. It is optional.
+Set `false` and the server never makes that request, never creates its install
+ID, and admins simply aren't told about new versions:
+
+```yaml
+PAPYRA_UPDATE_CHECK_ENABLED: "false"
+```
+
+See [The update check](/docs/update-check/) for exactly what is sent.
 
 ### `PAPYRA_TRUSTED_PROXIES`
 

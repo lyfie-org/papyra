@@ -293,7 +293,7 @@ const when = (m: (typeof JOURNEY)[number]) => dayFmt.format(new Date(`${m.date}T
         <p>
           Your notes never leave your server — unless you share one, back it up to Git, or email
           yourself a sign-in alert. The one thing Papyra sends anywhere is a daily check for a newer
-          version.
+          version, and you can turn that off.
         </p>
         <p class="nope__label">What many apps collect, and Papyra never does:</p>
         <ul class="nope" aria-label="What Papyra never collects">
@@ -310,14 +310,15 @@ const when = (m: (typeof JOURNEY)[number]) => dayFmt.format(new Date(`${m.date}T
           <h3 id="census-title" class="census__title">The one thing I count</h3>
           <p class="census__numbers" aria-live="polite">
             <span><strong data-census-installs>{countText(census?.installs)}</strong> installs</span>
-            <span><strong data-census-active>{countText(census?.active)}</strong> active this month</span>
+            <span><strong>{countText(pulls ?? undefined)}</strong> Docker pulls</span>
           </p>
           <p class="census__what">
-            The only daily call home checks for updates. I use it as a count of active installs to
+            The only daily call home checks for updates. I use it as a count of installs to
             keep myself motivated and to see where to take Papyra next — it feels good to know it’s
             being used.
           </p>
           <p class="census__off">
+            It’s optional: <code>PAPYRA_UPDATE_CHECK_ENABLED: "false"</code> turns it off.
             <a href="/docs/update-check/">Exactly what is sent</a>
           </p>
         </aside>
@@ -559,16 +560,15 @@ const when = (m: (typeof JOURNEY)[number]) => dayFmt.format(new Date(`${m.date}T
 
 <script>
   // The install count, refreshed from our own versions.papyra.app (the same place the daily update check
-  // goes). The page already carries the numbers from its last build, so if this can't be reached they simply stay.
+  // goes). The page already carries the number from its last build, so if this can't be reached it simply stays.
+  // Docker pulls are only ever baked in at build (Docker Hub is never called from a visitor's browser).
   const census = document.querySelector<HTMLElement>('[data-census]');
   if (census) {
     fetch('https://versions.papyra.app/stats.json')
       .then((res) => (res.ok ? res.json() : Promise.reject(new Error(String(res.status)))))
-      .then((stats: { installs: number; active: number }) => {
-        if (typeof stats.installs !== 'number' || typeof stats.active !== 'number') return;
-        const n = new Intl.NumberFormat('en');
-        census.querySelector('[data-census-installs]')!.textContent = n.format(stats.installs);
-        census.querySelector('[data-census-active]')!.textContent = n.format(stats.active);
+      .then((stats: { installs: number }) => {
+        if (typeof stats.installs !== 'number') return;
+        census.querySelector('[data-census-installs]')!.textContent = new Intl.NumberFormat('en').format(stats.installs);
       })
       .catch(() => {});
   }

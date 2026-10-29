@@ -1,6 +1,7 @@
 # papyra.versions
 
-The other end of Papyra's daily update check: `versions.papyra.app`. About 100 lines of JavaScript,
+The other end of Papyra's daily update check: `versions.papyra.app`. The check is optional;
+`PAPYRA_UPDATE_CHECK_ENABLED=false` on an install means it never reaches this Worker. About 100 lines of JavaScript,
 no dependencies, written to be read. What the check is and why: <https://papyra.app/docs/update-check/>.
 
 | Route | What it does |

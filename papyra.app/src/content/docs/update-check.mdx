@@ -5,13 +5,23 @@ group: Reference
 order: 3
 ---
 
-Papyra has no tracking, analytics or crash reports. It makes **one** request of its own, once a day: a check for a newer version.
+Papyra has no tracking, analytics or crash reports. It makes **one** request of its own, once a day: a check for a newer version. **It is optional** — [turn it off](#turning-it-off) with one setting.
 
 ## What it does
 
 Your server asks `versions.papyra.app` for the newest release. If one is newer, admins see a warning icon beside the version in the sidebar, with a popup linking to the release notes. Other accounts never see it.
 
 The whole client is [`UpdateCheck.cs`](https://github.com/lyfie-org/papyra/blob/main/papyra.api/src/Papyra.Api/Storage/UpdateCheck.cs). The whole server is [`papyra.versions`](https://github.com/lyfie-org/papyra/tree/main/papyra.versions).
+
+## Turning it off
+
+Set this in your compose file and restart:
+
+```yaml
+PAPYRA_UPDATE_CHECK_ENABLED: "false"
+```
+
+Papyra then never makes the request and never creates the install ID. The only cost is that admins won't see the update notice, so watch the [releases page](https://github.com/lyfie-org/papyra/releases) yourself. Nothing else in Papyra changes. Your install simply isn't counted.
 
 ## What it sends
 
@@ -41,11 +51,11 @@ Never sent: notes, titles, usernames, emails, your server's name or address, num
 
 - **Your IP address is never stored.** Cloudflare turns the connection into a two-letter country code at its edge, and only that code reaches the counting code. The Worker has no request logs.
 - **One row per install:** ID, version, processor and OS family, country, first and last day seen ([`schema.sql`](https://github.com/lyfie-org/papyra/blob/main/papyra.versions/schema.sql)).
-- **Public numbers:** installs ever seen, installs active in the last 30 days, and their countries, versions, processors and operating systems, at [`versions.papyra.app/stats.json`](https://versions.papyra.app/stats.json) and on the [home page](/#privacy).
+- **Public numbers:** installs ever seen, installs active in the last 30 days, and their countries, versions, processors and operating systems, at [`versions.papyra.app/stats.json`](https://versions.papyra.app/stats.json). The [home page](/#privacy) shows only the total installs, next to the Docker Hub pull count.
 - **Gaps:** "active" is counted back from the newest check-in, not from today, so a few quiet days don't drain it. Installs only ever go up, and the last good numbers are kept if the live ones can't be worked out.
 
 ## Why I count
 
-It keeps me motivated to build more, and it feels good to see Papyra is being used. That, plus telling you about updates, is all it's for.
+It keeps me motivated to build more, and it feels good to see Papyra is being used. That, plus telling you about updates, is all it's for. If you'd rather not be counted, [turn it off](#turning-it-off); it's your server.
 
 A server with no release version (`dotnet run`, the test suite) never makes the request, so developing Papyra doesn't count as installs.
