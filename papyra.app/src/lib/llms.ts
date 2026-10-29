@@ -49,7 +49,7 @@ async function intro(): Promise<string> {
     `- Docker image: ${DOCKER_HUB_URL}${pulls !== null && pulls >= 1000 ? ` (${roundedCount(pulls)} pulls)` : ''}`,
     `- Made by Lyfie (${LYFIE_URL}), the open-source organisation founded by ${CREATOR_NAME}; its editor is luthor (${LUTHOR_URL})`,
     '- Price: free. No paid tier, no licence key, no account with Lyfie.',
-    `- Privacy: no tracking, analytics or crash reports. The only call the server makes is a daily check for updates, which the maker also uses as a count of active installs. Details: ${SITE_URL}/docs/update-check/`,
+    `- Privacy: no tracking, analytics or crash reports. The only call the server makes is a daily check for updates, which the maker also uses as a count of installs. It is optional: PAPYRA_UPDATE_CHECK_ENABLED=false turns it off. Details: ${SITE_URL}/docs/update-check/`,
     '',
   ].join('\n');
 }

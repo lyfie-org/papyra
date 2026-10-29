@@ -163,9 +163,11 @@ builder.Services.AddSingleton<ILoggerProvider, ActivityLoggerProvider>();
 // The daily "is there a newer Papyra?" check — see Storage/UpdateCheck.cs for all it sends.
 builder.Services.AddHttpClient("update-check").ConfigureHttpClient(c => c.Timeout = TimeSpan.FromSeconds(10));
 // Never from a development host (`dotnet run`, the test suite): only a real deployment counts as an install.
+// Optional: PAPYRA_UPDATE_CHECK_ENABLED=false (Features:UpdateCheck) turns it off.
 builder.Services.AddSingleton(sp => new UpdateStatus(
     ReadServerVersion(sp.GetRequiredService<IWebHostEnvironment>().WebRootPath),
-    !sp.GetRequiredService<IWebHostEnvironment>().IsDevelopment()));
+    !sp.GetRequiredService<IWebHostEnvironment>().IsDevelopment(),
+    sp.GetRequiredService<IConfiguration>().GetValue(UpdateStatus.FeatureKey, true)));
 builder.Services.AddSingleton<UpdateChecker>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<UpdateChecker>());
 builder.Services.AddHostedService<LogCleanupJob>();

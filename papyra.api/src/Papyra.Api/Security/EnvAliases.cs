@@ -30,6 +30,7 @@ public static class EnvAliases
         ("PAPYRA_ERROR_DETAILS", "Papyra:ErrorDetails"),
         ("PAPYRA_AI_ENABLED", "Features:Ai"),
         ("PAPYRA_COLLAB_ENABLED", "Features:Collab"),
+        ("PAPYRA_UPDATE_CHECK_ENABLED", "Features:UpdateCheck"),
         ("PAPYRA_OLLAMA_URL", "Ollama:BaseUrl"),
         ("PAPYRA_WEBAUTHN_DOMAIN", "WebAuthn:ServerDomain"),
         ("PAPYRA_WHISPER_MODEL_PATH", "Whisper:ModelPath"),

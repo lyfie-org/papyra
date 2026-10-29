@@ -25,6 +25,7 @@ public sealed class EnvAliasesTests
     [Theory]
     [InlineData("PAPYRA_DATA_DIR", "/data", "Papyra:DataDir")]
     [InlineData("PAPYRA_ALLOW_INSECURE_COOKIES", "true", "Papyra:AllowInsecureCookies")]
+    [InlineData("PAPYRA_UPDATE_CHECK_ENABLED", "false", "Features:UpdateCheck")]
     [InlineData("PAPYRA_OLLAMA_URL", "http://ollama:11434", "Ollama:BaseUrl")]
     [InlineData("PAPYRA_WEBAUTHN_DOMAIN", "papyra.example.com", "WebAuthn:ServerDomain")]
     [InlineData("PAPYRA_WHISPER_MODEL_PATH", "/models/ggml-base.bin", "Whisper:ModelPath")]

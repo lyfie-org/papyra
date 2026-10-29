@@ -44,16 +44,14 @@ export async function dockerPulls() {
 }
 
 /**
- * Installs ever seen and active in the last 30 days, from our own versions.papyra.app, baked in at build
- * like the numbers above (and refreshed by the same daily rebuild). A visitor's browser asks again for
- * fresher ones, but if that ever fails, these are what the page shows rather than a blank.
- * @returns {Promise<{ installs: number, active: number } | null>}
+ * Installs ever seen, from our own versions.papyra.app, baked in at build like the numbers above (and
+ * refreshed by the same daily rebuild). A visitor's browser asks again for a fresher one, but if that ever
+ * fails, this is what the page shows rather than a blank. Active installs are deliberately not shown.
+ * @returns {Promise<{ installs: number } | null>}
  */
 export async function installCounts() {
   const data = await once('https://versions.papyra.app/stats.json');
-  return typeof data?.installs === 'number' && typeof data?.active === 'number'
-    ? { installs: data.installs, active: data.active }
-    : null;
+  return typeof data?.installs === 'number' ? { installs: data.installs } : null;
 }
 
 /**
