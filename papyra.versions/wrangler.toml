@@ -13,7 +13,7 @@ GITHUB_REPO = "lyfie-org/papyra"
 [[d1_databases]]
 binding = "DB"
 database_name = "papyra-versions"
-database_id = "REPLACE_WITH_THE_ID_WRANGLER_PRINTS"
+database_id = "e7e29202-8202-49b8-b531-58dbf833d022"
 
 # No request logs, no traces: this Worker keeps counts, not a record of visitors.
 [observability]

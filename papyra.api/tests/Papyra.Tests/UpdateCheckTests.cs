@@ -118,6 +118,7 @@ public sealed class UpdateCheckTests
             Assert.Equal(query["id"], System.Web.HttpUtility.ParseQueryString(handler.Seen[1].Query)["id"]);
             Assert.Equal(query["id"], File.ReadAllText(Path.Combine(dir, ".papyra", "instance-id")).Trim());
             Assert.Equal(query["id"], status.InstanceId);
+            Assert.True(File.Exists(Path.Combine(dir, ".papyra", "update-checked")));   // remembered, so a restart doesn't ask again
 
             Assert.True(status.Available);
             Assert.Equal("1.1.0", status.Latest!.Version);

@@ -4,6 +4,7 @@ import { useQueryClient } from '@tanstack/react-query';
 import { Archive, Copy, Download, Link2, Lock, LockOpen, MoreHorizontal, Pin, PinOff, Share2, Trash2 } from 'lucide-react';
 import type { Note } from '../types/note';
 import { putNote } from '../lib/notesApi';
+import { uuid } from '../lib/uuid';
 import { patchNoteInCache } from '../lib/notesCache';
 import { vaultFetch } from '../lib/vault';
 import { useToast } from '../lib/toastContext';
@@ -103,7 +104,7 @@ export default function CardMenu({ note, onShare, onArchive, onDelete, triggerCl
 
   async function duplicate() {
     const title = note.title.trim();
-    await putNote(crypto.randomUUID(), {
+    await putNote(uuid(), {
       title: title ? `${note.title} copy` : '',
       tags: note.tags, color: note.color, pinned: false, archived: false, kind: note.kind, body: note.body,
     });

@@ -1,5 +1,6 @@
 import { useSyncExternalStore } from 'react';
 import type { Note } from '../types/note';
+import { uuid } from './uuid';
 
 /**
  * Notes that exist only in this tab until the person changes something.
@@ -21,7 +22,7 @@ function subscribe(listener: () => void) {
 
 /** Start a draft and return its id, ready to open at /note/:id. */
 export function createDraft(kind: Note['kind'] = 'note', body = ''): string {
-  const id = crypto.randomUUID();
+  const id = uuid();
   drafts.set(id, {
     id, title: '', tags: [], color: null, pinned: false, archived: false,
     kind, trashed: false, secure: false, body,

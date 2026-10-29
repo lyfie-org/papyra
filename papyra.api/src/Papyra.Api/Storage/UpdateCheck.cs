@@ -6,7 +6,7 @@ namespace Papyra.Api.Storage;
 
 // THE UPDATE CHECK — the only thing Papyra ever sends to anyone, written to be read.
 //
-// Once a day this server asks versions.papyra.app for the latest release, so an admin
+// Once a day (at a time of day of its own, never 02:30–03:30 UTC: see UpdateSchedule.cs) this server asks versions.papyra.app for the latest release, so an admin
 // can be told when one is out. The request carries exactly four facts:
 //   • id — a random UUID made on first use and kept in `.papyra/instance-id`. It is not
 //          derived from anything (not your hostname, address, accounts or notes), so all
@@ -86,22 +86,42 @@ public sealed class UpdateChecker(
     TimeProvider clock, ILogger<UpdateChecker> log) : BackgroundService
 {
     public const string DefaultUrl = "https://versions.papyra.app/latest.json";
-    private static readonly TimeSpan Every = TimeSpan.FromHours(24);
+    private static readonly TimeSpan AfterBoot = TimeSpan.FromSeconds(45);
+    private static readonly TimeSpan AfterFailure = TimeSpan.FromHours(3);
 
     protected override async Task ExecuteAsync(CancellationToken stop)
     {
         if (!status.Enabled) return;
         try
         {
-            // A moment after start, so booting is never slowed by it; then daily.
-            await Task.Delay(TimeSpan.FromSeconds(45), clock, stop);
+            // A moment after start, so booting is never slowed by it. Then once a day, at this install's own
+            // time of day and never in the quiet hour (see UpdateSchedule).
+            var notBefore = clock.GetUtcNow() + AfterBoot;
             while (!stop.IsCancellationRequested)
             {
-                await CheckNowAsync(stop);
-                await Task.Delay(Every, clock, stop);
+                var id = InstanceId();
+                status.InstanceId = id;
+                var due = UpdateSchedule.Next(clock.GetUtcNow(), LastCheck(), id, notBefore, () => Random.Shared.Next(0, 600));
+                var wait = due - clock.GetUtcNow();
+                await Task.Delay(wait > TimeSpan.Zero ? wait : TimeSpan.Zero, clock, stop);
+                // A failed check (the other end is down) is tried again in a few hours, not in a tight loop.
+                notBefore = await CheckNowAsync(stop) ? due : clock.GetUtcNow() + AfterFailure;
             }
         }
         catch (OperationCanceledException) { /* shutting down */ }
+    }
+
+    // When the last successful check was, remembered across restarts so a restart doesn't ask again.
+    private string LastCheckFile() => Path.Combine(PapyraPaths.DotPapyra(config, env.ContentRootPath), "update-checked");
+
+    private DateTimeOffset? LastCheck()
+    {
+        try
+        {
+            return File.Exists(LastCheckFile()) && DateTimeOffset.TryParse(File.ReadAllText(LastCheckFile()).Trim(), CultureInfo.InvariantCulture,
+                DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out var at) ? at : null;
+        }
+        catch (IOException) { return null; }
     }
 
     /// <summary>Ask now. Never throws: a server that can't be reached just leaves what we knew.</summary>
@@ -120,6 +140,7 @@ public sealed class UpdateChecker(
             using var response = await client.SendAsync(request, ct);
             response.EnsureSuccessStatusCode();
             status.Record(Parse(await response.Content.ReadAsStringAsync(ct)), clock.GetUtcNow().UtcDateTime);
+            File.WriteAllText(LastCheckFile(), clock.GetUtcNow().ToString("O", CultureInfo.InvariantCulture));
             return true;
         }
         catch (Exception e) when (e is HttpRequestException or TaskCanceledException or JsonException or IOException)

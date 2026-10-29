@@ -27,6 +27,13 @@ could hold it.
 Requests that don't look like an install are not counted, and a server with no release version at all
 (`dotnet run`, the test suite) never sends one.
 
+## When installs ping
+
+Once a day each, at a time of day fixed per install (from its ID), never between 02:30 and 03:30 UTC
+(08:00–09:00 IST). That hour is quiet on purpose: the site is rebuilt in the middle of it (03:00 UTC, in
+`.github/workflows/site.yml`) from numbers nothing is writing to. The Worker doesn't enforce it — a ping
+that arrives anyway is counted. The schedule is [`UpdateSchedule.cs`](../papyra.api/src/Papyra.Api/Storage/UpdateSchedule.cs).
+
 ## When pings go missing
 
 - **Active** is counted back from the newest check-in, not from today, so a few quiet days leave it where it

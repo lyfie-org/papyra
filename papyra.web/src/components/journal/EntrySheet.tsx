@@ -18,6 +18,7 @@ import { createJournalToolbarItems } from '../../lib/journalToolbar';
 import { hasBridgePlaceholder } from '../../lib/bridgePlaceholder';
 import { useMediaMetaReady } from '../../lib/mediaMeta';
 import { putNote } from '../../lib/notesApi';
+import { uuid } from '../../lib/uuid';
 import { forgetUnlock, vaultFetch } from '../../lib/vault';
 import { promptFor } from '../../lib/journalPrompts';
 import { countWords } from '../../lib/journalText';
@@ -131,7 +132,7 @@ export default function EntrySheet({ date, streakLine, bridge }: Props) {
     toast(`No note called “${target}”.`, {
       label: 'Create it',
       onClick: () => void (async () => {
-        const id = crypto.randomUUID();
+        const id = uuid();
         await putNote(id, { title: target, tags: [], color: null, pinned: false, archived: false, kind: 'note', body: '' });
         await queryClient.invalidateQueries({ queryKey: ['notes'] });
         navigate(`/note/${id}`);

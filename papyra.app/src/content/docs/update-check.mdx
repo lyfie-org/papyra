@@ -40,6 +40,13 @@ GET https://versions.papyra.app/latest.json?id=2d1f0c2e-…&v=1.0.0&arch=arm64&o
 It does **not** send notes, titles, usernames, emails, your server's name or address, how many
 accounts you have, or anything about how you use Papyra.
 
+## When it asks
+
+Once a day, at a time of day each install has to itself — worked out from its random ID, so it is the
+same every day and nothing has to be stored. That spreads check-ins over the day instead of bunching them
+up. A restart doesn't ask again. Nothing is ever sent between 02:30 and 03:30 UTC (08:00–09:00 IST): that
+quiet hour is when the site is rebuilt from the day's numbers.
+
 ## What the project does with it
 
 - The IP address of the request is **never stored**. Cloudflare turns the connection into a
