@@ -4,6 +4,7 @@ using System.Text.RegularExpressions;
 using Markdig;
 using Markdig.Extensions.Tables;
 using Markdig.Extensions.TaskLists;
+using Markdig.Parsers;
 using Markdig.Syntax;
 using Markdig.Syntax.Inlines;
 using SkiaSharp;
@@ -53,8 +54,16 @@ public static partial class JournalPdf
     private static readonly HashSet<string> PictureTypes = new(StringComparer.OrdinalIgnoreCase)
         { ".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp", ".avif" };
 
-    private static readonly MarkdownPipeline Pipeline = new MarkdownPipelineBuilder()
-        .UsePipeTables().UseTaskLists().UseEmphasisExtras().DisableHtml().Build();
+    private static readonly MarkdownPipeline Pipeline = BuildPipeline();
+
+    private static MarkdownPipeline BuildPipeline()
+    {
+        var builder = new MarkdownPipelineBuilder().UsePipeTables().UseTaskLists().UseEmphasisExtras().DisableHtml();
+        // A line indented four spaces (or a tab) is a paragraph here, as in the editor — which is where a
+        // Tab or a pasted indent comes from — never a code block; code is fenced.
+        builder.BlockParsers.RemoveAll(p => p is IndentedCodeBlockParser);
+        return builder.Build();
+    }
 
     private static readonly string[] MoodNames = ["", "Rough", "Low", "Okay", "Good", "Great"];
 
@@ -133,7 +142,7 @@ public static partial class JournalPdf
         {
             if (!_fonts.TryGetValue((s.Face, s.Size, s.Italic), out var font))
             {
-                font = new SKFont(Faces.Value[s.Face], s.Size) { Subpixel = true, Edging = SKFontEdging.SubpixelAntialias };
+                font = new SKFont(Faces.Value[s.Face], s.Size) { Subpixel = true, LinearMetrics = true, Hinting = SKFontHinting.None, Edging = SKFontEdging.SubpixelAntialias };
                 if (s.Italic) font.SkewX = -0.2f;
                 _fonts[(s.Face, s.Size, s.Italic)] = font;
             }
@@ -143,7 +152,7 @@ public static partial class JournalPdf
         private SKFont FontFor(Style s, SKTypeface face)
         {
             var key = (s.Face, s.Size, s.Italic);
-            var font = new SKFont(face, s.Size) { Subpixel = true, Edging = SKFontEdging.SubpixelAntialias };
+            var font = new SKFont(face, s.Size) { Subpixel = true, LinearMetrics = true, Hinting = SKFontHinting.None, Edging = SKFontEdging.SubpixelAntialias };
             if (s.Italic) font.SkewX = -0.2f;
             _owned.Add(font);
             _ = key;
