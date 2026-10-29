@@ -277,6 +277,10 @@
 /* The writing fills the page: each box down the chain grows, so a click anywhere on the empty
    paper is a click in the editor. There is no drag-handle gutter: the writing starts at the page's own edge. */
 .journal-sheet__canvas .luthor-editor-wrapper { flex: 1 1 auto; min-height: 0; }
+/* The wrapper clips (so the toolbar can stick), and a selected picture or recording draws its ring and its
+   side handles just outside its edge — which a flush clip cut off, most visibly on a left- or right-aligned
+   one. The clip box is a little wider than the writing, which stays where it was. */
+.journal-sheet__canvas .luthor-editor-wrapper { --ring-room: 14px; margin-inline: calc(var(--ring-room) * -1); padding-inline: var(--ring-room); }
 .journal-sheet__canvas .luthor-editor { min-height: 0; }
 .journal-sheet__canvas .luthor-richtext-container { display: flex; flex-direction: column; }
 /* Lexical writes display:block on this wrapper inline, so it takes !important to become a column. */

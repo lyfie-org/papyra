@@ -83,7 +83,7 @@
 .mood-chip[data-tip]::after {
   content: attr(data-tip);
   position: absolute;
-  top: calc(100% + 6px);
+  top: calc(100% + 8px);
   left: 50%;
   translate: -50% 0;
   z-index: 30;
@@ -103,3 +103,6 @@
 .mood-picker__btn[data-tip]:focus-visible::after,
 .mood-chip[data-tip]:hover::after,
 .mood-chip[data-tip]:focus-visible::after { display: block; }
+/* At the page's right edge a centred tip would hang past it: the chip, and the last glyph, line the tip up with their own right edge. */
+.mood-chip[data-tip]::after,
+.mood-picker__btn:last-child[data-tip]::after { left: auto; right: 0; translate: none; }

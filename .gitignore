@@ -545,3 +545,4 @@ papyra.app/.astro/
 # Collab server bundle (esbuild output, rebuilt by `pnpm --filter papyra-collab build`
 # and by the Dockerfile collab stage).
 papyra.collab/dist/
+/docs/promo

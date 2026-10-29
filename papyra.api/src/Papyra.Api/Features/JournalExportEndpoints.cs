@@ -51,7 +51,7 @@ public static partial class JournalExportEndpoints
     private static async Task<IResult> Export(
         string? ticket, string? format, ClaimsPrincipal user, HttpContext http, VaultState state,
         MarkdownStorageService storage, BlockAnchorCleanup anchors, ExportTicketStore tickets, AppDbContext db,
-        EmailSender email, IConfiguration config, IHostEnvironment env, ILoggerFactory lf, CancellationToken ct)
+        EmailSender email, MediaMetaStore mediaMeta, IConfiguration config, IHostEnvironment env, ILoggerFactory lf, CancellationToken ct)
     {
         var uid = user.FindFirstValue(ClaimTypes.NameIdentifier)!;
         // A format that is neither is refused before the ticket is spent.
@@ -84,6 +84,14 @@ public static partial class JournalExportEndpoints
 
         var mediaDir = PapyraPaths.UserMediaDir(config, env.ContentRootPath, uid);
         string? Locate(string name) => MediaEndpoints.Locate(mediaDir, name, lf);
+        // What the book knows of an attachment: its file, size, length and a video's poster frame.
+        BookMedia? Resolve(string name)
+        {
+            var path = Locate(name);
+            if (path is null) return null;
+            var meta = mediaMeta.Get(uid, path);
+            return new BookMedia(path, meta?.Size ?? new FileInfo(path).Length, meta?.DurationMs, mediaMeta.PosterPath(uid, Path.GetFileName(path)));
+        }
 
         var words = days.Sum(d => (long)JournalService.WordsOf(d.Note));
         if (me is not null && !string.IsNullOrWhiteSpace(me.Email))
@@ -108,7 +116,7 @@ public static partial class JournalExportEndpoints
                 details);
         }
 
-        if (pdf) return await PdfAsync(days, me, nowLocal, Locate, ct);
+        if (pdf) return await PdfAsync(days, me, nowLocal, Resolve, ct);
 
         var keep = await anchors.InUseAsync(ct);
         var attached = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -155,7 +163,7 @@ public static partial class JournalExportEndpoints
         }, "application/zip", $"papyra-journal-{nowLocal:yyyy-MM-dd-HHmm}.zip");
     }
 
-    private static async Task<IResult> PdfAsync(List<Day> days, User? me, DateTime nowLocal, Func<string, string?> locate, CancellationToken ct)
+    private static async Task<IResult> PdfAsync(List<Day> days, User? me, DateTime nowLocal, Func<string, BookMedia?> locate, CancellationToken ct)
     {
         var book = days.Select(d => new BookDay(d.Date, JournalService.MoodOf(d.Note), d.Note.Body ?? string.Empty)).ToList();
         var author = me is null ? null : string.IsNullOrWhiteSpace(me.Name) ? me.Username : me.Name;

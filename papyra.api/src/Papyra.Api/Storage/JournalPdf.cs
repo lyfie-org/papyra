@@ -45,9 +45,6 @@ public static partial class JournalPdf
 
     private static readonly Style Body = new(Face.Body, 9.4f, false, Ink, 14.6f);
 
-    [GeneratedRegex(@"!\[\[(?<name>[^\]|#\r\n]+?)(?:#(?<frag>[^\]|\r\n]*))?(?:\|(?<alias>[^\]\r\n]*))?\]\]")]
-    private static partial Regex EmbedRx();
-
     [GeneratedRegex(@"\[\[(?<t>[^\]|#\r\n]+)(?:#[^\]|\r\n]*)?(?:\|(?<a>[^\]\r\n]*))?\]\]")]
     private static partial Regex WikiRx();
 
@@ -85,8 +82,8 @@ public static partial class JournalPdf
 
     // ── Writing ──────────────────────────────────────────────────────────────
 
-    /// <param name="locateMedia">An embedded file name to its path on disk, or null when it isn't there.</param>
-    public static void Write(Stream output, IReadOnlyList<BookDay> days, string title, string? author, Func<string, string?> locateMedia)
+    /// <param name="locateMedia">An embedded file name to what is known of it, or null when it isn't there.</param>
+    public static void Write(Stream output, IReadOnlyList<BookDay> days, string title, string? author, Func<string, BookMedia?> locateMedia)
     {
         var book = new Book(locateMedia);
         try
@@ -117,10 +114,11 @@ public static partial class JournalPdf
     private abstract record Run;
     private sealed record TextRun(string Text, Style Style) : Run;
     private sealed record BreakRun : Run;
-    private sealed record PictureRun(string Name) : Run;
+    private sealed record EmbedRun(EmbedSpec Spec) : Run;
 
-    private sealed class Book(Func<string, string?> locateMedia) : IDisposable
+    private sealed partial class Book(Func<string, BookMedia?> locateMedia) : IDisposable
     {
+        private readonly Func<string, BookMedia?> _media = locateMedia;
         private readonly List<List<Action<SKCanvas>>> _pages = [];
         private List<Action<SKCanvas>> _ops = [];
         private float _y;
@@ -240,7 +238,7 @@ public static partial class JournalPdf
         }
 
         // Wrap words into lines and set them, flowing onto new pages as they fill.
-        private void SetWords(List<Word> words, float indent, float width, Style style)
+        private void SetWords(List<Word> words, float indent, float width, Style style, bool center = false)
         {
             var line = new List<Word>();
             float used = 0;
@@ -251,6 +249,11 @@ public static partial class JournalPdf
                 var by = _y + style.Leading * 0.72f;
                 var snapshot = line.ToArray();
                 var x0 = ML + indent;
+                if (center)
+                {
+                    var lineWidth = snapshot.Sum(w => w.Width) + snapshot.Skip(1).Sum(w => w.Space);
+                    x0 += Math.Max(0, (width - lineWidth) / 2);
+                }
                 _ops.Add(c => DrawLine(c, snapshot, x0, by));
                 _y += style.Leading;
                 line.Clear();
@@ -384,22 +387,6 @@ public static partial class JournalPdf
         }
 
         // ── Markdown to the page ─────────────────────────────────────────────
-
-        private static string Prepare(string body)
-        {
-            var text = BlockResolver.StripAnchors(body ?? string.Empty, new HashSet<string>(StringComparer.Ordinal));
-            text = EmbedRx().Replace(text, m =>
-            {
-                var name = m.Groups["name"].Value.Trim();
-                var frag = m.Groups["frag"].Value;
-                var ext = Path.GetExtension(name);
-                if (PictureTypes.Contains(ext)) return $"\n\n![]({"papyra-media:" + Uri.EscapeDataString(name)})\n\n";
-                if (frag.StartsWith('^') && frag.Contains("checklist", StringComparison.OrdinalIgnoreCase)) return $"*{name} (checklist)*";
-                return ext.Length > 0 ? $"*Attachment: {name}*" : $"*{name}*";
-            });
-            return WikiRx().Replace(text, m => m.Groups["a"].Success && m.Groups["a"].Value.Length > 0
-                ? m.Groups["a"].Value : m.Groups["t"].Value.Trim());
-        }
 
         private void RenderBody(string body)
         {
@@ -579,11 +566,11 @@ public static partial class JournalPdf
             var pending = new List<Run>();
             foreach (var run in runs)
             {
-                if (run is PictureRun pic)
+                if (run is EmbedRun embed)
                 {
                     SetWords(Words(pending), indent, width, style);
                     pending.Clear();
-                    Picture(pic.Name, indent, width);
+                    Embed(embed.Spec, indent, width);
                 }
                 else pending.Add(run);
             }
@@ -612,8 +599,8 @@ public static partial class JournalPdf
                         break;
                     }
                     case LinkInline link when link.IsImage:
-                        if (link.Url is { } url && url.StartsWith("papyra-media:", StringComparison.Ordinal))
-                            runs.Add(new PictureRun(Uri.UnescapeDataString(url["papyra-media:".Length..])));
+                        if (link.Url is { } url && Decode(url) is { } spec)
+                            runs.Add(new EmbedRun(spec));
                         else runs.Add(new TextRun(link.FirstChild is LiteralInline alt ? alt.Content.ToString() : "[image]", style.Slant()));
                         break;
                     case LinkInline link:
@@ -637,37 +624,6 @@ public static partial class JournalPdf
                         break;
                 }
             }
-        }
-
-        private void Picture(string name, float indent, float width)
-        {
-            var path = locateMedia(name);
-            if (path is null || !ImageProcessor.CanDecode(path))
-            {
-                var note = new List<Run> { new TextRun(path is null ? $"[picture missing: {name}]" : $"[picture: {name}]", Body.Slant() with { Color = Faint }) };
-                SetWords(Words(note), indent, width, Body);
-                _y += 4;
-                return;
-            }
-            var info = ImageProcessor.Probe(path);
-            if (info is not { } probe) return;
-            var maxH = 290f;
-            var scale = Math.Min(width / probe.Width, maxH / probe.Height);
-            scale = Math.Min(scale, 1f * 0.75f * 2); // never blown up far past its own pixels (a point is 1/72")
-            var w = probe.Width * scale;
-            var h = probe.Height * scale;
-            Need(h + 10);
-            var x = ML + indent + (width - w) / 2;
-            var y = _y + 2;
-            var px = (int)Math.Min(1400, Math.Ceiling(w * 3));
-            _ops.Add(c =>
-            {
-                using var bitmap = ImageProcessor.DecodeUpright(path, px);
-                if (bitmap is null) return;
-                using var image = SKImage.FromBitmap(bitmap);
-                c.DrawImage(image, new SKRect(x, y, x + w, y + h), new SKSamplingOptions(SKCubicResampler.Mitchell));
-            });
-            _y += h + 10;
         }
 
         // ── Cover, contents, numbering ───────────────────────────────────────
