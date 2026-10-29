@@ -48,7 +48,7 @@ public sealed class UpdateStatus(string current, bool production)
     }
 }
 
-/// <summary>Release numbers: <c>1.2.3</c>, or <c>1.2.3-dev.abc</c> for a build before the release.</summary>
+/// <summary>Release numbers: <c>1.2.3</c>, or <c>1.2.3-dev.abc</c> for a development build made after that release.</summary>
 public static partial class SemVer
 {
     [GeneratedRegex(@"^(?<core>\d+\.\d+\.\d+)(?<pre>-[0-9A-Za-z.\-]+)?$")]
@@ -70,13 +70,16 @@ public static partial class SemVer
     /// <summary>A final release number (not "dev", not a pre-release).</summary>
     public static bool IsStable(string? text) => TryParse(text, out _, out var pre) && !pre;
 
-    /// <summary>Is <paramref name="latest"/> (a release) ahead of what is running?</summary>
+    /// <summary>
+    /// Is <paramref name="latest"/> (a release) ahead of what is running? Compared by release number only.
+    /// A development image is named for the last release plus its commit (1.0.0-dev.abc1234 is built
+    /// AFTER 1.0.0, from VERSION still reading 1.0.0), so it is never "behind" the release it is named for.
+    /// </summary>
     public static bool IsNewer(string? latest, string? current)
     {
         if (!TryParse(latest, out var l, out var lPre) || lPre) return false;
-        if (!TryParse(current, out var c, out var cPre)) return false;
-        var order = l.CompareTo(c);
-        return order > 0 || (order == 0 && cPre);
+        if (!TryParse(current, out var c, out _)) return false;
+        return l.CompareTo(c) > 0;
     }
 }
 

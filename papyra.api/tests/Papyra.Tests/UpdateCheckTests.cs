@@ -26,7 +26,8 @@ public sealed class UpdateCheckTests
     [InlineData("2.0.0", "1.9.9", true)]
     [InlineData("1.0.0", "1.0.0", false)]
     [InlineData("1.0.0", "1.0.1", false)]
-    [InlineData("1.0.0", "1.0.0-dev.abc1234", true)]   // a build before the release is behind it
+    [InlineData("1.0.0", "1.0.0-dev.abc1234", false)]  // a dev image is built after the release it is named for
+    [InlineData("1.1.0", "1.0.0-dev.abc1234", true)]   // …but a newer release does outrun it
     [InlineData("1.0.0", "1.1.0-dev.abc1234", false)]  // a build for the next release is not
     [InlineData("1.0.1-rc.1", "1.0.0", false)]         // a pre-release is never offered
     [InlineData("nonsense", "1.0.0", false)]
