@@ -149,7 +149,7 @@ export default function EntrySheet({ date, streakLine, bridge }: Props) {
     mentions: false, // a private space: @name is plain text
   }), [date, navigate, queryClient, onUnresolvedLink, toast, getLiveEditor]);
 
-  // What `/` adds on a journal page, and the drag handle: journal-only seams of the editor.
+  // What `/` adds on a journal page: a journal-only seam of the editor.
   const { setMood, adopt } = session;
   const slashCommands = useMemo(
     () => createJournalSlashCommands({
@@ -157,9 +157,9 @@ export default function EntrySheet({ date, streakLine, bridge }: Props) {
     }),
     [date, setMood, canRecord, startVoice],
   );
-  // Through a spread, so this builds against a luthor that predates these props (it then ignores them).
+  // Through a spread, so this builds against a luthor that predates this prop (it then ignores it).
   const journalEditorProps = useMemo(
-    () => ({ draggableBlocks: true, extraSlashCommands: slashCommands }) as Record<string, unknown>,
+    () => ({ extraSlashCommands: slashCommands }) as Record<string, unknown>,
     [slashCommands],
   );
 

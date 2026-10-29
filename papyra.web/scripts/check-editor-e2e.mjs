@@ -663,11 +663,11 @@ async function checkJournal(page) {
   check(await page.locator('.journal-aside').count() === 0, 'journal: the notes panel is open before it was asked for');
   check(await page.locator('.journal-page__calendar, input[type="date"]').count() === 0, 'journal: the old calendar button or date input is back');
 
-  // The drag handle belongs to the journal only.
-  console.log('· journal: drag handle');
+  // A day has no drag handle beside its blocks (notes keep theirs off too: it is not offered anywhere now).
+  console.log('· journal: no drag handle');
   await page.locator('.journal-sheet .luthor-content-editable > p').first().hover();
   await page.waitForTimeout(400);
-  check(await page.locator('.luthor-draggable-handle').count() > 0, 'journal: no drag handle beside a block');
+  check(await page.locator('.luthor-draggable-handle, .luthor-editor-visual-gutter').count() === 0, 'journal: a drag handle or its gutter is back');
 
   // `/` offers the day's own commands; a mood sets the day's mood and leaves no text behind.
   console.log('· journal: slash commands');
@@ -1394,4 +1394,4 @@ if (ONLY) {
   console.log(`check-editor (${ONLY} only) ✓`);
   process.exit(0);
 }
-console.log('check-editor: every insert path round-trips (upload, GIF, attach, drag & drop, paste, image link, YouTube, embedded link, link, /image, hand-written markdown); the journal (slash commands, drag handle, mood, photo strip, lock) round-trips; every embed keeps its alignment; link cards align, caption, resize and move; media drags to a new place; attachments select, resize, upload in order, cancel, refuse, keep posters, survive theme switches, documents show as icons and PDFs preview, and cards use thumbnails ✓');
+console.log('check-editor: every insert path round-trips (upload, GIF, attach, drag & drop, paste, image link, YouTube, embedded link, link, /image, hand-written markdown); the journal (slash commands, mood, photo strip, lock) round-trips; every embed keeps its alignment; link cards align, caption, resize and move; media drags to a new place; attachments select, resize, upload in order, cancel, refuse, keep posters, survive theme switches, documents show as icons and PDFs preview, and cards use thumbnails ✓');

@@ -270,20 +270,23 @@
   overflow: clip;
 }
 /* The writing fills the page: each box down the chain grows, so a click anywhere on the empty
-   paper is a click in the editor. The drag handle's gutter is a little narrower than luthor's 56px but as wide as the handle stack (48px), so the + and grip never reach the text. */
+   paper is a click in the editor. There is no drag-handle gutter: the writing starts at the page's own edge. */
 .journal-sheet__canvas .luthor-editor-wrapper { flex: 1 1 auto; min-height: 0; }
-.journal-sheet__canvas .luthor-editor { min-height: 0; --luthor-drag-gutter-width: 48px; }
+.journal-sheet__canvas .luthor-editor { min-height: 0; }
 .journal-sheet__canvas .luthor-richtext-container { display: flex; flex-direction: column; }
 /* Lexical writes display:block on this wrapper inline, so it takes !important to become a column. */
 .journal-sheet__canvas .luthor-richtext-container > div { display: flex !important; flex-direction: column; flex: 1 1 auto; }
-.journal-sheet__canvas .luthor-preset-papyra__content { flex: 1 1 auto; padding-inline: var(--journal-text-inset) 0; min-height: 40vh; }
+.journal-sheet__canvas .luthor-preset-papyra__content { flex: 1 1 auto; padding-inline: 0; min-height: 40vh; }
 .journal-sheet__canvas .luthor-richtext-container {
-  /* The text sits a step right of the drag handle, and the placeholder, which luthor positions from
-     its own variable, gets the same inset so the hint never runs under the handle. */
-  --journal-text-inset: var(--space-2);
-  --luthor-editor-content-padding-x: var(--journal-text-inset);
+  /* luthor positions the placeholder from its own padding variable, not the body's: keep both at 0. */
+  --luthor-editor-content-padding-x: 0px;
   --luthor-first-block-offset: 2px;
 }
+
+/* The `/` menu follows the caret, and luthor hides it for a frame every time it moves it — a scroll,
+   of the page or of the menu's own list, moves it every frame, so it blinked out until the scroll
+   stopped. Keep it showing; it is already placed before it first paints. */
+.luthor-slash-menu { visibility: visible !important; }
 .journal-sheet__canvas .luthor-editor-toolbar-slot {
   background: var(--paper);
   border-bottom: 1px solid var(--paper-edge);
