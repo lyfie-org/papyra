@@ -12,6 +12,8 @@ export interface Share {
   grantee: string | null;
   /** An editor shared it onward: who (the owner sees who added the grant). */
   sharedBy?: string | null;
+  /** The share has run out; it grants nothing but is still on file. */
+  expired?: boolean;
 }
 
 export interface IncomingShare {
@@ -38,6 +40,37 @@ export interface IncomingShare {
   sharedBy?: string | null;
   /** Your own tags for it — the owner's are theirs. */
   tags?: string[];
+  /**
+   * The share ended. The card is a stub — no title, words or colour come with
+   * it — kept so you can see it ended and clear it (`useRemoveExpiredShare`).
+   */
+  expired?: boolean;
+  /** When it ended (UTC); only on an expired share. */
+  expiredUtc?: string;
+}
+
+/** The server's answer for a share that has ended (HTTP 410, `code: "share_expired"`). */
+export class ShareExpiredError extends Error {
+  constructor() { super('This share has expired.'); }
+}
+
+/** Clear a share that has ended from your desk. The note itself is untouched. */
+export function useRemoveExpiredShare() {
+  const queryClient = useQueryClient();
+  return useMutation({
+    mutationFn: async (shareId: number) => {
+      const res = await fetch(`/api/shares/incoming/${shareId}`, { method: 'DELETE' });
+      if (!res.ok && res.status !== 404) {
+        const data = await res.json().catch(() => null);
+        throw new Error(data?.error ?? `Couldn’t remove it (${res.status}).`);
+      }
+    },
+    onSuccess: (_data, shareId) => {
+      queryClient.setQueryData<IncomingShare[]>(['shares', 'incoming'],
+        (list) => list?.filter((s) => s.shareId !== shareId));
+      void queryClient.invalidateQueries({ queryKey: ['shares', 'incoming'], exact: true });
+    },
+  });
 }
 
 

@@ -580,7 +580,8 @@ public sealed class SharedMedia(
     public async Task<Grant> EditableGrantAsync(int shareId, HttpContext http, CancellationToken ct)
     {
         await LoadGrantAsync(shareId, http, ct);
-        var (_, share, note, _) = _resolved!.Value;
+        var (_, share, note, refusal) = _resolved!.Value;
+        if (refusal is { } r) return new(null, null, r.Error);
         if (share is null || note is null || note.Secure) return new(null, null, Results.NotFound());
         if (share.Access != "edit")
             return new(null, null, Results.Json(new { error = "You can only view this note." },
@@ -617,7 +618,11 @@ public sealed class SharedMedia(
         {
             var uid = int.Parse(http.User.FindFirstValue(ClaimTypes.NameIdentifier)!);
             var share = await db.Shares.FirstOrDefaultAsync(s => s.Id == shareId && s.GranteeUserId == uid, ct);
-            _resolved = (key, share, share is null ? null : await NoteOf(share, ct), share is null ? NotFound() : null);
+            // An ended share hands out nothing, attachments included.
+            var ended = share?.IsExpired(DateTime.UtcNow) == true;
+            _resolved = (key, share,
+                share is null || ended ? null : await NoteOf(share, ct),
+                share is null ? NotFound() : ended ? Gone("This share has expired.") : null);
         }
     }
 

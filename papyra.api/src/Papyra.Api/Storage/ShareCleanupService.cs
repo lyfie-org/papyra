@@ -34,17 +34,20 @@ public sealed class ShareCleanupService : PeriodicJob
         return removed == 0 ? null : $"{removed} finished link{(removed == 1 ? "" : "s")} cleared";
     }
 
-    // Delete every share past its expiry or at/over its view cap. Returns the count
-    // removed. Exposed for direct testing.
+    // Delete every share link past its expiry or at/over its view cap. Returns the
+    // count removed. Exposed for direct testing.
     internal async Task<int> CleanupOnceAsync(CancellationToken ct)
     {
         var now = DateTime.UtcNow;
         using var scope = _scopes.CreateScope();
         var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 
+        // Links only. An expired person share stays on file: its recipient sees a
+        // card saying it ended and clears it themselves (or the owner renews it).
         var removed = await db.Shares
-            .Where(s => (s.ExpiresUtc != null && s.ExpiresUtc < now)
-                        || (s.MaxViews != null && s.ViewCount >= s.MaxViews))
+            .Where(s => s.Kind == "link"
+                        && ((s.ExpiresUtc != null && s.ExpiresUtc < now)
+                            || (s.MaxViews != null && s.ViewCount >= s.MaxViews)))
             .ExecuteDeleteAsync(ct);
 
         if (removed > 0)

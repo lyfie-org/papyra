@@ -141,6 +141,34 @@ public sealed class UpdateCheckTests
         finally { Directory.Delete(dir, recursive: true); }
     }
 
+    [Fact]
+    public async Task ARetryThatGetsThrough_MovesTheInstallsTimeOfDayToThen()
+    {
+        var up = false;
+        var (checker, status, _, dir) = Make("1.0.0", _ => up ? Json("""{"version":"1.0.0","url":"https://papyra.app"}""") : new HttpResponseMessage(HttpStatusCode.BadGateway));
+        try
+        {
+            var file = Path.Combine(dir, ".papyra", "update-checked");
+            Assert.False(await checker.CheckNowAsync(CancellationToken.None));
+            Assert.False(File.Exists(file));                 // nothing is remembered about a check that failed
+
+            up = true;
+            var before = DateTimeOffset.UtcNow;
+            Assert.True(await checker.CheckNowAsync(CancellationToken.None, adoptTimeOfDay: true));
+            using var state = JsonDocument.Parse(File.ReadAllText(file));
+            var slot = state.RootElement.GetProperty("slot").GetInt32();
+            // The time of day of the check that worked (UTC), to the second.
+            Assert.InRange(Math.Abs(slot - (int)before.UtcDateTime.TimeOfDay.TotalSeconds), 0, 5);
+
+            // An ordinary check afterwards leaves the adopted time alone.
+            Assert.True(await checker.CheckNowAsync(CancellationToken.None));
+            using var again = JsonDocument.Parse(File.ReadAllText(file));
+            Assert.Equal(slot, again.RootElement.GetProperty("slot").GetInt32());
+            Assert.NotNull(status.CheckedUtc);
+        }
+        finally { Directory.Delete(dir, recursive: true); }
+    }
+
     [Theory]
     [InlineData("dev", true)]                  // a build with no release number never calls out
     [InlineData("1.0.0", false)]               // nor does a development host (dotnet run, the tests)

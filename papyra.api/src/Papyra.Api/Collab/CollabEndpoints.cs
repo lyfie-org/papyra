@@ -218,6 +218,7 @@ public static class CollabEndpoints
 
         await hub.Clients.User(ownerUid).SendAsync("NoteUpdated", NoteMetadata.From(note), ct);
         var grantees = await db.Shares
+            .Live(DateTime.UtcNow)
             .Where(s => s.OwnerId == owner && s.NoteId == noteId && s.Kind == "user" && s.GranteeUserId != null)
             .Select(s => s.GranteeUserId!.Value.ToString()).Distinct().ToListAsync(ct);
         if (grantees.Count > 0)

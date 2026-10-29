@@ -29,8 +29,9 @@ Requests that don't look like an install are not counted, and a server with no r
 
 ## When installs ping
 
-Once a day each, at a time of day fixed per install (from its ID), never between 02:30 and 03:30 UTC
-(08:00–09:00 IST). That hour is quiet on purpose: the site is rebuilt in the middle of it (03:00 UTC, in
+Once a day each, at a time of day fixed per install (from its ID), never between 02:30 and 03:30 UTC;
+a check that can't get through is retried after an hour (then two, four, six), and
+the time a retry gets through becomes that install's new time of day. That hour is quiet on purpose: the site is rebuilt in the middle of it (03:00 UTC, in
 `.github/workflows/site.yml`) from numbers nothing is writing to. The Worker doesn't enforce it — a ping
 that arrives anyway is counted. The schedule is [`UpdateSchedule.cs`](../papyra.api/src/Papyra.Api/Storage/UpdateSchedule.cs).
 

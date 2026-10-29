@@ -4124,6 +4124,7 @@ inbox.MapGet("/", async (ClaimsPrincipal user, VaultState state, AppDbContext db
     // what the recipient may see of it is exactly what a Share of that note
     // allows. No share → who and when only, plus a way to ask for access.
     var shareRows = await db.Shares
+        .Live(DateTime.UtcNow)
         .Where(s => s.GranteeUserId == callerId && s.Kind == "user")
         .Select(s => new { s.Id, s.OwnerId, s.NoteId, s.Access })
         .ToListAsync(ct);
@@ -4241,7 +4242,7 @@ notes.MapGet("/{id}/blocks/{blockId}", async (
                  && g.BlockId == blockId && g.DismissedUtc == null, ct);
         // A mention alone no longer opens any of the note — access is the whole
         // note (a Share) or nothing.
-        if (grant is not null && !await db.Shares.AnyAsync(
+        if (grant is not null && !await db.Shares.Live(DateTime.UtcNow).AnyAsync(
                 s => s.OwnerId == grant.SourceOwnerId && s.NoteId == id
                      && s.Kind == "user" && s.GranteeUserId == callerId, ct))
             grant = null;
@@ -5206,9 +5207,13 @@ notes.MapGet("/{id}/shares", async (string id, ClaimsPrincipal user, AppDbContex
         .Concat(rows.Where(s => s.SharedByUserId != null).Select(s => s.SharedByUserId!.Value)).ToHashSet();
     var names = await db.Users.Where(u => granteeIds.Contains(u.Id))
         .ToDictionaryAsync(u => u.Id, u => u.Username, ct);
+    var now = DateTime.UtcNow;
     return Results.Ok(rows.Select(s => new
     {
         s.Id, s.Kind, s.Access, s.Token, s.ExpiresUtc, s.MaxViews, s.ViewCount,
+        // An expired person share is still on file (so the owner can renew or
+        // revoke it) but it no longer lets anyone in.
+        expired = s.IsExpired(now),
         grantee = s.GranteeUserId is { } g && names.TryGetValue(g, out var n) ? n : null,
         // An editor shared it onward: the owner sees who.
         sharedBy = s.SharedByUserId is { } by && names.TryGetValue(by, out var b) ? b : null,
@@ -5227,6 +5232,12 @@ notes.MapPost("/{id}/shares", async (
     var access = body.Access?.Trim().ToLowerInvariant() == "edit" ? "edit" : "view";
     if (kind is not ("link" or "user")) return Results.BadRequest(new { error = "kind must be link or user." });
 
+    // A share that has already run out would grant nothing; saying so now beats
+    // handing back a row that looks like it worked.
+    var expires = ShareExpiry.AsUtc(body.ExpiresUtc);
+    if (expires is { } endsAt && endsAt <= DateTime.UtcNow)
+        return Results.BadRequest(new { error = "The expiry has to be in the future." });
+
     // A locked note's body is withheld from every other read path until a
     // biometric unlock. A share is another read path, so this is where that
     // promise would otherwise be worth nothing.
@@ -5238,7 +5249,7 @@ notes.MapPost("/{id}/shares", async (
     var share = new Share
     {
         NoteId = id, OwnerId = uid, Kind = kind, Access = access,
-        ExpiresUtc = body.ExpiresUtc,
+        ExpiresUtc = expires,
         MaxViews = body.MaxViews is > 0 ? body.MaxViews : null,
         CreatedUtc = DateTime.UtcNow,
     };
@@ -5258,6 +5269,19 @@ notes.MapPost("/{id}/shares", async (
         // would look like it did nothing.
         var existing = await db.Shares.FirstOrDefaultAsync(
             x => x.OwnerId == uid && x.NoteId == id && x.Kind == "user" && x.GranteeUserId == grantee.Id, ct);
+        if (existing is not null && existing.IsExpired(DateTime.UtcNow))
+        {
+            // Sharing again with someone whose share ran out is a fresh grant, on
+            // the terms asked for now — not "already shared".
+            existing.Access = access;
+            existing.ExpiresUtc = expires;
+            existing.CreatedUtc = DateTime.UtcNow;
+            existing.SharedByUserId = null;
+            await SettleAccessRequests(db, uid, id, grantee.Id, access, ct);
+            await db.SaveChangesAsync(ct);
+            await AnnounceShare(db, hub, email, http, grantee, user, uid, id, subject?.Title, access, "shared", ct);
+            return Results.Ok(new { existing.Id, existing.Kind, existing.Access, existing.Token, existing.ExpiresUtc, existing.MaxViews });
+        }
         if (existing is not null)
         {
             // Upgrade view to edit if that is what was asked for; never quietly
@@ -5354,7 +5378,24 @@ shares.MapPost("/bulk", async (
             results.Add(new { id, status = "locked" });
             continue;
         }
-        if (existing.TryGetValue(id, out var have))
+        if (existing.TryGetValue(id, out var have) && have.IsExpired(DateTime.UtcNow))
+        {
+            // Their earlier share ran out: this is a fresh grant, not "already shared".
+            have.Access = access;
+            have.ExpiresUtc = null;
+            have.CreatedUtc = DateTime.UtcNow;
+            have.SharedByUserId = null;
+            await SettleAccessRequests(db, uid, id, grantee.Id, access, ct);
+            db.Notifications.Add(new Notification
+            {
+                UserId = grantee.Id, Kind = "shared", ActorUserId = uid, OwnerId = uid,
+                NoteId = id, Access = access, CreatedUtc = DateTime.UtcNow,
+            });
+            results.Add(new { id, status = "shared" });
+            shared++;
+            continue;
+        }
+        if (existing.TryGetValue(id, out have))
         {
             if (access == "edit" && have.Access != "edit")
             {
@@ -5413,12 +5454,14 @@ shares.MapGet("/summary", async (ClaimsPrincipal user, AppDbContext db, Cancella
     var names = await db.Users.Where(u => granteeIds.Contains(u.Id))
         .ToDictionaryAsync(u => u.Id, u => u.Username, ct);
 
+    var now = DateTime.UtcNow;
     var summary = rows
         .GroupBy(s => s.NoteId)
         .Select(g => new
         {
             noteId = g.Key,
-            people = g.Where(s => s.Kind == "user" && s.GranteeUserId is not null)
+            // Someone whose share has run out can no longer see the note.
+            people = g.Where(s => s.Kind == "user" && s.GranteeUserId is not null && !s.IsExpired(now))
                 .Select(s => names.GetValueOrDefault(s.GranteeUserId!.Value, "?"))
                 .OrderBy(n => n)
                 .ToArray(),
@@ -5454,8 +5497,30 @@ shares.MapGet("/incoming", async (
         .Select(r => (r.OwnerId, r.NoteId)).ToHashSet();
 
     var result = new List<object>();
+    var now = DateTime.UtcNow;
     foreach (var s in rows)
     {
+        if (s.IsExpired(now))
+        {
+            // Ended: the card stays so the recipient can see it did, but nothing of
+            // the note goes with it — not its words, title, colour or even its id.
+            result.Add(new
+            {
+                shareId = s.Id, noteId = string.Empty, access = s.Access,
+                owner = people.GetValueOrDefault(s.OwnerId)?.Username ?? "?",
+                ownerName = people.GetValueOrDefault(s.OwnerId)?.Name,
+                sharedBy = s.SharedByUserId is { } passedOnBy ? people.GetValueOrDefault(passedOnBy)?.Username : null,
+                title = string.Empty, excerpt = string.Empty, body = string.Empty,
+                color = (string?)null, updatedUtc = (DateTime?)null,
+                sharedUtc = DateTime.SpecifyKind(s.CreatedUtc, DateTimeKind.Utc),
+                requestPending = false,
+                pinned = false,
+                tags = Array.Empty<string>(),
+                expired = true,
+                expiredUtc = DateTime.SpecifyKind(s.ExpiresUtc!.Value, DateTimeKind.Utc),
+            });
+            continue;
+        }
         var note = await storage.ReadAsync(OwnerNotePath(state, vault, lf, s.OwnerId.ToString(), s.NoteId), ct);
         // Locking a note is a decision made after the share, and it has to win:
         // the owner's later "nobody sees this" outranks their earlier "you can".
@@ -5496,6 +5561,7 @@ shares.MapPut("/incoming/{shareId:int}/pin", async (
     var uid = int.Parse(Uid(user));
     var share = await db.Shares.FirstOrDefaultAsync(s => s.Id == shareId && s.GranteeUserId == uid, ct);
     if (share is null) return Results.NotFound();
+    if (share.IsExpired(DateTime.UtcNow)) return ShareExpiry.Gone();
     if (share.GranteePinned != body.Pinned)
     {
         share.GranteePinned = body.Pinned;
@@ -5514,6 +5580,7 @@ shares.MapGet("/incoming/{shareId:int}", async (
     var uid = int.Parse(Uid(user));
     var share = await db.Shares.FirstOrDefaultAsync(s => s.Id == shareId && s.GranteeUserId == uid, ct);
     if (share is null) return Results.NotFound();
+    if (share.IsExpired(DateTime.UtcNow)) return ShareExpiry.Gone();
     var note = await storage.ReadAsync(OwnerNotePath(state, vault, lf, share.OwnerId.ToString(), share.NoteId), ct);
     if (note is null) return Results.NotFound();
     // Locked since it was shared: the body stays in the owner's vault. Reported
@@ -5534,6 +5601,24 @@ shares.MapGet("/incoming/{shareId:int}", async (
     });
 });
 
+// Grantee: clear a share that has ended from their desk. Only an ended one — a
+// share that still works is the owner's to take back, not the recipient's to drop.
+shares.MapDelete("/incoming/{shareId:int}", async (
+    int shareId, ClaimsPrincipal user, AppDbContext db, IHubContext<NotesHub> hub, CancellationToken ct) =>
+{
+    var uid = int.Parse(Uid(user));
+    var share = await db.Shares.FirstOrDefaultAsync(
+        s => s.Id == shareId && s.GranteeUserId == uid && s.Kind == "user", ct);
+    if (share is null) return Results.NotFound();
+    if (!share.IsExpired(DateTime.UtcNow))
+        return Results.Conflict(new { error = "This note is still shared with you." });
+    db.Shares.Remove(share);
+    await db.SaveChangesAsync(ct);
+    // The same desk open on another device follows.
+    await hub.Clients.User(uid.ToString()).SendAsync("SharesChanged", ct);
+    return Results.NoContent();
+});
+
 // Grantee: edit an incoming shared note (only when access == edit).
 shares.MapPut("/incoming/{shareId:int}", async (
     int shareId, SharedBodyWrite body, ClaimsPrincipal user, AppDbContext db, VaultState state,
@@ -5545,6 +5630,7 @@ shares.MapPut("/incoming/{shareId:int}", async (
     var uid = int.Parse(Uid(user));
     var share = await db.Shares.FirstOrDefaultAsync(s => s.Id == shareId && s.GranteeUserId == uid, ct);
     if (share is null) return Results.NotFound();
+    if (share.IsExpired(DateTime.UtcNow)) return ShareExpiry.Gone();
     if (share.Access != "edit") return Results.Forbid();
     return await ApplySharedEdit(share.OwnerId.ToString(), share.NoteId, body, db,
         state, storage, writeRing, search, snapshots, config, env, hub, vault, lf, collab, writeLocks, renames, ct);
@@ -5559,6 +5645,7 @@ shares.MapPut("/incoming/{shareId:int}/tags", async (
     var uid = int.Parse(Uid(user));
     var share = await db.Shares.FirstOrDefaultAsync(s => s.Id == shareId && s.GranteeUserId == uid, ct);
     if (share is null) return Results.NotFound();
+    if (share.IsExpired(DateTime.UtcNow)) return ShareExpiry.Gone();
     var tags = ShareTags.Normalize(body.Tags);
     if (tags is null) return Results.BadRequest(new { error = $"Use at most {ShareTags.MaxTags} tags of up to {ShareTags.MaxLength} characters." });
     share.GranteeTags = tags.Count == 0 ? null : System.Text.Json.JsonSerializer.Serialize(tags);
@@ -5580,6 +5667,7 @@ shares.MapPut("/incoming/{shareId:int}/color", async (
     var uid = int.Parse(Uid(user));
     var share = await db.Shares.FirstOrDefaultAsync(s => s.Id == shareId && s.GranteeUserId == uid, ct);
     if (share is null) return Results.NotFound();
+    if (share.IsExpired(DateTime.UtcNow)) return ShareExpiry.Gone();
     if (share.Access != "edit") return Results.Forbid();
     var color = body.Color?.Trim() ?? string.Empty;
     if (color.Length > 0 && !NoteColorValue.IsValid(color))
@@ -5594,6 +5682,7 @@ shares.MapPut("/incoming/{shareId:int}/color", async (
     if (refusal is not null) return refusal;
     // Every other sharee's card repaints.
     var grantees = await db.Shares
+        .Live(DateTime.UtcNow)
         .Where(s => s.OwnerId == share.OwnerId && s.NoteId == share.NoteId && s.Kind == "user" && s.GranteeUserId != null)
         .Select(s => s.GranteeUserId!.Value.ToString()).Distinct().ToListAsync(ct);
     await hub.Clients.Users(grantees).SendAsync("SharedNoteUpdated", new { ownerId = share.OwnerId, noteId = share.NoteId }, ct);
@@ -5612,6 +5701,8 @@ shares.MapPost("/incoming/{shareId:int}/share", async (
     var uid = int.Parse(Uid(user));
     var mine = await db.Shares.FirstOrDefaultAsync(s => s.Id == shareId && s.GranteeUserId == uid, ct);
     if (mine is null) return Results.NotFound();
+    var now = DateTime.UtcNow;
+    if (mine.IsExpired(now)) return ShareExpiry.Gone();
     if (mine.Access != "edit") return Results.Json(new { error = "Only someone who can edit this note can share it." }, statusCode: StatusCodes.Status403Forbidden);
     var access = body.Access?.Trim().ToLowerInvariant() == "edit" ? "edit" : "view";
 
@@ -5628,6 +5719,20 @@ shares.MapPost("/incoming/{shareId:int}/share", async (
 
     var existing = await db.Shares.FirstOrDefaultAsync(
         x => x.OwnerId == mine.OwnerId && x.NoteId == mine.NoteId && x.Kind == "user" && x.GranteeUserId == grantee.Id, ct);
+    if (existing is not null && existing.IsExpired(now))
+    {
+        // Their earlier share ran out: this is a fresh grant, which can last no
+        // longer than the one passing it on.
+        existing.Access = access;
+        existing.ExpiresUtc = mine.ExpiresUtc;
+        existing.CreatedUtc = now;
+        existing.SharedByUserId = uid;
+        await SettleAccessRequests(db, mine.OwnerId, mine.NoteId, grantee.Id, access, ct);
+        await db.SaveChangesAsync(ct);
+        await AnnounceShare(db, hub, email, http, grantee, user, mine.OwnerId, mine.NoteId, note.Title, access, "shared", ct, actorId: uid);
+        await hub.Clients.User(mine.OwnerId.ToString()).SendAsync("SharesChanged", ct);
+        return Results.Ok(new { status = "shared", grantee = grantee.Username, access });
+    }
     if (existing is not null)
     {
         if (access == "edit" && existing.Access != "edit")
@@ -5646,6 +5751,9 @@ shares.MapPost("/incoming/{shareId:int}/share", async (
     {
         NoteId = mine.NoteId, OwnerId = mine.OwnerId, Kind = "user", Access = access,
         GranteeUserId = grantee.Id, SharedByUserId = uid, CreatedUtc = DateTime.UtcNow,
+        // Passing a note on cannot outlast the access doing the passing: an editor
+        // whose share ends tomorrow cannot hand someone a share that never does.
+        ExpiresUtc = mine.ExpiresUtc,
     };
     db.Shares.Add(share);
     await SettleAccessRequests(db, mine.OwnerId, mine.NoteId, grantee.Id, access, ct);
@@ -5666,6 +5774,8 @@ shares.MapGet("/incoming/{shareId:int}/link", async (
     var uid = int.Parse(Uid(user));
     var from = await db.Shares.FirstOrDefaultAsync(s => s.Id == shareId && s.GranteeUserId == uid, ct);
     if (from is null) return Results.NotFound();
+    var now = DateTime.UtcNow;
+    if (from.IsExpired(now)) return ShareExpiry.Gone();
     var wanted = target?.Trim();
     if (string.IsNullOrEmpty(wanted)) return Results.BadRequest(new { error = "Which note?" });
     var ownerUid = from.OwnerId.ToString();
@@ -5676,7 +5786,7 @@ shares.MapGet("/incoming/{shareId:int}/link", async (
     if (linked.Id == from.NoteId) return Results.Ok(new { shareId = from.Id, access = from.Access });
     var to = await db.Shares.FirstOrDefaultAsync(
         s => s.OwnerId == from.OwnerId && s.NoteId == linked.Id && s.Kind == "user" && s.GranteeUserId == uid, ct);
-    return to is null
+    return to is null || to.IsExpired(now)
         ? Results.NotFound(new { error = "not_shared" })
         : Results.Ok(new { shareId = to.Id, access = to.Access });
 });
@@ -5876,7 +5986,8 @@ accessRequests.MapPost("/", async (
         return Results.NotFound();
     if (note.Secure) return Results.Json(new { error = "The owner locked this note." }, statusCode: StatusCodes.Status410Gone);
 
-    var held = await db.Shares.FirstOrDefaultAsync(
+    // Only a share that still works counts: someone whose access ended may ask again.
+    var held = await db.Shares.Live(DateTime.UtcNow).FirstOrDefaultAsync(
         s => s.OwnerId == ownerId && s.NoteId == noteId && s.Kind == "user" && s.GranteeUserId == uid, ct);
     if (held is not null && (held.Access == "edit" || access == "view"))
         return Results.Conflict(new { error = "You already have that access." });
@@ -5943,7 +6054,7 @@ accessRequests.MapGet("/incoming", async (ClaimsPrincipal user, AppDbContext db,
         // offering to share something that isn't there.
         if (note is null || note.Trashed) continue;
         var who = people.GetValueOrDefault(r.RequesterUserId);
-        var current = await db.Shares.Where(s => s.OwnerId == uid && s.NoteId == r.NoteId
+        var current = await db.Shares.Live(DateTime.UtcNow).Where(s => s.OwnerId == uid && s.NoteId == r.NoteId
                 && s.Kind == "user" && s.GranteeUserId == r.RequesterUserId)
             .Select(s => s.Access).FirstOrDefaultAsync(ct);
         result.Add(new
@@ -5987,6 +6098,14 @@ accessRequests.MapPost("/{id:int}/approve", async (
             GranteeUserId = request.RequesterUserId, CreatedUtc = DateTime.UtcNow,
         };
         db.Shares.Add(share);
+    }
+    else if (share.IsExpired(DateTime.UtcNow))
+    {
+        // Their access had ended and the owner is saying yes to more: reinstate it.
+        share.Access = access;
+        share.ExpiresUtc = null;
+        share.CreatedUtc = DateTime.UtcNow;
+        share.SharedByUserId = null;
     }
     else if (access == "edit") share.Access = "edit";
 
@@ -7654,6 +7773,7 @@ static async Task<IResult> ApplySharedEdit(
     {
         var owner = int.Parse(ownerUid);
         var grantees = await db.Shares
+            .Live(DateTime.UtcNow)
             .Where(s => s.OwnerId == owner && s.NoteId == noteId && s.Kind == "user" && s.GranteeUserId != null)
             .Select(s => s.GranteeUserId!.Value.ToString()).Distinct().ToListAsync(ct);
         if (grantees.Count > 0)

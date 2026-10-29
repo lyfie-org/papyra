@@ -24,3 +24,51 @@
   color: var(--text);
 }
 
+
+/* A share that has ended: a blurred ghost of a note with a label over it. The
+   bars are decoration — none of the note's words ever reach the client. */
+.shared-card--expired { position: relative; min-height: 8.5rem; overflow: hidden; }
+
+.shared-card__ghost {
+  display: grid;
+  gap: var(--space-2);
+  filter: blur(5px);
+  opacity: 0.6;
+  pointer-events: none;
+  user-select: none;
+}
+.shared-card__ghost span {
+  display: block;
+  height: 9px;
+  border-radius: var(--radius-pill);
+  background: var(--text);
+  opacity: 0.4;
+}
+.shared-card__ghost span:nth-child(1) { width: 55%; height: 13px; background: var(--text-h); opacity: 0.55; }
+.shared-card__ghost span:nth-child(2) { width: 92%; }
+.shared-card__ghost span:nth-child(3) { width: 78%; }
+.shared-card__ghost span:nth-child(4) { width: 64%; }
+
+.shared-card__veil {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+.shared-card__pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--space-1);
+  padding: var(--space-1) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+  color: var(--text-h);
+  box-shadow: var(--shadow-card);
+  font: 600 var(--fs-sm) / 1.3 var(--sans);
+}
+
+/* Nothing else on the card to find, so its one action is always in view. */
+.shared-card--expired .note-card__actions { opacity: 1; transform: none; }

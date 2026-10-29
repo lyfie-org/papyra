@@ -42,7 +42,7 @@ public sealed class UpdateScheduleTests
     public void AFirstEverCheck_IsDueAtOnce_AfterBoot()
     {
         var now = Utc(29, 10);
-        var due = UpdateSchedule.Next(now, null, Id, notBefore: now.AddSeconds(45), NoJitter);
+        var due = UpdateSchedule.Next(now, null, UpdateSchedule.Slot(Id), notBefore: now.AddSeconds(45), NoJitter);
         Assert.Equal(now.AddSeconds(45), due);
     }
 
@@ -51,7 +51,7 @@ public sealed class UpdateScheduleTests
     {
         var slot = UpdateSchedule.Slot(Id);
         var last = Utc(29, 10);
-        var due = UpdateSchedule.Next(Utc(29, 10, 5), last, Id, notBefore: Utc(29, 10), NoJitter);
+        var due = UpdateSchedule.Next(Utc(29, 10, 5), last, UpdateSchedule.Slot(Id), notBefore: Utc(29, 10), NoJitter);
         Assert.Equal(new DateTimeOffset(2026, 10, 30, 0, 0, 0, TimeSpan.Zero) + slot, due);
     }
 
@@ -59,7 +59,7 @@ public sealed class UpdateScheduleTests
     public void ARestartDoesNotAskAgain()
     {
         // Checked this morning, restarted this afternoon: still tomorrow's slot, not "45 seconds after boot".
-        var due = UpdateSchedule.Next(Utc(29, 15), Utc(29, 9), Id, notBefore: Utc(29, 15).AddSeconds(45), NoJitter);
+        var due = UpdateSchedule.Next(Utc(29, 15), Utc(29, 9), UpdateSchedule.Slot(Id), notBefore: Utc(29, 15).AddSeconds(45), NoJitter);
         Assert.True(due > Utc(29, 23, 59, 59));
         Assert.Equal(30, due.UtcDateTime.Day);
     }
@@ -68,7 +68,7 @@ public sealed class UpdateScheduleTests
     public void AServerThatWasOff_IsDueNow()
     {
         var now = Utc(29, 12);
-        var due = UpdateSchedule.Next(now, Utc(20, 9), Id, notBefore: now.AddSeconds(45), NoJitter);
+        var due = UpdateSchedule.Next(now, Utc(20, 9), UpdateSchedule.Slot(Id), notBefore: now.AddSeconds(45), NoJitter);
         Assert.Equal(now.AddSeconds(45), due);
     }
 
@@ -76,7 +76,7 @@ public sealed class UpdateScheduleTests
     public void AFailedCheck_WaitsBeforeTryingAgain()
     {
         var now = Utc(29, 12);
-        var due = UpdateSchedule.Next(now, Utc(28, 9), Id, notBefore: now.AddHours(3), NoJitter);
+        var due = UpdateSchedule.Next(now, Utc(28, 9), UpdateSchedule.Slot(Id), notBefore: now.AddHours(3), NoJitter);
         Assert.Equal(now.AddHours(3), due);
     }
 
@@ -86,11 +86,11 @@ public sealed class UpdateScheduleTests
     [InlineData(29, 3, 29)]    // the last minute of it
     public void NothingIsEverDueInTheQuietHour_ItWaitsForTheEnd(int day, int h, int m)
     {
-        var due = UpdateSchedule.Next(Utc(day, h, m), null, Id, notBefore: Utc(day, h, m), NoJitter);
+        var due = UpdateSchedule.Next(Utc(day, h, m), null, UpdateSchedule.Slot(Id), notBefore: Utc(day, h, m), NoJitter);
         Assert.Equal(Utc(day, 3, 30), due);
 
         // With a little jitter, so the whole world doesn't arrive at 03:30:00.
-        var jittered = UpdateSchedule.Next(Utc(day, h, m), null, Id, notBefore: Utc(day, h, m), () => 420);
+        var jittered = UpdateSchedule.Next(Utc(day, h, m), null, UpdateSchedule.Slot(Id), notBefore: Utc(day, h, m), () => 420);
         Assert.Equal(Utc(day, 3, 37), jittered);
     }
 
@@ -108,9 +108,27 @@ public sealed class UpdateScheduleTests
             var now = Utc(29, 0).AddSeconds(random.Next(0, 3 * 86_400));
             var last = random.Next(3) == 0 ? (DateTimeOffset?)null : now.AddSeconds(-random.Next(0, 5 * 86_400));
             var id = Guid.NewGuid().ToString();
-            var due = UpdateSchedule.Next(now, last, id, notBefore: now.AddSeconds(random.Next(0, 4 * 3600)), () => random.Next(0, 600));
+            var due = UpdateSchedule.Next(now, last, UpdateSchedule.Slot(id), notBefore: now.AddSeconds(random.Next(0, 4 * 3600)), () => random.Next(0, 600));
             Assert.False(UpdateSchedule.InQuietHour(due), $"{due:u} is inside the quiet hour");
             Assert.True(due >= now);
         }
+    }
+
+    [Theory]
+    [InlineData(1, 1)]
+    [InlineData(2, 2)]
+    [InlineData(3, 4)]
+    [InlineData(4, 6)]
+    [InlineData(9, 6)]
+    public void ARetryWaitsAnHour_ThenBacksOffToSixAtMost(int failures, int hours) =>
+        Assert.Equal(TimeSpan.FromHours(hours), UpdateSchedule.RetryDelay(failures));
+
+    [Fact]
+    public void ARetryThatWorked_MovesTheTimeOfDay_ForTheDaysAfter()
+    {
+        // Due at 14:00 but the network was down; an hour later (15:00) it got through and 15:00 is the new time.
+        var adopted = new TimeSpan(15, 0, 0);
+        var due = UpdateSchedule.Next(Utc(29, 15, 5), Utc(29, 15), adopted, notBefore: Utc(29, 15), NoJitter);
+        Assert.Equal(Utc(30, 15), due);
     }
 }

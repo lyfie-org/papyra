@@ -232,7 +232,8 @@ public sealed class SecureShareTests
 
             await owner.PostAsJsonAsync("/api/notes/s1/shares", new ShareWrite(
                 Kind: "link", Access: "view", GranteeUsername: null,
-                ExpiresUtc: DateTime.UtcNow.AddHours(-1), MaxViews: null));
+                ExpiresUtc: DateTime.UtcNow.AddHours(1), MaxViews: null));
+            await ShareClock.ExpireAllAsync(factory);
 
             var summary = await owner.GetFromJsonAsync<JsonElement>("/api/shares/summary");
             var row = summary.EnumerateArray().Single();

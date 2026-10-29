@@ -40,10 +40,18 @@ public static class UpdateSchedule
     }
 
     /// <summary>
-    /// When to ask next.
+    /// How long to wait before trying again after a check that got no answer: an hour, then two, four,
+    /// and six at most — so a Worker that is down isn't hit every hour by every install.
+    /// </summary>
+    public static TimeSpan RetryDelay(int failures) =>
+        TimeSpan.FromHours(Math.Min(6, 1 << Math.Clamp(failures - 1, 0, 3)));
+
+    /// <summary>
+    /// When to ask next. <paramref name="slot"/> is this install's time of day: <see cref="Slot"/> unless a
+    /// retry that worked has moved it (see <c>UpdateChecker</c>).
     /// <list type="bullet">
     /// <item>A first check (never made one) is due at once, so a new install appears straight away.</item>
-    /// <item>After a check, the next is due at this install's time of day on the following UTC day. A restart
+    /// <item>After a check, the next is due at the install's time of day on the following UTC day. A restart
     /// doesn't ask again: the last check is remembered.</item>
     /// <item>If that time has passed (the server was off), it is due now.</item>
     /// <item><paramref name="notBefore"/> holds it back (a moment after boot; a wait after a failure).</item>
@@ -51,14 +59,14 @@ public static class UpdateSchedule
     /// <paramref name="jitterSeconds"/> so everyone doesn't arrive at the same second.</item>
     /// </list>
     /// </summary>
-    public static DateTimeOffset Next(DateTimeOffset now, DateTimeOffset? lastCheck, string instanceId,
+    public static DateTimeOffset Next(DateTimeOffset now, DateTimeOffset? lastCheck, TimeSpan slot,
         DateTimeOffset notBefore, Func<int> jitterSeconds)
     {
         var due = now;
         if (lastCheck is { } last)
         {
             var nextDay = new DateTimeOffset(last.UtcDateTime.Date, TimeSpan.Zero).AddDays(1);
-            due = nextDay + Slot(instanceId);
+            due = nextDay + slot;
         }
         if (due < notBefore) due = notBefore;
         if (due < now) due = now;

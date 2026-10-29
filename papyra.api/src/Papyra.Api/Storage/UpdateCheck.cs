@@ -87,7 +87,6 @@ public sealed class UpdateChecker(
 {
     public const string DefaultUrl = "https://versions.papyra.app/latest.json";
     private static readonly TimeSpan AfterBoot = TimeSpan.FromSeconds(45);
-    private static readonly TimeSpan AfterFailure = TimeSpan.FromHours(3);
 
     protected override async Task ExecuteAsync(CancellationToken stop)
     {
@@ -97,35 +96,70 @@ public sealed class UpdateChecker(
             // A moment after start, so booting is never slowed by it. Then once a day, at this install's own
             // time of day and never in the quiet hour (see UpdateSchedule).
             var notBefore = clock.GetUtcNow() + AfterBoot;
+            var failures = 0;
             while (!stop.IsCancellationRequested)
             {
                 var id = InstanceId();
                 status.InstanceId = id;
-                var due = UpdateSchedule.Next(clock.GetUtcNow(), LastCheck(), id, notBefore, () => Random.Shared.Next(0, 600));
+                var state = ReadState();
+                var due = UpdateSchedule.Next(clock.GetUtcNow(), state.Last, state.Slot ?? UpdateSchedule.Slot(id), notBefore,
+                    () => Random.Shared.Next(0, 600));
                 var wait = due - clock.GetUtcNow();
                 await Task.Delay(wait > TimeSpan.Zero ? wait : TimeSpan.Zero, clock, stop);
-                // A failed check (the other end is down) is tried again in a few hours, not in a tight loop.
-                notBefore = await CheckNowAsync(stop) ? due : clock.GetUtcNow() + AfterFailure;
+
+                // A check that got no answer is tried again in an hour (then two, four, six: see RetryDelay).
+                // When a retry gets through, the time it got through becomes this install's time of day.
+                var retrying = failures > 0;
+                if (await CheckNowAsync(stop, adoptTimeOfDay: retrying))
+                {
+                    failures = 0;
+                    notBefore = due;
+                }
+                else
+                {
+                    failures++;
+                    notBefore = clock.GetUtcNow() + UpdateSchedule.RetryDelay(failures);
+                }
             }
         }
         catch (OperationCanceledException) { /* shutting down */ }
     }
 
-    // When the last successful check was, remembered across restarts so a restart doesn't ask again.
-    private string LastCheckFile() => Path.Combine(PapyraPaths.DotPapyra(config, env.ContentRootPath), "update-checked");
+    // What is remembered across restarts, so a restart doesn't ask again: when the last check got through, and
+    // the time of day this install asks at if a retry moved it off the one its id gave it.
+    private sealed record CheckState(DateTimeOffset? Last, TimeSpan? Slot);
 
-    private DateTimeOffset? LastCheck()
+    private string StateFile() => Path.Combine(PapyraPaths.DotPapyra(config, env.ContentRootPath), "update-checked");
+
+    private CheckState ReadState()
     {
         try
         {
-            return File.Exists(LastCheckFile()) && DateTimeOffset.TryParse(File.ReadAllText(LastCheckFile()).Trim(), CultureInfo.InvariantCulture,
-                DateTimeStyles.AssumeUniversal | DateTimeStyles.AdjustToUniversal, out var at) ? at : null;
+            if (!File.Exists(StateFile())) return new CheckState(null, null);
+            using var doc = JsonDocument.Parse(File.ReadAllText(StateFile()));
+            var last = doc.RootElement.TryGetProperty("last", out var l) && l.ValueKind == JsonValueKind.String && l.TryGetDateTimeOffset(out var at)
+                ? at.ToUniversalTime() : (DateTimeOffset?)null;
+            var slot = doc.RootElement.TryGetProperty("slot", out var s) && s.ValueKind == JsonValueKind.Number && s.TryGetInt32(out var seconds) && seconds is >= 0 and < 86_400
+                ? TimeSpan.FromSeconds(seconds) : (TimeSpan?)null;
+            // A time of day inside the quiet hour is never used.
+            return new CheckState(last, slot is { } t && t >= UpdateSchedule.QuietStart && t < UpdateSchedule.QuietEnd ? null : slot);
         }
-        catch (IOException) { return null; }
+        catch (Exception e) when (e is IOException or JsonException or InvalidOperationException) { return new CheckState(null, null); }
     }
 
-    /// <summary>Ask now. Never throws: a server that can't be reached just leaves what we knew.</summary>
-    public async Task<bool> CheckNowAsync(CancellationToken ct)
+    private void WriteState(CheckState state) =>
+        File.WriteAllText(StateFile(), JsonSerializer.Serialize(new
+        {
+            last = state.Last?.ToString("O", CultureInfo.InvariantCulture),
+            slot = state.Slot is { } t ? (int?)t.TotalSeconds : null,
+        }));
+
+    /// <summary>
+    /// Ask now. Never throws: a server that can't be reached just leaves what we knew. With
+    /// <paramref name="adoptTimeOfDay"/>, a check that gets through makes this moment's time of day the one
+    /// the install asks at from now on (the retry that worked becomes the new schedule).
+    /// </summary>
+    public async Task<bool> CheckNowAsync(CancellationToken ct, bool adoptTimeOfDay = false)
     {
         if (!status.Enabled) return false;
         try
@@ -139,8 +173,10 @@ public sealed class UpdateChecker(
             request.Headers.UserAgent.ParseAdd("Papyra/" + status.Current);
             using var response = await client.SendAsync(request, ct);
             response.EnsureSuccessStatusCode();
-            status.Record(Parse(await response.Content.ReadAsStringAsync(ct)), clock.GetUtcNow().UtcDateTime);
-            File.WriteAllText(LastCheckFile(), clock.GetUtcNow().ToString("O", CultureInfo.InvariantCulture));
+            var now = clock.GetUtcNow();
+            status.Record(Parse(await response.Content.ReadAsStringAsync(ct)), now.UtcDateTime);
+            var slot = adoptTimeOfDay ? TimeSpan.FromSeconds(Math.Floor(now.UtcDateTime.TimeOfDay.TotalSeconds)) : ReadState().Slot;
+            WriteState(new CheckState(now, slot));
             return true;
         }
         catch (Exception e) when (e is HttpRequestException or TaskCanceledException or JsonException or IOException)
