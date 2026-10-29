@@ -2,6 +2,7 @@ import { FileText, ShieldCheck, Search, History, Lock, Users, Star, ExternalLink
 import logo from '../assets/papyra_logo.png';
 import { APP_VERSION_LABEL, GITHUB_URL, LICENSE, SITE_URL } from '../lib/appInfo';
 import { useServerVersion, versionLabel } from '../lib/serverVersion';
+import { useUpdateStatus } from '../hooks/useUpdateStatus';
 import './AboutPanel.css';
 
 /** GitHub's mark. lucide dropped brand icons, and this link is to GitHub. */
@@ -24,6 +25,7 @@ const FEATURES = [
 
 export default function AboutPanel() {
   const server = useServerVersion();
+  const { status: update } = useUpdateStatus();
   const version = server.version ? versionLabel(server.version) : APP_VERSION_LABEL;
   return (
     <div className="settings__panel about">
@@ -80,6 +82,19 @@ export default function AboutPanel() {
 
       <dl className="settings__details about__details">
         <div><dt>Version</dt><dd>{version}{server.stale && <> · <button type="button" className="about__reload" onClick={() => window.location.reload()}>reload to update this tab</button></>}</dd></div>
+        <div>
+          <dt>Update check</dt>
+          <dd>
+            Once a day this server checks versions.papyra.app for a newer release. I also use that check as a count of
+            active installs, to keep myself motivated. <a href={`${SITE_URL}/docs/update-check/`} target="_blank" rel="noopener noreferrer">What it sends</a>
+            {update && (
+              <>
+                <br />
+                {update.sends.id ? <>This install’s ID is <code>{update.sends.id}</code></> : null}
+              </>
+            )}
+          </dd>
+        </div>
         <div><dt>Notes stored as</dt><dd>Markdown files with YAML front matter</dd></div>
         <div><dt>Built with</dt><dd>.NET · React · SQLite · Lucene</dd></div>
         <div>

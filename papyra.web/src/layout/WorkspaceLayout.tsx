@@ -31,6 +31,7 @@ import VaultOpenPill from '../components/VaultOpenPill';
 import { useVaultOpen } from '../hooks/useVault';
 import { useLocateEffect } from '../lib/locateNote';
 import { useNavOrder } from '../lib/navOrder';
+import UpdateNotice from '../components/UpdateNotice';
 
 // Settings deliberately lives with Trash at the foot of the rail, not in this
 // list — the top group is "places your notes are", the bottom group is app
@@ -318,6 +319,8 @@ Papyra ${versionText}${server.stale ? ' — reload to finish updating' : ''} —
                 <span className="workspace__build-sep workspace__nav-label" aria-hidden="true" />
                 <span className="workspace__version workspace__nav-label">{versionText}</span>
               </Link>
+              {/* Admins only, and only when a newer release is out: a bar under the version. */}
+              <UpdateNotice />
             </footer>
           </div>
         </nav>

@@ -4,8 +4,9 @@
   # No third-party origin is reachable, which is what makes the site behave the
   # same on every network on earth — including ones where Google's CDNs are not
   # available. Fonts are self-hosted; there are no CDN scripts and no external
-  # analytics. The policy is what enforces that promise rather than just stating it.
-  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self'; media-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'
+  # analytics. The one exception is versions.papyra.app, our own count of installs, which the
+  # home page reads to show the numbers. The policy is what enforces that promise rather than just stating it.
+  Content-Security-Policy: default-src 'self'; script-src 'self' 'unsafe-inline'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; font-src 'self'; connect-src 'self' https://versions.papyra.app; media-src 'self' blob:; object-src 'none'; base-uri 'self'; form-action 'self'; frame-ancestors 'none'
   Strict-Transport-Security: max-age=63072000; includeSubDomains; preload
   X-Content-Type-Options: nosniff
   Referrer-Policy: strict-origin-when-cross-origin

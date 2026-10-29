@@ -160,6 +160,14 @@ builder.Services.AddSingleton<JobRegistry>();
 // .papyra/logs, expired by the retention the admin picks.
 builder.Services.AddSingleton<ActivityLogStore>();
 builder.Services.AddSingleton<ILoggerProvider, ActivityLoggerProvider>();
+// The daily "is there a newer Papyra?" check — see Storage/UpdateCheck.cs for all it sends.
+builder.Services.AddHttpClient("update-check").ConfigureHttpClient(c => c.Timeout = TimeSpan.FromSeconds(10));
+// Never from a development host (`dotnet run`, the test suite): only a real deployment counts as an install.
+builder.Services.AddSingleton(sp => new UpdateStatus(
+    ReadServerVersion(sp.GetRequiredService<IWebHostEnvironment>().WebRootPath),
+    !sp.GetRequiredService<IWebHostEnvironment>().IsDevelopment()));
+builder.Services.AddSingleton<UpdateChecker>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<UpdateChecker>());
 builder.Services.AddHostedService<LogCleanupJob>();
 
 builder.Services.AddHostedService<ColdBootDiffService>();
@@ -7323,6 +7331,7 @@ app.MapCollab();
 app.MapComments();
 app.MapJournal();
 app.MapJournalExport();
+app.MapUpdates();
 app.MapChecklist();
 app.MapFallbackToFile("index.html");
 

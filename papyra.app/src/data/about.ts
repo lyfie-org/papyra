@@ -22,14 +22,14 @@ export const KEYWORDS = [
   'open-source Google Keep alternative',
   'Markdown notes',
   'self-hosted Markdown editor',
-  'notes app with no telemetry',
+  'notes app with no tracking',
   'Docker notes app',
   'home lab',
 ];
 
 export const FEATURES = [
   'Every note is a plain Markdown (.md) file with YAML frontmatter, on your own server',
-  'No telemetry, analytics, crash reports or usage pings — nothing is sent anywhere',
+  'No tracking, analytics or crash reports; the only call home is a daily update check, which the maker also uses as a count of active installs',
   'Autosave with full version history; scrub back to any earlier version',
   'Full-text search across notes, to-dos and collections, with highlighted matches',
   'Wiki links ([[note]]) and backlinks',
@@ -56,7 +56,7 @@ export const FAQ: { q: string; a: string }[] = [
   },
   {
     q: 'Is Papyra really private?',
-    a: 'Yes. Papyra collects no telemetry, analytics or crash reports, and makes no third-party requests of its own — even its fonts come from your server. Your notes only leave it if you share one, set up a Git backup, or configure email alerts. Locked notes are encrypted on disk.',
+    a: 'Yes. Papyra has no tracking, analytics or crash reports, and its interface makes no third-party requests — even its fonts come from your server. The server makes one request of its own: a daily check for a newer version, which the maker also uses as a count of active installs to stay motivated (details at papyra.app/docs/update-check). Your notes only leave your server if you share one, set up a Git backup, or configure email alerts. Locked notes are encrypted on disk.',
   },
   {
     q: 'Is Papyra free?',

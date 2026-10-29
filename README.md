@@ -35,7 +35,7 @@
 - **Your notes are just files.** Every note is a `.md` file with a small YAML header, in a folder you own. If you ever stop using Papyra, you still have a normal folder of Markdown.
 - **One container, one volume.** No database server, no search server, no sidecars. amd64 and arm64, so a Raspberry Pi 4 or 5 is plenty.
 - **Plays well with your other tools.** Obsidian, VS Code, `grep`, Syncthing and git can all work on the same folder. Papyra notices outside changes and catches up live.
-- **Private by default.** No telemetry, no hosted service, nothing phoning home. GPLv3.
+- **Private by default.** No tracking, analytics or crash reports, and your notes stay on your server. The only call home is a daily check for updates, and I use it as a count of active installs to keep myself motivated. GPLv3.
 
 <p align="center">
   <img src="assets/readme/shell-edit.gif" alt="A shell appends a line to a note's file and the open app updates on its own" width="760" />
