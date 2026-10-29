@@ -6,6 +6,31 @@ a Docker Hub tag and a GitHub Release.
 
 <!-- new releases are inserted directly below this line -->
 
+## [1.1.0] - 2026-10-29
+
+- Update docker-compose.hub.yml (6ca63b1)
+- Update v1.1.0.md (70c1642)
+- fix(journal): PDF shows attachments as cards and hides editor comments; selection ring no longer clipped; mood tip placement (1dabec7)
+- Update v1.1.0.md (4d20bd3)
+- fix(journal): uniform paper, click beside the writing places the caret; tag count readable in dark mode (f0e1bb0)
+- fix(journal): indented lines are paragraphs in the PDF book, not code (014c518)
+- fix(update-check): a dev image is never behind the release it is named for (0432cdd)
+- fix(site): re-record every screenshot and clip with the Journal in the sidebar (b61c474)
+- fix(site): re-record every screenshot and clip with the Journal in the sidebar (85135e8)
+- fix(shares): expired person shares stop working immediately (a7bf7af)
+- fix(journal): no drag handle in the journal; keep the / menu visible while scrolling (5b12093)
+- docs/site: promote the journal (hero slide, features tile, README), drop it from "coming soon" (8bdd31f)
+- fix(web): create notes over plain HTTP over internal network (45dcee0)
+- feat: daily update check with an admin update notice, and an install count (8646180)
+- feat: journal export, locked journal days in the Vault, foldable sections, sidebar order (71d85ff)
+- feat(journal): faint day numbers in the year view + styling fixes (2ba2f41)
+- fix: bookmark overlap (018fae2)
+- fix: draggable block overlap (f876e71)
+- feat(journal): a roomier, calmer day page (32c5a8e)
+- ci(dev): the dev image and dev demo show their exact build (f8beb84)
+- chore(deps): luthor 2.11.13 (journal seams) in web and collab (ef09208)
+- feat(journal): a day-by-day journal inside Papyra (6b5bedf)
+
 ## [1.0.0] - 2026-10-16
 
 - No code changes since the previous release.
