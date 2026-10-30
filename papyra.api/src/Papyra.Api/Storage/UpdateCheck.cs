@@ -210,10 +210,21 @@ public sealed class UpdateChecker(
         if (!SemVer.IsStable(version)) return null;
         var url = root.TryGetProperty("url", out var u) ? u.GetString() : null;
         // Only ever offer a link to the project's own pages, whatever the answer says.
-        if (url is null || !(url.StartsWith("https://github.com/lyfie-org/papyra", StringComparison.Ordinal)
-                             || url.StartsWith("https://papyra.app", StringComparison.Ordinal)))
-            url = "https://github.com/lyfie-org/papyra/releases/latest";
-        return new UpdateInfo(version!, url);
+        if (!IsProjectLink(url)) url = "https://github.com/lyfie-org/papyra/releases/latest";
+        return new UpdateInfo(version!, url!);
+    }
+
+    /// <summary>
+    /// An https link to papyra.app or to the project's repository. The host is compared whole, so
+    /// <c>https://papyra.app.example.com</c> and <c>https://papyra.app@example.com</c> are not the project's.
+    /// </summary>
+    internal static bool IsProjectLink(string? url)
+    {
+        if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttps || uri.UserInfo.Length > 0) return false;
+        if (uri.Host == "papyra.app") return true;
+        const string repo = "/lyfie-org/papyra";
+        return uri.Host == "github.com"
+            && (uri.AbsolutePath == repo || uri.AbsolutePath.StartsWith(repo + "/", StringComparison.Ordinal));
     }
 
     /// <summary>The processor family, coarse: x64, arm64, arm (or "other").</summary>
