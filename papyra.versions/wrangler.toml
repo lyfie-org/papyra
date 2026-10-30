@@ -7,6 +7,10 @@ routes = [{ pattern = "versions.papyra.app", custom_domain = true }]
 
 [vars]
 GITHUB_REPO = "lyfie-org/papyra"
+# How hard the numbers are to move (the defaults are in src/count.js; delete a line to use its default).
+MAX_NEW_PER_HOUR = "200"   # new installs taken in per hour; the rest ask again tomorrow
+SURGE_MIN = "100"          # the public total rises by at most this much a day…
+SURGE_SHARE = "0.25"       # …or this share of what it was, whichever is more
 
 # Create with:  npx wrangler d1 create papyra-versions   then paste the id here and run
 #               npx wrangler d1 execute papyra-versions --remote --file=schema.sql

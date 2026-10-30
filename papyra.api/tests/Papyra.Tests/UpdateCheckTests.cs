@@ -57,6 +57,28 @@ public sealed class UpdateCheckTests
         Assert.Null(UpdateChecker.Parse("""{"nothing":true}"""));
     }
 
+    [Theory]
+    [InlineData("https://papyra.app", true)]
+    [InlineData("https://papyra.app/docs/update-check/", true)]
+    [InlineData("https://github.com/lyfie-org/papyra", true)]
+    [InlineData("https://github.com/lyfie-org/papyra/releases/tag/v1.2.0", true)]
+    [InlineData("https://papyra.app.evil.example/update", false)]
+    [InlineData("https://papyra.appeal.example", false)]
+    [InlineData("https://papyra.app@evil.example/update", false)]
+    [InlineData("https://github.com/lyfie-org/papyra-evil/releases", false)]
+    [InlineData("https://github.com/lyfie-orgs/papyra", false)]
+    [InlineData("http://papyra.app", false)]
+    [InlineData("papyra.app", false)]
+    [InlineData("", false)]
+    public void IsProjectLink_ComparesTheWholeHost(string url, bool expected) => Assert.Equal(expected, UpdateChecker.IsProjectLink(url));
+
+    [Fact]
+    public void Parse_ReplacesALookalikeHostWithTheProjectsOwnReleasePage()
+    {
+        var lookalike = UpdateChecker.Parse("""{"version":"1.2.0","url":"https://papyra.app.evil.example/update"}""")!;
+        Assert.Equal("https://github.com/lyfie-org/papyra/releases/latest", lookalike.Url);
+    }
+
     // ── The request ──────────────────────────────────────────────────────────
 
     private sealed class Handler(Func<HttpRequestMessage, HttpResponseMessage> answer) : HttpMessageHandler

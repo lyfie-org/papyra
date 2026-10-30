@@ -50,9 +50,20 @@ Never sent: notes, titles, usernames, emails, your server's name or address, num
 ## What the project keeps
 
 - **Your IP address is never stored.** Cloudflare turns the connection into a two-letter country code at its edge, and only that code reaches the counting code. The Worker has no request logs.
-- **One row per install:** ID, version, processor and OS family, country, first and last day seen ([`schema.sql`](https://github.com/lyfie-org/papyra/blob/main/papyra.versions/schema.sql)).
-- **Public numbers:** installs ever seen, installs active in the last 30 days, and their countries, versions, processors and operating systems, at [`versions.papyra.app/stats.json`](https://versions.papyra.app/stats.json). The [home page](/#privacy) shows only the total installs, next to the Docker Hub pull count.
+- **One row per install:** ID, version, processor and OS family, country, the first and last time it checked in (to the hour), and on how many days ([`schema.sql`](https://github.com/lyfie-org/papyra/blob/main/papyra.versions/schema.sql)).
+- **Public numbers:** installs counted, installs active in the last 30 days, and their countries, versions, processors and operating systems, at [`versions.papyra.app/stats.json`](https://versions.papyra.app/stats.json). The [home page](/#privacy) shows only the total installs, next to the Docker Hub pull count.
 - **Gaps:** "active" is counted back from the newest check-in, not from today, so a few quiet days don't drain it. Installs only ever go up, and the last good numbers are kept if the live ones can't be worked out.
+
+## How accurate the count is
+
+It is an estimate. Anyone can send a request that looks like an install, so the numbers are built to be hard to move rather than impossible to fake:
+
+- An install is counted once it has checked in on two different days, at least 24 hours apart. A new install shows up a day or two late.
+- A version number that was never released isn't counted.
+- Only so many new installs are taken in each hour, and the total shown here can only rise by a limited amount a day, so a sudden jump appears gradually.
+- A check that is turned away isn't an error for you. Papyra just asks again tomorrow.
+
+The numbers can be too high by whatever someone is willing to run, and they are too low by every install that has the check turned off.
 
 ## Why I count
 
