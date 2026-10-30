@@ -1,4 +1,4 @@
-// The road to v1.0, newest first, for the timeline on the home page.
+// The road so far, newest first, for the timeline on the home page.
 //
 // Dates and versions come from CHANGELOG.md and the git history: each entry is
 // the release a feature first shipped in. Approximate on purpose — a milestone
@@ -23,12 +23,19 @@ export interface Milestone {
 
 export const JOURNEY: Milestone[] = [
   {
+    date: '2026-10-29',
+    version: '1.1.0',
+    icon: 'book',
+    title: 'The journal',
+    text: 'A page for each day, with moods, a calendar, photos, voice notes and days you can lock. Import from Day One.',
+    current: true,
+  },
+  {
     date: '2026-10-16',
     version: '1.0',
     icon: 'rocket',
     title: 'Papyra 1.0',
     text: 'The first stable release, with everything listed below.',
-    current: true,
   },
   {
     date: '2026-10-13',
