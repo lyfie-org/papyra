@@ -194,6 +194,18 @@ jobs:
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
+      # The Docker Hub page is its own README; keep it in step with .github/dockerhub-readme.md.
+      # Needs a token with enough scope to edit the repo description, so a failure never blocks a release.
+      - name: Update Docker Hub description
+        uses: peter-evans/dockerhub-description@v4
+        continue-on-error: true
+        with:
+          username: ${{ secrets.DOCKERHUB_USERNAME }}
+          password: ${{ secrets.DOCKERHUB_TOKEN }}
+          repository: ${{ env.IMAGE }}
+          short-description: Self-hosted notes app. Every note is a plain Markdown file.
+          readme-filepath: .github/dockerhub-readme.md
+
       # ── 4. GitHub Release ───────────────────────────────────────────────────────
       - name: Publish GitHub Release
         env:
