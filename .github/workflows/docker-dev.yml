@@ -2,8 +2,10 @@ name: Docker (dev)
 
 # Publishes a test build of `development` to Docker Hub, by hand only.
 #
-#   lyfie/papyra:dev            — moves to the newest dev build
-#   lyfie/papyra:dev-<shortsha> — pinned to one commit, never moves
+#   lyfie/papyra:dev — moves to the newest dev build
+#
+# There is deliberately no per-commit tag: they piled up on Docker Hub. The app
+# still names the exact build (v1.2.3-dev.<shortsha>) in Settings → About.
 #
 # Never `latest` and never a version tag: those belong to release.yml, cut from
 # main. Nothing here commits, tags or pushes to git either, so running it has no
@@ -42,7 +44,7 @@ jobs:
           BUILD="$(tr -d '[:space:]' < VERSION)-dev.$SHORT"
           echo "short=$SHORT" >> "$GITHUB_OUTPUT"
           echo "build=$BUILD" >> "$GITHUB_OUTPUT"
-          echo "Publishing $IMAGE:dev and $IMAGE:dev-$SHORT (shows as v$BUILD)"
+          echo "Publishing $IMAGE:dev (shows as v$BUILD)"
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v3
@@ -110,7 +112,6 @@ jobs:
           push: true
           tags: |
             ${{ env.IMAGE }}:dev
-            ${{ env.IMAGE }}:dev-${{ steps.tags.outputs.short }}
           build-args: PAPYRA_BUILD_VERSION=${{ steps.tags.outputs.build }}
           labels: |
             org.opencontainers.image.revision=${{ github.sha }}
@@ -124,7 +125,6 @@ jobs:
             echo "### Dev image published"
             echo ""
             echo "- \`$IMAGE:dev\`"
-            echo "- \`$IMAGE:dev-${{ steps.tags.outputs.short }}\`"
             echo ""
             echo "The app shows it as \`v${{ steps.tags.outputs.build }}\` (sidebar, Settings → About)."
             echo ""
