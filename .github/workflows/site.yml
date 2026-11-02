@@ -1,4 +1,4 @@
-name: site
+name: Site
 
 # Builds and deploys the product website. Two lines (see .github/RELEASE_LINES.md):
 #
@@ -59,6 +59,7 @@ concurrency:
 
 jobs:
   build-and-deploy:
+    name: Build & deploy
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -73,7 +74,7 @@ jobs:
             *) echo "::error::The site deploys from main (production) or development (dev) only, not '${{ github.ref_name }}'."; exit 1 ;;
           esac
 
-      - uses: actions/checkout@v7
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       # The site plus the web app it embeds as /demo — not the collab engine.
       - name: Setup pnpm workspace
@@ -156,7 +157,7 @@ jobs:
 
       - name: Cache Playwright browsers
         id: playwright-cache
-        uses: actions/cache@v6
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
         with:
           path: ~/.cache/ms-playwright
           key: playwright-${{ runner.os }}-${{ steps.playwright.outputs.version }}-chromium
