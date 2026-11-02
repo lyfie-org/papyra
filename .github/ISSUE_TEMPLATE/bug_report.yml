@@ -1,0 +1,93 @@
+name: Bug report
+description: Something in Papyra doesn't work the way it should
+labels: ["type: bug", "needs: triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Thanks for taking the time. A good report gets fixed faster.
+        For questions or "is this me?", the [Discord](https://discord.gg/KQNsjGAUUz) is quicker.
+        **Security problem?** Don't post it here, use a [private advisory](https://github.com/lyfie-org/papyra/security/advisories/new).
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before you submit
+      options:
+        - label: I searched [existing issues](https://github.com/lyfie-org/papyra/issues?q=is%3Aissue) and this is not a duplicate.
+          required: true
+        - label: I'm on the latest release, or I say below why I can't be.
+          required: true
+        - label: I removed passwords, API keys and other secrets from anything I paste.
+          required: true
+  - type: input
+    id: version
+    attributes:
+      label: Papyra version
+      description: Shown in Settings → About, or the image tag you run.
+      placeholder: "1.1.1"
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      description: Where does it happen?
+      options:
+        - Notes and editor
+        - To Do
+        - Journal
+        - Sharing
+        - Live editing
+        - Search
+        - Accounts, sign-in and security
+        - Import and export
+        - API and webhooks
+        - Install, Docker and updates
+        - Website and docs
+        - Not sure
+    validations:
+      required: true
+  - type: dropdown
+    id: deployment
+    attributes:
+      label: How do you run Papyra?
+      options:
+        - Docker Compose
+        - docker run
+        - From source (pnpm dev)
+        - The live demo
+        - Other
+    validations:
+      required: true
+  - type: textarea
+    id: what-happened
+    attributes:
+      label: What happened?
+      description: What you did, what you expected, what you got. Screenshots and screen recordings help a lot.
+    validations:
+      required: true
+  - type: textarea
+    id: repro
+    attributes:
+      label: Steps to reproduce
+      placeholder: |
+        1. Open a note
+        2. ...
+        3. See the problem
+    validations:
+      required: true
+  - type: input
+    id: client
+    attributes:
+      label: Browser and operating system
+      placeholder: "Firefox 140 on Windows 11, or the installed PWA on iOS 19"
+  - type: textarea
+    id: logs
+    attributes:
+      label: Logs
+      description: From Settings → Logs (sensitive values are hidden there) or `docker compose logs papyra`. Add browser console errors if the UI misbehaved.
+      render: shell
+  - type: textarea
+    id: extra
+    attributes:
+      label: Anything else?
