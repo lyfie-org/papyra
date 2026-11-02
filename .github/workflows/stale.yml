@@ -1,8 +1,5 @@
 name: Stale
 
-# Only touches issues waiting on the reporter (`needs info`). Confirmed bugs,
-# features, tasks and anything claimed are never closed for being quiet. A reply
-# from the reporter removes the stale label on its own.
 on:
   schedule:
     - cron: "17 3 * * *"

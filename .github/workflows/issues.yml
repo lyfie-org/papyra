@@ -1,8 +1,5 @@
 name: Issue automation
 
-# 1. A task form marked "Starter" gets `good first issue`.
-# 2. Lets contributors claim work: `/take` assigns the commenter, `/untake`
-#    gives it back. Maintainers can still assign by hand.
 on:
   issues:
     types: [opened, edited]

@@ -1,0 +1,106 @@
+name: Discord
+
+# Secrets: DISCORD_WEBHOOK_ISSUES, _IDEAS, _TASKS, _RELEASES. release.yml dispatches this by hand
+# because releases made with the default token never fire the release event.
+on:
+  issues:
+    types: [labeled]
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release to announce, e.g. v1.2.0'
+        required: true
+
+permissions:
+  contents: read
+
+jobs:
+  issue:
+    name: Post issue
+    if: github.event_name == 'issues' && github.repository == 'lyfie-org/papyra'
+    runs-on: ubuntu-latest
+    env:
+      LABEL: ${{ github.event.label.name }}
+      NUMBER: ${{ github.event.issue.number }}
+      TITLE: ${{ github.event.issue.title }}
+      BODY: ${{ github.event.issue.body }}
+      URL: ${{ github.event.issue.html_url }}
+      USER_LOGIN: ${{ github.event.issue.user.login }}
+      AVATAR: ${{ github.event.issue.user.avatar_url }}
+      REPO: ${{ github.repository }}
+      HOOK_ISSUES: ${{ secrets.DISCORD_WEBHOOK_ISSUES }}
+      HOOK_IDEAS: ${{ secrets.DISCORD_WEBHOOK_IDEAS }}
+      HOOK_TASKS: ${{ secrets.DISCORD_WEBHOOK_TASKS }}
+    steps:
+      - name: Post to the matching channel
+        run: |
+          set -euo pipefail
+          case "$LABEL" in
+            bug)           hook="$HOOK_ISSUES"; color=d73a4a; forum=1 ;;
+            enhancement)   hook="$HOOK_IDEAS";  color=7aaa8a; forum=1 ;;
+            "help wanted") hook="$HOOK_TASKS";  color=1d76db; forum=0 ;;
+            *) echo "No channel for label '$LABEL'."; exit 0 ;;
+          esac
+          if [ -z "$hook" ]; then echo "Webhook secret not set; skipping."; exit 0; fi
+
+          jq -n \
+            --arg num "$NUMBER" --arg title "$TITLE" --arg url "$URL" \
+            --arg body "$BODY" --arg user "$USER_LOGIN" --arg avatar "$AVATAR" \
+            --arg repo "$REPO" --argjson color "$((16#$color))" --argjson forum "$forum" '
+            ($body | gsub("\r"; "")) as $text
+            | {
+                allowed_mentions: {parse: []},
+                embeds: [{
+                  title: ("#" + $num + " " + $title)[0:250],
+                  url: $url,
+                  description: (
+                    if $text == "" then "_No description._"
+                    elif ($text | length) > 1200 then $text[0:1200] + "…"
+                    else $text end),
+                  color: $color,
+                  author: {name: $user, icon_url: $avatar},
+                  footer: {text: $repo}
+                }]
+              }
+            + (if $forum == 1 then {thread_name: ("#" + $num + " " + $title)[0:100]} else {} end)
+          ' | curl -fsS -H "Content-Type: application/json" -d @- "$hook"
+
+  release:
+    name: Post release
+    if: github.event_name == 'release' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    env:
+      GH_TOKEN: ${{ github.token }}
+      REPO: ${{ github.repository }}
+      EVENT_TAG: ${{ github.event.release.tag_name }}
+      INPUT_TAG: ${{ inputs.tag }}
+      HOOK: ${{ secrets.DISCORD_WEBHOOK_RELEASES }}
+    steps:
+      - name: Post to papyra-releases
+        run: |
+          set -euo pipefail
+          tag="${INPUT_TAG:-$EVENT_TAG}"
+          if [ -z "$tag" ]; then echo "No tag given."; exit 1; fi
+          if [ -z "$HOOK" ]; then echo "Webhook secret not set; skipping."; exit 0; fi
+
+          rel=$(gh release view "$tag" --repo "$REPO" --json tagName,name,body,url,isPrerelease)
+
+          jq -n --argjson rel "$rel" --arg repo "$REPO" '
+            (($rel.body // "") | gsub("\r"; "")) as $text
+            | {
+                allowed_mentions: {parse: []},
+                content: ("Papyra **" + $rel.tagName + "** is out" + (if $rel.isPrerelease then " (pre-release)" else "" end)),
+                embeds: [{
+                  title: ($rel.name // $rel.tagName),
+                  url: $rel.url,
+                  description: (
+                    if ($text | length) > 1800
+                    then $text[0:1800] + "…\n\n[Read the full notes](" + $rel.url + ")"
+                    else $text end),
+                  color: 8039050,
+                  footer: {text: $repo}
+                }]
+              }
+          ' | curl -fsS -H "Content-Type: application/json" -d @- "$HOOK"

@@ -39,6 +39,26 @@ Whether an issue is claimed is shown by its **assignee**, not a label.
 See `RELEASE_LINES.md` and `RELEASE_TEMPLATE.md`. Release notes are written by hand
 per version in `release-notes/`.
 
+## Discord feed
+
+`workflows/discord.yml` posts to the lyfie.org Discord through one webhook per channel,
+each stored as a repo secret. A missing secret just skips that channel.
+
+| Trigger | Channel | Secret |
+|---|---|---|
+| `bug` label | `papyra-issues` (forum) | `DISCORD_WEBHOOK_ISSUES` |
+| `enhancement` label | `papyra-ideas` (forum) | `DISCORD_WEBHOOK_IDEAS` |
+| `help wanted` label | `papyra-contributing` | `DISCORD_WEBHOOK_TASKS` |
+| Release | `papyra-releases` | `DISCORD_WEBHOOK_RELEASES` |
+
+- Issue text comes from strangers: it only reaches the script through env vars and
+  `jq --arg`, and every message sets `allowed_mentions` to nothing. Keep it that way.
+- A webhook URL lets anyone post to that channel. If one leaks, delete it in Discord and
+  make a new one.
+- Releases made by `release.yml` use the default token, which never fires the `release`
+  event, so that workflow dispatches `discord.yml` itself.
+- Posts are one-way: closing an issue doesn't update its Discord post.
+
 ## One-time repo settings (not expressible as files)
 
 - Settings → General: turn off **Wikis**; allow squash merging; enable **Automatically

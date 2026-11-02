@@ -1,8 +1,5 @@
 name: Sync labels
 
-# Keeps the repo's labels identical to .github/labels.yml. Add or change a label
-# there, push, and this applies it. Nothing is ever deleted (skip-delete), so a
-# hand-made label survives until you remove it yourself.
 on:
   push:
     branches: [main, development]

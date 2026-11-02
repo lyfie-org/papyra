@@ -1,7 +1,5 @@
 name: PR title
 
-# Checks the title follows `type(scope): summary`, the same style as the commit
-# history. Never checks out or runs the PR's code, so it's safe for forks.
 on:
   pull_request_target:
     types: [opened, edited, synchronize, reopened]

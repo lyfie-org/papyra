@@ -230,3 +230,11 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: gh workflow run site.yml --ref main
+
+      # ── 7. Announce it in Discord (skipped quietly if no webhook is set) ────────
+      - name: Announce on Discord
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ github.token }}
+          TAG: ${{ steps.ver.outputs.tag }}
+        run: gh workflow run discord.yml --ref main -f tag="$TAG"
