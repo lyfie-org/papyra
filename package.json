@@ -9,6 +9,6 @@
     "dev:collab": "pnpm --filter papyra-collab run dev"
   },
   "devDependencies": {
-    "concurrently": "^10.0.1"
+    "concurrently": "^10.0.6"
   }
 }
