@@ -1,6 +1,6 @@
 name: Feature request
 description: Suggest an idea or something that's missing
-labels: ["type: feature", "needs: triage"]
+labels: ["enhancement"]
 body:
   - type: markdown
     attributes:

@@ -1,128 +1,38 @@
 # Source of truth for repo labels. Synced by .github/workflows/labels.yml.
 # Edit here, never in the GitHub UI. Labels not listed are left alone.
-# `from_name` renames a default GitHub label in place so old issues keep it.
+# `from_name` renames a label in place so existing issues keep it.
 
-# What kind of work
-- name: "type: bug"
+- name: bug
   color: d73a4a
   description: Something isn't working
-  from_name: bug
-- name: "type: feature"
+  from_name: "type: bug"
+- name: enhancement
   color: 7aaa8a
   description: New feature or request
-  from_name: enhancement
-- name: "type: task"
-  color: 1d76db
-  description: Scoped development task someone can pick up
-- name: "type: docs"
+  from_name: "type: feature"
+- name: documentation
   color: 0075ca
-  description: Documentation only
-  from_name: documentation
-- name: "type: chore"
-  color: ededed
-  description: Tooling, dependencies, cleanup
+  description: Improvements or additions to docs
+  from_name: "type: docs"
 - name: question
   color: d876e3
-  description: Usage question, redirect to Discord
-
-# Contributing
+  description: Usage question, better asked on Discord
 - name: good first issue
   color: 7057ff
   description: Small and well described, a good place to start
 - name: help wanted
   color: 008672
   description: Open for anyone to take, comment /take
-- name: claimed
+- name: needs info
   color: fbca04
-  description: Someone is working on this
-
-# Triage and status
-- name: "needs: triage"
-  color: fef2c0
-  description: Not looked at yet
-- name: "needs: info"
-  color: fbca04
-  description: Waiting on the reporter. Closes after 21 quiet days
-- name: "needs: design"
-  color: c5def5
-  description: Needs a decision on approach before anyone codes
-- name: "status: confirmed"
-  color: 0e8a16
-  description: Reproduced or accepted
-- name: "status: blocked"
-  color: b60205
-  description: Waiting on something outside this issue
-- name: "priority: high"
-  color: b60205
-  description: Data loss, security-adjacent or breaks a core flow
+  description: Waiting on the reporter, closes after 21 quiet days
+  from_name: "needs: info"
 - name: duplicate
   color: cfd3d7
   description: Already reported
-- name: invalid
-  color: e4e669
-  description: Not a Papyra problem or not actionable
 - name: wontfix
   color: ffffff
   description: Won't be worked on
-
-# Product area (applied to issues from the form dropdown)
-- name: "area: editor"
-  color: bfdadc
-  description: Notes and the editor
-- name: "area: todo"
-  color: bfdadc
-  description: To Do
-- name: "area: journal"
-  color: bfdadc
-  description: Journal
-- name: "area: sharing"
-  color: bfdadc
-  description: Sharing and comments
-- name: "area: collab"
-  color: bfdadc
-  description: Live editing
-- name: "area: search"
-  color: bfdadc
-  description: Search
-- name: "area: auth"
-  color: bfdadc
-  description: Accounts, sign-in and security
-- name: "area: import-export"
-  color: bfdadc
-  description: Import and export
-- name: "area: api"
-  color: bfdadc
-  description: REST API, API keys and webhooks
-- name: "area: ops"
-  color: bfdadc
-  description: Install, Docker and updates
-- name: "area: site"
-  color: bfdadc
-  description: Website and docs
-
-# Code package (applied to PRs from the files they touch)
-- name: "pkg: api"
-  color: 5319e7
-  description: papyra.api (.NET)
-- name: "pkg: web"
-  color: 5319e7
-  description: papyra.web (React)
-- name: "pkg: collab"
-  color: 5319e7
-  description: papyra.collab (live-editing engine)
-- name: "pkg: site"
-  color: 5319e7
-  description: papyra.app website and docs
-- name: "pkg: versions"
-  color: 5319e7
-  description: papyra.versions (update-check Worker)
-- name: "pkg: ops"
-  color: 5319e7
-  description: Dockerfile, compose files, entrypoint
-- name: "pkg: ci"
-  color: 5319e7
-  description: GitHub Actions and repo config
-
-- name: breaking change
-  color: b60205
-  description: Needs a major bump or a migration note
+- name: invalid
+  color: e4e669
+  description: Not a Papyra problem or not actionable

@@ -34,7 +34,7 @@ Looking for something to build? Browse issues labelled
 [`help wanted`](https://github.com/lyfie-org/papyra/labels/help%20wanted)
 (bigger, open to anyone). Each task says where to look and what "done" means.
 
-1. Comment `/take` on the issue. You get assigned and the task is marked `claimed`.
+1. Comment `/take` on the issue. You get assigned, so nobody else picks it up too.
 2. Build it and open a pull request against `development` with `Closes #<issue>`.
 3. Can't finish? Comment `/untake` so someone else can have it. No hard feelings.
 

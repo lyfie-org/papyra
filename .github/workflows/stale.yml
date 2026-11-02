@@ -1,6 +1,6 @@
 name: Stale
 
-# Only touches issues waiting on the reporter (`needs: info`). Confirmed bugs,
+# Only touches issues waiting on the reporter (`needs info`). Confirmed bugs,
 # features, tasks and anything claimed are never closed for being quiet. A reply
 # from the reporter removes the stale label on its own.
 on:
@@ -18,7 +18,7 @@ jobs:
     steps:
       - uses: actions/stale@v9
         with:
-          only-labels: "needs: info"
+          only-labels: "needs info"
           days-before-issue-stale: 14
           days-before-issue-close: 7
           days-before-pr-stale: -1
