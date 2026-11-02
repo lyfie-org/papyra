@@ -26,6 +26,20 @@ Want to script your notes, connect another tool or build a plugin? Everything
 the web app does goes through a documented REST API, with personal API keys and
 signed webhooks: see the [API reference](https://papyra.app/api/).
 
+## Picking up work
+
+Looking for something to build? Browse issues labelled
+[`good first issue`](https://github.com/lyfie-org/papyra/labels/good%20first%20issue)
+(small, well described) or
+[`help wanted`](https://github.com/lyfie-org/papyra/labels/help%20wanted)
+(bigger, open to anyone). Each task says where to look and what "done" means.
+
+1. Comment `/take` on the issue. You get assigned and the task is marked `claimed`.
+2. Build it and open a pull request against `development` with `Closes #<issue>`.
+3. Can't finish? Comment `/untake` so someone else can have it. No hard feelings.
+
+Not sure it's worth doing? Ask on the issue or on Discord first.
+
 ## Before you write code
 
 For anything bigger than a small fix, **open an issue first** so we can agree on

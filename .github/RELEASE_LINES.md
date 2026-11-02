@@ -4,7 +4,7 @@ Papyra has two lines, for both the Docker image and the website.
 
 | | **Prod** (from `main`) | **Dev** (from `development`) |
 |---|---|---|
-| Image | `lyfie/papyra:vX.Y.Z`, `:latest` | `lyfie/papyra:dev`, `:dev-<shortsha>` |
+| Image | `lyfie/papyra:vX.Y.Z`, `:latest` | `lyfie/papyra:dev` |
 | Image workflow | `release.yml` (by hand) | `docker-dev.yml` (by hand) |
 | Website | https://papyra.app | https://dev.papyra.app (noindex) |
 | Site workflow | `site.yml`: push to main, daily, or by hand | `site.yml`: push to `development` (when site or web files change), or by hand |
@@ -16,7 +16,7 @@ in git. Running it has no effect on the next release.
 
 1. **Actions → Docker (dev) → Run workflow**, branch `development`. It builds the
    image, smoke-tests it (boots, `/health`, live collaboration), then pushes
-   `dev` and `dev-<shortsha>` for amd64 and arm64. On any other branch the job
+   `dev` for amd64 and arm64. On any other branch the job
    is skipped.
 2. **The dev site deploys itself** whenever you push to `development` and something it
    is built from changed (`papyra.app/**`, `papyra.web/**` and the other paths listed in
@@ -29,7 +29,7 @@ in git. Running it has no effect on the next release.
    PAPYRA_TAG=dev docker compose -f docker-compose.hub.yml up -d
    ```
 
-   To pin one build, use `PAPYRA_TAG=dev-<shortsha>`. Leave it unset to go back to `latest`.
+   Leave `PAPYRA_TAG` unset to go back to `latest`.
 
 ## What version the app shows
 
@@ -38,7 +38,7 @@ Every build names itself exactly, in the sidebar, Settings → About and error r
 | Build | Shows as |
 |---|---|
 | Release (`release.yml`) | `v1.1.0` (the `VERSION` file, bumped before the final image build) |
-| Dev image (`docker-dev.yml`) | `v1.0.0-dev.abc1234`: the last release plus the commit it was built from, matching the `dev-abc1234` tag |
+| Dev image (`docker-dev.yml`) | `v1.0.0-dev.abc1234`: the last release plus the commit it was built from |
 | Dev site demo (`site.yml` on `development`) | the same `-dev.<shortsha>` form |
 | Local `pnpm dev` | `dev build` |
 
@@ -83,5 +83,5 @@ Code: `IS_DEV_SITE` in `papyra.app/src/data/site.ts`, `Base.astro`,
   than to production.
 - **Secrets**: none new. The workflows reuse `DOCKERHUB_USERNAME`,
   `DOCKERHUB_TOKEN`, `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID`.
-- **Docker Hub**: nothing to set up. The `dev` tags appear on the first push.
-  `dev-<sha>` tags pile up, so prune them now and then (or set a retention policy).
+- **Docker Hub**: nothing to set up. The `dev` tag appears on the first push and
+  is overwritten by each later one, so nothing piles up.

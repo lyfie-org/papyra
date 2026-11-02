@@ -1,0 +1,62 @@
+name: Feature request
+description: Suggest an idea or something that's missing
+labels: ["type: feature", "needs: triage"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        Say what you are trying to do, not only which button you want. Small, focused requests are easiest to take on.
+        Papyra stays self-hosted, local-first and plain-Markdown, so ideas that fit that are most likely to land.
+  - type: checkboxes
+    id: checks
+    attributes:
+      label: Before you submit
+      options:
+        - label: I searched [existing issues](https://github.com/lyfie-org/papyra/issues?q=is%3Aissue) and nobody asked for this yet.
+          required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Notes and editor
+        - To Do
+        - Journal
+        - Sharing
+        - Live editing
+        - Search
+        - Accounts, sign-in and security
+        - Import and export
+        - API and webhooks
+        - Install, Docker and updates
+        - Website and docs
+        - Not sure
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: What are you trying to do?
+      description: The problem or workflow behind the request.
+    validations:
+      required: true
+  - type: textarea
+    id: solution
+    attributes:
+      label: What would you like to happen?
+    validations:
+      required: true
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you considered
+  - type: dropdown
+    id: contribute
+    attributes:
+      label: Would you like to build it?
+      options:
+        - "No, just suggesting"
+        - "Yes, I'd like to take it on"
+        - "Maybe, with some guidance"
+    validations:
+      required: true

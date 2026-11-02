@@ -1,0 +1,11 @@
+blank_issues_enabled: false
+contact_links:
+  - name: Ask a question or get help
+    url: https://discord.gg/KQNsjGAUUz
+    about: Quickest way to ask "is this a bug or me?" Papyra has help, ideas and issues channels.
+  - name: Read the docs
+    url: https://papyra.app/docs/
+    about: Install, configuration, backups, HTTPS and troubleshooting guides.
+  - name: Report a security problem
+    url: https://github.com/lyfie-org/papyra/security/advisories/new
+    about: Please report vulnerabilities privately, never in a public issue.

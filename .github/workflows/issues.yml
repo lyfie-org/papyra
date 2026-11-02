@@ -1,0 +1,116 @@
+name: Issue automation
+
+# 1. Turns the issue-form dropdowns into labels (Area -> `area: *`, a Starter
+#    task -> `good first issue` + `help wanted`).
+# 2. Lets contributors claim work: `/take` assigns the commenter, `/untake`
+#    gives it back. Maintainers can still assign by hand.
+on:
+  issues:
+    types: [opened, edited]
+  issue_comment:
+    types: [created]
+
+permissions:
+  issues: write
+
+jobs:
+  labels:
+    name: Labels from form
+    if: github.event_name == 'issues'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const body = context.payload.issue.body || '';
+            const field = (name) => {
+              const m = body.match(new RegExp(`###\\s+${name}\\s*\\n+([^\\n]+)`, 'i'));
+              return m ? m[1].trim() : '';
+            };
+
+            const areas = {
+              'Notes and editor': 'area: editor',
+              'To Do': 'area: todo',
+              'Journal': 'area: journal',
+              'Sharing': 'area: sharing',
+              'Live editing': 'area: collab',
+              'Search': 'area: search',
+              'Accounts, sign-in and security': 'area: auth',
+              'Import and export': 'area: import-export',
+              'API and webhooks': 'area: api',
+              'Install, Docker and updates': 'area: ops',
+              'Website and docs': 'area: site',
+            };
+
+            const add = [];
+            const area = areas[field('Area')];
+            if (area) add.push(area);
+
+            if (field('Size').startsWith('Starter')) {
+              add.push('good first issue', 'help wanted');
+            } else if (field('Size')) {
+              add.push('help wanted');
+            }
+
+            if (add.length) {
+              await github.rest.issues.addLabels({
+                ...context.repo,
+                issue_number: context.issue.number,
+                labels: add,
+              });
+            }
+
+  claim:
+    name: /take and /untake
+    if: >-
+      github.event_name == 'issue_comment' &&
+      !github.event.issue.pull_request &&
+      (startsWith(github.event.comment.body, '/take') ||
+       startsWith(github.event.comment.body, '/untake'))
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/github-script@v7
+        with:
+          script: |
+            const { issue, comment } = context.payload;
+            const user = comment.user.login;
+            const number = issue.number;
+            const labels = issue.labels.map((l) => l.name);
+            const taking = comment.body.startsWith('/take');
+            const say = (body) =>
+              github.rest.issues.createComment({ ...context.repo, issue_number: number, body });
+
+            if (taking) {
+              const others = issue.assignees.map((a) => a.login).filter((a) => a !== user);
+              if (others.length) {
+                return say(`@${user} this one is already with @${others[0]}. Ask there if you'd like to help.`);
+              }
+              await github.rest.issues.addAssignees({
+                ...context.repo, issue_number: number, assignees: [user],
+              });
+              await github.rest.issues.addLabels({
+                ...context.repo, issue_number: number, labels: ['claimed'],
+              });
+              if (labels.includes('help wanted')) {
+                await github.rest.issues.removeLabel({
+                  ...context.repo, issue_number: number, name: 'help wanted',
+                });
+              }
+              return say(`All yours, @${user}. Open a PR against \`development\` when you're ready, and say here if you get stuck.`);
+            }
+
+            if (!issue.assignees.some((a) => a.login === user)) return;
+            await github.rest.issues.removeAssignees({
+              ...context.repo, issue_number: number, assignees: [user],
+            });
+            if (labels.includes('claimed')) {
+              await github.rest.issues.removeLabel({
+                ...context.repo, issue_number: number, name: 'claimed',
+              });
+            }
+            if (labels.includes('type: task')) {
+              await github.rest.issues.addLabels({
+                ...context.repo, issue_number: number, labels: ['help wanted'],
+              });
+            }
+            await say(`Released, thanks @${user}. It's open for someone else now.`);

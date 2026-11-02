@@ -1,0 +1,65 @@
+name: Development task
+description: A scoped piece of work someone can pick up (maintainers write these)
+labels: ["type: task"]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        A task is a small, well-described unit of work with a clear "done".
+        Contributors claim one by commenting `/take` on the issue.
+  - type: textarea
+    id: goal
+    attributes:
+      label: Goal
+      description: What should be true when this is finished, and why it matters.
+    validations:
+      required: true
+  - type: textarea
+    id: where
+    attributes:
+      label: Where to look
+      description: Files, folders, endpoints or components involved. The more concrete, the easier it is to start.
+      placeholder: |
+        - papyra.api/src/Papyra.Api/Features/...
+        - papyra.web/src/components/...
+  - type: textarea
+    id: done
+    attributes:
+      label: Done when
+      description: Acceptance criteria as a checklist.
+      value: |
+        - [ ]
+        - [ ] Tests added or updated
+        - [ ] Docs updated if behaviour changed
+    validations:
+      required: true
+  - type: dropdown
+    id: size
+    attributes:
+      label: Size
+      description: "Starter tasks get the good first issue label."
+      options:
+        - Starter (a few hours, no deep knowledge needed)
+        - Medium (a day or two, touches one area)
+        - Large (needs design talk first, touches several areas)
+    validations:
+      required: true
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Notes and editor
+        - To Do
+        - Journal
+        - Sharing
+        - Live editing
+        - Search
+        - Accounts, sign-in and security
+        - Import and export
+        - API and webhooks
+        - Install, Docker and updates
+        - Website and docs
+        - Not sure
+    validations:
+      required: true
