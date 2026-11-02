@@ -1,58 +1,50 @@
 # Maintaining Papyra
 
-How issues and pull requests move through the repo. Everything here is driven by
-files in `.github/`, so changing the process means editing a file, not clicking
-through GitHub settings.
-
-## The life of an issue
-
-1. **Opened** from a form (bug, feature or task). Blank issues are off; questions
-   are sent to Discord. The form adds `type: *`, `needs: triage` and an `area: *`
-   label.
-2. **Triage** (a few minutes, once a day or so). For each `needs: triage`:
-   - Can't reproduce or missing detail → `needs: info` and ask. It closes after 21 quiet days.
-   - Duplicate → comment the original, label `duplicate`, close.
-   - Not a fit → `wontfix` with a kind reason, close.
-   - Accepted → swap `needs: triage` for `status: confirmed`. Add `priority: high`
-     only for data loss or a broken core flow.
-   - Needs a decision before anyone codes → `needs: design`.
-3. **Make it takeable.** If someone else could build it, give it `help wanted`
-   (and `good first issue` if it's small and well described). Rewrite the body as a
-   *Development task* with a goal, where to look and a "done when" checklist. A
-   vague issue is not takeable.
-4. **Claimed.** A contributor comments `/take`. The workflow assigns them, adds
-   `claimed`, drops `help wanted`. `/untake` reverses it. If a claim goes quiet for
-   a few weeks, ask; if no answer, unassign by hand.
-5. **Pull request** to `development`. The PR gets `pkg: *` labels from its files and
-   a title check. Merge when CI is green and you've read the change.
-6. **Closed** by `Closes #n` in the PR.
+How issues and pull requests move through the repo. It's driven by files in
+`.github/`, so changing the process means editing a file.
 
 ## Labels
 
-Defined in `labels.yml` and synced by the *Sync labels* workflow. Three families:
+Ten, defined in `labels.yml` and synced by the *Sync labels* workflow.
 
-| Family | Labels | Set by |
-|---|---|---|
-| Kind | `type: bug`, `type: feature`, `type: task`, `type: docs`, `type: chore` | issue form |
-| Where in the product | `area: editor`, `todo`, `journal`, `sharing`, `collab`, `search`, `auth`, `import-export`, `api`, `ops`, `site` | form dropdown |
-| Where in the code | `pkg: api`, `web`, `collab`, `site`, `versions`, `ops`, `ci` | PR file paths |
-| State | `needs: triage`, `needs: info`, `needs: design`, `status: confirmed`, `status: blocked`, `priority: high`, `claimed` | you |
-| Contributing | `good first issue`, `help wanted` | task form, `/take` |
+| Label | Meaning |
+|---|---|
+| `bug` · `enhancement` · `documentation` | What kind of issue. Set by the issue form. |
+| `question` | Should have been a Discord question. Answer, point there, close. |
+| `good first issue` | Small, well described, safe for a newcomer. |
+| `help wanted` | Open for anyone. Removed while someone has claimed it. |
+| `needs info` | Waiting on the reporter. Closes after 21 quiet days. |
+| `duplicate` · `wontfix` · `invalid` | Closing reasons. |
+
+Whether an issue is claimed is shown by its **assignee**, not a label.
+
+## The life of an issue
+
+1. **Opened** from a form (bug, feature or task). Blank issues are off; questions go to Discord.
+2. **Triage** (a few minutes, now and then). Anything with no assignee and no response is untriaged:
+   - Missing detail → `needs info` and ask.
+   - Duplicate → link the original, `duplicate`, close.
+   - Not a fit → `wontfix` with a kind reason, close.
+   - Accepted → leave open. Someone else could build it? Rewrite it as a *Development
+     task* (goal, where to look, "done when") and add `help wanted`, plus
+     `good first issue` if it's small.
+3. **Claimed.** A contributor comments `/take`: they're assigned and `help wanted` is
+   dropped. `/untake` reverses it. If a claim goes quiet for a few weeks, ask, then unassign.
+4. **Pull request** to `development`, title `type(scope): summary` (checked by CI).
+   Merge when CI is green and you've read the change.
+5. **Closed** by `Closes #n` in the PR.
 
 ## Releases
 
-Unchanged: see `RELEASE_LINES.md` and `RELEASE_TEMPLATE.md`. Release notes are
-written by hand per version in `release-notes/`.
+See `RELEASE_LINES.md` and `RELEASE_TEMPLATE.md`. Release notes are written by hand
+per version in `release-notes/`.
 
 ## One-time repo settings (not expressible as files)
 
-Settings → General: enable **Issues**; turn off **Wikis**; under *Pull Requests*
-allow squash merging and enable **Automatically delete head branches**.
-Settings → Actions → General: *Fork pull request workflows* → **Require approval
-for first-time contributors**.
-Settings → Branches: protect `main` (require the CI check, no force-push). Keep
-`development` as the default branch for PRs if that's where contributors should
-target.
-Projects: create a board with columns *Triage → Backlog → In progress → Review →
-Done* and turn on its built-in workflows to auto-add new issues and move them when
-closed or merged. Pin 2–3 `good first issue` tasks at the top of the issue list.
+- Settings → General: turn off **Wikis**; allow squash merging; enable **Automatically
+  delete head branches**.
+- Settings → Actions → General: fork PR workflows → **Require approval for
+  first-time contributors**.
+- Settings → Branches: protect `main` (require the CI check, no force-push).
+- Optional: a Projects board (Backlog → In progress → Review → Done) with its built-in
+  auto-add and auto-close workflows. Pin 2–3 `good first issue` tasks.

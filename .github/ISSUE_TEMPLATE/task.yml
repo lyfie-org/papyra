@@ -1,6 +1,6 @@
 name: Development task
 description: A scoped piece of work someone can pick up (maintainers write these)
-labels: ["type: task"]
+labels: ["help wanted"]
 body:
   - type: markdown
     attributes:

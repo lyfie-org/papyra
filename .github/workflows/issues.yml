@@ -1,7 +1,6 @@
 name: Issue automation
 
-# 1. Turns the issue-form dropdowns into labels (Area -> `area: *`, a Starter
-#    task -> `good first issue` + `help wanted`).
+# 1. A task form marked "Starter" gets `good first issue`.
 # 2. Lets contributors claim work: `/take` assigns the commenter, `/untake`
 #    gives it back. Maintainers can still assign by hand.
 on:
@@ -14,8 +13,8 @@ permissions:
   issues: write
 
 jobs:
-  labels:
-    name: Labels from form
+  starter:
+    name: Starter tasks
     if: github.event_name == 'issues'
     runs-on: ubuntu-latest
     steps:
@@ -23,42 +22,13 @@ jobs:
         with:
           script: |
             const body = context.payload.issue.body || '';
-            const field = (name) => {
-              const m = body.match(new RegExp(`###\\s+${name}\\s*\\n+([^\\n]+)`, 'i'));
-              return m ? m[1].trim() : '';
-            };
-
-            const areas = {
-              'Notes and editor': 'area: editor',
-              'To Do': 'area: todo',
-              'Journal': 'area: journal',
-              'Sharing': 'area: sharing',
-              'Live editing': 'area: collab',
-              'Search': 'area: search',
-              'Accounts, sign-in and security': 'area: auth',
-              'Import and export': 'area: import-export',
-              'API and webhooks': 'area: api',
-              'Install, Docker and updates': 'area: ops',
-              'Website and docs': 'area: site',
-            };
-
-            const add = [];
-            const area = areas[field('Area')];
-            if (area) add.push(area);
-
-            if (field('Size').startsWith('Starter')) {
-              add.push('good first issue', 'help wanted');
-            } else if (field('Size')) {
-              add.push('help wanted');
-            }
-
-            if (add.length) {
-              await github.rest.issues.addLabels({
-                ...context.repo,
-                issue_number: context.issue.number,
-                labels: add,
-              });
-            }
+            const m = body.match(/###\s+Size\s*\n+([^\n]+)/i);
+            if (!m || !m[1].trim().startsWith('Starter')) return;
+            await github.rest.issues.addLabels({
+              ...context.repo,
+              issue_number: context.issue.number,
+              labels: ['good first issue'],
+            });
 
   claim:
     name: /take and /untake
@@ -88,9 +58,6 @@ jobs:
               await github.rest.issues.addAssignees({
                 ...context.repo, issue_number: number, assignees: [user],
               });
-              await github.rest.issues.addLabels({
-                ...context.repo, issue_number: number, labels: ['claimed'],
-              });
               if (labels.includes('help wanted')) {
                 await github.rest.issues.removeLabel({
                   ...context.repo, issue_number: number, name: 'help wanted',
@@ -103,12 +70,7 @@ jobs:
             await github.rest.issues.removeAssignees({
               ...context.repo, issue_number: number, assignees: [user],
             });
-            if (labels.includes('claimed')) {
-              await github.rest.issues.removeLabel({
-                ...context.repo, issue_number: number, name: 'claimed',
-              });
-            }
-            if (labels.includes('type: task')) {
+            if (!labels.includes('help wanted')) {
               await github.rest.issues.addLabels({
                 ...context.repo, issue_number: number, labels: ['help wanted'],
               });
