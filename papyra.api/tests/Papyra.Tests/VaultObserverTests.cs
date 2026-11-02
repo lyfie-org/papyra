@@ -142,16 +142,25 @@ public sealed class VaultObserverTests
             const string content = "# Made in Obsidian\n\nNo frontmatter at all.\n";
             var expectedId = ForeignNoteAdopter.DeriveId(notesDir, path, _ => false);
 
-            // Re-emit until seen (see ExternalCreate_IsPickedUp); the id is a
-            // function of the path, so every round adopts it identically.
+            // Prove the watcher is armed with a note that already has an id (see
+            // ExternalCreate_IsPickedUp — re-emitting it is harmless), then write the
+            // id-less file exactly once. Re-emitting *this* file until seen races the
+            // adoption: once the id has been stamped in but before the note shows up
+            // in state, a re-emit overwrites the stamp, and the observer drops that
+            // write as an echo of its own — the id never gets written back.
+            var armPath = Path.Combine(notesDir, "armed.md");
             await WaitUntil(async () =>
             {
-                if (state.Count(Uid) == 0) await File.WriteAllTextAsync(path, content);
+                await File.WriteAllTextAsync(armPath, "---\nid: armed\ntitle: Armed\n---\n\nx");
                 return state.Count(Uid) >= 1;
             }, WaitTimeoutMs);
+
+            await File.WriteAllTextAsync(path, content);
+            await WaitUntil(() => state.TryGet(Uid, path, out _), WaitTimeoutMs);
             await WaitUntil(() => ReadShared(path).StartsWith("---"), WaitTimeoutMs);
 
-            var note = Assert.Single(state.SnapshotAll(Uid));
+            Assert.True(state.TryGet(Uid, path, out var note));
+            Assert.NotNull(note);
             Assert.Equal(expectedId, note.Id);           // was "" — listed, but unaddressable
             Assert.Equal("Made in Obsidian", note.Title); // was ""
             Assert.Equal($"---\nid: '{expectedId}'\n---\n\n{content}", File.ReadAllText(path));
