@@ -7,7 +7,7 @@ That file **is** the GitHub release body.
    otherwise a draft is generated from the `feat:` / `fix:` commit subjects and
    committed alongside `VERSION`.
 2. Rewrite the draft in plain words (format below) and get it onto `main`.
-3. **Release notes** workflow runs on that push (or run it by hand with a tag,
+3. **Release Notes** workflow runs on that push (or run it by hand with a tag,
    or empty for every file) and copies the file into the GitHub release.
 
 Keep it short and user-facing — what changed for the person using Papyra, not

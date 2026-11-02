@@ -219,13 +219,27 @@ public sealed class ForeignNoteAdoptionApiTests
             var notesDir = Path.Combine(dir, "users", "1", "notes");
             var path = Path.Combine(notesDir, "made-in-obsidian.md");
 
-            // Re-emit until the watcher (armed asynchronously) has seen it.
-            Note? listed = null;
+            // The watcher is armed asynchronously, so a first write can be missed.
+            // Prove it is watching with a note that already has an id (re-emitting
+            // that is harmless), then write the id-less file exactly once. Re-emitting
+            // the id-less file until seen races the adoption: a rewrite that lands
+            // while the id is being stamped makes the stamp stand down (the file
+            // changed since it was read), and the observer then drops the rewrite as
+            // an echo of its own write — the id never reaches the file.
+            var armPath = Path.Combine(notesDir, "armed.md");
             var sw = Stopwatch.StartNew();
+            while (sw.ElapsedMilliseconds < 15_000)
+            {
+                await File.WriteAllTextAsync(armPath, "---\nid: armed\ntitle: Armed\n---\n\nx");
+                await Task.Delay(200);
+                if ((await client.GetFromJsonAsync<List<Note>>("/api/notes"))!.Any(n => n.Title == "Armed")) break;
+            }
+            await File.WriteAllTextAsync(path, "# Made in Obsidian\n\nNo frontmatter at all.\n");
+
+            Note? listed = null;
+            sw.Restart();
             while (listed is null && sw.ElapsedMilliseconds < 15_000)
             {
-                if (!File.Exists(path) || !(await File.ReadAllTextAsync(path)).Contains("id:"))
-                    await File.WriteAllTextAsync(path, "# Made in Obsidian\n\nNo frontmatter at all.\n");
                 await Task.Delay(200);
                 listed = (await client.GetFromJsonAsync<List<Note>>("/api/notes"))!
                     .FirstOrDefault(n => n.Title == "Made in Obsidian");

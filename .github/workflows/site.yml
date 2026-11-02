@@ -1,4 +1,4 @@
-name: Site
+name: Site Release
 
 # Builds and deploys the product website. Two lines (see .github/RELEASE_LINES.md):
 #

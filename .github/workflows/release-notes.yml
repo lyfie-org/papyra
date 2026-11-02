@@ -1,4 +1,4 @@
-name: Release notes
+name: Release Notes
 
 # Copies .github/release-notes/vX.Y.Z.md into the body of GitHub release vX.Y.Z.
 # Runs when those files change on main, or by hand: give a tag to update one
