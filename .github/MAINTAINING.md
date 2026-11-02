@@ -5,7 +5,7 @@ How issues and pull requests move through the repo. It's driven by files in
 
 ## Labels
 
-Ten, defined in `labels.yml` and synced by the *Sync labels* workflow.
+Ten, defined in `labels.yml` and synced by the *Sync Labels* workflow.
 
 | Label | Meaning |
 |---|---|

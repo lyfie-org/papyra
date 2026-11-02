@@ -14,13 +14,13 @@ in git. Running it has no effect on the next release.
 
 ## Try a dev build
 
-1. **Actions → Docker (dev) → Run workflow**, branch `development`. It builds the
+1. **Actions → Dev Release → Run workflow**, branch `development`. It builds the
    image, smoke-tests it (boots, `/health`, live collaboration), then pushes
    `dev` for amd64 and arm64. On any other branch the job
    is skipped.
 2. **The dev site deploys itself** whenever you push to `development` and something it
    is built from changed (`papyra.app/**`, `papyra.web/**` and the other paths listed in
-   `site.yml`). To redeploy without a change: **Actions → site → Run workflow**, branch
+   `site.yml`). To redeploy without a change: **Actions → Site Release → Run workflow**, branch
    `development`. It builds with `PUBLIC_SITE_CHANNEL=dev` and deploys to the `development`
    branch of the Cloudflare Pages project `papyra`, which `dev.papyra.app` serves.
 3. Run the dev image:
@@ -38,7 +38,7 @@ Every build names itself exactly, in the sidebar, Settings → About and error r
 | Build | Shows as |
 |---|---|
 | Release (`release.yml`) | `v1.1.0` (the `VERSION` file, bumped before the final image build) |
-| Dev image (`docker-dev.yml`) | `v1.0.0-dev.abc1234`: the last release plus the commit it was built from |
+| Dev Release (`docker-dev.yml`) | `v1.0.0-dev.abc1234`: the last release plus the commit it was built from |
 | Dev site demo (`site.yml` on `development`) | the same `-dev.<shortsha>` form |
 | Local `pnpm dev` | `dev build` |
 
@@ -54,7 +54,7 @@ still runs on every push.
 ## Ship to prod
 
 Merge `development` into `main`. The push redeploys papyra.app. Then run
-**Actions → Release** on `main` to publish `vX.Y.Z` and `latest`, the GitHub
+**Actions → Prod Release** on `main` to publish `vX.Y.Z` and `latest`, the GitHub
 Release, and a fresh site build.
 
 ## How the dev site differs

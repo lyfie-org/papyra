@@ -1,4 +1,4 @@
-name: Issue automation
+name: Issue Automation
 
 on:
   issues:

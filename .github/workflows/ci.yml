@@ -1,4 +1,4 @@
-name: CI
+name: Integration Check
 
 # Quality gate: build, type-check, lint, and the full test suite on every push
 # to the working (development) and stable (main) branches. Push-only: a PR from
@@ -10,7 +10,7 @@ name: CI
 # web-only commit no longer builds .NET or the Docker image, and a docs/blog
 # commit runs nothing but the gate. Filtering is per job, not with `on.paths`:
 # a workflow that never starts never reports "CI passed", which would leave a
-# required status check pending forever. Run it by hand (Actions → CI → Run
+# required status check pending forever. Run it by hand (Actions → Integration Check → Run
 # workflow) to force every job regardless of what changed.
 on:
   push:

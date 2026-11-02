@@ -1,4 +1,4 @@
-name: Docker (dev)
+name: Dev Release
 
 # Publishes a test build of `development` to Docker Hub, by hand only.
 #

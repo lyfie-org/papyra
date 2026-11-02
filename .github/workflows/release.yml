@@ -1,4 +1,4 @@
-name: Release
+name: Prod Release
 
 # One-button release, cut from main. Pick a bump (patch/minor/major) and this:
 #   1. builds the image and smoke-tests it boots + answers /health,
@@ -141,7 +141,7 @@ jobs:
           # GitHub Release body = .github/release-notes/$TAG.md (format in
           # .github/RELEASE_TEMPLATE.md). Written ahead of time → used as-is;
           # otherwise draft it from feat:/fix: subjects to rewrite later — the
-          # Release notes workflow pushes the edit into the release.
+          # Release Notes workflow pushes the edit into the release.
           NOTES=".github/release-notes/$TAG.md"
           if [ ! -f "$NOTES" ]; then
             mkdir -p .github/release-notes
