@@ -9,6 +9,7 @@ import { usePopoverMenu } from '../hooks/usePopoverMenu';
 import { useDismiss } from '../hooks/useDismiss';
 import { useDialogFocus } from '../hooks/useDialogFocus';
 import { putNote } from '../lib/notesApi';
+import { downloadNote } from '../lib/noteDownload';
 import { uuid } from '../lib/uuid';
 import { useToast } from '../lib/toastContext';
 import PalettePicker from './PalettePicker';
@@ -22,25 +23,6 @@ import BusyButton from './BusyButton';
 function stop(e: React.SyntheticEvent) {
   e.preventDefault();
   e.stopPropagation();
-}
-
-/** A shared note as the .md file Papyra would write — the owner's note, your tags. */
-function toMarkdown(share: Pick<IncomingShare, 'title' | 'body' | 'color' | 'tags'>): string {
-  const q = (s: string) => JSON.stringify(s);
-  const tags = share.tags ?? [];
-  return [
-    '---',
-    `title: ${q(share.title)}`,
-    ...(tags.length ? [`tags: [${tags.map(q).join(', ')}]`] : []),
-    ...(share.color ? [`color: ${q(share.color)}`] : []),
-    '---',
-    '',
-  ].join('\n') + share.body;
-}
-
-function fileName(title: string): string {
-  const base = (title.trim() || 'Untitled').replace(/[\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim();
-  return `${base.slice(0, 80) || 'Untitled'}.md`;
 }
 
 export type SharedActionsShare = Pick<
@@ -146,13 +128,14 @@ function SharedMenu({ share, className, size, onTags }: {
     }
   }
 
-  function download() {
-    const blob = new Blob([toMarkdown(share)], { type: 'text/markdown;charset=utf-8' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = fileName(share.title);
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  // The owner's note with your tags; a note with pictures arrives as a zip with
+  // the ones it embeds, so its ![[embeds]] still resolve.
+  async function download() {
+    try {
+      await downloadNote(`/api/shares/incoming/${share.shareId}/export`, share.title);
+    } catch (e) {
+      toast((e as Error).message);
+    }
   }
 
   return (

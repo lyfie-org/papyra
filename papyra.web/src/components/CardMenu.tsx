@@ -7,32 +7,13 @@ import { putNote } from '../lib/notesApi';
 import { uuid } from '../lib/uuid';
 import { patchNoteInCache } from '../lib/notesCache';
 import { vaultFetch } from '../lib/vault';
+import { downloadNote } from '../lib/noteDownload';
 import { useToast } from '../lib/toastContext';
 import { useSyncState } from '../hooks/useSync';
 import { usePopoverMenu } from '../hooks/usePopoverMenu';
 import { useAuth } from '../hooks/useAuth';
 import { noteLink } from '../hooks/useShares';
 import './CardMenu.css';
-
-/** A note as the .md file Papyra would write: YAML front matter, then the body. */
-function toMarkdown(note: Note): string {
-  const q = (s: string) => JSON.stringify(s);
-  const fm = [
-    '---',
-    `title: ${q(note.title)}`,
-    ...(note.tags.length ? [`tags: [${note.tags.map(q).join(', ')}]`] : []),
-    ...(note.color ? [`color: ${q(note.color)}`] : []),
-    ...(note.kind && note.kind !== 'note' ? [`kind: ${note.kind}`] : []),
-    '---',
-    '',
-  ];
-  return `${fm.join('\n')}${note.body}`;
-}
-
-function fileName(note: Note): string {
-  const base = (note.title.trim() || 'Untitled').replace(/[\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim();
-  return `${base.slice(0, 80) || 'Untitled'}.md`;
-}
 
 /**
  * The "…" menu on a desk card (notes and to-do lists).
@@ -123,13 +104,14 @@ export default function CardMenu({ note, onShare, onArchive, onDelete, triggerCl
     }
   }
 
-  function download() {
-    const blob = new Blob([toMarkdown(note)], { type: 'text/markdown;charset=utf-8' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = fileName(note);
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  // The server builds it: a note with pictures arrives as a zip with them in, so
+  // its ![[embeds]] still resolve once it is opened somewhere else.
+  async function download() {
+    try {
+      await downloadNote(`/api/notes/${encodeURIComponent(note.id)}/export`, note.title);
+    } catch (e) {
+      toast((e as Error).message);
+    }
   }
 
   const offline = online ? undefined : 'Needs a connection';
@@ -180,8 +162,8 @@ export default function CardMenu({ note, onShare, onArchive, onDelete, triggerCl
           <button type="button" role="menuitem" className="card-menu__item" onClick={run(copyLink)}>
             <Link2 size={15} /> Copy link
           </button>
-          <button type="button" role="menuitem" className="card-menu__item" disabled={note.secure}
-            title={note.secure ? 'Unlock the note to download it' : undefined} onClick={run(download)}>
+          <button type="button" role="menuitem" className="card-menu__item" disabled={note.secure || !online}
+            title={note.secure ? 'Unlock the note to download it' : offline} onClick={run(download)}>
             <Download size={15} /> Download .md
           </button>
           {(onArchive || onDelete) && <div className="card-menu__sep" role="separator" />}

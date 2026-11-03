@@ -6721,6 +6721,7 @@ app.MapPost("/api/system/rebuild-index", async (
 // Upload, originals, thumbnails and metadata — for the owner, for sharees and
 // for share links — live in Features/MediaEndpoints.cs.
 app.MapMedia();
+app.MapNoteExport();
 
 // ── Import / Export ───────────────────────────────────────────────────────────
 // Import parks the uploaded archive on disk and hands it to the background queue,

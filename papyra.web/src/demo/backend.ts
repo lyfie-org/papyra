@@ -333,6 +333,28 @@ const routes: Route[] = [
       );
     },
   ],
+  // "Download .md": the demo has no uploads, so it is always the plain text.
+  [
+    'GET',
+    /^\/api\/notes\/([^/]+)\/export$/,
+    ({ match }) => {
+      const note = findNote(decodeURIComponent(match[1]));
+      if (!note) return json({ error: 'not found' }, 404);
+      const q = (s: string) => JSON.stringify(s);
+      const front = [
+        '---',
+        `title: ${q(note.title)}`,
+        ...(note.tags.length ? [`tags: [${note.tags.map(q).join(', ')}]`] : []),
+        ...(note.color ? [`color: ${q(note.color)}`] : []),
+        ...(note.kind && note.kind !== 'note' ? [`kind: ${note.kind}`] : []),
+        '---',
+        '',
+      ];
+      return new Response(front.join('\n') + stripBlockAnchors(note.body), {
+        headers: { 'Content-Type': 'text/markdown; charset=utf-8' },
+      });
+    },
+  ],
   [
     'GET',
     /^\/api\/notes\/([^/]+)\/snapshots$/,

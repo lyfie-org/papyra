@@ -576,6 +576,21 @@ public sealed class SharedMedia(
         return (note, null);
     }
 
+    /// <summary>
+    /// The note a person-share opens, with the share — or why not (ended, gone or
+    /// locked since it was shared). The same rules as the share's attachments.
+    /// </summary>
+    public async Task<(Share? Share, Note? Note, IResult? Error)> GrantNoteAsync(int shareId, HttpContext http, CancellationToken ct)
+    {
+        await LoadGrantAsync(shareId, http, ct);
+        var (_, share, note, refusal) = _resolved!.Value;
+        if (refusal is { } r) return (null, null, r.Error);
+        if (share is null || note is null) return (null, null, Results.NotFound());
+        if (note.Secure)
+            return (null, null, Results.Json(new { error = "The owner locked this note." }, statusCode: StatusCodes.Status410Gone));
+        return (share, note, null);
+    }
+
     /// <summary>The caller's edit grant on a note that is still there and unlocked.</summary>
     public async Task<Grant> EditableGrantAsync(int shareId, HttpContext http, CancellationToken ct)
     {
