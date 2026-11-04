@@ -292,7 +292,7 @@ public sealed class GitSyncService : BackgroundService
         }
     }
 
-    private static GitSyncResult RunSync(string dir, string content, string remoteUrl, string branch, string? token)
+    internal static GitSyncResult RunSync(string dir, string content, string remoteUrl, string branch, string? token)
     {
         Directory.CreateDirectory(dir);
         if (!Repository.IsValid(dir))

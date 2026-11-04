@@ -3,7 +3,10 @@ using Papyra.Api.Models;
 
 namespace Papyra.Api.Data;
 
-// Relational cache (SQLite). Disposable — the filesystem is the source of truth.
+// SQLite. For notes the filesystem is the source of truth, so NoteCache and
+// NoteEmbeddings are disposable mirrors. Everything else (Users, sessions,
+// passkeys, TOTP, ApiKeys, Shares, Webhooks, comments, notifications, Settings)
+// exists only here: NOT disposable, and not in any per-account backup.
 public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(options)
 {
     public DbSet<AppSetting> Settings => Set<AppSetting>();

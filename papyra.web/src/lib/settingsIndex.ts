@@ -102,6 +102,11 @@ export const SETTINGS_INDEX: SettingsEntry[] = [
     keywords: ['create user', 'add user', 'new account', 'roles', 'make admin', 'promote', 'demote', 'disable account', 'lock account', 'suspend', 'reset password', 'recovery link'],
   },
 
+  { tab: 'instance', tabLabel: 'Instance backup', adminOnly: true, keywords: ['accounts', 'database', 'disaster recovery', 'papyra.db', 'passkeys', 'settings backup'] },
+  { tab: 'instance', tabLabel: 'Instance backup', section: 'instance-backup', sectionLabel: 'Instance backup', adminOnly: true, keywords: ['passphrase', 'download', 'back up now', 'encrypted', 'keys'] },
+  { tab: 'instance', tabLabel: 'Instance backup', section: 'instance-destinations', sectionLabel: 'Where it goes', adminOnly: true, keywords: ['git', 'github', 'local copy', 'retention', 'schedule'] },
+  { tab: 'instance', tabLabel: 'Instance backup', section: 'instance-restore', sectionLabel: 'Restore an instance backup', adminOnly: true, keywords: ['restore', 'recover', 'new server', 'migrate'] },
+
   { tab: 'jobs', tabLabel: 'Jobs', adminOnly: true, keywords: ['background', 'housekeeping', 'maintenance', 'tasks'] },
   { tab: 'jobs', tabLabel: 'Jobs', section: 'scheduled-jobs', sectionLabel: 'Housekeeping', adminOnly: true, keywords: ['empty trash', 'cleanup', 'sweep', 'run now', 'schedule', 'rebuild search', 'reindex', 'missing notes'] },
   { tab: 'logs', tabLabel: 'Logs', section: 'log-retention', sectionLabel: 'Logs', adminOnly: true, keywords: ['errors', 'log', 'warnings', 'diagnostics', 'debug', 'report a bug', 'issue', 'retention', 'activity'] },

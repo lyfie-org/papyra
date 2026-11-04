@@ -31,12 +31,17 @@ updates across devices and the immediate offline signal.
 
 ## Everyone got signed out after an upgrade
 
-`/data/.papyra/keys/` was lost. That directory holds the keys your session
-cookies are signed with; without it every existing session is unverifiable.
+`/data/.papyra/keys/` was lost or replaced. That directory holds the keys your
+session cookies are signed with; without it every existing session is
+unverifiable, and everyone just signs in again.
 
 It lives on the data volume so this does not happen. If you are restoring from
-backup, make sure that directory is in it. Nothing is damaged. Everyone just
-signs in again.
+backup, make sure that directory is in it.
+
+If anyone has locked notes or locked journal days, check them. The same keys
+protect the file that seals those, so if the original `keys/` is gone,
+**locked notes cannot be opened**. Restore it from a copy if you have one.
+Unlocked notes are never affected.
 
 ## Search misses a note I can see
 

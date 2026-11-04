@@ -266,6 +266,13 @@ const routes: Route[] = [
   ['GET', /^\/api\/auth\/smtp$/, () => json({ enabled: false, host: '', port: 587, fromAddress: '', username: '', hasPassword: false, useStartTls: true })],
   ['PUT', /^\/api\/auth\/smtp$/, () => serverOnly('Email settings')],
   ['POST', /^\/api\/auth\/smtp\//, () => serverOnly('Sending email')],
+  ['GET', /^\/api\/instance-backup$/, () => json({
+    passphraseSet: false, local: false, keep: 7, gitRemote: '', gitBranch: '', gitTokenSet: false,
+    lastLocalUtc: null, lastGitUtc: null, lastError: null, copies: [],
+  })],
+  ['PUT', /^\/api\/instance-backup$/, () => serverOnly('Instance backups')],
+  ['POST', /^\/api\/instance-backup\//, () => serverOnly('Instance backups')],
+  ['GET', /^\/api\/instance-backup\//, () => serverOnly('Instance backups')],
   ['GET', /^\/api\/users\/search$/, () => json([{ username: 'dana', name: 'Dana' }])],
 
   // ------------------------------------------------------------------- notes

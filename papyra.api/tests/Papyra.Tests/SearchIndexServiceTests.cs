@@ -29,6 +29,27 @@ public sealed class SearchIndexServiceTests
     }
 
     [Fact]
+    public void Tags_AreSearchable_EvenWhenANoteHasSeveral()
+    {
+        var dir = NewTempDir();
+        var svc = new SearchIndexService(dir);
+        try
+        {
+            svc.IndexNote(Uid, new Note { Id = "n1", Title = "Plan", Body = "x", Tags = ["Work", "home", "urgent"] });
+            svc.IndexNote(Uid, new Note { Id = "n2", Title = "Other", Body = "x", Tags = ["garden"] });
+
+            Assert.Equal(["n1"], svc.Search(Uid, "home").Select(h => h.Id));
+            Assert.Equal(["n1"], svc.Search(Uid, "work").Select(h => h.Id));
+            Assert.Equal(["n2"], svc.Search(Uid, "garden").Select(h => h.Id));
+        }
+        finally
+        {
+            svc.Dispose();
+            Directory.Delete(dir, recursive: true);
+        }
+    }
+
+    [Fact]
     public void Reindex_DoesNotDuplicate()
     {
         var dir = NewTempDir();

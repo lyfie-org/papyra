@@ -27,8 +27,9 @@
 </picture>
 
 > [!NOTE]
-> **Papyra 1.0** — the first stable release. The file format, data layout and upgrade
-> path are stable from here on. Still: back up your data volume, hidden `.papyra` folders included.
+> **Stable since 1.0.** The file format, data layout and upgrade path stay compatible.
+> Still: back up your whole data volume, hidden `.papyra` folders included, since
+> locked notes cannot be opened without the keys kept there.
 
 ## ✨ Why Papyra
 
@@ -181,9 +182,11 @@ Papyra is a [Lyfie](https://www.lyfie.org) project, alongside [luthor](https://w
 <br/>
 
 The filesystem is the source of truth. Every note is a `.md` file with YAML
-frontmatter, sitting in a folder you own. SQLite and the Lucene index are
-**disposable caches**: delete either one and Papyra rebuilds it from the files.
-Nothing about your notes depends on Papyra continuing to exist.
+frontmatter, sitting in a folder you own. The Lucene index and the note list
+inside SQLite are **disposable caches**: Papyra rebuilds them from the files.
+SQLite also holds accounts, passkeys, sharing and settings, which are not
+rebuildable, so back up `papyra.db` with the rest of `/data`. Nothing about your
+notes depends on Papyra continuing to exist.
 
 That means Syncthing, Dropbox, git or Obsidian can edit the vault behind the
 app's back. Papyra watches the folder, catches up, and surfaces sync-conflict
@@ -203,10 +206,12 @@ files instead of choking on them.
 | **Runtime** | .NET 10 Minimal APIs (C# 14), single `Program.cs` route registration |
 | **Markdown & frontmatter** | `Markdig` 0.42 (`UseYamlFrontMatter`) + `YamlDotNet` 16.3 — unknown frontmatter keys are round-tripped untouched |
 | **Full-text search** | `Lucene.Net` 4.8.0-beta00017 (+ Analysis.Common, QueryParser, Highlighter) |
-| **Cache / metadata** | EF Core 10 + SQLite — rebuildable from the `.md` files, never the authority |
+| **Cache / metadata** | EF Core 10 + SQLite (WAL) — accounts, sharing and settings, plus a note mirror rebuilt from the `.md` files, which stay the authority for notes |
 | **Real-time** | `FileSystemWatcher` (one per tenant) + SignalR for metadata-only push |
-| **Auth** | Cookie sessions, BCrypt passwords, `Fido2.AspNet` passkeys, optional OIDC SSO |
+| **Live editing** | Hocuspocus + Yjs (`papyra.collab`), behind the API's `/collab` WebSocket proxy |
+| **Auth** | Cookie sessions, BCrypt passwords, TOTP, `Fido2.AspNet` passkeys, optional OIDC SSO |
 | **Git sync** | `LibGit2Sharp` — per-user credentials, never force-pushes |
+| **PDF export** | `SkiaSharp` (the journal book) |
 | **Docs** | OpenAPI + `Scalar.AspNetCore` |
 
 Also shipped but **held back behind a feature flag**: local AI (Whisper
@@ -226,7 +231,7 @@ transcription, Tesseract OCR, Ollama embeddings and RAG chat). The routes return
 
 #### Website (`/papyra.app`)
 
-Astro 7 static site — marketing pages, eleven docs pages, the rendered API
+Astro 7 static site — marketing pages, the docs pages, the rendered API
 reference, and a **live in-browser demo** built from `papyra.web` with a fake
 backend. Deployed to Cloudflare Pages from GitHub Actions.
 
@@ -242,14 +247,16 @@ papyra/
 ├── papyra.api/              # .NET 10 Minimal API + xUnit and edge tests
 │   ├── src/Papyra.Api/      # Program.cs (all routes), Storage/, Security/, Hubs/, Features/
 │   └── tests/
-│       ├── Papyra.Tests/    # 47 xUnit classes
+│       ├── Papyra.Tests/    # xUnit tests
 │       └── edge/            # Black-box HTTP harness against a running instance
 ├── papyra.web/              # Vite + React 19 app (also built in demo mode)
+├── papyra.collab/           # Live-editing engine (Hocuspocus + Yjs), a child process of the API
 ├── papyra.app/              # Astro marketing site + docs + demo host
+├── papyra.versions/         # Cloudflare Worker behind the daily update check
 ├── data/                    # Git-ignored local dev storage volume (see below)
 ├── Dockerfile               # 4-stage, multi-arch (amd64 + arm64)
 ├── docker-compose.hub.yml   # The self-hosting file — pulls lyfie/papyra:latest
-└── pnpm-workspace.yaml      # papyra.web + papyra.app
+└── pnpm-workspace.yaml      # papyra.web + papyra.app + papyra.collab
 ```
 
 #### What lives in the data volume
@@ -258,15 +265,19 @@ papyra/
 data/
 ├── users/{userId}/
 │   ├── notes/               # ← the source of truth: your .md files
+│   │   └── journal/         # journal days, one file each (year/month/date.md)
 │   ├── media/               # attachments referenced as ![[filename]]
 │   ├── .trash/              # soft-deleted items (and media/{day}/ for unused attachments)
 │   └── .papyra/             # UI state: snapshots/, order.json, categories.json, avatar
+│       ├── vault-keys.json  # keys that seal locked notes — NOT disposable
+│       ├── journal-templates/  # the journal's "Start from" pages
 │       ├── media/           # per-attachment metadata, video posters, OCR/transcript text, thumbs/
 │       └── archived-urls.txt  # pages the web archiver has saved (each URL once)
 └── .papyra/
-    ├── papyra.db            # SQLite cache — rebuildable
+    ├── papyra.db            # SQLite: accounts, sharing, settings — NOT disposable
     ├── lucene-index/        # full-text index — rebuildable
     ├── media-jobs.json      # OCR / transcription work still to do (or given up on)
+    ├── instance-id          # random install ID for the update check (absent if it is off)
     └── keys/                # Data Protection key ring — NOT disposable
 ```
 
@@ -325,7 +336,7 @@ and are purged with it; anything an old version of a note shows is kept.
 <br/>
 
 ```bash
-# Everything at once (API :5220 + web :5173)
+# Everything at once (API :5220 + web :5173 + live-editing engine :5231)
 pnpm install && pnpm dev
 
 # Backend
@@ -347,10 +358,10 @@ pnpm --filter papyra-web run check:editor
 pnpm --filter papyra-web run check:a11y
 ```
 
-| Suite | What it is | Count |
-|---|---|---|
-| `papyra.api/tests/Papyra.Tests` | xUnit — storage, path jail, search index, conflict detection, cold-boot diff, auth, sharing, backups | **869 test cases** |
-| `papyra.api/tests/edge` | Black-box HTTP checks against a running instance — routing, auth policies, cookies, tenant isolation, real status codes | **239 checks** (`edge.sh` 99 + `edge2.sh` 140) |
+| Suite | What it is |
+|---|---|
+| `papyra.api/tests/Papyra.Tests` | xUnit — storage, path jail, search index, conflict detection, cold-boot diff, auth, sharing, backups |
+| `papyra.api/tests/edge` | Black-box HTTP checks against a running instance — routing, auth policies, cookies, tenant isolation, real status codes |
 
 The edge harness needs a live instance and a throwaway vault; see
 [`papyra.api/tests/edge/README.md`](papyra.api/tests/edge/README.md).

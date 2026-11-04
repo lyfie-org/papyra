@@ -21,6 +21,9 @@ defaults are what most installations want.
 | `PAPYRA_WHISPER_MODEL_PATH` | — | Enables audio transcription. |
 | `PAPYRA_OCR_TESSDATA_PATH` | — | Enables OCR of images. |
 | `PAPYRA_UPDATE_CHECK_ENABLED` | `true` | The daily check for a newer version. Set `false` to turn it off. |
+| `PAPYRA_COLLAB_ENABLED` | `true` | Live editing of shared notes, run by an engine the server starts inside the same container. Set `false` and it never starts; `/health` reports whether it is running. |
+| `PAPYRA_SQLITE_WAL` | `true` | Run the database in WAL mode, which is faster under load. Set `false` if `/data` is on a network share (NFS, SMB), where WAL is unsafe. |
+| `PAPYRA_ERROR_DETAILS` | `true` | Show a short stack trace on the error page. Set `false` to show only the reference. |
 | `PUID` / `PGID` | `1000` | Who owns the files on disk. |
 | `TZ` | `UTC` | Default time zone, as an IANA name (`Europe/London`, `Asia/Kolkata`). Each person can pick their own under Settings → Profile. |
 

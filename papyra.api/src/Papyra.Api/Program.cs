@@ -67,16 +67,20 @@ builder.Services.AddOpenApi(options =>
     });
 });
 
-// ── Relational cache (SQLite — disposable; filesystem is the authority) ──────
+// ── Database (SQLite) ────────────────────────────────────────────────────────
+// NOT wholly disposable. The note-metadata mirror (NoteCache) and embeddings are
+// caches the files rebuild, but accounts, sessions, passkeys, TOTP, API keys,
+// shares, webhooks, comments, notifications and instance settings live only here
+// and in no per-account backup. Back up papyra.db with the rest of /data.
 // Resolve the DB path at DI time (not builder time) so test/host config overrides
 // of "Papyra:DataDir" are honored — same deferral the vault paths use below.
 builder.Services.AddDbContext<AppDbContext>((sp, options) =>
 {
-    var dbPath = PapyraPaths.DbPath(
-        sp.GetRequiredService<IConfiguration>(),
-        sp.GetRequiredService<IHostEnvironment>().ContentRootPath);
+    var config = sp.GetRequiredService<IConfiguration>();
+    var dbPath = PapyraPaths.DbPath(config, sp.GetRequiredService<IHostEnvironment>().ContentRootPath);
     Directory.CreateDirectory(Path.GetDirectoryName(dbPath)!);
     options.UseSqlite($"Data Source={dbPath}");
+    options.AddInterceptors(new SqlitePragmaInterceptor(config.GetValue(SqlitePragmaInterceptor.FeatureKey, true)));
 });
 
 // Zero-trust markdown engine (filesystem is the authority; this is the only
@@ -233,6 +237,9 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<MentionDeliverySer
 // Native git sync of the notes vault. Singleton so the manual-trigger endpoint runs
 // the same instance as the background loop. Idle until a remote is configured.
 builder.Services.AddSingleton<GitSyncService>();
+// Accounts-and-settings backup: the database no per-account backup carries, plus its key ring.
+builder.Services.AddSingleton<InstanceBackupService>();
+builder.Services.AddHostedService<InstanceBackupJob>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<GitSyncService>());
 
 // ── WebAuthn (biometric gatekeeper) ─────────────────────────────────────────────
@@ -654,6 +661,10 @@ if (enableCors)
 }
 
 var app = builder.Build();
+
+// A queued instance restore (Settings → Instance backup, or the first screen) is
+// swapped in here, before anything opens the database or the key ring.
+PendingInstanceRestore.ApplyIfAny(app.Configuration, app.Environment.ContentRootPath, app.Logger);
 
 // Whole-vault uploads — a backup restore, a Takeout/Obsidian import — are far
 // bigger than Kestrel's ~28.6 MB default body limit, which used to refuse any
@@ -6722,6 +6733,7 @@ app.MapPost("/api/system/rebuild-index", async (
 // for share links — live in Features/MediaEndpoints.cs.
 app.MapMedia();
 app.MapNoteExport();
+app.MapInstanceBackup();
 
 // ── Import / Export ───────────────────────────────────────────────────────────
 // Import parks the uploaded archive on disk and hands it to the background queue,
