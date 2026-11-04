@@ -69,7 +69,7 @@ export function seedJournal(): Record<string, DemoDay> {
 }
 
 export const SEED_JOURNAL_PREFS: JournalPrefs = {
-  dayStartsAt: 0, lockNewEntries: false, promptsOn: true, hideStreak: false,
+  enabled: true, dayStartsAt: 0, lockNewEntries: false, promptsOn: true, hideStreak: false,
   reminderOn: false, reminderTime: null, defaultTemplate: null,
 };
 

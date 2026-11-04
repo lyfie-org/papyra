@@ -95,6 +95,17 @@ describe('settingsIndex', () => {
     expect(smtp.map(h => h.sectionLabel)).toContain('Outbound email (SMTP)');
   });
 
+  it('offers the journal switch always, and the rest of its settings only while the journal is on', () => {
+    expect(searchSettings('turn off', false).map(h => h.sectionLabel)).toContain('Use the journal');
+    expect(searchSettings('turn off', false, false).map(h => h.sectionLabel)).toContain('Use the journal');
+
+    expect(searchSettings('day starts', false).map(h => h.sectionLabel)).toContain('The day');
+    expect(searchSettings('day starts', false, false)).toEqual([]);
+    expect(searchSettings('reminder', false, false).map(h => h.sectionLabel)).not.toContain('Reminder');
+    // The journal's export lives under Data and stays findable.
+    expect(searchSettings('journal export', false, false).map(h => h.sectionLabel)).toContain('Journal export');
+  });
+
   it('returns nothing for an empty query', () => {
     expect(searchSettings('   ', true)).toEqual([]);
   });

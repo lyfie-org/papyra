@@ -138,8 +138,8 @@ export function dayJumpResults(query: string, today: Day | null): SearchResult[]
   }];
 }
 
-export function settingsResults(query: string, isAdmin: boolean): SearchResult[] {
-  return searchSettings(query, isAdmin).map(entry => ({
+export function settingsResults(query: string, isAdmin: boolean, journalOn = true): SearchResult[] {
+  return searchSettings(query, isAdmin, journalOn).map(entry => ({
     key: `settings:${entry.tab}:${entry.section ?? ''}`,
     // An entry with its own href is a place in the app, not a settings panel —
     // it groups under "Pages" so the heading doesn't claim Manage Users lives

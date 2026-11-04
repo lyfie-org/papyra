@@ -66,8 +66,23 @@ export default function JournalSettingsPanel() {
     }
   }
 
+  const useIt = (
+    <SettingGroup
+      title="Use the journal"
+      id="journal-use"
+      footer="Turning it off hides it. Your days stay safe in your folder."
+    >
+      <Switch label="Use the journal" checked={settings.enabled} onChange={(on) => void change({ enabled: on })} />
+    </SettingGroup>
+  );
+
+  // Off: nothing else to set, so the tab is just the switch.
+  if (!settings.enabled) return <div className="settings__panel">{useIt}</div>;
+
   return (
     <div className="settings__panel">
+      {useIt}
+
       <SettingGroup title="The day" id="journal-day">
         <SettingRow
           label="A new day starts at"

@@ -43,7 +43,7 @@ afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 describe('JournalBin', () => {
   it('draws nothing when nothing is set aside', async () => {
     const { container } = mount({ state: 'archived' });
-    await waitFor(() => expect(calls.length).toBe(1));
+    await waitFor(() => expect(calls.filter((c) => c.url.startsWith('/api/journal/bin')).length).toBe(1));
     expect(container.querySelector('.journal-bin')).toBeNull();
   });
 

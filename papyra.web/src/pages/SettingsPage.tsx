@@ -54,6 +54,7 @@ import BusyButton from '../components/BusyButton';
 import { useActivityTask, useBusy } from '../hooks/useBusy';
 import AboutPanel from '../components/AboutPanel';
 import JournalSettingsPanel from '../components/journal/JournalSettingsPanel';
+import { useJournalEnabled } from '../hooks/useJournal';
 import LogsPanel from '../components/LogsPanel';
 import InstanceBackupPanel from '../components/InstanceBackupPanel';
 import ExportDialog, { type ExportScope } from '../components/ExportDialog';
@@ -656,7 +657,10 @@ function SecurityTab() {
 function DataTab() {
   const { data: settings, isLoading } = useSettings();
   const update = useUpdateSettings();
-  const [provider, setProvider] = useState<ImportProvider>('obsidian');
+  const [picked, setProvider] = useState<ImportProvider>('obsidian');
+  const journalOn = useJournalEnabled();
+  // Importing into a journal that is switched off would be invisible, so those sources aren't offered.
+  const provider: ImportProvider = !journalOn && (picked === 'dayone' || picked === 'journal') ? 'obsidian' : picked;
   const [importMsg, setImportMsg] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploaded, setUploaded] = useState(0);
@@ -707,10 +711,12 @@ function DataTab() {
           onChange={e => setProvider(e.target.value as ImportProvider)}>
           <option value="obsidian">Obsidian vault (.zip)</option>
           <option value="keep">Google Keep (.zip)</option>
-          <optgroup label="Into your journal">
-            <option value="dayone">Day One (.zip)</option>
-            <option value="journal">Daily notes: 2024-03-02.md files (.zip)</option>
-          </optgroup>
+          {journalOn && (
+            <optgroup label="Into your journal">
+              <option value="dayone">Day One (.zip)</option>
+              <option value="journal">Daily notes: 2024-03-02.md files (.zip)</option>
+            </optgroup>
+          )}
         </select>
         <BusyButton type="button" className="settings__btn" disabled={importing && !uploading}
           busy={uploading} busyLabel="Uploading…" progress={uploading ? uploaded : null}

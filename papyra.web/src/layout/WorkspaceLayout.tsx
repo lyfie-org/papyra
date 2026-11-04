@@ -31,6 +31,7 @@ import VaultOpenPill from '../components/VaultOpenPill';
 import { useVaultOpen } from '../hooks/useVault';
 import { useLocateEffect } from '../lib/locateNote';
 import { useNavOrder } from '../lib/navOrder';
+import { useJournalEnabled } from '../hooks/useJournal';
 import UpdateNotice from '../components/UpdateNotice';
 
 // Settings deliberately lives with Trash at the foot of the rail, not in this
@@ -85,8 +86,10 @@ export default function WorkspaceLayout() {
   const serverStatus = useSignalR();
   const vaultOpen = useVaultOpen();
   const order = useNavOrder();
+  const journalOn = useJournalEnabled();
   const navItems = [
-    ...order.map((id) => WRITING_NAV[id]),
+    // A switched-off journal leaves the rail; its slot in the saved order is kept for when it comes back.
+    ...order.filter((id) => id !== 'journal' || journalOn).map((id) => WRITING_NAV[id]),
     ...OTHER_NAV,
   ];
 

@@ -8,7 +8,7 @@ import JournalSettingsPanel from './JournalSettingsPanel';
 import type { JournalPrefs } from '../../types/journal';
 
 const prefs = (over: Partial<JournalPrefs> = {}): JournalPrefs => ({
-  dayStartsAt: 0, lockNewEntries: false, promptsOn: true, hideStreak: false,
+  enabled: true, dayStartsAt: 0, lockNewEntries: false, promptsOn: true, hideStreak: false,
   reminderOn: false, reminderTime: null, defaultTemplate: null, ...over,
 });
 
@@ -47,6 +47,29 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 describe('JournalSettingsPanel', () => {
+  it('leads with a switch to use the journal at all, and turns it off on request', async () => {
+    mount();
+    const use = await screen.findByRole('switch', { name: /Use the journal/ });
+    expect((use as HTMLInputElement).checked).toBe(true);
+    expect(screen.getByText('Turning it off hides it. Your days stay safe in your folder.')).toBeTruthy();
+    fireEvent.click(use);
+    await waitFor(() => expect(calls.some((c) => c.method === 'PUT' && c.body === JSON.stringify({ enabled: false }))).toBe(true));
+  });
+
+  it('shrinks to just the switch and its line while the journal is off', async () => {
+    current = { settings: prefs({ enabled: false }), pinSet: true };
+    mount();
+    const use = await screen.findByRole('switch', { name: /Use the journal/ });
+    expect((use as HTMLInputElement).checked).toBe(false);
+    expect(screen.getByText('Turning it off hides it. Your days stay safe in your folder.')).toBeTruthy();
+    expect(screen.queryByText('A new day starts at')).toBeNull();
+    expect(screen.queryByRole('switch', { name: /Writing prompts/ })).toBeNull();
+    expect(screen.queryByRole('button', { name: 'Lock all…' })).toBeNull();
+    // …and switching it on brings the rest back.
+    fireEvent.click(use);
+    expect(await screen.findByText('A new day starts at')).toBeTruthy();
+  });
+
   it('shows the day boundary at rest and saves a new one on request', async () => {
     mount();
     expect(await screen.findByText('Midnight')).toBeTruthy();

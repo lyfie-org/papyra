@@ -1,4 +1,6 @@
+import { useEffect } from 'react';
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { useLocal, writeLocal } from '../lib/localStore';
 import {
   deleteTemplate, fetchBin, fetchOnThisDay, fetchPrefs, fetchRange, fetchStats, fetchTemplates, fetchToday, saveTemplate, savePrefs,
 } from '../lib/journalApi';
@@ -55,6 +57,23 @@ export function useJournalPrefs() {
   });
 }
 
+/** Remembered on this device, so a journal switched off never flashes into the sidebar while the page loads. */
+const OFF_KEY = 'papyra-journal-off';
+
+/**
+ * Whether this person has the journal switched on. Everything that would show the journal
+ * (sidebar, routes, search, the Vault/Archive/Trash lists) asks this one question. Until
+ * the server answers, the last answer seen on this device stands in; a first visit is on.
+ */
+export function useJournalEnabled(): boolean {
+  const known = useJournalPrefs().data?.settings?.enabled;
+  const remembered = useLocal(OFF_KEY) !== '1';
+  useEffect(() => {
+    if (known !== undefined) writeLocal(OFF_KEY, known ? null : '1');
+  }, [known]);
+  return known ?? remembered;
+}
+
 export function useSaveJournalPrefs() {
   const queryClient = useQueryClient();
   return useMutation({
@@ -69,10 +88,15 @@ export function useSaveJournalPrefs() {
 
 /** Days set aside (archived, in the Trash) or locked (the Vault page), newest first. */
 export function useJournalBin(state: 'archived' | 'trashed' | 'locked') {
+  // A journal that is off has no days to list (and the server would answer 404).
+  const enabled = useJournalEnabled();
   return useQuery<JournalSummary[]>({
     queryKey: [...JOURNAL_KEY, 'bin', state],
     queryFn: () => fetchBin(state),
     staleTime: 10_000,
+    enabled,
+    // Whatever an earlier fetch cached stays hidden while it is off.
+    select: (days) => (enabled ? days : []),
   });
 }
 

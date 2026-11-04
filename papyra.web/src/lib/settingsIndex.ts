@@ -26,6 +26,8 @@ export interface SettingsEntry {
   /** The heading's visible text, shown as the last breadcrumb. */
   sectionLabel?: string;
   adminOnly?: boolean;
+  /** Part of the journal's own settings: not offered while the journal is switched off. */
+  journalOnly?: boolean;
   /** Set when the entry is a page of its own rather than a tab under Settings. */
   href?: string;
   /**
@@ -50,10 +52,11 @@ export const SETTINGS_INDEX: SettingsEntry[] = [
   { tab: 'appearance', tabLabel: 'Appearance', section: 'formatting-toolbar', sectionLabel: 'Formatting toolbar', keywords: ['editor', 'toolbar', 'table', 'bullet list', 'heading', 'embed', 'always show'] },
 
   { tab: 'journal', tabLabel: 'Journal', keywords: ['diary', 'day', 'write'] },
-  { tab: 'journal', tabLabel: 'Journal', section: 'journal-day', sectionLabel: 'The day', keywords: ['day starts', 'midnight', 'night owl', 'prompts', 'streak', 'hide streak'] },
-  { tab: 'journal', tabLabel: 'Journal', section: 'journal-templates', sectionLabel: 'Templates', keywords: ['template', 'prompt', 'start from', 'daily page', 'morning pages'] },
-  { tab: 'journal', tabLabel: 'Journal', section: 'journal-reminder', sectionLabel: 'Reminder', keywords: ['remind', 'nudge', 'email', 'daily', 'notification'] },
-  { tab: 'journal', tabLabel: 'Journal', section: 'journal-locking', sectionLabel: 'Locking', keywords: ['lock', 'private', 'pin', 'seal', 'encrypt', 'lock all', 'lock new'] },
+  { tab: 'journal', tabLabel: 'Journal', section: 'journal-use', sectionLabel: 'Use the journal', keywords: ['turn off', 'turn on', 'hide', 'disable', 'enable', 'switch', 'diary'] },
+  { tab: 'journal', tabLabel: 'Journal', section: 'journal-day', journalOnly: true, sectionLabel: 'The day', keywords: ['day starts', 'midnight', 'night owl', 'prompts', 'streak', 'hide streak'] },
+  { tab: 'journal', tabLabel: 'Journal', section: 'journal-templates', journalOnly: true, sectionLabel: 'Templates', keywords: ['template', 'prompt', 'start from', 'daily page', 'morning pages'] },
+  { tab: 'journal', tabLabel: 'Journal', section: 'journal-reminder', journalOnly: true, sectionLabel: 'Reminder', keywords: ['remind', 'nudge', 'email', 'daily', 'notification'] },
+  { tab: 'journal', tabLabel: 'Journal', section: 'journal-locking', journalOnly: true, sectionLabel: 'Locking', keywords: ['lock', 'private', 'pin', 'seal', 'encrypt', 'lock all', 'lock new'] },
 
   { tab: 'notifications', tabLabel: 'Notifications', keywords: ['alerts'] },
   { tab: 'notifications', tabLabel: 'Notifications', section: 'email-notifications', sectionLabel: 'What Papyra tells you about', keywords: ['email', 'mentions', 'shares', 'backup', 'new sign-in', 'login alert', 'security email', 'push'] },
@@ -129,13 +132,14 @@ export function settingsHref(entry: SettingsEntry): string {
  * Ranked settings matches. Lower rank sorts first:
  * 0 the heading starts with the query, 1 it contains it, 2 only a keyword does.
  */
-export function searchSettings(query: string, isAdmin: boolean): Array<SettingsEntry & { rank: number }> {
+export function searchSettings(query: string, isAdmin: boolean, journalOn = true): Array<SettingsEntry & { rank: number }> {
   const q = query.trim().toLowerCase();
   if (!q) return [];
 
   const matches: Array<SettingsEntry & { rank: number }> = [];
   for (const entry of SETTINGS_INDEX) {
     if (entry.adminOnly && !isAdmin) continue;
+    if (entry.journalOnly && !journalOn) continue;
     const label = (entry.sectionLabel ?? entry.tabLabel).toLowerCase();
     const tabLabel = entry.tabLabel.toLowerCase();
     let rank: number;

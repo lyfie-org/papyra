@@ -439,11 +439,55 @@ public sealed class JournalSecurityTests
         });
         var purge = new TrashPurgeService(
             host.Services.GetRequiredService<IServiceScopeFactory>(), v.State, new WriteRing(new MemoryCache(new MemoryCacheOptions())),
-            host.Services.GetRequiredService<SearchIndexService>(), new JobRegistry(NullLogger<JobRegistry>.Instance),
+            host.Services.GetRequiredService<SearchIndexService>(), host.Services.GetRequiredService<JournalSettings>(),
+            new JobRegistry(NullLogger<JobRegistry>.Instance),
             NullLogger<TrashPurgeService>.Instance);
         Assert.Equal(1, await purge.PurgeOnceAsync(default));
         Assert.False(File.Exists(path));
         Assert.True(File.Exists(fresh));
+    }
+
+    [Fact]
+    public async Task TrashPurge_SparesTrashedDays_WhileTheJournalIsOff()
+    {
+        using var v = new Vault();
+        var day = Path.Combine(v.Notes, "journal", "2026", "10", "2026-10-01.md");
+        Directory.CreateDirectory(Path.GetDirectoryName(day)!);
+        await File.WriteAllTextAsync(day, "x");
+        v.State.Upsert(Vault.Uid, day, new Note
+        {
+            Id = "journal-2026-10-01", Title = "2026-10-01", Kind = "journal", Body = "x",
+            Trashed = true, TrashedAt = DateTime.UtcNow.AddDays(-90),
+        });
+        var plain = Path.Combine(v.Notes, "old-note.md");
+        await File.WriteAllTextAsync(plain, "y");
+        v.State.Upsert(Vault.Uid, plain, new Note
+        {
+            Id = "old-note", Title = "Old", Body = "y", Trashed = true, TrashedAt = DateTime.UtcNow.AddDays(-90),
+        });
+
+        using var host = new Microsoft.AspNetCore.Mvc.Testing.WebApplicationFactory<Program>().WithWebHostBuilder(b =>
+        {
+            b.UseEnvironment("Development");
+            b.UseSetting("Papyra:DataDir", v.Data);
+        });
+        var settings = host.Services.GetRequiredService<JournalSettings>();
+        var purge = new TrashPurgeService(
+            host.Services.GetRequiredService<IServiceScopeFactory>(), v.State, new WriteRing(new MemoryCache(new MemoryCacheOptions())),
+            host.Services.GetRequiredService<SearchIndexService>(), settings,
+            new JobRegistry(NullLogger<JobRegistry>.Instance), NullLogger<TrashPurgeService>.Instance);
+
+        // Off: the hidden journal can't be seen or restored from, so its old trashed day waits;
+        // an ordinary note is still emptied on schedule.
+        settings.Write(Vault.Uid, new JournalPrefs { Enabled = false });
+        Assert.Equal(1, await purge.PurgeOnceAsync(default));
+        Assert.True(File.Exists(day));
+        Assert.False(File.Exists(plain));
+
+        // On again: the day is expired like any note.
+        settings.Write(Vault.Uid, new JournalPrefs { Enabled = true });
+        Assert.Equal(1, await purge.PurgeOnceAsync(default));
+        Assert.False(File.Exists(day));
     }
 
     [Fact]

@@ -58,6 +58,8 @@ export interface JournalStats {
 }
 
 export interface JournalPrefs {
+  /** The journal is in use. Off hides it everywhere; nothing is deleted. */
+  enabled: boolean;
   dayStartsAt: number;
   lockNewEntries: boolean;
   promptsOn: boolean;

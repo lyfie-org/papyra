@@ -24,17 +24,21 @@ public sealed class RagChatService
     private readonly EmbeddingService _embeddings;
     private readonly VaultState _state;
     private readonly AiClient _ai;
+    private readonly JournalSettings _journal;
 
-    public RagChatService(EmbeddingService embeddings, VaultState state, AiClient ai)
+    public RagChatService(EmbeddingService embeddings, VaultState state, AiClient ai, JournalSettings journal)
     {
         _embeddings = embeddings;
         _state = state;
         _ai = ai;
+        _journal = journal;
     }
 
     public async Task<IReadOnlyList<Citation>> RetrieveAsync(string userId, string question, CancellationToken ct)
     {
         var hits = await _embeddings.SearchAsync(userId, question, TopK, ct);
+        // A switched-off journal is not something the assistant may quote from.
+        if (!_journal.IsEnabled(userId)) hits = hits.Where(h => !JournalPaths.IsJournalId(h.NoteId)).ToList();
         return hits.Select(h =>
         {
             var note = _state.PathFor(userId, h.NoteId) is { } p && _state.TryGet(userId, p, out var n) ? n : null;

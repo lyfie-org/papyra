@@ -4290,9 +4290,10 @@ notes.MapGet("/{id}/blocks/{blockId}", async (
     .WithSummary("Resolve one anchored block")
     .WithDescription("Returns only the anchored block's text — never the surrounding note body.");
 
-notes.MapGet("/{id}/backlinks", (string id, ClaimsPrincipal user, VaultState state, SearchIndexService search) =>
+notes.MapGet("/{id}/backlinks", (string id, ClaimsPrincipal user, VaultState state, SearchIndexService search, JournalSettings journalPrefs) =>
 {
     var uid = Uid(user);
+    var journalHidden = IsApiKey(user) || !journalPrefs.IsEnabled(uid);
     var path = state.PathFor(uid, id);
     if (path is null || !state.TryGet(uid, path, out var target) || target is null) return Results.NotFound();
 
@@ -4304,7 +4305,7 @@ notes.MapGet("/{id}/backlinks", (string id, ClaimsPrincipal user, VaultState sta
         // A secure note is left out entirely: even its title next to a snippet of
         // this note would confirm what it links to.
         .Where(n => !n.Trashed && !n.Secure && n.Id != id && !string.IsNullOrEmpty(n.Body)
-                    && !(IsApiKey(user) && JournalPaths.IsJournal(n))
+                    && !(journalHidden && JournalPaths.IsJournal(n))
                     && n.Body.Contains(needle, StringComparison.OrdinalIgnoreCase))
         .Select(n => new
         {
@@ -6261,7 +6262,7 @@ app.MapPut("/api/shared/{token}", async (
 // ── Search ────────────────────────────────────────────────────────────────────
 // Relevance-ranked full-text search over the Lucene index. The index stores only
 // metadata; snippets are highlighted against the live body in VaultState.
-app.MapGet("/api/search", (string? q, ClaimsPrincipal user, SearchIndexService search, VaultState state) =>
+app.MapGet("/api/search", (string? q, ClaimsPrincipal user, SearchIndexService search, VaultState state, JournalSettings journalPrefs) =>
 {
     if (string.IsNullOrWhiteSpace(q)) return Results.Ok(Array.Empty<object>());
 
@@ -6271,8 +6272,9 @@ app.MapGet("/api/search", (string? q, ClaimsPrincipal user, SearchIndexService s
     var hits = search.Search(uid, q).ToDictionary(h => h.Id, StringComparer.Ordinal);
     foreach (var t in search.MatchTitles(q, state.SnapshotAll(uid).Where(n => n.Secure && !n.Trashed)))
         hits[t.Id] = hits.TryGetValue(t.Id, out var h) ? h with { Score = h.Score + t.Score } : t;
-    // A script on a key never finds the journal through the notes search.
-    if (IsApiKey(user))
+    // A script on a key never finds the journal through the notes search; neither does
+    // anyone who switched their journal off (the index itself is left as it is).
+    if (IsApiKey(user) || !journalPrefs.IsEnabled(uid))
         foreach (var hitId in hits.Keys.ToList())
             if (JournalPaths.IsJournalId(hitId)) hits.Remove(hitId);
     var results = hits.Values.OrderByDescending(h => h.Score).Select(hit =>
@@ -6295,12 +6297,13 @@ app.MapGet("/api/search", (string? q, ClaimsPrincipal user, SearchIndexService s
 // callers should keep using /api/search for keyword results.
 app.MapGet("/api/search/semantic", async (
     string? q, int? take, ClaimsPrincipal user, EmbeddingService embeddings,
-    VaultState state, CancellationToken ct) =>
+    VaultState state, JournalSettings journalPrefs, CancellationToken ct) =>
 {
     if (string.IsNullOrWhiteSpace(q)) return Results.Ok(Array.Empty<object>());
 
     var uid = Uid(user);
     var hits = await embeddings.SearchAsync(uid, q, Math.Clamp(take ?? 5, 1, 25), ct);
+    if (!journalPrefs.IsEnabled(uid)) hits = hits.Where(h => !JournalPaths.IsJournalId(h.NoteId)).ToList();
     return Results.Ok(hits.Select(h =>
     {
         var note = state.PathFor(uid, h.NoteId) is { } p && state.TryGet(uid, p, out var n) ? n : null;

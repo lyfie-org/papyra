@@ -5,6 +5,8 @@ namespace Papyra.Api.Storage;
 /// <summary>One person's journal preferences. UI state, so they live under <c>.papyra/</c>, never the notes dir.</summary>
 public sealed record JournalPrefs
 {
+    /// <summary>The journal is in use. Off hides it everywhere and pauses its jobs; nothing is deleted, so turning it on again restores it as it was.</summary>
+    public bool Enabled { get; init; } = true;
     /// <summary>Hours past midnight at which a new journal day begins (0–5): a night owl's 01:30 is still "today".</summary>
     public int DayStartsAt { get; init; }
     /// <summary>New entries are created locked (needs a vault PIN).</summary>
@@ -47,6 +49,9 @@ public sealed class JournalSettings(IConfiguration config, IHostEnvironment env)
             return new JournalPrefs();
         }
     }
+
+    /// <summary>Whether this person has the journal switched on (a missing or unreadable file reads as on).</summary>
+    public bool IsEnabled(string userId) => Read(userId).Enabled;
 
     public JournalPrefs Write(string userId, JournalPrefs prefs)
     {
