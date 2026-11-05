@@ -127,7 +127,7 @@ public sealed class VaultPinService
     /// </summary>
     public async Task SetAsync(User user, string pin, CancellationToken ct)
     {
-        user.VaultPinHash = BCrypt.Net.BCrypt.HashPassword(pin, WorkFactor);
+        user.VaultPinHash = SecretHasher.Hash(pin, WorkFactor);
         user.VaultPinFailures = 0;
         user.VaultPinLockedUntilUtc = null;
         await _db.SaveChangesAsync(ct);

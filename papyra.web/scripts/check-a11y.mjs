@@ -89,7 +89,7 @@ const dayAgo = (n) => {
 const turnJournalOff = async (page) => {
   await page.goto(`${ORIGIN}/demo/settings?tab=journal`);
   await page.getByText('Writing prompts').waitFor();
-  await page.getByLabel('Use the journal').click();
+  await page.getByRole('switch', { name: 'Use the journal' }).click();
   await page.getByText('Writing prompts').waitFor({ state: 'detached' });
 };
 

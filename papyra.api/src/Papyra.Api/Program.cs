@@ -1267,7 +1267,7 @@ var auth = app.MapGroup("/api/auth").WithTags("Auth");
 
 // A BCrypt hash no password will ever match, used to spend the same work on a
 // login for an account that doesn't exist as on one that does. Computed once.
-var DummyPasswordHash = BCrypt.Net.BCrypt.HashPassword(Guid.NewGuid().ToString("N"));
+var DummyPasswordHash = SecretHasher.HashPassword(Guid.NewGuid().ToString("N"));
 
 // ── First-run setup (guided) ─────────────────────────────────────────────────
 // Every /setup route answers only while the instance has no accounts: the first
@@ -1515,7 +1515,7 @@ auth.MapPost("/setup", async (
         Username = username,
         Name = string.IsNullOrWhiteSpace(body.Name) ? username : body.Name.Trim(),
         Email = address,
-        PasswordHash = BCrypt.Net.BCrypt.HashPassword(body.Password),
+        PasswordHash = SecretHasher.HashPassword(body.Password),
         PasswordChangedUtc = DateTime.UtcNow,
         Role = "Admin",
         TimeZone = string.IsNullOrEmpty(zone) ? null : zone,
@@ -1835,7 +1835,7 @@ auth.MapPost("/reset-password", async (
     if (user is null) return Results.BadRequest(new { error = "This link is invalid or has expired." });
     if (user.DisabledUtc is not null) return AccountDisabled();
 
-    user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(body.Password!);
+    user.PasswordHash = SecretHasher.HashPassword(body.Password!);
     user.PasswordChangedUtc = DateTime.UtcNow;
     user.MustChangePassword = false; // they chose this one themselves
     row.UsedUtc = DateTime.UtcNow;   // burn it in the same transaction as the change
@@ -1877,7 +1877,7 @@ auth.MapPost("/accept-invite", async (
         Username = row.Username,
         Name = row.Username,
         Email = row.Email,
-        PasswordHash = BCrypt.Net.BCrypt.HashPassword(body.Password!),
+        PasswordHash = SecretHasher.HashPassword(body.Password!),
         PasswordChangedUtc = DateTime.UtcNow,
         Role = row.Role == "Admin" ? "Admin" : "User",
     };
@@ -2629,7 +2629,7 @@ auth.MapPost("/password", async (
         && !BCrypt.Net.BCrypt.Verify(body.Current ?? string.Empty, user.PasswordHash))
         return Results.Json(new { error = "Current password is incorrect." }, statusCode: StatusCodes.Status400BadRequest);
 
-    user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(body.Next);
+    user.PasswordHash = SecretHasher.HashPassword(body.Next);
     user.PasswordChangedUtc = DateTime.UtcNow;
     // Picking your own password is exactly what the flag was waiting for.
     user.MustChangePassword = false;
@@ -2856,7 +2856,7 @@ admin.MapPost("/", async (
         Username = username,
         Name = string.IsNullOrWhiteSpace(body.Name) ? username : body.Name.Trim(),
         Email = address,
-        PasswordHash = BCrypt.Net.BCrypt.HashPassword(password),
+        PasswordHash = SecretHasher.HashPassword(password),
         PasswordChangedUtc = DateTime.UtcNow,
         Role = body.Role == "Admin" ? "Admin" : "User",
         MustChangePassword = true,
@@ -2904,7 +2904,7 @@ admin.MapPost("/{id:int}/reset", async (
     var user = await db.Users.FindAsync([id], ct);
     if (user is null) return Results.NotFound();
 
-    user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(password);
+    user.PasswordHash = SecretHasher.HashPassword(password);
     user.PasswordChangedUtc = DateTime.UtcNow;
     user.MustChangePassword = true;
     // Lost the phone too: they set a new authenticator up at their next sign-in.
