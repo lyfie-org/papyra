@@ -85,6 +85,14 @@ const dayAgo = (n) => {
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 };
 
+// Flip "Use the journal" off in Settings → Journal and wait until the tab has collapsed.
+const turnJournalOff = async (page) => {
+  await page.goto(`${ORIGIN}/demo/settings?tab=journal`);
+  await page.getByText('Writing prompts').waitFor();
+  await page.getByLabel('Use the journal').click();
+  await page.getByText('Writing prompts').waitFor({ state: 'detached' });
+};
+
 const FLOWS = [
   { name: 'notes grid', run: async (page) => {
     await page.goto(`${ORIGIN}/demo/`);
@@ -175,6 +183,18 @@ const FLOWS = [
   { name: 'settings / journal', run: async (page) => {
     await page.goto(`${ORIGIN}/demo/settings?tab=journal`);
     await page.getByText('Writing prompts').waitFor();
+  } },
+  // The journal switched off: the tab shrinks to the one switch and its line, and any
+  // journal address shows the quiet "off" page. The demo keeps the choice in localStorage,
+  // so a reload lands on the off state.
+  { name: 'settings / journal switched off', run: async (page) => {
+    await turnJournalOff(page);
+    await page.getByText('Turning it off hides it.').waitFor();
+  } },
+  { name: 'journal off page', run: async (page) => {
+    await turnJournalOff(page);
+    await page.goto(`${ORIGIN}/demo/journal/${dayAgo(1)}`);
+    await page.getByRole('heading', { name: 'The journal is off' }).waitFor();
   } },
   { name: 'settings / appearance', run: async (page) => {
     await page.goto(`${ORIGIN}/demo/settings?tab=appearance`);
