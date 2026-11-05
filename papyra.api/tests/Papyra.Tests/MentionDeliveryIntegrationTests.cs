@@ -90,7 +90,9 @@ public sealed class MentionDeliveryIntegrationTests : IDisposable
             // write, and mail must never be able to affect it.
             new EmailSender(
                 new InstanceConfigStore(_sp.GetRequiredService<IServiceScopeFactory>(),
-                    NullLogger<InstanceConfigStore>.Instance),
+                    NullLogger<InstanceConfigStore>.Instance,
+                    new SecretBox(new Microsoft.AspNetCore.DataProtection.EphemeralDataProtectionProvider(),
+                        NullLogger<SecretBox>.Instance)),
                 NullLogger<EmailSender>.Instance),
             NullLogger<MentionDeliveryService>.Instance);
         _svc.StartAsync(default).GetAwaiter().GetResult();

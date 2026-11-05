@@ -323,6 +323,7 @@ builder.Services.AddCollab(builder.Configuration);
 var oidcSeed = builder.Configuration.GetSection("Oidc").Get<OidcSettings>();
 
 // Instance configuration (SSO, outbound mail) an admin edits from the UI.
+builder.Services.AddSingleton<SecretBox>();
 builder.Services.AddSingleton<InstanceConfigStore>();
 
 // The cookie is only as durable as the key ring that signs it. By default those
@@ -761,6 +762,17 @@ using (var scope = app.Services.CreateScope())
         db.Settings.RemoveRange(legacy);
         await db.SaveChangesAsync();
     }
+}
+
+// Secrets typed into Settings (the SMTP password, SSO client secrets, git tokens) used to be stored
+// as plain text. Seal the ones still in plain, once, so an upgrade needs nothing from the admin.
+// Idempotent; a failure here never stops the boot (the plain values keep working).
+using (var scope = app.Services.CreateScope())
+{
+    await SecretSettings.SealLegacyAsync(
+        scope.ServiceProvider.GetRequiredService<AppDbContext>(),
+        scope.ServiceProvider.GetRequiredService<SecretBox>(),
+        app.Logger);
 }
 
 // First in the pipeline so everything downstream — the rate limiter's partition
@@ -4804,7 +4816,7 @@ gitApi.MapPut("/", async (
     await Set(GitKeys.RemoteUrl(uid), remote);
     await Set(GitKeys.Branch(uid), branchName);
     // Only overwrite the token when one is supplied, so saving config doesn't wipe it.
-    if (body.Token is not null) await Set(GitKeys.Token(uid), body.Token.Trim());
+    if (body.Token is not null) await Set(GitKeys.Token(uid), git.SealToken(body.Token.Trim())!);
     await Set(GitKeys.Mode(uid), wantEncrypted ? "encrypted" : "plain");
     if (newKey is not null) { await Set(GitKeys.DataKey(uid), newKey); await Set(GitKeys.Crypto(uid), newHeader!); }
     if (!wantEncrypted) { await Set(GitKeys.DataKey(uid), string.Empty); await Set(GitKeys.Crypto(uid), string.Empty); }
@@ -4820,14 +4832,14 @@ gitApi.MapPut("/", async (
 // The guided setup's "Check the connection" step: try the address and token
 // before anything is saved, and say in plain words what's wrong. A stored token
 // is used when none is typed, so re-checking an existing setup needs no retyping.
-gitApi.MapPost("/test", async (GitConfigWrite body, ClaimsPrincipal user, AppDbContext db, CancellationToken ct) =>
+gitApi.MapPost("/test", async (GitConfigWrite body, ClaimsPrincipal user, AppDbContext db, GitSyncService git, CancellationToken ct) =>
 {
     var remote = body.RemoteUrl?.Trim() ?? string.Empty;
     if (!Uri.TryCreate(remote, UriKind.Absolute, out var uri) || uri.Scheme is not ("https" or "http"))
         return Results.BadRequest(new { error = "Paste the repository's https address, e.g. https://github.com/you/papyra-notes.git" });
     var tokenKey = GitKeys.Token(Uid(user));
     var token = string.IsNullOrWhiteSpace(body.Token)
-        ? (await db.Settings.FirstOrDefaultAsync(s => s.Key == tokenKey, ct))?.Value
+        ? git.OpenToken((await db.Settings.FirstOrDefaultAsync(s => s.Key == tokenKey, ct))?.Value)
         : body.Token.Trim();
     var (problem, branches) = await Task.Run(() => GitSyncService.Probe(remote, token), ct);
     return problem is null
@@ -7418,7 +7430,7 @@ backups.MapPost("/restore-git", async (
     if (string.IsNullOrEmpty(token))
     {
         var tokenKey = GitKeys.Token(uidStr);
-        token = (await db.Settings.FirstOrDefaultAsync(s => s.Key == tokenKey, ct))?.Value;
+        token = git.OpenToken((await db.Settings.FirstOrDefaultAsync(s => s.Key == tokenKey, ct))?.Value);
     }
 
     var staging = Path.Combine(PapyraPaths.UserDotPapyra(config, env.ContentRootPath, uidStr), $"restore-git-{Guid.NewGuid():N}");
@@ -7999,7 +8011,7 @@ static async Task SaveGitBackupConfigAsync(
 
     await Set(GitKeys.RemoteUrl(uid), remote);
     await Set(GitKeys.Branch(uid), branch);
-    if (!string.IsNullOrEmpty(token)) await Set(GitKeys.Token(uid), token);
+    if (!string.IsNullOrEmpty(token)) await Set(GitKeys.Token(uid), git.SealToken(token)!);
     await Set(GitKeys.Mode(uid), source.Mode);
     await Set(GitKeys.DataKey(uid), source.SealedKey ?? string.Empty);
     await Set(GitKeys.Crypto(uid), source.HeaderJson ?? string.Empty);

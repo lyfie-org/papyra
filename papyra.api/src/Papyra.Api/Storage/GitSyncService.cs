@@ -89,8 +89,10 @@ public sealed class GitSyncService : BackgroundService
         ILogger<GitSyncService> logger,
         IDataProtectionProvider dataProtection,
         BackupLayout layout,
+        SecretBox secrets,
         EmailSender? email = null)
     {
+        _secrets = secrets;
         _scopes = scopes;
         _config = config;
         _env = env;
@@ -100,6 +102,14 @@ public sealed class GitSyncService : BackgroundService
         _keyProtector = dataProtection.CreateProtector("Papyra.GitBackupKey.v1");
         _layout = layout;
     }
+
+    private readonly SecretBox _secrets;
+
+    /// <summary>A git access token as it is stored: sealed, so the database alone doesn't show it.</summary>
+    public string? SealToken(string? token) => _secrets.Seal(token);
+
+    /// <summary>The usable token behind a stored one (an older plain value passes through).</summary>
+    public string? OpenToken(string? stored) => _secrets.Open(stored, "A saved git access token");
 
     public string ProtectKey(byte[] dataKey) => _keyProtector.Protect(Convert.ToBase64String(dataKey));
     public byte[] UnprotectKey(string sealedKey) => Convert.FromBase64String(_keyProtector.Unprotect(sealedKey));
@@ -173,7 +183,7 @@ public sealed class GitSyncService : BackgroundService
                     return new GitSyncResult("disabled", null);
 
                 branch = await ReadSetting(db, GitKeys.Branch(userId), ct);
-                token = await ReadSetting(db, GitKeys.Token(userId), ct);
+                token = OpenToken(await ReadSetting(db, GitKeys.Token(userId), ct));
                 mode = await ReadSetting(db, GitKeys.Mode(userId), ct);
                 sealedKey = await ReadSetting(db, GitKeys.DataKey(userId), ct);
                 crypto = await ReadSetting(db, GitKeys.Crypto(userId), ct);
