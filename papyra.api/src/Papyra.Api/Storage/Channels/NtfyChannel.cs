@@ -22,7 +22,7 @@ public sealed class NtfyChannel(InstanceConfigStore config, OutboundPolicy outbo
 
     // A topic can't be somebody else's address in a way that matters: the worst a wrong one does is
     // send a notification to a topic its owner chose to share. The person says it arrived.
-    public bool ConfirmedByPerson => true;
+    public bool CanBeConfirmedByPerson(ChannelDestination destination) => true;
 
     public bool IsAvailable(InstanceConfigStore store) => store.GetBool(ChannelKeys.Enabled(Id));
 

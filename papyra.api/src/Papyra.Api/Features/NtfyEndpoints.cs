@@ -60,6 +60,11 @@ public static partial class NtfyEndpoints
                 defaultServerUrl = NtfyChannel.DefaultServer,
                 hasToken = config.Has(ChannelKeys.NtfyToken),
             },
+            discord = new
+            {
+                enabled = config.GetBool(ChannelKeys.Enabled(NotificationCatalog.Discord)),
+                webhooksAllowed = DiscordChannel.WebhooksAllowed(config),
+            },
             allowedHosts = outbound.AllowedHosts(),
         });
     }

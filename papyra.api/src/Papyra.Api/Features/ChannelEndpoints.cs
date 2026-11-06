@@ -141,7 +141,7 @@ public static class ChannelEndpoints
         if (d is null) return Results.NotFound();
 
         var provider = providers.FirstOrDefault(p => p.Id == d.Channel);
-        if (provider is null || !provider.ConfirmedByPerson)
+        if (provider is null || !provider.CanBeConfirmedByPerson(d))
             return Results.BadRequest(new { error = "This one is confirmed with a code, not by saying so." });
         // The person vouches for a message that was really sent: no confirming before a test went through.
         if (d.LastOkUtc is null)

@@ -45,11 +45,12 @@ public interface INotificationChannel
     Task<ChannelSendResult> SendAsync(ChannelDestination destination, ChannelMessage message, CancellationToken ct);
 
     /// <summary>
-    /// Whether the person themselves vouches for the destination, by saying they saw the test message
-    /// arrive. True where the address can't be someone else's (an ntfy topic, a webhook of their own);
-    /// channels that must prove the address is theirs (a Telegram chat, a Discord user) use a code.
+    /// Whether the person themselves vouches for this destination, by saying they saw the test message
+    /// arrive. True where the address can't be someone else's (an ntfy topic, a webhook to a channel of
+    /// their own); destinations that must prove the address is theirs (a Telegram chat, a Discord user)
+    /// use a code instead.
     /// </summary>
-    bool ConfirmedByPerson => false;
+    bool CanBeConfirmedByPerson(ChannelDestination destination) => false;
 }
 
 /// <summary>Setting keys for the chat channels. See <see cref="InstanceConfigStore"/>.</summary>
@@ -66,6 +67,8 @@ public static class ChannelKeys
     public const string NtfyToken = "channels.ntfy.token";
     /// <summary>The ntfy server's address; blank means the public ntfy.sh.</summary>
     public const string NtfyServer = "channels.ntfy.server";
+    /// <summary>Whether people may connect a Discord channel webhook ("false" forbids it; anything else allows).</summary>
+    public const string DiscordWebhooksAllowed = "channels.discord.webhooksAllowed";
 }
 
 /// <summary>The line a chat service gets for each kind of notification when the person keeps their privacy at "minimal".</summary>
