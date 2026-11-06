@@ -43,6 +43,13 @@ public interface INotificationChannel
 
     /// <summary>Send one message. Never throws for an ordinary failure: say how it went in the result.</summary>
     Task<ChannelSendResult> SendAsync(ChannelDestination destination, ChannelMessage message, CancellationToken ct);
+
+    /// <summary>
+    /// Whether the person themselves vouches for the destination, by saying they saw the test message
+    /// arrive. True where the address can't be someone else's (an ntfy topic, a webhook of their own);
+    /// channels that must prove the address is theirs (a Telegram chat, a Discord user) use a code.
+    /// </summary>
+    bool ConfirmedByPerson => false;
 }
 
 /// <summary>Setting keys for the chat channels. See <see cref="InstanceConfigStore"/>.</summary>
@@ -57,6 +64,8 @@ public static class ChannelKeys
     public const string DiscordBotToken = "channels.discord.botToken";
     /// <summary>An optional ntfy access token. Sealed.</summary>
     public const string NtfyToken = "channels.ntfy.token";
+    /// <summary>The ntfy server's address; blank means the public ntfy.sh.</summary>
+    public const string NtfyServer = "channels.ntfy.server";
 }
 
 /// <summary>The line a chat service gets for each kind of notification when the person keeps their privacy at "minimal".</summary>

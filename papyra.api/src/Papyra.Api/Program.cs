@@ -244,6 +244,9 @@ builder.Services.AddHostedService<InstanceBackupJob>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<GitSyncService>());
 // Notifications to chat services (ntfy, Discord, Telegram). The providers are registered one by one
 // as they land; this is the queue and the retry loop they all share.
+builder.Services.AddSingleton<OutboundPolicy>();
+builder.Services.AddSingleton<NtfyChannel>();
+builder.Services.AddSingleton<INotificationChannel>(sp => sp.GetRequiredService<NtfyChannel>());
 builder.Services.AddSingleton<ChannelDeliveryService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<ChannelDeliveryService>());
 
@@ -607,6 +610,12 @@ builder.Services.AddRateLimiter(options =>
                 QueueLimit = 200,
                 QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
             }));
+
+    // "Send a test" to a chat service: a request to a third party each time, so a few per minute per account.
+    options.AddPolicy(ChannelEndpoints.TestRateLimit, ctx =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            ctx.User.FindFirstValue(ClaimTypes.NameIdentifier) ?? ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            _ => new FixedWindowRateLimiterOptions { PermitLimit = 6, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
 
     // Live-editing tickets: one per (re)connect of each open note/tab, so a healthy
     // client asks a handful of times an hour. Per account, well above a desk of
@@ -3251,8 +3260,9 @@ directory.MapGet("/search", async (string? q, ClaimsPrincipal me, AppDbContext d
 // The catalog of everything Papyra can tell a person about, with their switch for
 // each. Critical ones come back locked on. Email is the only channel today;
 // `channels` is how the settings screen will learn about push.
-auth.MapGet("/notifications", async (ClaimsPrincipal me, AppDbContext db, EmailSender email, ChannelDeliveryService delivery, CancellationToken ct) =>
+auth.MapGet("/notifications", async (ClaimsPrincipal me, AppDbContext db, EmailSender email, ChannelDeliveryService delivery, InstanceConfigStore config, CancellationToken ct) =>
 {
+    await config.EnsureLoadedAsync(ct);
     var user = await db.Users.FindAsync([int.Parse(Uid(me))], ct);
     if (user is null) return Results.NotFound();
     return Results.Ok(new
@@ -7493,6 +7503,7 @@ app.MapFallback("/api/{**rest}", (HttpContext http) =>
 app.MapCollab();
 app.MapComments();
 app.MapChannelDestinations();
+app.MapNtfy();
 app.MapJournal();
 app.MapJournalExport();
 app.MapUpdates();

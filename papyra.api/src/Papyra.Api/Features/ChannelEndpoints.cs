@@ -23,7 +23,14 @@ public static class ChannelEndpoints
         group.MapGet("/", List).WithSummary("Where my notifications are sent besides email");
         group.MapPatch("/{id:int}", Update).WithSummary("Switch a destination on or off, or change what it shows");
         group.MapDelete("/{id:int}", Remove).WithSummary("Disconnect a destination");
+        group.MapPost("/{id:int}/test", Test).RequireRateLimiting(TestRateLimit)
+            .WithSummary("Send a test message to a destination");
+        group.MapPost("/{id:int}/confirm", Confirm)
+            .WithSummary("Say the test message arrived, for channels where that is how it's verified");
     }
+
+    /// <summary>Test messages go to a third party, so they are paced per account.</summary>
+    public const string TestRateLimit = "channel-test";
 
     private static int Me(ClaimsPrincipal user) => int.Parse(user.FindFirstValue(ClaimTypes.NameIdentifier)!);
 
@@ -38,8 +45,10 @@ public static class ChannelEndpoints
         : d.LastErrorUtc is { } failed && (d.LastOkUtc is null || failed > d.LastOkUtc) ? "attention"
         : "connected";
 
-    private static async Task<IResult> List(ClaimsPrincipal user, AppDbContext db, ChannelDeliveryService delivery, CancellationToken ct)
+    private static async Task<IResult> List(
+        ClaimsPrincipal user, AppDbContext db, ChannelDeliveryService delivery, InstanceConfigStore config, CancellationToken ct)
     {
+        await config.EnsureLoadedAsync(ct);
         var uid = Me(user);
         var rows = await db.ChannelDestinations.AsNoTracking().Where(d => d.UserId == uid)
             .OrderBy(d => d.Channel).ToListAsync(ct);
@@ -79,6 +88,66 @@ public static class ChannelEndpoints
                 d.ConsecutiveFailures = 0;
             }
         }
+        await db.SaveChangesAsync(ct);
+        return Results.NoContent();
+    }
+
+    // A message that skips the queue and the person's switches: "does this work?". It does not count
+    // toward pausing the destination, but what it learns is shown on the card.
+    private static async Task<IResult> Test(
+        int id, ClaimsPrincipal user, AppDbContext db, InstanceConfigStore config,
+        IEnumerable<INotificationChannel> providers, CancellationToken ct)
+    {
+        await config.EnsureLoadedAsync(ct);
+        var uid = Me(user);
+        var d = await db.ChannelDestinations.FirstOrDefaultAsync(x => x.Id == id && x.UserId == uid, ct);
+        if (d is null) return Results.NotFound();
+
+        var provider = providers.FirstOrDefault(p => p.Id == d.Channel);
+        if (provider is null || !provider.IsAvailable(config))
+            return Results.Json(new { error = "This kind of notification isn't turned on for this Papyra." }, statusCode: 409);
+
+        ChannelSendResult result;
+        try
+        {
+            result = await provider.SendAsync(d,
+                new ChannelMessage("channels.test", $"Papyra test: {ChannelDeliveryService.ChannelName(d.Channel)} is connected.", null), ct);
+        }
+        catch (Exception ex) when (ex is not OperationCanceledException)
+        {
+            result = ChannelSendResult.Retry("Something went wrong while sending.");
+        }
+
+        var now = DateTime.UtcNow;
+        if (result.Outcome == ChannelOutcome.Sent)
+        {
+            d.LastOkUtc = now;
+            d.LastError = null;
+        }
+        else
+        {
+            d.LastErrorUtc = now;
+            d.LastError = result.Error;
+        }
+        await db.SaveChangesAsync(ct);
+        return Results.Ok(new { ok = result.Outcome == ChannelOutcome.Sent, error = result.Error });
+    }
+
+    private static async Task<IResult> Confirm(
+        int id, ClaimsPrincipal user, AppDbContext db, IEnumerable<INotificationChannel> providers, CancellationToken ct)
+    {
+        var uid = Me(user);
+        var d = await db.ChannelDestinations.FirstOrDefaultAsync(x => x.Id == id && x.UserId == uid, ct);
+        if (d is null) return Results.NotFound();
+
+        var provider = providers.FirstOrDefault(p => p.Id == d.Channel);
+        if (provider is null || !provider.ConfirmedByPerson)
+            return Results.BadRequest(new { error = "This one is confirmed with a code, not by saying so." });
+        // The person vouches for a message that was really sent: no confirming before a test went through.
+        if (d.LastOkUtc is null)
+            return Results.Json(new { error = "Send the test message first." }, statusCode: 409);
+
+        d.Verified = true;
         await db.SaveChangesAsync(ct);
         return Results.NoContent();
     }
