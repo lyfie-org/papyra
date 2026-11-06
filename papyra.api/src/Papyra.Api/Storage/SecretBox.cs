@@ -72,6 +72,9 @@ public static class SecretSettings
         SmtpKeys.Password,
         OidcKeys.ClientSecret,
         InstanceBackupKeys.GitToken,
+        Channels.ChannelKeys.TelegramBotToken,
+        Channels.ChannelKeys.DiscordBotToken,
+        Channels.ChannelKeys.NtfyToken,
     };
 
     // Rows the upgrade looks at: the store's, plus every account's own git token (git.u{id}.token)

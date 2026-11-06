@@ -30,6 +30,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<ChatMessage> ChatMessages => Set<ChatMessage>();
     public DbSet<NoteComment> NoteComments => Set<NoteComment>();
     public DbSet<CommentReaction> CommentReactions => Set<CommentReaction>();
+    public DbSet<ChannelDestination> ChannelDestinations => Set<ChannelDestination>();
+    public DbSet<ChannelDelivery> ChannelDeliveries => Set<ChannelDelivery>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -85,5 +87,10 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         modelBuilder.Entity<NoteComment>().HasIndex(c => c.ThreadId);
         // One of each emoji per person per comment: reacting again takes it back.
         modelBuilder.Entity<CommentReaction>().HasIndex(r => new { r.CommentId, r.UserId, r.Emoji }).IsUnique();
+        // One place to send to per person per chat service.
+        modelBuilder.Entity<ChannelDestination>().HasIndex(d => new { d.UserId, d.Channel }).IsUnique();
+        // The worker asks "what is due?", and prunes by age.
+        modelBuilder.Entity<ChannelDelivery>().HasIndex(d => new { d.Status, d.NextAttemptUtc });
+        modelBuilder.Entity<ChannelDelivery>().HasIndex(d => d.DestinationId);
     }
 }

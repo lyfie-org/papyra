@@ -23,6 +23,7 @@ using Papyra.Api.Hubs;
 using Papyra.Api.Models;
 using Papyra.Api.Security;
 using Papyra.Api.Storage;
+using Papyra.Api.Storage.Channels;
 using Scalar.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -241,6 +242,10 @@ builder.Services.AddSingleton<GitSyncService>();
 builder.Services.AddSingleton<InstanceBackupService>();
 builder.Services.AddHostedService<InstanceBackupJob>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<GitSyncService>());
+// Notifications to chat services (ntfy, Discord, Telegram). The providers are registered one by one
+// as they land; this is the queue and the retry loop they all share.
+builder.Services.AddSingleton<ChannelDeliveryService>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<ChannelDeliveryService>());
 
 // ── WebAuthn (biometric gatekeeper) ─────────────────────────────────────────────
 // No fixed relying party: it is resolved per request from the address the app was
@@ -3246,7 +3251,7 @@ directory.MapGet("/search", async (string? q, ClaimsPrincipal me, AppDbContext d
 // The catalog of everything Papyra can tell a person about, with their switch for
 // each. Critical ones come back locked on. Email is the only channel today;
 // `channels` is how the settings screen will learn about push.
-auth.MapGet("/notifications", async (ClaimsPrincipal me, AppDbContext db, EmailSender email, CancellationToken ct) =>
+auth.MapGet("/notifications", async (ClaimsPrincipal me, AppDbContext db, EmailSender email, ChannelDeliveryService delivery, CancellationToken ct) =>
 {
     var user = await db.Users.FindAsync([int.Parse(Uid(me))], ct);
     if (user is null) return Results.NotFound();
@@ -3257,6 +3262,8 @@ auth.MapGet("/notifications", async (ClaimsPrincipal me, AppDbContext db, EmailS
         emailConfigured = email.IsConfigured,
         hasAddress = !string.IsNullOrWhiteSpace(user.Email),
         channels = NotificationCatalog.Channels,
+        // The chat channels an admin has switched on and set up (empty until a provider is).
+        available = delivery.AvailableChannels(),
         groups = NotificationCatalog.Groups
             .Where(g => g.Key != "admin" || user.Role == "Admin")
             .Select(g => new { id = g.Key, label = g.Value }),
@@ -3266,6 +3273,11 @@ auth.MapGet("/notifications", async (ClaimsPrincipal me, AppDbContext db, EmailS
             {
                 e.Id, e.Group, e.Label, e.Description, e.Critical,
                 email = NotificationPrefs.Wants(user, e.Id, NotificationCatalog.Email),
+                // The same switch for each chat channel. Always-on notices are mail only.
+                chat = e.Critical
+                    ? new Dictionary<string, bool>()
+                    : NotificationCatalog.Channels.Where(NotificationCatalog.IsChatChannel)
+                        .ToDictionary(c => c, c => NotificationPrefs.Wants(user, e.Id, c)),
             }),
         // The two original switches, for clients that predate the catalog.
         mention = NotificationPrefs.Wants(user, NotificationCatalog.Mention),
@@ -6045,7 +6057,9 @@ accessRequests.MapPost("/", async (
     await hub.Clients.User(ownerUid).SendAsync("AccessRequested", new { request.Id }, ct);
     await hub.Clients.User(ownerUid).SendAsync("NotificationsChanged", ct);
     var owner = await db.Users.FindAsync([ownerId], ct);
-    if (owner is not null && NotificationPrefs.Wants(owner, NotificationCatalog.AccessRequested) && email.IsConfigured)
+    // Who gets this, and over which channel, is decided inside NotifyInBackground — not by whether
+    // mail is set up, since a chat channel may be the only one this person has.
+    if (owner is not null)
     {
         var who = await db.Users.Where(u => u.Id == uid).Select(u => u.Username).FirstOrDefaultAsync(ct);
         var url = email.PublicUrl($"{http.Request.Scheme}://{http.Request.Host}");
@@ -7478,6 +7492,7 @@ app.MapFallback("/api/{**rest}", (HttpContext http) =>
 
 app.MapCollab();
 app.MapComments();
+app.MapChannelDestinations();
 app.MapJournal();
 app.MapJournalExport();
 app.MapUpdates();
@@ -7521,7 +7536,6 @@ static async Task AnnounceShare(
     await hub.Clients.User(recipient.Id.ToString()).SendAsync("NotificationsChanged", ct);
 
     var eventId = kind == "access_approved" ? NotificationCatalog.AccessAnswered : NotificationCatalog.Shared;
-    if (!NotificationPrefs.Wants(recipient, eventId) || !email.IsConfigured) return;
     var who = sharer.FindFirstValue(ClaimTypes.Name) ?? "Someone";
     var name = string.IsNullOrWhiteSpace(title) ? "Untitled" : title;
     var url = email.PublicUrl($"{http.Request.Scheme}://{http.Request.Host}");

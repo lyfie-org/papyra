@@ -31,11 +31,13 @@ public sealed class EmailSender
 {
     private readonly InstanceConfigStore _config;
     private readonly ILogger<EmailSender> _logger;
+    private readonly Channels.ChannelDeliveryService? _channels;
 
-    public EmailSender(InstanceConfigStore config, ILogger<EmailSender> logger)
+    public EmailSender(InstanceConfigStore config, ILogger<EmailSender> logger, Channels.ChannelDeliveryService? channels = null)
     {
         _config = config;
         _logger = logger;
+        _channels = channels;
     }
 
     /// <summary>True when an admin has switched mail on and given it a host and sender.</summary>
@@ -70,6 +72,9 @@ public sealed class EmailSender
         Models.User user, string? toAddress, string eventId, string subject, string body,
         IReadOnlyList<EmailDetail>? details = null, CancellationToken ct = default)
     {
+        // Chat channels first, and on their own terms: whether mail is set up, or wanted, says nothing
+        // about whether this person has Discord, Telegram or ntfy connected.
+        _channels?.Enqueue(user.Id, eventId, subject);
         if (!NotificationPrefs.Wants(user, eventId)) return EmailResult.OptedOut;
         if (string.IsNullOrWhiteSpace(toAddress)) return EmailResult.Fail("No recipient address.");
         return await SendAsync(toAddress, subject, body, details, ct);
@@ -159,6 +164,9 @@ public sealed class EmailSender
 
     private sealed record OutboundMail(string To, string Subject, string Body, IReadOnlyList<EmailDetail>? Details);
 
+    /// <summary>How many notices are waiting to be mailed. For tests.</summary>
+    internal int QueuedCount => _outbox.Reader.Count;
+
     private readonly Channel<OutboundMail> _outbox = Channel.CreateBounded<OutboundMail>(
         new BoundedChannelOptions(500) { FullMode = BoundedChannelFullMode.DropOldest, SingleReader = true });
 
@@ -176,6 +184,7 @@ public sealed class EmailSender
         Models.User user, string? toAddress, string eventId, string subject, string body,
         IReadOnlyList<EmailDetail>? details = null)
     {
+        _channels?.Enqueue(user.Id, eventId, subject);
         if (!NotificationPrefs.Wants(user, eventId) || string.IsNullOrWhiteSpace(toAddress)) return;
         _outbox.Writer.TryWrite(new OutboundMail(toAddress, subject, body, details));
     }

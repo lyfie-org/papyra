@@ -31,7 +31,19 @@ public sealed record NotificationEvent(
 public static class NotificationCatalog
 {
     public const string Email = "email";
-    public static readonly string[] Channels = [Email];
+    public const string Discord = "discord";
+    public const string Telegram = "telegram";
+    public const string Ntfy = "ntfy";
+
+    /// <summary>Every channel a person can choose per event. Email first; the rest are chat services (see <c>ChannelDestination</c>).</summary>
+    public static readonly string[] Channels = [Email, Discord, Telegram, Ntfy];
+
+    /// <summary>Whether <paramref name="channel"/> is a chat service rather than mail.</summary>
+    public static bool IsChatChannel(string channel) => channel != Email && Channels.Contains(channel);
+
+    // Sent to the person by email when Papyra stops sending to a chat service. Always mail, always on:
+    // the chat service is the one thing that can't tell them it stopped working.
+    public const string ChannelPaused = "channels.paused";
 
     // Security — the account itself.
     public const string NewSignIn = "security.new_sign_in";
@@ -96,6 +108,9 @@ public static class NotificationCatalog
             "Your account was disabled or re-enabled, or your role changed."),
         new(AccountDeletion, "security", "Account deletion",
             "Your account was scheduled for deletion, the deletion was cancelled, or it's about to happen.", Critical: true),
+        new(ChannelPaused, "security", "A chat notification stopped working",
+            "Papyra stopped sending to Discord, Telegram or ntfy because the service kept refusing it.",
+            Critical: true, Listed: false),
 
         new(ExportReady, "data", "Notes exported",
             "A copy of all your notes was downloaded — so you'd know if it wasn't you."),
@@ -176,7 +191,9 @@ public static class NotificationPrefs
         if (prefs.TryGetValue(channel, out var ch) && ch.TryGetValue(eventId, out var on)) return on;
 
         // The two switches that predate the catalog keep their answer until the
-        // person touches the new list.
+        // person touches the new list. They were mail switches, so chat channels
+        // (which came later) start from each event's own default instead.
+        if (channel != NotificationCatalog.Email) return ev.DefaultOn;
         return eventId switch
         {
             NotificationCatalog.Mention => user.NotifyOnMention,
@@ -201,9 +218,13 @@ public static class NotificationPrefs
         ch[eventId] = on;
         user.NotificationPrefs = JsonSerializer.Serialize(prefs, Json);
 
-        // Keep the legacy columns honest for anything still reading them.
-        if (eventId == NotificationCatalog.Mention) user.NotifyOnMention = on;
-        if (eventId == NotificationCatalog.Shared) user.NotifyOnShare = on;
+        // Keep the legacy columns honest for anything still reading them. They are the mail
+        // switches, so a chat channel's choice must not move them.
+        if (channel == NotificationCatalog.Email)
+        {
+            if (eventId == NotificationCatalog.Mention) user.NotifyOnMention = on;
+            if (eventId == NotificationCatalog.Shared) user.NotifyOnShare = on;
+        }
         return true;
     }
 }
