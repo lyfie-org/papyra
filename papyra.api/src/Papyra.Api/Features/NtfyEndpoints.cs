@@ -48,7 +48,7 @@ public static partial class NtfyEndpoints
 
     // ── Admin ───────────────────────────────────────────────────────────────────
 
-    private static async Task<IResult> AdminGet(InstanceConfigStore config, OutboundPolicy outbound, CancellationToken ct)
+    private static async Task<IResult> AdminGet(InstanceConfigStore config, OutboundPolicy outbound, TelegramLinker linker, CancellationToken ct)
     {
         await config.EnsureLoadedAsync(ct);
         return Results.Ok(new
@@ -64,6 +64,13 @@ public static partial class NtfyEndpoints
             {
                 enabled = config.GetBool(ChannelKeys.Enabled(NotificationCatalog.Discord)),
                 webhooksAllowed = DiscordChannel.WebhooksAllowed(config),
+            },
+            telegram = new
+            {
+                enabled = config.GetBool(ChannelKeys.Enabled(NotificationCatalog.Telegram)),
+                hasToken = config.Has(ChannelKeys.TelegramBotToken),
+                botUsername = config.GetOrEmpty(ChannelKeys.TelegramBotUsername),
+                pollError = linker.LastError,
             },
             allowedHosts = outbound.AllowedHosts(),
         });

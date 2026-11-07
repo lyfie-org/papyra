@@ -96,3 +96,19 @@ public static class ChannelDeliveryStatus
     /// <summary>Not sent on purpose: the destination was removed, switched off, paused or its channel turned off.</summary>
     public const string Dropped = "dropped";
 }
+
+/// <summary>
+/// A one-time code that lets a person connect a chat service by tapping a link there (Telegram's
+/// <c>t.me/&lt;bot&gt;?start=&lt;code&gt;</c>). Only a hash is kept; the code lives 10 minutes, belongs to the
+/// account that asked for it, and is gone as soon as it is used.
+/// </summary>
+public class ChannelLinkCode
+{
+    public int Id { get; set; }
+    public int UserId { get; set; }
+    public string Channel { get; set; } = string.Empty;
+
+    /// <summary>Hex SHA-256 of the code.</summary>
+    public string CodeHash { get; set; } = string.Empty;
+    public DateTime ExpiresUtc { get; set; }
+}

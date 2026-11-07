@@ -32,6 +32,7 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<CommentReaction> CommentReactions => Set<CommentReaction>();
     public DbSet<ChannelDestination> ChannelDestinations => Set<ChannelDestination>();
     public DbSet<ChannelDelivery> ChannelDeliveries => Set<ChannelDelivery>();
+    public DbSet<ChannelLinkCode> ChannelLinkCodes => Set<ChannelLinkCode>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -92,5 +93,8 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         // The worker asks "what is due?", and prunes by age.
         modelBuilder.Entity<ChannelDelivery>().HasIndex(d => new { d.Status, d.NextAttemptUtc });
         modelBuilder.Entity<ChannelDelivery>().HasIndex(d => d.DestinationId);
+        // A code is looked up by its hash; a person has one live code per chat service.
+        modelBuilder.Entity<ChannelLinkCode>().HasIndex(c => c.CodeHash).IsUnique();
+        modelBuilder.Entity<ChannelLinkCode>().HasIndex(c => new { c.UserId, c.Channel });
     }
 }

@@ -318,6 +318,36 @@ namespace Papyra.Api.Data.Migrations
                     b.ToTable("ChannelDestinations");
                 });
 
+            modelBuilder.Entity("Papyra.Api.Models.ChannelLinkCode", b =>
+                {
+                    b.Property<int>("Id")
+                        .ValueGeneratedOnAdd()
+                        .HasColumnType("INTEGER");
+
+                    b.Property<string>("Channel")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<string>("CodeHash")
+                        .IsRequired()
+                        .HasColumnType("TEXT");
+
+                    b.Property<DateTime>("ExpiresUtc")
+                        .HasColumnType("TEXT");
+
+                    b.Property<int>("UserId")
+                        .HasColumnType("INTEGER");
+
+                    b.HasKey("Id");
+
+                    b.HasIndex("CodeHash")
+                        .IsUnique();
+
+                    b.HasIndex("UserId", "Channel");
+
+                    b.ToTable("ChannelLinkCodes");
+                });
+
             modelBuilder.Entity("Papyra.Api.Models.ChatMessage", b =>
                 {
                     b.Property<int>("Id")

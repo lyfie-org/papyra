@@ -67,6 +67,10 @@ public static class ChannelKeys
     public const string NtfyToken = "channels.ntfy.token";
     /// <summary>The ntfy server's address; blank means the public ntfy.sh.</summary>
     public const string NtfyServer = "channels.ntfy.server";
+    /// <summary>The Telegram bot's @username, learned from Telegram when the token is saved (not secret).</summary>
+    public const string TelegramBotUsername = "channels.telegram.botUsername";
+    /// <summary>Where Papyra got to in the bot's incoming messages, so a restart doesn't read them twice.</summary>
+    public const string TelegramOffset = "channels.telegram.offset";
     /// <summary>Whether people may connect a Discord channel webhook ("false" forbids it; anything else allows).</summary>
     public const string DiscordWebhooksAllowed = "channels.discord.webhooksAllowed";
 }

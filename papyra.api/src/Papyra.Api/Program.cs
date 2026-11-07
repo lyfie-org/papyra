@@ -249,6 +249,12 @@ builder.Services.AddSingleton<NtfyChannel>();
 builder.Services.AddSingleton<INotificationChannel>(sp => sp.GetRequiredService<NtfyChannel>());
 builder.Services.AddSingleton<DiscordChannel>();
 builder.Services.AddSingleton<INotificationChannel>(sp => sp.GetRequiredService<DiscordChannel>());
+builder.Services.AddSingleton<TelegramApi>();
+builder.Services.AddSingleton<TelegramChannel>();
+builder.Services.AddSingleton<INotificationChannel>(sp => sp.GetRequiredService<TelegramChannel>());
+// Connects Telegram chats: reads what people send the bot (a long poll — no public address needed).
+builder.Services.AddSingleton<TelegramLinker>();
+builder.Services.AddHostedService<TelegramPoller>();
 builder.Services.AddSingleton<ChannelDeliveryService>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<ChannelDeliveryService>());
 
@@ -7507,6 +7513,7 @@ app.MapComments();
 app.MapChannelDestinations();
 app.MapNtfy();
 app.MapDiscord();
+app.MapTelegram();
 app.MapJournal();
 app.MapJournalExport();
 app.MapUpdates();

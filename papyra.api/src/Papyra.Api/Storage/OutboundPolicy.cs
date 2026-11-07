@@ -46,6 +46,7 @@ public sealed class OutboundPolicy
 
     private readonly InstanceConfigStore _config;
     private readonly bool _allowLoopback;
+    private readonly Lazy<SocketsHttpHandler> _handler;
     private readonly Lazy<HttpClient> _client;
 
     public OutboundPolicy(InstanceConfigStore config) : this(config, allowLoopback: false) { }
@@ -55,7 +56,8 @@ public sealed class OutboundPolicy
     {
         _config = config;
         _allowLoopback = allowLoopback;
-        _client = new Lazy<HttpClient>(BuildClient);
+        _handler = new Lazy<SocketsHttpHandler>(BuildHandler);
+        _client = new Lazy<HttpClient>(() => CreateClient(TimeSpan.FromSeconds(20)));
     }
 
     /// <summary>
@@ -64,20 +66,25 @@ public sealed class OutboundPolicy
     /// </summary>
     public HttpClient Client => _client.Value;
 
-    private HttpClient BuildClient()
+    /// <summary>
+    /// Another client with the same rules and a different overall timeout, for a request that is meant to
+    /// wait (a long poll). Share the connections underneath; don't dispose it.
+    /// </summary>
+    public HttpClient CreateClient(TimeSpan timeout)
     {
-        var handler = new SocketsHttpHandler
-        {
-            AllowAutoRedirect = false,
-            ConnectTimeout = TimeSpan.FromSeconds(5),
-            PooledConnectionLifetime = TimeSpan.FromMinutes(5),
-            AutomaticDecompression = DecompressionMethods.All,
-            ConnectCallback = ConnectAsync,
-        };
-        var client = new HttpClient(handler) { Timeout = TimeSpan.FromSeconds(20) };
+        var client = new HttpClient(_handler.Value, disposeHandler: false) { Timeout = timeout };
         client.DefaultRequestHeaders.UserAgent.ParseAdd("Papyra");
         return client;
     }
+
+    private SocketsHttpHandler BuildHandler() => new()
+    {
+        AllowAutoRedirect = false,
+        ConnectTimeout = TimeSpan.FromSeconds(5),
+        PooledConnectionLifetime = TimeSpan.FromMinutes(5),
+        AutomaticDecompression = DecompressionMethods.All,
+        ConnectCallback = ConnectAsync,
+    };
 
     // ── Addresses ───────────────────────────────────────────────────────────────
 
