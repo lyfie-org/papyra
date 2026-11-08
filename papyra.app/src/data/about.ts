@@ -56,7 +56,7 @@ export const FAQ: { q: string; a: string }[] = [
   },
   {
     q: 'Is Papyra really private?',
-    a: 'Yes. Papyra has no tracking, analytics or crash reports, and its interface makes no third-party requests, and even its fonts come from your server. The server makes one request of its own: a daily check for a newer version, which I also use as a count of installs to stay motivated. It is optional. Set PAPYRA_UPDATE_CHECK_ENABLED=false and it never calls out (details at papyra.app/docs/update-check). Your notes only leave your server if you share one, set up a Git backup, or configure email alerts. Locked notes are encrypted on disk.',
+    a: 'Yes. Papyra has no tracking, analytics or crash reports, and its interface makes no third-party requests, and even its fonts come from your server. Without anyone setting anything up, the server makes one request of its own: a daily check for a newer version, which I also use as a count of installs to stay motivated. It is optional. Set PAPYRA_UPDATE_CHECK_ENABLED=false and it never calls out (details at papyra.app/docs/update-check). Your notes only leave your server if you share one or set up a Git backup. Email alerts and the optional ntfy, Discord and Telegram notifications send only a short notice to the place you chose, never note text (papyra.app/docs/notifications lists everything that leaves your server). Locked notes are encrypted on disk.',
   },
   {
     q: 'Is Papyra free?',

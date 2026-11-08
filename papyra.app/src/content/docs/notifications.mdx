@@ -1,0 +1,148 @@
+---
+title: Notifications
+summary: Email, ntfy, Discord and Telegram. What each can tell you, how to connect them, and exactly what leaves your server when you do.
+group: In depth
+order: 5
+---
+
+Papyra can tell you when someone mentions you, shares a note, comments, when a backup fails, and a few
+other things. **Email** is built in. An administrator can also switch on **ntfy**, **Discord** and
+**Telegram**, and each person then connects their own. Nothing here is on until an administrator turns it on,
+and nothing is sent to a place until the person it belongs to has confirmed it is theirs.
+
+Some notices **always go by email**, whatever else you choose: a new sign-in, a changed password or address,
+a pending account deletion, and the notice that a chat service stopped working. They keep your account safe,
+so they are never sent only to a chat app. Password resets, invitations and one-time codes are email too.
+
+## Connecting a place to send to
+
+Go to *Settings → Notifications*. At the top, **Where to send** lists email and every chat service the
+administrator switched on. Each one reads as a single line (*Not set up*, *Telegram · @you*, *Paused*…) with a
+button to set it up or manage it.
+
+### ntfy
+
+[ntfy](https://ntfy.sh) sends a notification to your phone or desktop through its app, with no account.
+
+1. Choose **Set up**, then **Continue**. Papyra makes a long random topic for you, or you can type your own.
+2. In the ntfy app, subscribe to that topic. **The topic is the only thing keeping your notifications
+   private**, so a short or guessable one lets anyone read them. Papyra warns you about a topic under 12
+   characters.
+3. Choose **Send a test**. When it arrives, choose **Yes, it arrived**.
+
+*Manage → Show my topic* shows it again when you set up a new device.
+
+### Discord
+
+Two ways, if the administrator allowed both. The **direct message** is the one to pick: only you see it.
+
+**Direct message**
+
+1. In Discord, turn on *Settings → Advanced → Developer Mode*, then right-click your name and choose **Copy
+   User ID**.
+2. In Papyra, choose **Set up → Discord → Direct message**, paste the ID, and choose **Send me a code**.
+3. The bot sends the code to you on Discord. Type it into Papyra. It works for 10 minutes, once.
+
+The bot can only message you if you share a server with it, and your Discord privacy settings must allow
+direct messages from server members. If they don't, Papyra says so and connects nothing.
+
+**Channel webhook**
+
+1. In Discord: *Server Settings → Integrations → Webhooks → New Webhook → Copy Webhook URL*.
+2. In Papyra, choose **Set up → Discord → Channel webhook**, paste the address, then send a test and confirm it.
+
+**Everyone who can read that channel can read these messages.** Use a channel only you can see. The webhook
+address is stored sealed and is never shown again.
+
+### Telegram
+
+1. Choose **Set up → Get a link**, then **Open Telegram** and press **Start**.
+2. The page updates by itself. The bot replies naming your Papyra account, so a link that was forwarded to
+   the wrong person is noticed. Send `/stop` to the bot at any time to disconnect.
+
+The link works once and for 10 minutes. No address is typed anywhere: the one-time code in the link is what
+proves the chat is yours.
+
+## What gets sent
+
+By default, **a short generic line** and nothing else: *You were mentioned in a note*, *A note was shared
+with you*, *Your backup needs attention*. No names, no note titles, no text from any note. Locked notes can't
+be shared, commented on or mentioned from, so nothing about them is ever sent.
+
+After you connect a place, *Manage → What it shows* lets you choose **The line with names and note titles**.
+Then the line is the same subject an email would have, such as *@bea shared “Trip plan” with you*. Note text
+is never sent, either way.
+
+When the administrator has set the **address for links in emails**, a message also carries a link back to
+Papyra.
+
+## Choosing what goes where
+
+Once a place is confirmed, it gets its own column beside email in *What Papyra tells you about*. Each
+notification has a switch per place, so a mention can go to ntfy while backup news stays in your inbox.
+Always-on notices have no chat switch.
+
+## When a place stops working
+
+Papyra retries a failed message after 1 minute, 5 minutes, 30 minutes, 2 hours and 6 hours (or as long as the
+service asks), then gives up on it. If a service refuses outright, such as a deleted webhook or a Telegram bot
+you blocked, or five messages in a row are given up on, the place is **paused**. You get one email saying so,
+and the line in Settings explains why. Fix it, then choose **Turn back on**.
+
+## For administrators
+
+Open *Settings → Chat notifications*. Each service is switched on once here; people connect their own.
+
+**ntfy.** Switch it on. The server is `ntfy.sh` unless you give your own, with an access token if it needs one.
+The token is stored sealed and never shown again. *Send a test* sends a message to any topic.
+
+**Discord.** Switch it on, and choose whether people may connect a channel webhook. For direct messages, make
+a bot in the [Discord developer portal](https://discord.com/developers/applications) (*Bot → Reset Token*),
+paste its token, and invite the bot to a server your people are in. Papyra asks Discord who the token belongs
+to when you save it, so a wrong one is caught at once.
+
+**Telegram.** Message [@BotFather](https://t.me/BotFather), send `/newbot`, and paste the token it gives you.
+Papyra checks it with Telegram when you save it and learns the bot's name for the links. Papyra reads the
+bot's messages by asking Telegram for them, so **no public address is needed**. A bot can have only one reader:
+if something else (a webhook, a second Papyra) uses the same bot, Settings says so.
+
+**Servers on your network.** Papyra connects only to the open internet. If your ntfy runs at home (say
+`ntfy.lan`, or a Tailscale address), list it under *Servers on your network*, or choose **Allow … and save**
+when Papyra offers. A plain `http://` address works only for a listed host. Some addresses are never
+reachable, even listed: the server itself, link-local addresses and cloud metadata addresses.
+
+### In your compose file
+
+You can set these up in the environment instead. They are read **once**, on first start, only if nobody has
+chosen anything in the app yet, and checked the same way as when typed in. Anything that doesn't check out is
+skipped with a line in the log.
+
+```yaml
+PAPYRA_NTFY_URL: "https://ntfy.example.com"
+PAPYRA_NTFY_TOKEN: "tk_…"
+PAPYRA_TELEGRAM_BOT_TOKEN: "123456:ABC…"
+```
+
+Discord has nothing to import: a person's webhook is theirs, and the bot token is added in Settings.
+
+## What leaves your server
+
+Everything Papyra's server sends to another server, and who sets it up. Notes are never sent anywhere you
+didn't choose. The full list of what the update check sends is on [its own page](/docs/update-check/).
+
+| What | Goes to | Sent | Set up by |
+| --- | --- | --- | --- |
+| Update check | `versions.papyra.app` | Install ID, version, processor and OS family, once a day. **On by default; one setting turns it off.** | Nobody: it is the default |
+| Email | The mail server in *Settings → Email* | The notice or message | An administrator |
+| ntfy | The ntfy server in *Settings → Chat notifications* | One short line, an optional link, the access token if set | An administrator, then each person |
+| Discord webhook | `discord.com` (the address the person pasted) | One short line as a small card, an optional link | The person |
+| Discord direct message | `discord.com/api` | The same card, and the confirmation code | An administrator, then each person |
+| Telegram | `api.telegram.org` | The same line as text; also asks Telegram for the messages sent to the bot | An administrator, then each person |
+| Git backup | The repository in *Settings → Backup* | Your notes, plain or encrypted as you chose | Each person |
+| Webhooks | The addresses a person registered | The event's details | Each person |
+| Link cards and saved articles | The sites a note links to | A page request from your server; only public addresses | Happens when a note holds a link |
+| Single sign-on | The identity provider in *Settings → SSO* | The sign-in exchange | An administrator |
+
+Chat messages travel through the service you chose (ntfy, Discord, Telegram), which sees them. That is why
+the default is a line with no names and no titles. If you don't want a service to see even that, don't connect
+it.

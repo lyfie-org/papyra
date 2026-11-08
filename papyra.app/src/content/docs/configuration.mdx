@@ -21,6 +21,8 @@ defaults are what most installations want.
 | `PAPYRA_WHISPER_MODEL_PATH` | — | Enables audio transcription. |
 | `PAPYRA_OCR_TESSDATA_PATH` | — | Enables OCR of images. |
 | `PAPYRA_UPDATE_CHECK_ENABLED` | `true` | The daily check for a newer version. Set `false` to turn it off. |
+| `PAPYRA_NTFY_URL`, `PAPYRA_NTFY_TOKEN` | — | Set ntfy up on first start instead of in Settings. Read once. [Details](/docs/notifications/#in-your-compose-file). |
+| `PAPYRA_TELEGRAM_BOT_TOKEN` | — | Set the Telegram bot up on first start. Read once. [Details](/docs/notifications/#in-your-compose-file). |
 | `PAPYRA_COLLAB_ENABLED` | `true` | Live editing of shared notes, run by an engine the server starts inside the same container. Set `false` and it never starts; `/health` reports whether it is running. |
 | `PAPYRA_SQLITE_WAL` | `true` | Run the database in WAL mode, which is faster under load. Set `false` if `/data` is on a network share (NFS, SMB), where WAL is unsafe. |
 | `PAPYRA_ERROR_DETAILS` | `true` | Show a short stack trace on the error page. Set `false` to show only the reference. |
@@ -97,6 +99,7 @@ editing a compose file and restarting a container:
 
 - **SSO / OIDC**: Settings → SSO, applied without a restart
 - **SMTP**: Settings → Email
+- **Chat notifications** (ntfy, Discord, Telegram): Settings → Chat notifications. See [Notifications](/docs/notifications/)
 - **Trash retention**: Settings → Data & Storage
 - **Git backup**: Settings → Backup, per account
 
