@@ -16,6 +16,7 @@ import { stripBlockAnchors } from '../lib/plainText';
 import { getState, loadState, mutate, nextId, recountCategories } from './store';
 import { CHAT_FALLBACK, CHAT_SCRIPT, DEMO_USER } from './seed';
 import { journalRoutes, journalSearchHits } from './journal';
+import { DEMO_AVAILABLE_CHANNELS, channelRoutes, demoChatFor, setDemoChatSwitch } from './channels';
 
 export type Handler = (ctx: {
   match: RegExpMatchArray;
@@ -58,14 +59,15 @@ const DEMO_EVENTS = [
 const demoNotificationPrefs = () => ({
   emailConfigured: false,
   hasAddress: true,
-  channels: ['email'],
+  channels: ['email', ...DEMO_AVAILABLE_CHANNELS],
+  available: DEMO_AVAILABLE_CHANNELS,
   groups: [
     { id: 'security', label: 'Security & account' },
     { id: 'data', label: 'Your notes & backups' },
     { id: 'collab', label: 'Other people' },
   ],
   events: DEMO_EVENTS.map(([id, group, label, description, critical]) => ({
-    id, group, label, description, critical, email: critical || !demoNotifyOff[id],
+    id, group, label, description, critical, email: critical || !demoNotifyOff[id], chat: demoChatFor(id, critical),
   })),
   mention: !demoNotifyOff['collab.mention'],
   share: !demoNotifyOff['collab.shared'],
@@ -207,14 +209,18 @@ function chatStream(question: string, sessionId: number | null): Response {
 const routes: Route[] = [
   // The journal first: its `journal-…` note ids must not fall into the generic note routes below.
   ...journalRoutes(),
+  ...channelRoutes(),
 
   // ---------------------------------------------------------------- identity
   ['GET', /^\/api\/auth\/me$/, () => json(DEMO_USER)],
   ['GET', /^\/api\/auth\/providers$/, () => json({ password: true, oidc: null })],
   ['GET', /^\/api\/auth\/notifications$/, () => json(demoNotificationPrefs())],
   ['PUT', /^\/api\/auth\/notifications$/, async ({ body }) => {
-    const next = await body() as { events?: { id: string; enabled: boolean }[] };
-    for (const e of next.events ?? []) demoNotifyOff[e.id] = !e.enabled;
+    const next = await body() as { events?: { id: string; enabled: boolean; channel?: string }[] };
+    for (const e of next.events ?? []) {
+      if (e.channel && e.channel !== 'email') setDemoChatSwitch(e.channel, e.id, e.enabled);
+      else demoNotifyOff[e.id] = !e.enabled;
+    }
     return noContent();
   }],
   ['GET', /^\/api\/account\/delete$/, () => json({ graceDays: 7, blockers: [], scheduledUtc: null, needsEmailCode: false })],

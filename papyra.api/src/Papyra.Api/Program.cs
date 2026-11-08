@@ -797,6 +797,23 @@ using (var scope = app.Services.CreateScope())
         app.Logger);
 }
 
+// Chat services set up in the environment (PAPYRA_NTFY_URL, PAPYRA_TELEGRAM_BOT_TOKEN, …) are imported once.
+// In the background: the checks talk to the network, and starting up must not wait on them.
+app.Lifetime.ApplicationStarted.Register(() => _ = Task.Run(async () =>
+{
+    try
+    {
+        await ChannelSeed.SeedAsync(
+            app.Configuration, app.Services.GetRequiredService<InstanceConfigStore>(),
+            app.Services.GetRequiredService<OutboundPolicy>(), app.Services.GetRequiredService<TelegramApi>(),
+            app.Logger, app.Lifetime.ApplicationStopping);
+    }
+    catch (Exception ex) when (ex is not OperationCanceledException)
+    {
+        app.Logger.LogWarning("Chat notification settings from the environment could not be imported ({Type})", ex.GetType().Name);
+    }
+}));
+
 // First in the pipeline so everything downstream — the rate limiter's partition
 // key, the access log, the HTTPS check below — sees the real client rather than
 // the proxy. See ForwardedNetworks for whom that trusts.

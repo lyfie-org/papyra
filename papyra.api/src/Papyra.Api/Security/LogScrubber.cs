@@ -25,6 +25,8 @@ public static partial class LogScrubber
         "Status", "StatusCode", "Kind", "JobId", "Job", "Method", "Code", "Versions", "Version",
         "Tool", "Scheme", "Event", "Model", "Provider", "ErrorId", "Route", "Level", "Phase",
         "Signal", "Feature",
+        // Which chat service ("telegram"), which kind of exception, and what kind of saved secret — words, not data.
+        "Channel", "Type", "What",
     };
 
     // Amounts: shown only when the value really is a number (or a duration),

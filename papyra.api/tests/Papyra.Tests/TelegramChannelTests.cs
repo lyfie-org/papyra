@@ -9,12 +9,14 @@ using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Data.Sqlite;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.DependencyInjection.Extensions;
 using Microsoft.Extensions.Logging.Abstractions;
 using Papyra.Api.Data;
 using Papyra.Api.Features;
 using Papyra.Api.Models;
+using Papyra.Api.Security;
 using Papyra.Api.Storage;
 using Papyra.Api.Storage.Channels;
 
@@ -570,6 +572,112 @@ public sealed class TelegramChannelTests : IAsyncLifetime
 
         await ConfigureAsync(enabled: false);
         Assert.Equal(PollResult.Idle, await _linker.PollOnceAsync(default));
+    }
+
+    // ── Settings given in the environment ──────────────────────────────────────
+
+    private static IConfiguration Env(params (string Key, string Value)[] pairs) =>
+        new ConfigurationBuilder().AddInMemoryCollection(pairs.ToDictionary(p => p.Key, p => (string?)p.Value)).Build();
+
+    private Task SeedAsync(IConfiguration env, bool allowLoopback = false) =>
+        ChannelSeed.SeedAsync(env, Config, new OutboundPolicy(Config, allowLoopback), _api, NullLogger.Instance, default);
+
+    [Fact]
+    public void TheFriendlyEnvironmentNames_FeedTheSeed()
+    {
+        var resolved = EnvAliases.Resolve(new Dictionary<string, string?>
+        {
+            ["PAPYRA_NTFY_URL"] = "https://ntfy.example.com",
+            ["PAPYRA_NTFY_TOKEN"] = "tk_x",
+            ["PAPYRA_TELEGRAM_BOT_TOKEN"] = "123:abc",
+        });
+        Assert.Equal("https://ntfy.example.com", resolved["Channels:Ntfy:Url"]);
+        Assert.Equal("tk_x", resolved["Channels:Ntfy:Token"]);
+        Assert.Equal("123:abc", resolved["Channels:Telegram:BotToken"]);
+    }
+
+    [Fact]
+    public async Task NtfyFromTheEnvironment_IsImportedOnce_AndSwitchedOn()
+    {
+        await SeedAsync(Env(("Channels:Ntfy:Url", "https://8.8.8.8/"), ("Channels:Ntfy:Token", "tk_env")));
+
+        Assert.True(Config.GetBool(ChannelKeys.Enabled(NotificationCatalog.Ntfy)));
+        Assert.Equal("https://8.8.8.8", Config.Get(ChannelKeys.NtfyServer));
+        Assert.Equal("tk_env", Config.Get(ChannelKeys.NtfyToken));
+        using var scope = _sp.CreateScope();
+        var raw = (await scope.ServiceProvider.GetRequiredService<AppDbContext>().Settings.FirstAsync(s => s.Key == ChannelKeys.NtfyToken)).Value;
+        Assert.StartsWith(SecretBox.Prefix, raw);          // sealed like any token typed in the app
+    }
+
+    [Fact]
+    public async Task OnceTheAdminHasChosen_TheEnvironmentIsIgnored()
+    {
+        await Config.SetAsync(new Dictionary<string, string?> { [ChannelKeys.Enabled(NotificationCatalog.Ntfy)] = "false" });
+
+        await SeedAsync(Env(("Channels:Ntfy:Url", "https://8.8.8.8"), ("Channels:Ntfy:Token", "tk_env")));
+
+        Assert.False(Config.GetBool(ChannelKeys.Enabled(NotificationCatalog.Ntfy)));
+        Assert.False(Config.Has(ChannelKeys.NtfyServer));
+        Assert.False(Config.Has(ChannelKeys.NtfyToken));
+    }
+
+    [Theory]
+    [InlineData("https://10.1.2.3")]          // on the home network: must be allowed first
+    [InlineData("https://127.0.0.1")]         // never reachable
+    [InlineData("http://8.8.8.8")]            // plain http to a public host
+    [InlineData("not a url")]
+    public async Task AnNtfyAddressThatDoesNotCheckOut_IsSkippedWhole(string url)
+    {
+        await SeedAsync(Env(("Channels:Ntfy:Url", url), ("Channels:Ntfy:Token", "tk_env")));
+
+        Assert.False(Config.GetBool(ChannelKeys.Enabled(NotificationCatalog.Ntfy)));
+        Assert.False(Config.Has(ChannelKeys.NtfyToken));   // never half-applied
+    }
+
+    [Fact]
+    public async Task AnAddressOnTheAllowedList_IsAccepted()
+    {
+        await Config.SetAsync(new Dictionary<string, string?> { [OutboundPolicy.AllowedHostsKey] = "10.1.2.3" });
+
+        await SeedAsync(Env(("Channels:Ntfy:Url", "http://10.1.2.3:2586")));
+
+        Assert.True(Config.GetBool(ChannelKeys.Enabled(NotificationCatalog.Ntfy)));
+        Assert.Equal("http://10.1.2.3:2586", Config.Get(ChannelKeys.NtfyServer));
+    }
+
+    [Fact]
+    public async Task AGoodTelegramBotToken_IsCheckedWithTelegram_ThenKeptWithTheBotsName()
+    {
+        _server.Handler = (_, _) => (200, """{"ok":true,"result":{"id":1,"is_bot":true,"first_name":"Papyra","username":"PapyraBot"}}""");
+
+        await SeedAsync(Env(("Channels:Telegram:BotToken", Token)));
+
+        Assert.True(Config.GetBool(ChannelKeys.Enabled(NotificationCatalog.Telegram)));
+        Assert.Equal(Token, Config.Get(ChannelKeys.TelegramBotToken));
+        Assert.Equal("PapyraBot", Config.Get(ChannelKeys.TelegramBotUsername));
+        using var scope = _sp.CreateScope();
+        var raw = (await scope.ServiceProvider.GetRequiredService<AppDbContext>().Settings.FirstAsync(s => s.Key == ChannelKeys.TelegramBotToken)).Value;
+        Assert.DoesNotContain("SECRET", raw);
+    }
+
+    [Fact]
+    public async Task ATelegramBotTokenTelegramRefuses_IsNotKept()
+    {
+        _server.Handler = (_, _) => (401, """{"ok":false,"error_code":401,"description":"Unauthorized"}""");
+
+        await SeedAsync(Env(("Channels:Telegram:BotToken", Token)));
+
+        Assert.False(Config.Has(ChannelKeys.TelegramBotToken));
+        Assert.False(Config.GetBool(ChannelKeys.Enabled(NotificationCatalog.Telegram)));
+    }
+
+    [Fact]
+    public async Task NothingInTheEnvironment_ChangesNothing()
+    {
+        await SeedAsync(Env());
+
+        Assert.Empty(_server.Calls);
+        Assert.False(Config.Has(ChannelKeys.NtfyServer));
     }
 
     // ── Set-up, end to end ──────────────────────────────────────────────────────

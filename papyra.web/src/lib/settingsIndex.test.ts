@@ -13,6 +13,8 @@ import account from '../components/AccountDetails.tsx?raw';
 import sso from '../components/SsoGuide.tsx?raw';
 import journalSettings from '../components/journal/JournalSettingsPanel.tsx?raw';
 import journalTemplates from '../components/journal/JournalTemplatesGroup.tsx?raw';
+import channelCards from '../components/ChannelCards.tsx?raw';
+import channelsAdmin from '../components/ChannelsAdminPanel.tsx?raw';
 import { SETTINGS_INDEX, searchSettings, settingsHref } from './settingsIndex';
 
 describe('settingsIndex', () => {
@@ -49,7 +51,7 @@ describe('settingsIndex', () => {
       ...[...src.matchAll(/<Setting(?:Group|Row)[^>]*?id="([a-z-]+)"/gs)].map(m => m[1]),
     ];
     const ids = new Set([
-      ...anchors(settingsPage), ...anchors(logsPanel), ...anchors(instanceBackup), ...anchors(account), ...anchors(sso), ...anchors(authenticator), ...anchors(sessions), ...anchors(journalSettings), ...anchors(journalTemplates),
+      ...anchors(settingsPage), ...anchors(logsPanel), ...anchors(instanceBackup), ...anchors(account), ...anchors(sso), ...anchors(authenticator), ...anchors(sessions), ...anchors(journalSettings), ...anchors(journalTemplates), ...anchors(channelCards), ...anchors(channelsAdmin),
       // The About tab is its own component.
       ...[...aboutPanel.matchAll(/<h2 id="([a-z-]+)"/g)].map(m => m[1]),
       ...[...deleteAccount.matchAll(/<h2 id="([a-z-]+)"/g)].map(m => m[1]),

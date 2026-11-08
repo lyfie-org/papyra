@@ -79,6 +79,8 @@ export interface NotificationEvent {
   /** Always sent; shown switched on and locked. */
   critical: boolean;
   email: boolean;
+  /** The same switch for each chat channel. Empty for always-on notices, which are email only. */
+  chat?: Record<string, boolean>;
 }
 
 export interface NotificationPrefs {
@@ -86,8 +88,10 @@ export interface NotificationPrefs {
   share: boolean;
   emailConfigured: boolean;
   hasAddress: boolean;
-  /** Delivery channels the server knows. Email today; push joins later. */
+  /** Delivery channels the server knows (email, then the chat services). */
   channels: string[];
+  /** The chat channels an administrator has switched on. */
+  available?: string[];
   groups: { id: string; label: string }[];
   events: NotificationEvent[];
 }
@@ -214,10 +218,17 @@ export function useSaveNotificationPrefs() {
       await qc.cancelQueries({ queryKey: NOTIFY_KEY });
       const prev = qc.getQueryData<NotificationPrefs>(NOTIFY_KEY);
       if (prev && next.events) {
-        const on = new Map(next.events.map(e => [e.id, e.enabled]));
+        const changes = new Map(next.events.map(e => [e.id, e]));
         qc.setQueryData<NotificationPrefs>(NOTIFY_KEY, {
           ...prev,
-          events: prev.events.map(e => (on.has(e.id) ? { ...e, email: on.get(e.id)! } : e)),
+          events: prev.events.map(e => {
+            const change = changes.get(e.id);
+            if (!change) return e;
+            const channel = change.channel ?? 'email';
+            return channel === 'email'
+              ? { ...e, email: change.enabled }
+              : { ...e, chat: { ...e.chat, [channel]: change.enabled } };
+          }),
         });
       }
       return { prev };

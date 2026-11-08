@@ -6,7 +6,7 @@ import {
   Sun, Moon, Monitor, Upload, Download, KeyRound, Copy, Trash2, Lock, ShieldAlert,
   Fingerprint, CheckCircle2, GitBranch, AlertTriangle, Bell, Mail, KeySquare, Send, UserPlus,
   Sparkles, Play, Cog, LockOpen, Eye, LogOut, X, Users, ScrollText, Repeat, Clock, Hand, BookOpen, FileText,
-  DatabaseBackup,
+  DatabaseBackup, BellRing,
 } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { useDismiss } from '../hooks/useDismiss';
@@ -15,6 +15,8 @@ import {
   useSmtpConfig, useSaveSmtpConfig,
   useSendTestEmail, useInviteUser,
 } from '../hooks/useInstanceConfig';
+import ChannelCards from '../components/ChannelCards';
+import ChannelsAdminPanel from '../components/ChannelsAdminPanel';
 import NotificationSettings from '../components/NotificationSettings';
 import UsersPanel from './ManageUsersPage';
 import GitSetupGuide from '../components/GitSetupGuide';
@@ -77,7 +79,7 @@ const IMPORT_LABEL: Record<ImportProvider, string> = {
 };
 
 type Tab = 'profile' | 'appearance' | 'journal' | 'notifications' | 'security' | 'data' | 'keys' | 'sync'
-  | 'users' | 'sso' | 'email' | 'instance' | 'ai' | 'jobs' | 'logs' | 'about';
+  | 'users' | 'sso' | 'email' | 'channels' | 'instance' | 'ai' | 'jobs' | 'logs' | 'about';
 
 // Two groups. The first is yours — it changes what happens to you, and everyone
 // sees it. "Administration" changes the whole instance and only admins see it;
@@ -95,6 +97,7 @@ const NAV: { id: Tab; label: string; icon: typeof UserIcon; adminOnly?: boolean 
   { id: 'users', label: 'Users', icon: Users, adminOnly: true },
   { id: 'sso', label: 'SSO', icon: KeySquare, adminOnly: true },
   { id: 'email', label: 'Email', icon: Mail, adminOnly: true },
+  { id: 'channels', label: 'Chat notifications', icon: BellRing, adminOnly: true },
   { id: 'instance', label: 'Instance backup', icon: DatabaseBackup, adminOnly: true },
   { id: 'ai', label: 'AI', icon: Sparkles, adminOnly: true },
   { id: 'jobs', label: 'Jobs', icon: Cog, adminOnly: true },
@@ -198,6 +201,7 @@ export default function SettingsPage() {
           {tab === 'users' && isAdmin && <UsersPanel />}
           {tab === 'sso' && isAdmin && <SsoTab />}
           {tab === 'email' && isAdmin && <EmailTab />}
+          {tab === 'channels' && isAdmin && <ChannelsAdminPanel />}
           {tab === 'instance' && isAdmin && <InstanceBackupPanel />}
           {tab === 'ai' && isAdmin && AI_ENABLED && <AiTab />}
           {tab === 'jobs' && isAdmin && <JobsTab />}
@@ -1344,6 +1348,7 @@ function SyncTab() {
 function NotificationsTab() {
   return (
     <div className="settings__panel">
+      <ChannelCards />
       <h2 id="email-notifications" className="settings__subhead">What Papyra tells you about</h2>
       <NotificationSettings />
     </div>

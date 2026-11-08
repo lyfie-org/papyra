@@ -46,7 +46,7 @@ public sealed class InstanceConfigStore
     {
         var all = await db.Settings.ToDictionaryAsync(s => s.Key, s => s.Value, StringComparer.Ordinal, ct);
         foreach (var key in SecretSettings.StoreKeys)
-            if (all.TryGetValue(key, out var stored)) all[key] = Secrets.Open(stored, key);
+            if (all.TryGetValue(key, out var stored)) all[key] = Secrets.Open(stored, SecretSettings.Describe(key));
         return all;
     }
 

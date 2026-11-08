@@ -1,0 +1,51 @@
+/* Settings → Notifications → Where to send. The set-up steps open under their row, like any setting. */
+.channel-step {
+  display: grid;
+  gap: var(--space-3);
+}
+
+.channel-step__text {
+  margin: 0;
+  font: 400 var(--fs-xs) / 1.5 var(--sans);
+  color: var(--text);
+}
+
+/* The topic or address you are asked to copy. Selectable, wraps instead of scrolling sideways. */
+.channel-code {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+}
+.channel-code code {
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  color: var(--text-h);
+  font: 400 var(--fs-xs) / 1.4 var(--mono);
+  overflow-wrap: anywhere;
+  user-select: all;
+}
+
+.channel-tier {
+  display: grid;
+  gap: var(--space-2);
+  margin: 0;
+  padding: 0;
+  border: 0;
+  font: 400 var(--fs-sm) / 1.4 var(--sans);
+  color: var(--text-h);
+}
+.channel-tier legend {
+  padding: 0;
+  margin-bottom: var(--space-1);
+  font: 500 var(--fs-xs) / 1.3 var(--sans);
+  color: var(--text);
+}
+.channel-tier label {
+  display: flex;
+  align-items: baseline;
+  gap: var(--space-2);
+  cursor: pointer;
+}

@@ -77,6 +77,18 @@ public static class SecretSettings
         Channels.ChannelKeys.NtfyToken,
     };
 
+    /// <summary>A plain-words name for a secret setting, for the log (the key itself reads like a file name).</summary>
+    public static string Describe(string key) => key switch
+    {
+        SmtpKeys.Password => "The saved email password",
+        OidcKeys.ClientSecret => "The saved SSO client secret",
+        InstanceBackupKeys.GitToken => "The saved instance backup token",
+        Channels.ChannelKeys.TelegramBotToken => "The saved Telegram bot token",
+        Channels.ChannelKeys.DiscordBotToken => "The saved Discord bot token",
+        Channels.ChannelKeys.NtfyToken => "The saved ntfy access token",
+        _ => "A saved secret",
+    };
+
     // Rows the upgrade looks at: the store's, plus every account's own git token (git.u{id}.token)
     // and the pre-per-account one. The SSO client secrets live inside one JSON row, handled apart.
     private static readonly string[] FixedKeys = [.. StoreKeys, "git.token"];

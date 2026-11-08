@@ -36,6 +36,10 @@ public static class EnvAliases
         ("PAPYRA_WEBAUTHN_DOMAIN", "WebAuthn:ServerDomain"),
         ("PAPYRA_WHISPER_MODEL_PATH", "Whisper:ModelPath"),
         ("PAPYRA_OCR_TESSDATA_PATH", "Ocr:TessDataPath"),
+        // Chat notifications: imported once on first start (see ChannelSeed), then edited in the app.
+        ("PAPYRA_NTFY_URL", "Channels:Ntfy:Url"),
+        ("PAPYRA_NTFY_TOKEN", "Channels:Ntfy:Token"),
+        ("PAPYRA_TELEGRAM_BOT_TOKEN", "Channels:Telegram:BotToken"),
     ];
 
     /// <summary>

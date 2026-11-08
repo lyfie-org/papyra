@@ -38,6 +38,28 @@ public sealed class ActivityLogTests
     }
 
     [Fact]
+    public void TheChatChannelsLogLinesStayReadable_WithoutNamingAnyone()
+    {
+        var paused = LogScrubber.RenderTemplate("Paused {Channel} notifications for user {User}",
+            new Dictionary<string, object?> { ["Channel"] = "telegram", ["User"] = 7 });
+        Assert.Equal("Paused telegram notifications for user ‹User›", paused);
+
+        var threw = LogScrubber.RenderTemplate("The {Channel} provider threw {Type}",
+            new Dictionary<string, object?> { ["Channel"] = "ntfy", ["Type"] = "HttpRequestException" });
+        Assert.Equal("The ntfy provider threw HttpRequestException", threw);
+
+        var sealedKey = LogScrubber.RenderTemplate("{What} could not be opened with this instance's keys",
+            new Dictionary<string, object?> { ["What"] = SecretSettings.Describe(SmtpKeys.Password) });
+        Assert.Equal("The saved email password could not be opened with this instance's keys", sealedKey);
+
+        // A free-form value under a safe name is still scrubbed.
+        var oops = LogScrubber.RenderTemplate("{What} failed",
+            new Dictionary<string, object?> { ["What"] = "the client secret of SSO provider 'acme' at https://idp.example.com" });
+        Assert.DoesNotContain("acme", oops);
+        Assert.DoesNotContain("idp.example.com", oops);
+    }
+
+    [Fact]
     public void AnUnknownNumberIsRedactedToo()
     {
         // A uid is a number; being numeric doesn't make it safe.

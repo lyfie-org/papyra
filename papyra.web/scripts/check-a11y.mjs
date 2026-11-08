@@ -196,6 +196,28 @@ const FLOWS = [
     await page.goto(`${ORIGIN}/demo/journal/${dayAgo(1)}`);
     await page.getByRole('heading', { name: 'The journal is off' }).waitFor();
   } },
+  // Chat notifications: the "Where to send" rows at rest, a set-up open under its row, and the list
+  // once a place is connected (an extra switch column beside email).
+  { name: 'settings / notifications', run: async (page) => {
+    await page.goto(`${ORIGIN}/demo/settings?tab=notifications`);
+    await page.getByRole('heading', { name: 'Where to send' }).waitFor();
+  } },
+  { name: 'settings / notifications / ntfy set-up', run: async (page) => {
+    await page.goto(`${ORIGIN}/demo/settings?tab=notifications`);
+    await page.getByRole('heading', { name: 'Where to send' }).waitFor();
+    await page.locator('.setting-row').filter({ has: page.getByText('ntfy', { exact: true }) }).getByRole('button', { name: 'Set up' }).click();
+    await page.getByLabel('Topic').waitFor();
+  } },
+  { name: 'settings / notifications / ntfy connected', run: async (page) => {
+    await page.goto(`${ORIGIN}/demo/settings?tab=notifications`);
+    await page.getByRole('heading', { name: 'Where to send' }).waitFor();
+    await page.locator('.setting-row').filter({ has: page.getByText('ntfy', { exact: true }) }).getByRole('button', { name: 'Set up' }).click();
+    await page.getByRole('button', { name: 'Continue' }).click();
+    await page.getByRole('button', { name: /Send a test/ }).click();
+    await page.getByText('Sent. Look for it in ntfy.').waitFor();
+    await page.getByRole('button', { name: 'Yes, it arrived' }).click();
+    await page.getByRole('switch', { name: 'Mentions — ntfy' }).waitFor();
+  } },
   { name: 'settings / appearance', run: async (page) => {
     await page.goto(`${ORIGIN}/demo/settings?tab=appearance`);
     await page.getByText('Always show the formatting toolbar').waitFor();

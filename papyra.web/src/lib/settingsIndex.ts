@@ -59,6 +59,7 @@ export const SETTINGS_INDEX: SettingsEntry[] = [
   { tab: 'journal', tabLabel: 'Journal', section: 'journal-locking', journalOnly: true, sectionLabel: 'Locking', keywords: ['lock', 'private', 'pin', 'seal', 'encrypt', 'lock all', 'lock new'] },
 
   { tab: 'notifications', tabLabel: 'Notifications', keywords: ['alerts'] },
+  { tab: 'notifications', tabLabel: 'Notifications', section: 'where-to-send', sectionLabel: 'Where to send', keywords: ['discord', 'telegram', 'ntfy', 'chat', 'phone', 'push', 'webhook', 'connect', 'channel'] },
   { tab: 'notifications', tabLabel: 'Notifications', section: 'email-notifications', sectionLabel: 'What Papyra tells you about', keywords: ['email', 'mentions', 'shares', 'backup', 'new sign-in', 'login alert', 'security email', 'push'] },
 
   { tab: 'security', tabLabel: 'Security', keywords: ['privacy', 'lock'] },
@@ -87,6 +88,11 @@ export const SETTINGS_INDEX: SettingsEntry[] = [
   { tab: 'email', tabLabel: 'Email', adminOnly: true, keywords: ['mail'] },
   { tab: 'email', tabLabel: 'Email', section: 'smtp', sectionLabel: 'Outbound email (SMTP)', adminOnly: true, keywords: ['smtp', 'mail server', 'sending mail'] },
   { tab: 'email', tabLabel: 'Email', section: 'send-a-test', sectionLabel: 'Send a test', adminOnly: true, keywords: ['test email'] },
+  { tab: 'channels', tabLabel: 'Chat notifications', adminOnly: true, keywords: ['discord', 'telegram', 'ntfy', 'chat', 'bot', 'push'] },
+  { tab: 'channels', tabLabel: 'Chat notifications', section: 'channels-ntfy', sectionLabel: 'ntfy', adminOnly: true, keywords: ['push', 'topic', 'notification server', 'self-hosted'] },
+  { tab: 'channels', tabLabel: 'Chat notifications', section: 'channels-discord', sectionLabel: 'Discord', adminOnly: true, keywords: ['webhook', 'channel', 'discord server'] },
+  { tab: 'channels', tabLabel: 'Chat notifications', section: 'channels-telegram', sectionLabel: 'Telegram', adminOnly: true, keywords: ['bot', 'botfather', 'token'] },
+  { tab: 'channels', tabLabel: 'Chat notifications', section: 'channels-hosts', sectionLabel: 'Servers on your network', adminOnly: true, keywords: ['allowed hosts', 'allow list', 'lan', 'private address', 'self-hosted', 'tailscale'] },
   { tab: 'email', tabLabel: 'Email', section: 'invite', sectionLabel: 'Invite someone', adminOnly: true, keywords: ['invitation', 'new person', 'join'] },
 
   // The assistant is held back for a later release. Its entries drop out of the
