@@ -52,7 +52,10 @@ const find = (match: RegExpMatchArray) => destinations.find((d) => d.id === Numb
 export function channelRoutes(): Route[] {
   return [
     ['GET', /^\/api\/notifications\/destinations$/, () =>
-      json({ available: DEMO_AVAILABLE_CHANNELS, destinations: destinations.map((d) => ({ ...d, state: stateOf(d) })) })],
+      json({
+        available: DEMO_AVAILABLE_CHANNELS, discord: { webhook: true, dm: true },
+        destinations: destinations.map((d) => ({ ...d, state: stateOf(d) })),
+      })],
 
     ['POST', /^\/api\/notifications\/destinations\/ntfy$/, async ({ body }) => {
       const { topic } = (await body()) as { topic?: string | null };
@@ -76,6 +79,23 @@ export function channelRoutes(): Route[] {
       }
       const made = create('discord', 'webhook', 'Discord · channel');
       return json({ id: made.id, label: made.label, kind: made.kind, sharedWithChannel: true });
+    }],
+
+    // Direct messages: the demo "sends" a code you can type back. Any code with 8 letters or digits works.
+    ['POST', /^\/api\/notifications\/destinations\/discord\/dm$/, async ({ body }) => {
+      const { userId } = (await body()) as { userId?: string };
+      if (!/^\d{15,25}$/.test(userId?.trim() ?? '')) {
+        return json({ error: 'That doesn’t look like a Discord user ID. In Discord: Settings → Advanced → turn on Developer Mode, then right-click your name → Copy User ID.' }, 400);
+      }
+      const made = create('discord', 'dm', 'Discord · direct message');
+      return json({ id: made.id, label: made.label, kind: made.kind, expiresUtc: new Date(Date.now() + 600_000).toISOString() });
+    }],
+    ['POST', /^\/api\/notifications\/destinations\/discord\/dm\/confirm$/, async ({ body }) => {
+      const { code } = (await body()) as { code?: string };
+      const d = destinations.find((x) => x.channel === 'discord' && x.kind === 'dm');
+      if (!d || (code ?? '').replace(/[^a-z0-9]/gi, '').length !== 8) return json({ error: 'That code doesn’t match, or it has expired. Ask for a new one.' }, 400);
+      d.verified = true;
+      return noContent();
     }],
 
     ['POST', /^\/api\/notifications\/destinations\/telegram\/link$/, () => json(

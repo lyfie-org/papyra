@@ -247,6 +247,7 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<GitSyncService>())
 builder.Services.AddSingleton<OutboundPolicy>();
 builder.Services.AddSingleton<NtfyChannel>();
 builder.Services.AddSingleton<INotificationChannel>(sp => sp.GetRequiredService<NtfyChannel>());
+builder.Services.AddSingleton<DiscordBot>();
 builder.Services.AddSingleton<DiscordChannel>();
 builder.Services.AddSingleton<INotificationChannel>(sp => sp.GetRequiredService<DiscordChannel>());
 builder.Services.AddSingleton<TelegramApi>();

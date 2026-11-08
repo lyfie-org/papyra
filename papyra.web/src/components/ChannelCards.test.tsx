@@ -201,6 +201,99 @@ describe('ChannelCards', () => {
     });
   });
 
+  describe('Discord direct messages', () => {
+    const open = async () => {
+      mount();
+      await screen.findByRole('heading', { name: 'Where to send' });
+      fireEvent.click(within(rowFor('Discord')).getByRole('button', { name: 'Set up' }));
+    };
+    const withBoth = () => {
+      replies['GET /api/notifications/destinations'] = () => json({ available, discord: { webhook: true, dm: true }, destinations });
+    };
+
+    it('asks which way when both are open, with the private one first', async () => {
+      withBoth();
+      await open();
+      const dm = screen.getByRole('radio', { name: /direct message from the bot/ }) as HTMLInputElement;
+      const hook = screen.getByRole('radio', { name: /channel webhook/ }) as HTMLInputElement;
+      expect(dm.checked).toBe(true);
+      expect(hook.checked).toBe(false);
+
+      fireEvent.click(hook);
+      fireEvent.click(screen.getByRole('button', { name: 'Continue' }));
+      expect(screen.getByLabelText('Webhook address')).toBeTruthy();
+    });
+
+    it('goes straight to the only way that is open', async () => {
+      replies['GET /api/notifications/destinations'] = () => json({ available, discord: { webhook: false, dm: true }, destinations });
+      await open();
+      expect(await screen.findByLabelText('Your Discord user ID')).toBeTruthy();
+      expect(screen.queryByRole('radio')).toBeNull();
+    });
+
+    it('says so when no way is open', async () => {
+      replies['GET /api/notifications/destinations'] = () => json({ available, discord: { webhook: false, dm: false }, destinations });
+      await open();
+      expect(await screen.findByText(/hasn’t opened a way to connect Discord/)).toBeTruthy();
+    });
+
+    it('sends a code to the account, then connects when the person types it back', async () => {
+      withBoth();
+      replies['POST /api/notifications/destinations/discord/dm'] = () => {
+        destinations = [dest({ id: 8, channel: 'discord', kind: 'dm', label: 'Discord · direct message', state: 'unverified', verified: false })];
+        return json({ id: 8, label: 'Discord · direct message', kind: 'dm', expiresUtc: '2026-11-10T09:10:00Z' });
+      };
+      replies['POST /api/notifications/destinations/discord/dm/confirm'] = () => {
+        destinations = [dest({ id: 8, channel: 'discord', kind: 'dm', label: 'Discord · direct message' })];
+        return new Response(null, { status: 204 });
+      };
+      await open();
+      fireEvent.click(await screen.findByRole('button', { name: 'Continue' }));
+
+      expect(screen.getByText(/Copy User ID/)).toBeTruthy();
+      const send = screen.getByRole('button', { name: 'Send me a code' }) as HTMLButtonElement;
+      expect(send.disabled).toBe(true);
+      fireEvent.change(screen.getByLabelText('Your Discord user ID'), { target: { value: ' 123456789012345678 ' } });
+      fireEvent.click(send);
+
+      const code = await screen.findByLabelText('Code from the bot');
+      expect(calls.find(c => c.url.endsWith('/discord/dm'))?.body).toEqual({ userId: '123456789012345678' });
+      fireEvent.change(code, { target: { value: 'abcd-efgh' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Connect' }));
+
+      await waitFor(() => expect(calls.find(c => c.url.endsWith('/dm/confirm'))?.body).toEqual({ code: 'abcd-efgh' }));
+      expect(await within(rowFor('Discord')).findByText('Discord · direct message')).toBeTruthy();
+    });
+
+    it('shows why a code could not be sent', async () => {
+      withBoth();
+      replies['POST /api/notifications/destinations/discord/dm'] = () =>
+        json({ error: 'Discord won’t let the bot message you. Share a server with the bot, and allow direct messages from server members in Discord’s privacy settings.' }, 409);
+      await open();
+      fireEvent.click(await screen.findByRole('button', { name: 'Continue' }));
+      fireEvent.change(screen.getByLabelText('Your Discord user ID'), { target: { value: '123456789012345678' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Send me a code' }));
+      expect((await screen.findByRole('alert')).textContent).toContain('allow direct messages');
+    });
+
+    it('shows a wrong code’s reason and keeps the box', async () => {
+      destinations = [dest({ id: 8, channel: 'discord', kind: 'dm', label: 'Discord · direct message', state: 'unverified', verified: false })];
+      replies['POST /api/notifications/destinations/discord/dm/confirm'] = () =>
+        json({ error: 'That code doesn’t match, or it has expired. Ask for a new one.' }, 400);
+      replies['DELETE /api/notifications/destinations/8'] = () => new Response(null, { status: 204 });
+      mount();
+      await screen.findByRole('heading', { name: 'Where to send' });
+      fireEvent.click(within(rowFor('Discord')).getByRole('button', { name: 'Finish' }));
+      fireEvent.change(screen.getByLabelText('Code from the bot'), { target: { value: 'AAAA-AAAA' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Connect' }));
+      expect((await screen.findByRole('alert')).textContent).toContain('doesn’t match');
+      expect(screen.getByLabelText('Code from the bot')).toBeTruthy();
+
+      fireEvent.click(screen.getByRole('button', { name: 'Start over' }));
+      await waitFor(() => expect(calls.some(c => c.method === 'DELETE' && c.url.endsWith('/destinations/8'))).toBe(true));
+    });
+  });
+
   describe('Telegram', () => {
     it('gives a link to open, and turns into "connected" by itself when the person presses Start', async () => {
       replies['POST /api/notifications/destinations/telegram/link'] = () =>

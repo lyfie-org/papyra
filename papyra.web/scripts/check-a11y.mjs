@@ -218,6 +218,22 @@ const FLOWS = [
     await page.getByRole('button', { name: 'Yes, it arrived' }).click();
     await page.getByRole('switch', { name: 'Mentions — ntfy' }).waitFor();
   } },
+  // Discord offers a choice of ways in the demo (a direct message from the bot, or a channel webhook).
+  { name: 'settings / notifications / discord choice', run: async (page) => {
+    await page.goto(`${ORIGIN}/demo/settings?tab=notifications`);
+    await page.getByRole('heading', { name: 'Where to send' }).waitFor();
+    await page.locator('.setting-row').filter({ has: page.getByText('Discord', { exact: true }) }).getByRole('button', { name: 'Set up' }).click();
+    await page.getByRole('radio', { name: /direct message from the bot/ }).waitFor();
+  } },
+  { name: 'settings / notifications / discord code', run: async (page) => {
+    await page.goto(`${ORIGIN}/demo/settings?tab=notifications`);
+    await page.getByRole('heading', { name: 'Where to send' }).waitFor();
+    await page.locator('.setting-row').filter({ has: page.getByText('Discord', { exact: true }) }).getByRole('button', { name: 'Set up' }).click();
+    await page.getByRole('button', { name: 'Continue' }).click();
+    await page.getByLabel('Your Discord user ID').fill('123456789012345678');
+    await page.getByRole('button', { name: 'Send me a code' }).click();
+    await page.getByLabel('Code from the bot').waitFor();
+  } },
   { name: 'settings / appearance', run: async (page) => {
     await page.goto(`${ORIGIN}/demo/settings?tab=appearance`);
     await page.getByText('Always show the formatting toolbar').waitFor();

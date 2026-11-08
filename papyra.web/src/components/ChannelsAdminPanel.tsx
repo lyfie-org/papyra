@@ -2,7 +2,7 @@ import { useState, type FormEvent } from 'react';
 import { CheckCircle2, Send } from 'lucide-react';
 import { MASKED_SECRET } from '../lib/autofill';
 import {
-  ApiError, useChannelAdmin, useCheckTelegramAdmin, useSaveAllowedHosts, useSaveDiscordAdmin, useSaveNtfyAdmin,
+  ApiError, useChannelAdmin, useCheckDiscordBotAdmin, useCheckTelegramAdmin, useSaveAllowedHosts, useSaveDiscordAdmin, useSaveNtfyAdmin,
   useSaveTelegramAdmin, useTestDiscordAdmin, useTestNtfyAdmin, type ChannelAdmin,
 } from '../hooks/useChannels';
 import BusyButton from './BusyButton';
@@ -146,13 +146,32 @@ function NtfyEditor({ data, close }: { data: ChannelAdmin; close: () => void }) 
 function DiscordGroup({ data }: { data: ChannelAdmin }) {
   const d = data.discord;
   const test = useTestDiscordAdmin();
+  const check = useCheckDiscordBotAdmin();
   const [url, setUrl] = useState('');
 
   return (
     <SettingGroup title="Discord" id="channels-discord">
-      <SettingRow label="Status" value={d.enabled ? 'On' : 'Off'} hint="Notifications into a Discord channel through a webhook.">
+      <SettingRow label="Status" value={d.enabled ? 'On' : 'Off'} hint="Notifications by direct message from a bot, or into a channel through a webhook.">
         {close => <DiscordEditor data={data} close={close} />}
       </SettingRow>
+      <SettingRow label="Direct messages" value={d.hasBotToken ? (d.botUsername ? `Bot ${d.botUsername}` : 'Bot saved') : null} empty="No bot yet"
+        hint={d.hasBotToken ? undefined : 'Make a bot in the Discord developer portal and paste its token under Status.'} />
+      {d.hasBotToken && (
+        <SettingRow label="Check the bot" value="Ask Discord if the bot still works" action="Check" id="discord-check">
+          {close => (
+            <div className="settings__form">
+              <Result ok={check.data?.ok} error={check.data && !check.data.ok ? check.data.error : check.isError ? (check.error as Error).message : null}
+                doneText={`Discord knows the bot${check.data?.botUsername ? ` ${check.data.botUsername}` : ''}.`} />
+              <div className="settings__form-actions">
+                <BusyButton type="button" className="settings__btn" busy={check.isPending} busyLabel="Asking…" onClick={() => check.mutate()}>
+                  Check now
+                </BusyButton>
+                <button type="button" className="settings__btn settings__btn--quiet" onClick={close}>Done</button>
+              </div>
+            </div>
+          )}
+        </SettingRow>
+      )}
       <SettingRow label="Channel webhooks" value={d.webhooksAllowed ? 'People may connect one' : 'Not allowed'} />
       <SettingRow label="Test" value="Send a test message to a webhook" action="Send…" id="discord-test">
         {close => (
@@ -180,17 +199,28 @@ function DiscordEditor({ data, close }: { data: ChannelAdmin; close: () => void 
   const save = useSaveDiscordAdmin();
   const [enabled, setEnabled] = useState(data.discord.enabled);
   const [webhooks, setWebhooks] = useState(data.discord.webhooksAllowed);
+  const [botToken, setBotToken] = useState('');
 
   return (
     <form className="settings__form" onSubmit={(e: FormEvent) => {
       e.preventDefault();
-      save.mutate({ enabled, webhooksAllowed: webhooks }, { onSuccess: close });
+      save.mutate({ enabled, webhooksAllowed: webhooks, ...(botToken.trim() ? { botToken: botToken.trim() } : {}) }, { onSuccess: close });
     }}>
       <Switch label="Let people send to Discord" checked={enabled} onChange={setEnabled} />
       <Switch label="Allow channel webhooks" hint="A webhook posts into a channel everyone in it can read." checked={webhooks} onChange={setWebhooks} />
+      <label className="settings__field">Bot token (for direct messages)
+        <input {...MASKED_SECRET} value={botToken} placeholder={data.discord.hasBotToken ? 'Saved — leave blank to keep' : 'Optional'}
+          onChange={e => setBotToken(e.target.value)} />
+      </label>
       {save.isError && <p className="settings__error" role="alert">{(save.error as Error).message}</p>}
       <div className="settings__form-actions">
-        <BusyButton type="submit" className="settings__btn" busy={save.isPending} busyLabel="Saving…">Save</BusyButton>
+        <BusyButton type="submit" className="settings__btn" busy={save.isPending} busyLabel="Checking…">Save</BusyButton>
+        {data.discord.hasBotToken && (
+          <BusyButton type="button" className="settings__btn settings__btn--quiet" busy={save.isPending}
+            onClick={() => save.mutate({ botToken: '' }, { onSuccess: close })}>
+            Remove bot
+          </BusyButton>
+        )}
         <button type="button" className="settings__btn settings__btn--quiet" onClick={close}>Cancel</button>
       </div>
     </form>

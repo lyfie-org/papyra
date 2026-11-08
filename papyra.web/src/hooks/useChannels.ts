@@ -37,6 +37,8 @@ export interface Destination {
 export interface Destinations {
   /** The chat channels an administrator has switched on. */
   available: string[];
+  /** Which ways of connecting Discord are open: a channel webhook, a direct message from the bot. */
+  discord?: { webhook: boolean; dm: boolean };
   destinations: Destination[];
 }
 
@@ -113,6 +115,23 @@ export function useSetupDiscordWebhook() {
   });
 }
 
+export function useSetupDiscordDirect() {
+  const refresh = useRefresh();
+  return useMutation({
+    mutationFn: (userId: string) =>
+      send<{ id: number; label: string; expiresUtc: string }>('POST', '/api/notifications/destinations/discord/dm', { userId: userId.trim() }),
+    onSuccess: refresh,
+  });
+}
+
+export function useConfirmDiscordDirect() {
+  const refresh = useRefresh();
+  return useMutation({
+    mutationFn: (code: string) => send<null>('POST', '/api/notifications/destinations/discord/dm/confirm', { code }),
+    onSuccess: refresh,
+  });
+}
+
 export interface TelegramLink { url: string; expiresUtc: string; botUsername: string }
 
 export function useTelegramLink() {
@@ -158,7 +177,7 @@ export function useRemoveDestination() {
 
 export interface ChannelAdmin {
   ntfy: { enabled: boolean; serverUrl: string; defaultServerUrl: string; hasToken: boolean };
-  discord: { enabled: boolean; webhooksAllowed: boolean };
+  discord: { enabled: boolean; webhooksAllowed: boolean; hasBotToken: boolean; botUsername: string };
   telegram: { enabled: boolean; hasToken: boolean; botUsername: string; pollError: string | null };
   allowedHosts: string[];
 }
@@ -198,7 +217,7 @@ export function useTestNtfyAdmin() {
 export function useSaveDiscordAdmin() {
   const refresh = useAdminRefresh();
   return useMutation({
-    mutationFn: (body: { enabled?: boolean; webhooksAllowed?: boolean }) => send<null>('PUT', '/api/admin/notifications/discord', body),
+    mutationFn: (body: { enabled?: boolean; webhooksAllowed?: boolean; botToken?: string }) => send<null>('PUT', '/api/admin/notifications/discord', body),
     onSuccess: refresh,
   });
 }
@@ -206,6 +225,14 @@ export function useSaveDiscordAdmin() {
 export function useTestDiscordAdmin() {
   return useMutation({
     mutationFn: (url: string) => send<{ ok: boolean; error: string | null }>('POST', '/api/admin/notifications/discord/test', { url }),
+  });
+}
+
+export function useCheckDiscordBotAdmin() {
+  const refresh = useAdminRefresh();
+  return useMutation({
+    mutationFn: () => send<{ ok: boolean; botUsername?: string | null; error?: string | null }>('POST', '/api/admin/notifications/discord/check-bot'),
+    onSettled: refresh,
   });
 }
 

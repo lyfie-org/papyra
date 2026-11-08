@@ -18,9 +18,10 @@ namespace Papyra.Api.Storage.Channels;
 /// (<see cref="ChannelKeys.DiscordWebhooksAllowed"/>). What is sent is the same short line as everywhere
 /// else, as a small card, and never able to ping anyone (<c>allowed_mentions</c> is empty).
 /// </summary>
-public sealed partial class DiscordChannel(InstanceConfigStore config, OutboundPolicy outbound, SecretBox secrets) : INotificationChannel
+public sealed partial class DiscordChannel(InstanceConfigStore config, OutboundPolicy outbound, SecretBox secrets, DiscordBot? bot = null) : INotificationChannel
 {
     public const string WebhookKind = "webhook";
+    public const string DirectKind = "dm";
 
     // Papyra's sage green, as a Discord colour.
     private const int Sage = 0x7AAA8A;
@@ -42,8 +43,12 @@ public sealed partial class DiscordChannel(InstanceConfigStore config, OutboundP
     public static bool WebhooksAllowed(InstanceConfigStore store) =>
         !string.Equals(store.Get(ChannelKeys.DiscordWebhooksAllowed), "false", StringComparison.OrdinalIgnoreCase);
 
-    // A webhook is the person's own channel, so there is nobody else's address to prove.
+    // A webhook is the person's own channel, so there is nobody else's address to prove. A direct message
+    // goes to a user id anyone could type, so it is proved with a code the bot sends there instead.
     public bool CanBeConfirmedByPerson(ChannelDestination destination) => destination.Kind == WebhookKind;
+
+    /// <summary>Direct messages need the admin's bot: on once a bot token is saved.</summary>
+    public static bool DirectMessagesAvailable(InstanceConfigStore store) => store.Has(ChannelKeys.DiscordBotToken);
 
     /// <summary>
     /// Accept only a real Discord webhook address — https, a Discord host, the standard path, no extras —
@@ -67,10 +72,11 @@ public sealed partial class DiscordChannel(InstanceConfigStore config, OutboundP
 
     public async Task<ChannelSendResult> SendAsync(ChannelDestination destination, ChannelMessage message, CancellationToken ct)
     {
+        await config.EnsureLoadedAsync(ct);
+        if (destination.Kind == DirectKind) return await SendDirectAsync(destination, message, ct);
         if (destination.Kind != WebhookKind)
             return ChannelSendResult.Rejected("This kind of Discord connection isn't available.");
 
-        await config.EnsureLoadedAsync(ct);
         if (!WebhooksAllowed(config))
             return ChannelSendResult.Rejected("An administrator turned Discord webhooks off.");
 
@@ -82,9 +88,7 @@ public sealed partial class DiscordChannel(InstanceConfigStore config, OutboundP
         if (!TrustStoredAddress && !TryParseWebhook(stored, out address, out _))
             return ChannelSendResult.Rejected("That isn't a Discord webhook address. Connect it again.");
 
-        var embed = new Dictionary<string, object?> { ["title"] = Clip(message.Title, 250), ["color"] = Sage };
-        if (Uri.TryCreate(message.Link, UriKind.Absolute, out var link) && link.Scheme is "http" or "https")
-            embed["url"] = link.AbsoluteUri;
+        var embed = BuildEmbed(message);
         var payload = new Dictionary<string, object?>
         {
             ["username"] = "Papyra",
@@ -114,6 +118,34 @@ public sealed partial class DiscordChannel(InstanceConfigStore config, OutboundP
             // The exception text carries the address, which is the credential: say it in our own words.
             return ChannelSendResult.Retry("Papyra could not reach Discord.");
         }
+    }
+
+    // A direct message through the admin's bot: the same small card, with no username of its own to show.
+    private async Task<ChannelSendResult> SendDirectAsync(ChannelDestination destination, ChannelMessage message, CancellationToken ct)
+    {
+        var token = config.Get(ChannelKeys.DiscordBotToken);
+        if (bot is null || string.IsNullOrEmpty(token))
+            return ChannelSendResult.Retry("Discord direct messages aren't set up on this server. An administrator can add the bot in Settings → Chat notifications.");
+        if (!UserIdPattern().IsMatch(destination.Handle))
+            return ChannelSendResult.Rejected("The Discord user is missing. Connect Discord again.");
+
+        return await bot.SendAsync(token, destination.Handle, new
+        {
+            allowed_mentions = new { parse = Array.Empty<string>() },
+            embeds = new[] { BuildEmbed(message) },
+        }, ct);
+    }
+
+    /// <summary>A Discord user id: a snowflake, 15–25 digits.</summary>
+    [GeneratedRegex(@"^\d{15,25}$")]
+    public static partial Regex UserIdPattern();
+
+    private static Dictionary<string, object?> BuildEmbed(ChannelMessage message)
+    {
+        var embed = new Dictionary<string, object?> { ["title"] = Clip(message.Title, 250), ["color"] = Sage };
+        if (Uri.TryCreate(message.Link, UriKind.Absolute, out var link) && link.Scheme is "http" or "https")
+            embed["url"] = link.AbsoluteUri;
+        return embed;
     }
 
     // Discord tells every answer how many sends are left in the current window. When none are, wait for

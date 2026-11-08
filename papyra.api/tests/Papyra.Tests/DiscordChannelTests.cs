@@ -292,7 +292,7 @@ public sealed class DiscordChannelTests : IAsyncLifetime
     [Fact]
     public async Task OtherDiscordKinds_AreNotSentAsWebhooks()
     {
-        var result = await Channel().SendAsync(LocalWebhook(kind: "dm"), Message(), default);
+        var result = await Channel().SendAsync(LocalWebhook(kind: "carrier-pigeon"), Message(), default);
 
         Assert.Equal(ChannelOutcome.Rejected, result.Outcome);
         Assert.Empty(_server.Requests);

@@ -4,8 +4,8 @@ import { useConfirm } from '../lib/confirmContext';
 import { useNotificationPrefs } from '../hooks/useInstanceConfig';
 import { MASKED_SECRET } from '../lib/autofill';
 import {
-  CHANNEL_NAMES, CHAT_CHANNELS, telegramPolling, useConfirmDestination, useDestinations, useNtfyAddress, useRemoveDestination,
-  useSetupDiscordWebhook, useSetupNtfy, useTelegramLink, useTestDestination, useUpdateDestination,
+  CHANNEL_NAMES, CHAT_CHANNELS, telegramPolling, useConfirmDestination, useConfirmDiscordDirect, useDestinations, useNtfyAddress, useRemoveDestination,
+  useSetupDiscordDirect, useSetupDiscordWebhook, useSetupNtfy, useTelegramLink, useTestDestination, useUpdateDestination,
   type ChatChannel, type Destination, type NtfySetup,
 } from '../hooks/useChannels';
 import BusyButton from './BusyButton';
@@ -182,6 +182,58 @@ function SetupNtfy({ existing, close }: { existing: Destination | undefined; clo
 // ── Discord ────────────────────────────────────────────────────────────────────
 
 function SetupDiscord({ existing, close }: { existing: Destination | undefined; close: () => void }) {
+  const { data } = useDestinations();
+  const kinds = data?.discord ?? { webhook: true, dm: false };
+  const [choice, setChoice] = useState<'dm' | 'webhook'>('dm');
+  const [chosen, setChosen] = useState(false);
+  const [codeSent, setCodeSent] = useState(false);
+
+  // Picking up a set-up that was started: it goes on with the same kind. The code box is one element
+  // whether the code was just sent or was sent earlier, so what is being typed survives the list refreshing.
+  if (existing?.state === 'unverified' && existing.kind !== 'dm') {
+    return <SetupDiscordWebhook existing={existing} close={close} />;
+  }
+  if ((existing?.state === 'unverified' && existing.kind === 'dm') || codeSent) {
+    return <DiscordCode existing={existing} close={close} />;
+  }
+
+  if (!kinds.dm && !kinds.webhook) {
+    return (
+      <div className="settings__form">
+        <p className="channel-step__text">An administrator hasn’t opened a way to connect Discord yet.</p>
+        <div className="settings__form-actions">
+          <button type="button" className="settings__btn settings__btn--quiet" onClick={close}>Close</button>
+        </div>
+      </div>
+    );
+  }
+
+  const kind: 'dm' | 'webhook' | null = kinds.dm && kinds.webhook ? (chosen ? choice : null) : kinds.dm ? 'dm' : 'webhook';
+  if (kind === 'dm') return <SetupDiscordDirect onSent={() => setCodeSent(true)} close={close} />;
+  if (kind === 'webhook') return <SetupDiscordWebhook existing={existing} close={close} />;
+
+  return (
+    <form className="settings__form" onSubmit={e => { e.preventDefault(); setChosen(true); }}>
+      <fieldset className="channel-tier">
+        <legend>How should Discord reach you?</legend>
+        <label>
+          <input type="radio" name="discord-kind" checked={choice === 'dm'} onChange={() => setChoice('dm')} />
+          A direct message from the bot. Only you see it.
+        </label>
+        <label>
+          <input type="radio" name="discord-kind" checked={choice === 'webhook'} onChange={() => setChoice('webhook')} />
+          A channel webhook. Everyone who can read that channel sees it.
+        </label>
+      </fieldset>
+      <div className="settings__form-actions">
+        <button type="submit" className="settings__btn">Continue</button>
+        <button type="button" className="settings__btn settings__btn--quiet" onClick={close}>Cancel</button>
+      </div>
+    </form>
+  );
+}
+
+function SetupDiscordWebhook({ existing, close }: { existing: Destination | undefined; close: () => void }) {
   const setup = useSetupDiscordWebhook();
   const [url, setUrl] = useState('');
   const id = setup.data?.id ?? existing?.id;
@@ -207,6 +259,63 @@ function SetupDiscord({ existing, close }: { existing: Destination | undefined; 
     <div className="settings__form">
       <TestAndConfirm id={id} name="Discord" alreadyTested={existing?.lastOkUtc != null} close={close} />
     </div>
+  );
+}
+
+/** Direct messages: the bot sends a code to the account, and typing it back shows the account is yours. */
+function SetupDiscordDirect({ onSent, close }: { onSent: () => void; close: () => void }) {
+  const send = useSetupDiscordDirect();
+  const [userId, setUserId] = useState('');
+
+  return (
+    <form className="settings__form" onSubmit={e => { e.preventDefault(); send.mutate(userId, { onSuccess: onSent }); }}>
+      <label className="settings__field">Your Discord user ID
+        <input type="text" inputMode="numeric" value={userId} autoFocus autoComplete="off" spellCheck={false}
+          placeholder="18 or 19 digits" onChange={e => setUserId(e.target.value)} />
+      </label>
+      <p className="channel-step__text">In Discord: Settings → Advanced → turn on Developer Mode, then right-click your name → Copy User ID.</p>
+      <p className="channel-step__text">You and the bot need a server in common, and your privacy settings must allow direct messages from server members.</p>
+      {send.isError && <p className="settings__error" role="alert">{(send.error as Error).message}</p>}
+      <div className="settings__form-actions">
+        <BusyButton type="submit" className="settings__btn" disabled={userId.trim() === ''} busy={send.isPending} busyLabel="Sending…">
+          Send me a code
+        </BusyButton>
+        <button type="button" className="settings__btn settings__btn--quiet" onClick={close}>Cancel</button>
+      </div>
+    </form>
+  );
+}
+
+function DiscordCode({ existing, close }: { existing?: Destination; close: () => void }) {
+  const confirm = useConfirmDiscordDirect();
+  const remove = useRemoveDestination();
+  const [code, setCode] = useState('');
+
+  return (
+    <form className="settings__form" onSubmit={async e => {
+      e.preventDefault();
+      try { await confirm.mutateAsync(code); } catch { return; } // the reason shows below
+      close();
+    }}>
+      <label className="settings__field">Code from the bot
+        <input type="text" value={code} autoFocus autoComplete="one-time-code" spellCheck={false} maxLength={12}
+          placeholder="ABCD-EFGH" onChange={e => setCode(e.target.value)} />
+      </label>
+      <p className="channel-step__text">The bot sent it to you on Discord. It works for 10 minutes.</p>
+      {confirm.isError && <p className="settings__error" role="alert">{(confirm.error as Error).message}</p>}
+      <div className="settings__form-actions">
+        <BusyButton type="submit" className="settings__btn" disabled={code.trim() === ''} busy={confirm.isPending} busyLabel="Checking…">
+          Connect
+        </BusyButton>
+        {existing && (
+          <BusyButton type="button" className="settings__btn settings__btn--quiet" busy={remove.isPending} busyLabel="Starting over…"
+            onClick={() => remove.mutate(existing.id)}>
+            Start over
+          </BusyButton>
+        )}
+        <button type="button" className="settings__btn settings__btn--quiet" onClick={close}>Not now</button>
+      </div>
+    </form>
   );
 }
 

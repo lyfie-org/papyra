@@ -77,8 +77,7 @@ public sealed class TelegramLinker(
         return new TelegramLink(code, $"https://t.me/{bot}?start={code}", expires, bot);
     }
 
-    private static string Hash(string code) =>
-        Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(code.Trim()))).ToLowerInvariant();
+    private static string Hash(string code) => LinkCodes.Hash(code);
 
     // ── Bot: read what people sent ──────────────────────────────────────────────
 

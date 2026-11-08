@@ -5,7 +5,7 @@ import type { Destination } from '../hooks/useChannels';
 // The demo's chat notifications: connect, test, confirm in memory; nothing leaves the browser.
 const routes = channelRoutes();
 
-interface Listed { available: string[]; destinations: Destination[] }
+interface Listed { available: string[]; discord?: { webhook: boolean; dm: boolean }; destinations: Destination[] }
 interface Made { id: number; topic: string }
 
 async function call<T = Record<string, unknown>>(method: string, path: string, body?: unknown): Promise<{ status: number; data: T }> {
@@ -44,6 +44,18 @@ describe('demo chat notifications', () => {
       url: 'https://discord.com/api/webhooks/123456789012345678/AbCdEfGhIjKlMnOpQrStUvWxYz',
     });
     expect(ok.status).toBe(200);
+  });
+
+  it('connects Discord direct messages with a code, and turns away a bad id or code', async () => {
+    expect((await call<Listed>('GET', '/api/notifications/destinations')).data.discord).toEqual({ webhook: true, dm: true });
+    expect((await call('POST', '/api/notifications/destinations/discord/dm', { userId: 'rahul' })).status).toBe(400);
+
+    const made = (await call<Made>('POST', '/api/notifications/destinations/discord/dm', { userId: '123456789012345678' })).data;
+    expect(made.id).toBeGreaterThan(0);
+    expect((await call('POST', '/api/notifications/destinations/discord/dm/confirm', { code: 'nope' })).status).toBe(400);
+    expect((await call('POST', '/api/notifications/destinations/discord/dm/confirm', { code: 'ABCD-EFGH' })).status).toBe(204);
+    const after = (await call<Listed>('GET', '/api/notifications/destinations')).data.destinations.find((d) => d.id === made.id);
+    expect(after).toMatchObject({ kind: 'dm', state: 'connected' });
   });
 
   it('says Telegram needs a real server', async () => {

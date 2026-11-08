@@ -10,7 +10,7 @@ const json = (body: unknown, status = 200) =>
 
 const admin = (over: Partial<ChannelAdmin> = {}): ChannelAdmin => ({
   ntfy: { enabled: false, serverUrl: '', defaultServerUrl: 'https://ntfy.sh', hasToken: false },
-  discord: { enabled: false, webhooksAllowed: true },
+  discord: { enabled: false, webhooksAllowed: true, hasBotToken: false, botUsername: '' },
   telegram: { enabled: false, hasToken: false, botUsername: '', pollError: null },
   allowedHosts: [],
   ...over,
@@ -157,6 +157,44 @@ describe('ChannelsAdminPanel', () => {
       fireEvent.click(screen.getByRole('button', { name: 'Save' }));
 
       await waitFor(() => expect(calls.find(c => c.method === 'PUT')?.body).toEqual({ enabled: true, webhooksAllowed: false }));
+    });
+
+    it('saves a bot token with the switches, and keeps it when the field is left blank', async () => {
+      mount();
+      await screen.findByRole('heading', { name: 'Discord' });
+      expect(within(groupFor('Discord')).getByText('No bot yet')).toBeTruthy();
+      fireEvent.click(within(groupFor('Discord')).getAllByRole('button', { name: 'Edit' })[0]);
+      fireEvent.change(screen.getByLabelText('Bot token (for direct messages)'), { target: { value: 'BOT.token.value' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+      await waitFor(() => expect(calls.find(c => c.method === 'PUT')?.body).toEqual({ enabled: false, webhooksAllowed: true, botToken: 'BOT.token.value' }));
+    });
+
+    it('shows the bot at rest, never its token, and can check or remove it', async () => {
+      current = admin({ discord: { enabled: true, webhooksAllowed: true, hasBotToken: true, botUsername: 'PapyraBot' } });
+      replies['POST /api/admin/notifications/discord/check-bot'] = () => json({ ok: true, botUsername: 'PapyraBot', error: null });
+      mount();
+      await screen.findByRole('heading', { name: 'Discord' });
+      expect(within(groupFor('Discord')).getByText('Bot PapyraBot')).toBeTruthy();
+
+      fireEvent.click(within(groupFor('Discord')).getByRole('button', { name: 'Check' }));
+      fireEvent.click(screen.getByRole('button', { name: 'Check now' }));
+      expect(await screen.findByText('Discord knows the bot PapyraBot.')).toBeTruthy();
+      fireEvent.click(screen.getByRole('button', { name: 'Done' }));
+
+      fireEvent.click(within(groupFor('Discord')).getAllByRole('button', { name: 'Edit' })[0]);
+      expect((screen.getByLabelText('Bot token (for direct messages)') as HTMLInputElement).placeholder).toBe('Saved — leave blank to keep');
+      fireEvent.click(screen.getByRole('button', { name: 'Remove bot' }));
+      await waitFor(() => expect(calls.filter(c => c.method === 'PUT').at(-1)?.body).toEqual({ botToken: '' }));
+    });
+
+    it('shows Discord’s verdict on a wrong bot token and stays open', async () => {
+      replies['PUT /api/admin/notifications/discord'] = () => json({ error: 'Discord doesn’t accept that token. Copy it again from the Discord developer portal (Bot → Reset Token).' }, 400);
+      mount();
+      await screen.findByRole('heading', { name: 'Discord' });
+      fireEvent.click(within(groupFor('Discord')).getAllByRole('button', { name: 'Edit' })[0]);
+      fireEvent.change(screen.getByLabelText('Bot token (for direct messages)'), { target: { value: 'wrong' } });
+      fireEvent.click(screen.getByRole('button', { name: 'Save' }));
+      expect((await screen.findByRole('alert')).textContent).toContain('Reset Token');
     });
 
     it('tries a webhook without saving it, and shows what went wrong', async () => {

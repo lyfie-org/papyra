@@ -64,6 +64,8 @@ public static partial class NtfyEndpoints
             {
                 enabled = config.GetBool(ChannelKeys.Enabled(NotificationCatalog.Discord)),
                 webhooksAllowed = DiscordChannel.WebhooksAllowed(config),
+                hasBotToken = config.Has(ChannelKeys.DiscordBotToken),
+                botUsername = config.GetOrEmpty(ChannelKeys.DiscordBotUsername),
             },
             telegram = new
             {

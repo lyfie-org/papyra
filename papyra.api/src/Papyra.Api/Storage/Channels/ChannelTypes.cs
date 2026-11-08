@@ -71,6 +71,8 @@ public static class ChannelKeys
     public const string TelegramBotUsername = "channels.telegram.botUsername";
     /// <summary>Where Papyra got to in the bot's incoming messages, so a restart doesn't read them twice.</summary>
     public const string TelegramOffset = "channels.telegram.offset";
+    /// <summary>The Discord bot's name, learned from Discord when the token is saved (not secret).</summary>
+    public const string DiscordBotUsername = "channels.discord.botUsername";
     /// <summary>Whether people may connect a Discord channel webhook ("false" forbids it; anything else allows).</summary>
     public const string DiscordWebhooksAllowed = "channels.discord.webhooksAllowed";
 }

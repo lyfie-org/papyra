@@ -56,6 +56,8 @@ public static class ChannelEndpoints
         return Results.Ok(new
         {
             available,
+            // Which ways of connecting Discord the admin has allowed: a channel webhook, a direct message from the bot.
+            discord = new { webhook = DiscordChannel.WebhooksAllowed(config), dm = DiscordChannel.DirectMessagesAvailable(config) },
             destinations = rows.Select(d => new
             {
                 d.Id, d.Channel, d.Kind, d.Label, d.Verified, d.Enabled, d.PrivacyTier,
