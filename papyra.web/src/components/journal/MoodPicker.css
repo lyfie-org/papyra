@@ -75,34 +75,3 @@
 .mood-chip:disabled { opacity: 0.5; cursor: default; }
 @media (prefers-reduced-motion: reduce) { .mood-chip { transition: none; } }
 
-/* A tip that shows the instant the pointer rests on a button (or it takes keyboard focus) and goes the
-   instant it leaves — the browser's own title waits a second or more. */
-.mood-picker__btn[data-tip],
-.mood-chip[data-tip] { position: relative; }
-.mood-picker__btn[data-tip]::after,
-.mood-chip[data-tip]::after {
-  content: attr(data-tip);
-  position: absolute;
-  top: calc(100% + 8px);
-  left: 50%;
-  translate: -50% 0;
-  z-index: 30;
-  display: none;
-  padding: var(--space-1) var(--space-2);
-  border: 1px solid var(--border);
-  border-radius: var(--radius-sm);
-  background: var(--surface);
-  box-shadow: var(--shadow-card);
-  color: var(--text-h);
-  font: 500 var(--fs-xs)/1.2 var(--sans);
-  letter-spacing: 0.01em;
-  white-space: nowrap;
-  pointer-events: none;
-}
-.mood-picker__btn[data-tip]:hover::after,
-.mood-picker__btn[data-tip]:focus-visible::after,
-.mood-chip[data-tip]:hover::after,
-.mood-chip[data-tip]:focus-visible::after { display: block; }
-/* At the page's right edge a centred tip would hang past it: the chip, and the last glyph, line the tip up with their own right edge. */
-.mood-chip[data-tip]::after,
-.mood-picker__btn:last-child[data-tip]::after { left: auto; right: 0; translate: none; }

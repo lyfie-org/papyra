@@ -55,8 +55,8 @@ function Item({ c, data, api, root, replies, onFirstDeleted }: {
       <Avatar username={c.author.username} name={c.author.name} size={26} className="comment__avatar" />
       <div className="comment__main">
         <div className="comment__head">
-          <span className="comment__name" title={`@${c.author.username}`}>{c.author.name}</span>
-          <time className="comment__time" dateTime={c.createdUtc} title={new Date(c.createdUtc).toLocaleString()}>
+          <span className="comment__name" data-tooltip={`@${c.author.username}`}>{c.author.name}</span>
+          <time className="comment__time" dateTime={c.createdUtc} data-tooltip={new Date(c.createdUtc).toLocaleString()}>
             {relativeTime(new Date(c.createdUtc))}{c.editedUtc ? ' · edited' : ''}
           </time>
           {(c.canEdit || c.canDelete) && (
@@ -90,7 +90,7 @@ function Item({ c, data, api, root, replies, onFirstDeleted }: {
         <div className="comment__reactions">
           {c.reactions.map(r => (
             <button key={r.emoji} type="button" className={`comment__reaction${r.mine ? ' is-mine' : ''}`}
-              aria-pressed={r.mine} title={r.people.map(p => `@${p}`).join(', ')}
+              aria-pressed={r.mine} data-tooltip={r.people.map(p => `@${p}`).join(', ')}
               onClick={() => api.react.mutate({ id: c.id, emoji: r.emoji })}>
               <span aria-hidden="true">{r.emoji}</span> {r.count}
             </button>

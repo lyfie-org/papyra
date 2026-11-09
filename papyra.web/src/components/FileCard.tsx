@@ -55,7 +55,7 @@ export default function FileCard({ target, fragment, url, meta, label, interacti
   // opens it; read-only, it opens on a click like a link.
   if (interactive) {
     return (
-      <span className={className} title={title} onDoubleClick={open} data-file-family={type.family}>
+      <span className={className} data-tooltip={title} onDoubleClick={open} data-file-family={type.family}>
         {body}
       </span>
     );
@@ -66,7 +66,7 @@ export default function FileCard({ target, fragment, url, meta, label, interacti
       href={url}
       target="_blank"
       rel="noopener noreferrer"
-      title={title}
+      data-tooltip={title}
       data-file-family={type.family}
       onClick={(e) => {
         if (!type.preview || e.metaKey || e.ctrlKey || e.shiftKey) return;

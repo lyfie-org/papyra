@@ -50,7 +50,7 @@ export default function SharedNoteActions({ share, variant }: { share: SharedAct
     <>
       {canEdit && <ColorButton share={share} className={btn} size={size} variant={variant} />}
       {canEdit && (
-        <button type="button" className={btn} aria-label="Share note" title="Share with someone else"
+        <button type="button" className={btn} aria-label="Share note" data-tooltip="Share with someone else"
           onClick={(e) => { stop(e); setSharing(true); }}>
           <Share2 size={size} />
         </button>
@@ -78,7 +78,7 @@ function ColorButton({ share, className, size, variant }: {
     <div className={`shared-actions__palette shared-actions__palette--${variant}`} ref={wrap}
       onClick={stop} onPointerDown={(e) => e.stopPropagation()}>
       <button type="button" className={className} aria-label="Change color" aria-expanded={open}
-        title="Change colour (everyone with this note sees it)"
+        data-tooltip="Change colour (everyone with this note sees it)"
         onClick={(e) => { stop(e); setOpen((o) => !o); }}>
         <Palette size={size} />
       </button>
@@ -140,7 +140,7 @@ function SharedMenu({ share, className, size, onTags }: {
 
   return (
     <>
-      <button ref={triggerRef} type="button" className={className} aria-label="More actions" title="More actions"
+      <button ref={triggerRef} type="button" className={className} aria-label="More actions" data-tooltip="More actions"
         aria-haspopup="menu" aria-expanded={open} onClick={toggle}>
         <MoreHorizontal size={size} />
       </button>

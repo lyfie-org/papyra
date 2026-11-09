@@ -170,7 +170,7 @@ export default function CollectionsPage() {
                     type="button"
                     className="collection-card__tool"
                     aria-label={`Share ${c.name}`}
-                    title="Share"
+                    data-tooltip="Share"
                     onClick={() => setSharing({ id: c.id, name: c.name })}
                   >
                     <Share2 size={14} />

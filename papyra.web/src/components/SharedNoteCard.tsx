@@ -62,10 +62,10 @@ function ExpiredCard({ share }: { share: IncomingShare }) {
         <div className="shared-card__veil">
           <span className="shared-card__pill"><Clock size={14} aria-hidden="true" /> Share expired</span>
         </div>
-        <p className="shared-card__foot" title={`Shared with you by ${owner}`}>
+        <p className="shared-card__foot" data-tooltip={`Shared with you by ${owner}`}>
           <Avatar username={share.owner} name={share.ownerName} size={22} className="shared-card__face" />
           {ended && (
-            <time dateTime={share.expiredUtc} title={share.expiredUtc ? fullStamp(share.expiredUtc, zone) : undefined}>
+            <time dateTime={share.expiredUtc} data-tooltip={share.expiredUtc ? fullStamp(share.expiredUtc, zone) : undefined}>
               Ended {ended}
             </time>
           )}
@@ -75,7 +75,7 @@ function ExpiredCard({ share }: { share: IncomingShare }) {
             type="button"
             className="note-card__action"
             aria-label="Remove expired share"
-            title="Remove from my notes"
+            data-tooltip="Remove from my notes"
             onClick={(e) => {
               e.preventDefault();
               e.stopPropagation();
@@ -135,13 +135,13 @@ function LiveCard({ share, showSharedDate }: { share: IncomingShare; showSharedD
             {tags.map((tag) => <li key={tag} className="note-card__tag">{tag}</li>)}
           </ul>
         )}
-        <p className="shared-card__foot" title={`Shared with you by ${owner}${via}`}>
+        <p className="shared-card__foot" data-tooltip={`Shared with you by ${owner}${via}`}>
           <Avatar username={share.owner} name={share.ownerName} size={22} className="shared-card__face" />
           {access && <span className="shared-card__access">{access}</span>}
         </p>
         {shared && (
           <p className="shared-card__when">
-            <time dateTime={share.sharedUtc} title={fullStamp(share.sharedUtc!, zone)}>Shared {shared}</time>
+            <time dateTime={share.sharedUtc} data-tooltip={fullStamp(share.sharedUtc!, zone)}>Shared {shared}</time>
           </p>
         )}
         <div className="note-card__actions">

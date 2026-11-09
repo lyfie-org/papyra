@@ -71,7 +71,7 @@ export default function SharedNotePage() {
           className="shared-page__theme"
           onClick={toggleTheme}
           aria-label={`Switch to ${next} mode`}
-          title={`Switch to ${next} mode`}
+          data-tooltip={`Switch to ${next} mode`}
         >
           {theme === 'light' ? <Moon size={18} /> : <Sun size={18} />}
         </button>

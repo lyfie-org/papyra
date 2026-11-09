@@ -250,21 +250,21 @@ export function SsoGuide({ provider, taken, redirectUriPrefix, onDone }: {
             <div className="settings__field" role="radiogroup" aria-label="Icon">
               Icon
               <div className="sso-guide__icons">
-                <button type="button" role="radio" aria-checked={chosen === 'default'} title={`Default (${iconLabel(KIND_ICON[kind])})`}
+                <button type="button" role="radio" aria-checked={chosen === 'default'} data-tooltip={`Default (${iconLabel(KIND_ICON[kind])})`}
                   className={`sso-guide__icon${chosen === 'default' ? ' is-active' : ''}`}
                   onClick={() => { setIcon(null); setIconData(null); }}>
                   <SsoIcon kind={kind} size={20} />
                   <span className="sso-guide__icon-note">Default</span>
                 </button>
                 {ICON_CHOICES.map(key => (
-                  <button key={key} type="button" role="radio" aria-checked={chosen === key} title={iconLabel(key)}
+                  <button key={key} type="button" role="radio" aria-checked={chosen === key} data-tooltip={iconLabel(key)}
                     aria-label={iconLabel(key)}
                     className={`sso-guide__icon${chosen === key ? ' is-active' : ''}`}
                     onClick={() => { setIcon(key); setIconData(null); }}>
                     <SsoIcon kind="other" icon={key} size={20} />
                   </button>
                 ))}
-                <button type="button" role="radio" aria-checked={chosen === 'upload'} title="Upload your own"
+                <button type="button" role="radio" aria-checked={chosen === 'upload'} data-tooltip="Upload your own"
                   className={`sso-guide__icon${chosen === 'upload' ? ' is-active' : ''}`}
                   onClick={() => fileRef.current?.click()}>
                   {iconData ? <SsoIcon kind={kind} iconData={iconData} size={20} /> : <Upload size={18} aria-hidden="true" />}

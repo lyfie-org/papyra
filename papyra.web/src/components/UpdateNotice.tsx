@@ -26,7 +26,6 @@ export default function UpdateNotice() {
         onClick={() => setOpen(true)}
         aria-haspopup="dialog"
         aria-label={t('update.badge.label', { version: versionLabel(status.latest) })}
-        title={t('update.badge.tip', { version: versionLabel(status.latest) })}
       >
         <CircleAlert size={16} aria-hidden="true" className="update-notice__icon" />
         <span className="update-notice__version workspace__nav-label">{versionLabel(status.latest)}</span>

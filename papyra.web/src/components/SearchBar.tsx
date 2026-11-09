@@ -331,7 +331,7 @@ export default function SearchBar() {
                     tabIndex={-1}
                     aria-hidden="true"
                     className="search__locate"
-                    title={`Show it in ${hit.locate.label}`}
+                    data-tooltip={`Show it in ${hit.locate.label}`}
                     aria-label={`Show “${hit.title}” in ${hit.locate.label}`}
                     onClick={() => locateHit(hit)}
                   >

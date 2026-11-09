@@ -154,7 +154,7 @@ function TodoCard({ note }: { note: Note }) {
               type="button"
               className="todo-card__remove"
               aria-label={`Remove “${item.text || 'empty item'}”`}
-              title="Remove item"
+              data-tooltip="Remove item"
               onClick={(e) => { stop(e); removeItem(item.line); }}
             >
               <X size={13} aria-hidden="true" />

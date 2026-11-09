@@ -286,7 +286,7 @@ export default function LoginPage() {
         )}
 
         {sso && sso.display === 'buttons' && sso.providers.map(p => (
-          <button key={p.id} type="button" className="auth__sso" title={p.hoverText}
+          <button key={p.id} type="button" className="auth__sso"
             onClick={() => { window.location.href = `/api/auth/login/sso/${p.id}`; }}>
             <SsoIcon kind={p.kind} icon={p.icon} iconData={p.iconData} size={17} /> Continue with {p.name}
           </button>
@@ -294,7 +294,7 @@ export default function LoginPage() {
         {sso && sso.display === 'icons' && (
           <div className="auth__sso-icons">
             {sso.providers.map(p => (
-              <button key={p.id} type="button" className="auth__sso-icon" title={p.hoverText} aria-label={p.hoverText}
+              <button key={p.id} type="button" className="auth__sso-icon" data-tooltip={p.hoverText} aria-label={p.hoverText}
                 onClick={() => { window.location.href = `/api/auth/login/sso/${p.id}`; }}>
                 <SsoIcon kind={p.kind} icon={p.icon} iconData={p.iconData} size={22} />
               </button>

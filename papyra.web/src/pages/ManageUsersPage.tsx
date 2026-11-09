@@ -229,7 +229,7 @@ export default function UsersPanel() {
                     value={u.role}
                     aria-label={`Role for ${u.username}`}
                     disabled={isMe || u.disabled || (lastAdmin && u.role === 'Admin')}
-                    title={isMe ? 'Another admin has to change your role'
+                    data-tooltip={isMe ? 'Another admin has to change your role'
                       : lastAdmin ? 'The last admin can’t be made a regular user' : undefined}
                     onChange={e => void changeRole(u, e.target.value)}
                   >
@@ -294,7 +294,7 @@ export default function UsersPanel() {
 function PersonStatus({ user }: { user: ManagedUser }) {
   if (user.disabled) {
     return (
-      <span className="person-chip person-chip--off" title={user.disabledReason ?? undefined}>
+      <span className="person-chip person-chip--off" data-tooltip={user.disabledReason ?? undefined}>
         <Ban size={12} aria-hidden="true" /> Disabled
       </span>
     );
@@ -304,7 +304,7 @@ function PersonStatus({ user }: { user: ManagedUser }) {
   }
   if (user.mustChangePassword) {
     return (
-      <span className="person-chip person-chip--warn" title="Hasn’t chosen their own password yet">
+      <span className="person-chip person-chip--warn" data-tooltip="Hasn’t chosen their own password yet">
         <ShieldAlert size={12} aria-hidden="true" /> New password pending
       </span>
     );
@@ -387,7 +387,7 @@ function PersonMenu({ user, isMe, lastAdmin, onEdit, onReset, onResetBoth, onRes
             </button>
           )}
           <button type="button" role="menuitem" className="card-menu__item" onClick={run(onReset)} disabled={user.hasPassword === false}
-            title={user.hasPassword === false ? 'Signs in with single sign-on — no Papyra password' : undefined}>
+            data-tooltip={user.hasPassword === false ? 'Signs in with single sign-on — no Papyra password' : undefined}>
             <KeyRound size={15} /> Reset password
           </button>
           <button type="button" role="menuitem" className="card-menu__item" onClick={run(onLink)} disabled={user.hasPassword === false}>
@@ -396,7 +396,7 @@ function PersonMenu({ user, isMe, lastAdmin, onEdit, onReset, onResetBoth, onRes
           {!isMe && (
             <>
               <button type="button" role="menuitem" className="card-menu__item" onClick={run(onResetTotp)} disabled={!user.totpEnabled}
-                title={user.totpEnabled ? undefined : 'No authenticator set up yet'}>
+                data-tooltip={user.totpEnabled ? undefined : 'No authenticator set up yet'}>
                 <Smartphone size={15} /> Reset authenticator
               </button>
               <button type="button" role="menuitem" className="card-menu__item" onClick={run(onResetBoth)} disabled={user.hasPassword === false}>
@@ -413,7 +413,7 @@ function PersonMenu({ user, isMe, lastAdmin, onEdit, onReset, onResetBoth, onRes
                 </button>
               ) : (
                 <button type="button" role="menuitem" className="card-menu__item" onClick={run(onDisable)}
-                  disabled={lastAdmin} title={lastAdmin ? 'The last admin can’t be disabled' : undefined}>
+                  disabled={lastAdmin} data-tooltip={lastAdmin ? 'The last admin can’t be disabled' : undefined}>
                   <Ban size={15} /> Disable account…
                 </button>
               )}

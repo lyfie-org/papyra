@@ -69,7 +69,7 @@ describe('FileCard', () => {
     expect(screen.getByText('Q3 report')).toBeTruthy();
     expect(screen.getByText('PDF')).toBeTruthy(); // the icon's band
     const el = screen.getByText('Q3 report').closest('.file-card')!;
-    expect(el.getAttribute('title')).toBe('Q3 report\nPDF document · 1.2 MB');
+    expect(el.getAttribute('data-tooltip')).toBe('Q3 report\nPDF document · 1.2 MB');
     expect(el.querySelector('a')).toBeNull(); // editable: a click selects, it doesn't navigate
   });
 

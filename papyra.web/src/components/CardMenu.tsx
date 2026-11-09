@@ -123,7 +123,7 @@ export default function CardMenu({ note, onShare, onArchive, onDelete, triggerCl
         type="button"
         className={triggerClassName ?? 'note-card__action'}
         aria-label="More actions"
-        title="More actions"
+        data-tooltip="More actions"
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={toggle}
@@ -146,24 +146,24 @@ export default function CardMenu({ note, onShare, onArchive, onDelete, triggerCl
           <button type="button" role="menuitem" className="card-menu__item" onClick={run(togglePin)}>
             {note.pinned ? <PinOff size={15} /> : <Pin size={15} />} {note.pinned ? 'Unpin' : 'Pin to top'}
           </button>
-          <button type="button" role="menuitem" className="card-menu__item" disabled={!online} title={offline}
+          <button type="button" role="menuitem" className="card-menu__item" disabled={!online} data-tooltip={offline}
             onClick={run(toggleLock)}>
             {note.secure ? <LockOpen size={15} /> : <Lock size={15} />} {note.secure ? 'Unlock note' : 'Lock in Vault'}
           </button>
-          <button type="button" role="menuitem" className="card-menu__item" disabled={!online} title={offline}
+          <button type="button" role="menuitem" className="card-menu__item" disabled={!online} data-tooltip={offline}
             onClick={run(onShare)}>
             <Share2 size={15} /> Share…
           </button>
           <div className="card-menu__sep" role="separator" />
           <button type="button" role="menuitem" className="card-menu__item" disabled={note.secure}
-            title={note.secure ? 'Unlock the note to copy it' : undefined} onClick={run(duplicate)}>
+            data-tooltip={note.secure ? 'Unlock the note to copy it' : undefined} onClick={run(duplicate)}>
             <Copy size={15} /> Make a copy
           </button>
           <button type="button" role="menuitem" className="card-menu__item" onClick={run(copyLink)}>
             <Link2 size={15} /> Copy link
           </button>
           <button type="button" role="menuitem" className="card-menu__item" disabled={note.secure || !online}
-            title={note.secure ? 'Unlock the note to download it' : offline} onClick={run(download)}>
+            data-tooltip={note.secure ? 'Unlock the note to download it' : offline} onClick={run(download)}>
             <Download size={15} /> Download .md
           </button>
           {(onArchive || onDelete) && <div className="card-menu__sep" role="separator" />}
@@ -174,7 +174,7 @@ export default function CardMenu({ note, onShare, onArchive, onDelete, triggerCl
           )}
           {onDelete && (
             <button type="button" role="menuitem" className="card-menu__item card-menu__item--danger"
-              disabled={!online} title={offline} onClick={run(onDelete)}>
+              disabled={!online} data-tooltip={offline} onClick={run(onDelete)}>
               <Trash2 size={15} /> Move to Trash
             </button>
           )}

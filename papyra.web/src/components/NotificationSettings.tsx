@@ -80,7 +80,7 @@ export default function NotificationSettings() {
                   <span className="notify-row__control notify-cols" data-cols={columns.length}>
                     <span className="notify-row__cell">
                       {ev.critical && (
-                        <span className="notify-row__always" title="Always sent — it keeps your account safe">
+                        <span className="notify-row__always" data-tooltip="Always sent — it keeps your account safe">
                           <Lock size={12} aria-hidden="true" /> <span className="notify-row__always-text">Always</span>
                         </span>
                       )}

@@ -86,13 +86,13 @@ function Preview({ doc }: { doc: PreviewDocument }) {
             <h2 className="doc-preview__title" id="doc-preview-title">{doc.name}</h2>
             <span className="doc-preview__type">{type.name}{doc.name !== doc.target ? ` · ${doc.target}` : ''}</span>
           </div>
-          <a className="doc-preview__action" href={openHref} target="_blank" rel="noopener noreferrer" title="Open in new tab" aria-label="Open in new tab">
+          <a className="doc-preview__action" href={openHref} target="_blank" rel="noopener noreferrer" data-tooltip="Open in new tab" aria-label="Open in new tab">
             <ExternalLink size={16} aria-hidden="true" />
           </a>
-          <a className="doc-preview__action" href={doc.url} download={doc.target} title="Download" aria-label="Download">
+          <a className="doc-preview__action" href={doc.url} download={doc.target} data-tooltip="Download" aria-label="Download">
             <Download size={16} aria-hidden="true" />
           </a>
-          <button type="button" className="doc-preview__action" onClick={close} title="Close (Esc)" aria-label="Close preview">
+          <button type="button" className="doc-preview__action" onClick={close} data-tooltip="Close" data-tooltip-keys="Esc" aria-label="Close preview">
             <X size={18} aria-hidden="true" />
           </button>
         </header>

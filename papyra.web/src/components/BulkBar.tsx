@@ -178,21 +178,21 @@ export default function BulkBar({ notes, shared = [], total, onClear, onSelectAl
   // An action's own button shows it running; the rest wait (disabled) meanwhile.
   const button = (label: string, icon: React.ReactNode, onClick: () => unknown, danger = false) => (
     <BusyButton type="button" className={`bulk-bar__btn${danger ? ' bulk-bar__btn--danger' : ''}`}
-      disabled={busy || !online} title={offline} aria-label={label} onClick={onClick}>
+      disabled={busy || !online} data-tooltip={offline} aria-label={label} onClick={onClick}>
       {icon}<span>{label}</span>
     </BusyButton>
   );
 
   const bar = (
     <div className="bulk-bar" role="toolbar" aria-label={`${plural(count, noun)} selected`}>
-      <button type="button" className="bulk-bar__close" aria-label="Clear selection" title="Clear selection (Esc)" onClick={onClear}>
+      <button type="button" className="bulk-bar__close" aria-label="Clear selection" data-tooltip="Clear selection" data-tooltip-keys="Esc" onClick={onClear}>
         <X size={18} />
       </button>
       <span className="bulk-bar__count" aria-live="polite">
         <strong key={count} className="bulk-bar__num">{count}</strong> selected
       </span>
       {count < total && (
-        <button type="button" className="bulk-bar__text" onClick={onSelectAll} title="Select all (Ctrl+A)">
+        <button type="button" className="bulk-bar__text" onClick={onSelectAll} data-tooltip="Select all" data-tooltip-keys="Ctrl+A">
           <CheckCheck size={16} /> All {total}
         </button>
       )}

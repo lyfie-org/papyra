@@ -91,7 +91,7 @@ export default function MoodPicker({ value, onChange, disabled, compact, collaps
         disabled={disabled}
         aria-expanded={false}
         aria-label={`How the day felt: ${label}. Change`}
-        data-tip="Change how the day felt"
+        data-tooltip="Change how the day felt"
         onClick={() => setAsked(true)}
       >
         <MoodGlyph mood={value} size={18} />
@@ -132,7 +132,7 @@ export default function MoodPicker({ value, onChange, disabled, compact, collaps
               aria-label={label}
               // Named by the page's own instant tip, not the browser's slow title; the label already
               // shows under a full-size glyph, so only the small ones (and a chosen one) say anything.
-              data-tip={on ? `${label} — click to clear` : compact ? label : undefined}
+              data-tooltip={on ? `${label} — click to clear` : compact ? label : undefined}
               tabIndex={on || (value === null && v === 3) ? 0 : -1}
               disabled={disabled}
               className={`mood-picker__btn${on ? ' mood-picker__btn--on' : ''}`}

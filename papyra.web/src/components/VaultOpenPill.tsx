@@ -122,7 +122,7 @@ export default function VaultOpenPill() {
         to="/vault"
         className="vault-pill__state"
         tabIndex={closing ? -1 : undefined}
-        title="Your vault is open on this device — locked notes are readable. It locks itself after 5 idle minutes."
+        data-tooltip="Your vault is open on this device — locked notes are readable. It locks itself after 5 idle minutes."
       >
         <span className="vault-pill__label">{closing ? 'Vault locked' : 'Vault open'}</span>
         {!closing && (
@@ -136,7 +136,7 @@ export default function VaultOpenPill() {
         className="vault-pill__lock"
         onClick={() => void lock()}
         disabled={!!closing}
-        title="Lock vault now (⌘/Ctrl+Shift+L)"
+        data-tooltip="Lock vault now" data-tooltip-keys="⌘/Ctrl+Shift+L"
         aria-label="Lock vault now"
       >
         <span className="vault-pill__padlock" aria-hidden="true">

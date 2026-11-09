@@ -567,7 +567,7 @@ function SecurityTab() {
               {renamingPasskey !== d.id && <>
                 <button type="button" className="setting-row__action" onClick={() => setRenamingPasskey(d.id)}>Rename</button>
                 <BusyButton type="button" className="setting-row__action" disabled={!open}
-                  title={open ? undefined : 'Unlock your vault to remove a passkey'} onClick={() => remove(d)} busyLabel="Removing…">
+                  data-tooltip={open ? undefined : 'Unlock your vault to remove a passkey'} onClick={() => remove(d)} busyLabel="Removing…">
                   Remove
                 </BusyButton>
               </>}
@@ -724,7 +724,7 @@ function DataTab() {
         </select>
         <BusyButton type="button" className="settings__btn" disabled={importing && !uploading}
           busy={uploading} busyLabel="Uploading…" progress={uploading ? uploaded : null}
-          title={importing ? 'An import is already running' : undefined}
+          data-tooltip={importing ? 'An import is already running' : undefined}
           onClick={() => importRef.current?.click()}>
           <Upload size={16} /> Choose archive
         </BusyButton>
@@ -1143,7 +1143,7 @@ function JobsTab() {
     const outcome = last.ok ? (last.summary || 'nothing needed doing') : last.error;
     return (
       <>
-        <span className={`jobs__chip ${last.ok ? 'jobs__chip--ok' : 'jobs__chip--failed'}`} title={at}>
+        <span className={`jobs__chip ${last.ok ? 'jobs__chip--ok' : 'jobs__chip--failed'}`} data-tooltip={at}>
           {last.ok ? <CheckCircle2 size={12} aria-hidden="true" /> : <AlertTriangle size={12} aria-hidden="true" />}
           {last.ok ? 'Last run' : 'Failed'} {agoPhrase(last.finishedUtc)}
         </span>

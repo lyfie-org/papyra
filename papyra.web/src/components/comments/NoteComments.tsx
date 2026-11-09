@@ -386,7 +386,7 @@ export default function NoteComments({
             className="luthor-toolbar-button comment-ui comment-tool"
             onMouseDown={(e) => e.preventDefault()}
             onClick={() => startDraft(bubble.range)}
-            title="Comment (Ctrl+Alt+M)"
+            data-tooltip="Comment" data-tooltip-keys="Ctrl+Alt+M"
             aria-label="Comment"
           >
             <MessageSquarePlus size={14} aria-hidden="true" />
@@ -401,7 +401,7 @@ export default function NoteComments({
           style={{ top: Math.max(8, bubble.top - 40), left: Math.min(bubble.left - 16, window.innerWidth - 130) }}
           onMouseDown={(e) => e.preventDefault()}
           onClick={() => startDraft(bubble.range)}
-          title="Comment (Ctrl+Alt+M)"
+          data-tooltip="Comment" data-tooltip-keys="Ctrl+Alt+M"
         >
           <MessageSquarePlus size={15} aria-hidden="true" /> Comment
         </button>,
@@ -539,7 +539,7 @@ function CommentsPanel({ threads, anchored, data, api, onJump, onClose }: {
             <div key={t.id} className="comment-card">
               {t.quote && !detached && (
                 <button type="button" className="comment-panel__jump" onClick={() => onJump(t)} disabled={t.resolved}
-                  title={t.resolved ? undefined : 'Show in note'}>
+                  data-tooltip={t.resolved ? undefined : 'Show in note'}>
                   <blockquote className="comment-thread__quote">{t.quote.exact}</blockquote>
                 </button>
               )}
@@ -562,7 +562,7 @@ export function CommentsButton({ count, onClick, pressed }: {
   return (
     <button type="button" className={`note-toolbar__btn comments-button${pressed ? ' is-active' : ''}`}
       aria-pressed={pressed} onClick={onClick}
-      aria-label={count ? `Comments (${count} open)` : 'Comments'} title="Comments">
+      aria-label={count ? `Comments (${count} open)` : 'Comments'} data-tooltip="Comments">
       <MessageSquareText size={18} aria-hidden="true" />
       {count > 0 && <span className="comments-button__count">{count}</span>}
     </button>
