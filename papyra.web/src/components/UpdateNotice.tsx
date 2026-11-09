@@ -62,6 +62,8 @@ function UpdateDialog({ status, onClose }: { status: UpdateStatus; onClose: () =
           Latest version: {status.latest ? versionLabel(status.latest) : ''}
         </p>
 
+        <p className="update-dialog__fine">Papyra looks at GitHub once a day. Nothing about your server is sent.</p>
+
         <button type="button" className="update-dialog__ack" autoFocus onClick={onClose}>Acknowledge</button>
       </div>
     </div>,

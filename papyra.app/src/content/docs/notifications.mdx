@@ -128,11 +128,11 @@ Discord has nothing to import: a person's webhook is theirs, and the bot token i
 ## What leaves your server
 
 Everything Papyra's server sends to another server, and who sets it up. Notes are never sent anywhere you
-didn't choose. The full list of what the update check sends is on [its own page](/docs/update-check/).
+didn't choose. What the update check asks is on [its own page](/docs/update-check/).
 
 | What | Goes to | Sent | Set up by |
 | --- | --- | --- | --- |
-| Update check | `versions.papyra.app` | Install ID, version, processor and OS family, once a day. **On by default; one setting turns it off.** | Nobody: it is the default |
+| Update check | `api.github.com` | A plain request for the latest release, once a day. Nothing about your install. **On by default; one setting turns it off.** | Nobody: it is the default |
 | Email | The mail server in *Settings → Email* | The notice or message | An administrator |
 | ntfy | The ntfy server in *Settings → Chat notifications* | One short line, an optional link, the access token if set | An administrator, then each person |
 | Discord webhook | `discord.com` (the address the person pasted) | One short line as a small card, an optional link | The person |

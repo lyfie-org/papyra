@@ -5,7 +5,7 @@ namespace Papyra.Api.Features;
 /// <summary>
 /// <c>/api/admin/update</c> — what the sidebar's "update available" icon and its popup read.
 /// Admins only: they are the ones who can pull a newer image. See <c>Storage/UpdateCheck.cs</c> for
-/// the whole of what this server sends and why.
+/// the whole of the daily check: one plain request to GitHub, nothing about this install.
 /// </summary>
 public static class UpdateEndpoints
 {
@@ -15,7 +15,7 @@ public static class UpdateEndpoints
 
         g.MapGet("/", (UpdateStatus status) => Describe(status))
             .WithSummary("Is a newer Papyra out?")
-            .WithDescription("The release this server runs, the newest one the daily check has heard of, and exactly what the check sends.");
+            .WithDescription("The release this server runs, and the newest one the daily check on GitHub has heard of.");
     }
 
     private static object Describe(UpdateStatus s) => new
@@ -27,7 +27,5 @@ public static class UpdateEndpoints
         latest = s.Latest?.Version,
         url = s.Latest?.Url,
         checkedUtc = s.CheckedUtc,
-        // Everything the daily request contains, shown rather than described.
-        sends = new { id = s.InstanceId, version = s.Current, arch = UpdateChecker.Arch(), os = UpdateChecker.OsFamily() },
     };
 }

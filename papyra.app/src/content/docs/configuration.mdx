@@ -47,16 +47,16 @@ thing HTTPS is protecting. See [HTTPS and reverse proxies](/docs/https/).
 
 ### `PAPYRA_UPDATE_CHECK_ENABLED`
 
-Once a day Papyra asks `versions.papyra.app` whether a newer version is out, so
-admins can be told, and the maker counts it as an install. It is optional.
-Set `false` and the server never makes that request, never creates its install
-ID, and admins simply aren't told about new versions:
+Once a day Papyra looks at GitHub to see whether a newer version is out, so
+admins can be told. It sends nothing about your server. It is optional. Set
+`false` and the server never makes that request, and admins simply aren't told
+about new versions:
 
 ```yaml
 PAPYRA_UPDATE_CHECK_ENABLED: "false"
 ```
 
-See [The update check](/docs/update-check/) for exactly what is sent.
+See [The update check](/docs/update-check/) for exactly what it asks.
 
 ### `PAPYRA_TRUSTED_PROXIES`
 

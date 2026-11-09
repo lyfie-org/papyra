@@ -11,7 +11,7 @@ import { GITHUB_URL, DESCRIPTION, LUTHOR_URL, LYFIE_URL, SITE_URL } from '../dat
 import { FAQ, homeGraph } from '../data/about';
 import { JOURNEY, NEXT } from '../data/journey';
 import { readChangelog } from '../lib/changelog.mjs';
-import { dockerPulls, installCounts, roundedCount, starCount } from '../lib/stats.mjs';
+import { dockerPulls, roundedCount, starCount } from '../lib/stats.mjs';
 import type { IconName } from '../lib/icons';
 
 const { version } = readChangelog();
@@ -20,8 +20,6 @@ const stars = await starCount();
 const starLabel = stars !== null && stars >= 10 ? `Star on GitHub · ${stars.toLocaleString('en-GB')}` : 'Star on GitHub';
 
 const pulls = await dockerPulls();
-const census = await installCounts();
-const countText = (n: number | undefined) => (typeof n === 'number' ? n.toLocaleString('en') : '—');
 const pullsLabel = pulls !== null && pulls >= 1000 ? roundedCount(pulls) : null;
 
 // Structured data: who publishes Papyra (Lyfie), what it is, and its FAQ — so
@@ -286,9 +284,8 @@ const when = (m: (typeof JOURNEY)[number]) => dayFmt.format(new Date(`${m.date}T
         <p class="eyebrow">Privacy</p>
         <h2>Your notes stay on your server.</h2>
         <p>
-          Your notes never leave your server unless you share one, back it up to Git, or email
-          yourself a sign-in alert. The only other thing Papyra sends anywhere is a daily check for
-          a newer version, and you can turn that off.
+          Your notes never leave your server unless you share one or back it up to Git. If you set up
+          notices by email, ntfy, Discord or Telegram, they carry a short line and never your note text.
         </p>
         <p class="nope__label">Things Papyra never collects:</p>
         <ul class="nope" aria-label="What Papyra never collects">
@@ -301,21 +298,11 @@ const when = (m: (typeof JOURNEY)[number]) => dayFmt.format(new Date(`${m.date}T
             ))
           }
         </ul>
-        <aside class="census" aria-labelledby="census-title" data-census>
-          <h3 id="census-title" class="census__title">What I count</h3>
-          <p class="census__numbers" aria-live="polite">
-            <span><strong data-census-installs>{countText(census?.installs)}</strong> installs</span>
-            <span><strong>{countText(pulls ?? undefined)}</strong> Docker pulls</span>
-          </p>
-          <p class="census__what">
-            The daily update check is the only thing that calls home. I use it as a count of
-            installs, because it helps me stay motivated and see where to take Papyra next.
-          </p>
-          <p class="census__off">
-            It’s optional. Set <code>PAPYRA_UPDATE_CHECK_ENABLED: "false"</code> to turn it off.
-            <a href="/docs/update-check/">Exactly what is sent</a>
-          </p>
-        </aside>
+        <p class="privacy__check">
+          The one thing Papyra looks up on its own is GitHub, once a day, for a newer version. It sends nothing
+          about you or your server, and you can turn it off.
+          <a href="/docs/update-check/">How it works</a>
+        </p>
       </div>
       <div class="privacy__side">
         <figure class="quote" data-reveal>
@@ -551,22 +538,6 @@ const when = (m: (typeof JOURNEY)[number]) => dayFmt.format(new Date(`${m.date}T
   </section>
 
 </Base>
-
-<script>
-  // The install count, refreshed from our own versions.papyra.app (the same place the daily update check
-  // goes). The page already carries the number from its last build, so if this can't be reached it simply stays.
-  // Docker pulls are only ever baked in at build (Docker Hub is never called from a visitor's browser).
-  const census = document.querySelector<HTMLElement>('[data-census]');
-  if (census) {
-    fetch('https://versions.papyra.app/stats.json')
-      .then((res) => (res.ok ? res.json() : Promise.reject(new Error(String(res.status)))))
-      .then((stats: { installs: number }) => {
-        if (typeof stats.installs !== 'number') return;
-        census.querySelector('[data-census-installs]')!.textContent = new Intl.NumberFormat('en').format(stats.installs);
-      })
-      .catch(() => {});
-  }
-</script>
 
 <script>
   // The hero's changing word: type it, hold it, backspace it fast, type the
@@ -1056,47 +1027,14 @@ const when = (m: (typeof JOURNEY)[number]) => dayFmt.format(new Date(`${m.date}T
     flex: none;
   }
 
-  .census {
+  .privacy__check {
     margin: 0 0 var(--space-6);
-    padding: var(--space-4) var(--space-5);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-md);
-    background: var(--surface);
-  }
-
-  .census__title {
-    margin: 0 0 var(--space-2);
-    font: 500 var(--fs-xs) / 1.2 var(--mono);
-    letter-spacing: 0.14em;
-    text-transform: uppercase;
-    color: var(--text);
-  }
-
-  .census__numbers {
-    margin: 0 0 var(--space-3);
-    display: flex;
-    flex-wrap: wrap;
-    gap: var(--space-2) var(--space-6);
     font-size: var(--fs-sm);
-    color: var(--text);
-  }
-
-  .census__numbers strong {
-    font: 400 var(--fs-2xl) / 1.1 var(--heading);
-    color: var(--text-h);
-    margin-right: 4px;
-  }
-
-  .census__what,
-  .census__off {
-    margin: 0 0 var(--space-2);
-    font-size: var(--fs-xs);
     line-height: 1.6;
     color: var(--text);
   }
 
-  .census__off { margin-bottom: 0; }
-  .census__off a { color: var(--accent-text); }
+  .privacy__check a { color: var(--accent-text); }
 
   .quote {
     margin: 0;

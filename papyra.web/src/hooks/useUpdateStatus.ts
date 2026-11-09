@@ -1,7 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useAuth } from './useAuth';
 
-/** What the server knows about a newer Papyra (admins only; see Storage/UpdateCheck.cs). */
+/** What the server knows about a newer Papyra, from its daily look at GitHub (admins only; see Storage/UpdateCheck.cs). */
 export interface UpdateStatus {
   /** False on a build with no release number (a development build). */
   enabled: boolean;
@@ -12,8 +12,6 @@ export interface UpdateStatus {
   latest: string | null;
   url: string | null;
   checkedUtc: string | null;
-  /** Everything the daily check sends, so the popup can show it rather than describe it. */
-  sends: { id: string | null; version: string; arch: string; os: string };
 }
 
 const KEY = ['update-status'] as const;

@@ -44,17 +44,6 @@ export async function dockerPulls() {
 }
 
 /**
- * Installs ever seen, from our own versions.papyra.app, baked in at build like the numbers above (and
- * refreshed by the same daily rebuild). A visitor's browser asks again for a fresher one, but if that ever
- * fails, this is what the page shows rather than a blank. Active installs are deliberately not shown.
- * @returns {Promise<{ installs: number } | null>}
- */
-export async function installCounts() {
-  const data = await once('https://versions.papyra.app/stats.json');
-  return typeof data?.installs === 'number' ? { installs: data.installs } : null;
-}
-
-/**
  * A count rounded down to something honest and readable: 4577 → "4,500+",
  * 12 840 → "12k+". Never rounds up.
  * @param {number} n

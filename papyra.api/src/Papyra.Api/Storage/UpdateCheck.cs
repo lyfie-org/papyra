@@ -1,30 +1,29 @@
 using System.Globalization;
+using System.Net;
 using System.Text.Json;
 using System.Text.RegularExpressions;
 
 namespace Papyra.Api.Storage;
 
-// THE UPDATE CHECK — the only thing Papyra ever sends to anyone, written to be read.
+// THE UPDATE CHECK, written to be read.
 //
-// Once a day (at a time of day of its own, never 02:30–03:30 UTC: see UpdateSchedule.cs) this server asks versions.papyra.app for the latest release, so an admin
-// can be told when one is out. The request carries exactly four facts:
-//   • id — a random UUID made on first use and kept in `.papyra/instance-id`. It is not
-//          derived from anything (not your hostname, address, accounts or notes), so all
-//          it can do is say "the same install again". That is how the project counts
-//          installs without knowing who or where they are.
-//   • v  — the version number this server is running, "1.0.0" or, for a development build,
-//          "1.0.0-dev.abc1234".
-//   • arch — the processor family it runs on: x64, arm64 or arm.
-//   • os — the operating system family: linux, windows or macos.
-// The other end reads the country from the connection and never stores the IP address.
-// Nothing about notes, users or settings is sent. A host with no release version at all (`dotnet run`,
-// the test suite) never calls out, so developing Papyra doesn't count as installs. Why it exists: so admins hear about updates, and so the person building Papyra can see that it
-// is being used. What the other end does with it: papyra.versions/README.md.
+// Once a day this server asks GitHub for the project's latest release, so an admin can be told when one is
+// out. That is the whole of it. The request is a plain
 //
-// It is optional: PAPYRA_UPDATE_CHECK_ENABLED=false (Features:UpdateCheck) and the server never asks, never makes
-// an id, and admins simply don't hear about updates.
+//     GET https://api.github.com/repos/lyfie-org/papyra/releases/latest
+//
+// with a fixed `Accept`, a fixed `User-Agent: Papyra` (GitHub requires one) and, after the first answer, an
+// `If-None-Match` carrying GitHub's own ETag. There is no query string, and nothing about this install is in
+// it: no id, no version, no processor, no operating system. GitHub sees the address the request comes from,
+// as any web server does. Nothing about notes, users or settings is sent. Nobody collects anything: the
+// project runs no server for this and keeps no count.
+//
+// A host with no release version at all (`dotnet run`, the test suite) never calls out.
+//
+// It is optional: PAPYRA_UPDATE_CHECK_ENABLED=false (Features:UpdateCheck) and the server never asks, and
+// admins simply don't hear about updates. Do not add fields to this request.
 
-/// <summary>The newest release, as versions.papyra.app answers it.</summary>
+/// <summary>The newest release, as GitHub describes it.</summary>
 public sealed record UpdateInfo(string Version, string Url);
 
 /// <summary>What this server knows about updates; the admin UI reads it, the checker fills it.</summary>
@@ -47,9 +46,6 @@ public sealed class UpdateStatus(string current, bool production, bool optedIn =
 
     public UpdateInfo? Latest { get; private set; }
     public DateTime? CheckedUtc { get; private set; }
-
-    /// <summary>The random id sent with the check, once one exists (shown to admins, so nothing is hidden).</summary>
-    public string? InstanceId { get; internal set; }
 
     public bool Available => Latest is not null && SemVer.IsNewer(Latest.Version, Current);
 
@@ -95,37 +91,39 @@ public static partial class SemVer
     }
 }
 
-/// <summary>Asks for the latest release once a day.</summary>
+/// <summary>Asks GitHub for the latest release once a day.</summary>
 public sealed class UpdateChecker(
     UpdateStatus status, IHttpClientFactory http, IConfiguration config, IHostEnvironment env,
     TimeProvider clock, ILogger<UpdateChecker> log) : BackgroundService
 {
-    public const string DefaultUrl = "https://versions.papyra.app/latest.json";
+    public const string DefaultUrl = "https://api.github.com/repos/lyfie-org/papyra/releases/latest";
+
+    /// <summary>Where an admin is sent when the answer carries no usable link.</summary>
+    public const string ReleasesPage = "https://github.com/lyfie-org/papyra/releases/latest";
+
     private static readonly TimeSpan AfterBoot = TimeSpan.FromSeconds(45);
+
+    // GitHub's own tag for the answer we hold, so the next ask can be "unchanged?" — kept in memory only.
+    private string? _etag;
 
     protected override async Task ExecuteAsync(CancellationToken stop)
     {
+        // Older versions kept a random id here for counting installs. Nothing uses it any more.
+        RemoveOldInstanceId();
         if (!status.Enabled) return;
         try
         {
-            // A moment after start, so booting is never slowed by it. Then once a day, at this install's own
-            // time of day and never in the quiet hour (see UpdateSchedule).
+            // A moment after start, so booting is never slowed by it. Then about once a day.
             var notBefore = clock.GetUtcNow() + AfterBoot;
             var failures = 0;
             while (!stop.IsCancellationRequested)
             {
-                var id = InstanceId();
-                status.InstanceId = id;
-                var state = ReadState();
-                var due = UpdateSchedule.Next(clock.GetUtcNow(), state.Last, state.Slot ?? UpdateSchedule.Slot(id), notBefore,
-                    () => Random.Shared.Next(0, 600));
+                var due = UpdateSchedule.Next(clock.GetUtcNow(), ReadLast(), notBefore, () => Random.Shared.Next(0, 3600));
                 var wait = due - clock.GetUtcNow();
                 await Task.Delay(wait > TimeSpan.Zero ? wait : TimeSpan.Zero, clock, stop);
 
                 // A check that got no answer is tried again in an hour (then two, four, six: see RetryDelay).
-                // When a retry gets through, the time it got through becomes this install's time of day.
-                var retrying = failures > 0;
-                if (await CheckNowAsync(stop, adoptTimeOfDay: retrying))
+                if (await CheckNowAsync(stop))
                 {
                     failures = 0;
                     notBefore = due;
@@ -140,58 +138,77 @@ public sealed class UpdateChecker(
         catch (OperationCanceledException) { /* shutting down */ }
     }
 
-    // What is remembered across restarts, so a restart doesn't ask again: when the last check got through, and
-    // the time of day this install asks at if a retry moved it off the one its id gave it.
-    private sealed record CheckState(DateTimeOffset? Last, TimeSpan? Slot);
-
+    // What is remembered across restarts, so a restart doesn't ask again: when the last check got an answer.
     private string StateFile() => Path.Combine(PapyraPaths.DotPapyra(config, env.ContentRootPath), "update-checked");
 
-    private CheckState ReadState()
+    private DateTimeOffset? ReadLast()
     {
         try
         {
-            if (!File.Exists(StateFile())) return new CheckState(null, null);
+            if (!File.Exists(StateFile())) return null;
             using var doc = JsonDocument.Parse(File.ReadAllText(StateFile()));
-            var last = doc.RootElement.TryGetProperty("last", out var l) && l.ValueKind == JsonValueKind.String && l.TryGetDateTimeOffset(out var at)
-                ? at.ToUniversalTime() : (DateTimeOffset?)null;
-            var slot = doc.RootElement.TryGetProperty("slot", out var s) && s.ValueKind == JsonValueKind.Number && s.TryGetInt32(out var seconds) && seconds is >= 0 and < 86_400
-                ? TimeSpan.FromSeconds(seconds) : (TimeSpan?)null;
-            // A time of day inside the quiet hour is never used.
-            return new CheckState(last, slot is { } t && t >= UpdateSchedule.QuietStart && t < UpdateSchedule.QuietEnd ? null : slot);
+            return doc.RootElement.TryGetProperty("last", out var l) && l.ValueKind == JsonValueKind.String && l.TryGetDateTimeOffset(out var at)
+                ? at.ToUniversalTime() : null;
         }
-        catch (Exception e) when (e is IOException or JsonException or InvalidOperationException) { return new CheckState(null, null); }
+        catch (Exception e) when (e is IOException or JsonException or InvalidOperationException) { return null; }
     }
 
-    private void WriteState(CheckState state) =>
-        File.WriteAllText(StateFile(), JsonSerializer.Serialize(new
+    private void WriteLast(DateTimeOffset at)
+    {
+        Directory.CreateDirectory(Path.GetDirectoryName(StateFile())!);
+        File.WriteAllText(StateFile(), JsonSerializer.Serialize(new { last = at.ToString("O", CultureInfo.InvariantCulture) }));
+    }
+
+    private void RemoveOldInstanceId()
+    {
+        try
         {
-            last = state.Last?.ToString("O", CultureInfo.InvariantCulture),
-            slot = state.Slot is { } t ? (int?)t.TotalSeconds : null,
-        }));
+            var file = Path.Combine(PapyraPaths.DotPapyra(config, env.ContentRootPath), "instance-id");
+            if (File.Exists(file)) File.Delete(file);
+        }
+        catch (Exception e) when (e is IOException or UnauthorizedAccessException) { /* it is only a leftover */ }
+    }
 
     /// <summary>
-    /// Ask now. Never throws: a server that can't be reached just leaves what we knew. With
-    /// <paramref name="adoptTimeOfDay"/>, a check that gets through makes this moment's time of day the one
-    /// the install asks at from now on (the retry that worked becomes the new schedule).
+    /// Ask now. Never throws: a GitHub that can't be reached, or that asks us to wait, just leaves what we knew.
+    /// Returns true when GitHub answered (even "no release yet"), false when the check should be tried again later.
     /// </summary>
-    public async Task<bool> CheckNowAsync(CancellationToken ct, bool adoptTimeOfDay = false)
+    public async Task<bool> CheckNowAsync(CancellationToken ct)
     {
         if (!status.Enabled) return false;
         try
         {
-            var id = InstanceId();
-            status.InstanceId = id;
             var url = config["Papyra:UpdateCheckUrl"] is { Length: > 0 } custom ? custom : DefaultUrl;
             using var client = http.CreateClient("update-check");
-            using var request = new HttpRequestMessage(HttpMethod.Get,
-                $"{url}?id={id}&v={Uri.EscapeDataString(status.Current)}&arch={Arch()}&os={OsFamily()}");
-            request.Headers.UserAgent.ParseAdd("Papyra/" + status.Current);
+            using var request = new HttpRequestMessage(HttpMethod.Get, url);
+            request.Headers.UserAgent.ParseAdd("Papyra");
+            request.Headers.Accept.ParseAdd("application/vnd.github+json");
+            request.Headers.TryAddWithoutValidation("X-GitHub-Api-Version", "2022-11-28");
+            if (_etag is not null && status.Latest is not null) request.Headers.TryAddWithoutValidation("If-None-Match", _etag);
+
             using var response = await client.SendAsync(request, ct);
-            response.EnsureSuccessStatusCode();
             var now = clock.GetUtcNow();
+
+            // "Unchanged", or "no release yet": GitHub answered, and there is nothing new to show.
+            if (response.StatusCode is HttpStatusCode.NotModified or HttpStatusCode.NotFound)
+            {
+                if (response.StatusCode == HttpStatusCode.NotFound) _etag = null;
+                status.Record(null, now.UtcDateTime);
+                WriteLast(now);
+                return true;
+            }
+
+            // GitHub limits requests that carry no login. That is no error for anyone: ask again later.
+            if (response.StatusCode is HttpStatusCode.Forbidden or HttpStatusCode.TooManyRequests)
+            {
+                log.LogInformation("GitHub asked for a pause ({Status}); the update check will try again later.", (int)response.StatusCode);
+                return false;
+            }
+
+            response.EnsureSuccessStatusCode();
             status.Record(Parse(await response.Content.ReadAsStringAsync(ct)), now.UtcDateTime);
-            var slot = adoptTimeOfDay ? TimeSpan.FromSeconds(Math.Floor(now.UtcDateTime.TimeOfDay.TotalSeconds)) : ReadState().Slot;
-            WriteState(new CheckState(now, slot));
+            _etag = response.Headers.ETag?.ToString();
+            WriteLast(now);
             return true;
         }
         catch (Exception e) when (e is HttpRequestException or TaskCanceledException or JsonException or IOException)
@@ -201,53 +218,37 @@ public sealed class UpdateChecker(
         }
     }
 
-    /// <summary>The answer, if it is a release with a link we are willing to show.</summary>
+    /// <summary>
+    /// The answer, if it is a final release published on GitHub. A draft, a pre-release and a tag that isn't a
+    /// release number never become "an update".
+    /// </summary>
     internal static UpdateInfo? Parse(string json)
     {
         using var doc = JsonDocument.Parse(json);
         var root = doc.RootElement;
-        var version = root.TryGetProperty("version", out var v) ? v.GetString() : null;
+        if (root.ValueKind != JsonValueKind.Object) return null;
+        if (root.TryGetProperty("draft", out var draft) && draft.ValueKind == JsonValueKind.True) return null;
+        if (root.TryGetProperty("prerelease", out var pre) && pre.ValueKind == JsonValueKind.True) return null;
+
+        var tag = (root.TryGetProperty("tag_name", out var t) && t.ValueKind == JsonValueKind.String ? t.GetString() : null)?.Trim();
+        var version = tag is not null && tag.StartsWith('v') ? tag[1..] : tag;
         if (!SemVer.IsStable(version)) return null;
-        var url = root.TryGetProperty("url", out var u) ? u.GetString() : null;
-        // Only ever offer a link to the project's own pages, whatever the answer says.
-        if (!IsProjectLink(url)) url = "https://github.com/lyfie-org/papyra/releases/latest";
+
+        var url = root.TryGetProperty("html_url", out var u) && u.ValueKind == JsonValueKind.String ? u.GetString() : null;
+        // Only ever offer a link to the project's own releases, whatever the answer says.
+        if (!IsProjectLink(url)) url = ReleasesPage;
         return new UpdateInfo(version!, url!);
     }
 
     /// <summary>
-    /// An https link to papyra.app or to the project's repository. The host is compared whole, so
-    /// <c>https://papyra.app.example.com</c> and <c>https://papyra.app@example.com</c> are not the project's.
+    /// An https link to the project's repository. The host is compared whole, so
+    /// <c>https://github.com.example.com</c> and <c>https://github.com@example.com</c> are not the project's.
     /// </summary>
     internal static bool IsProjectLink(string? url)
     {
         if (!Uri.TryCreate(url, UriKind.Absolute, out var uri) || uri.Scheme != Uri.UriSchemeHttps || uri.UserInfo.Length > 0) return false;
-        if (uri.Host == "papyra.app") return true;
         const string repo = "/lyfie-org/papyra";
         return uri.Host == "github.com"
             && (uri.AbsolutePath == repo || uri.AbsolutePath.StartsWith(repo + "/", StringComparison.Ordinal));
-    }
-
-    /// <summary>The processor family, coarse: x64, arm64, arm (or "other").</summary>
-    internal static string Arch() => System.Runtime.InteropServices.RuntimeInformation.ProcessArchitecture switch
-    {
-        System.Runtime.InteropServices.Architecture.X64 => "x64",
-        System.Runtime.InteropServices.Architecture.Arm64 => "arm64",
-        System.Runtime.InteropServices.Architecture.Arm => "arm",
-        _ => "other",
-    };
-
-    /// <summary>The operating system family, coarse: linux, windows, macos (or "other").</summary>
-    internal static string OsFamily() =>
-        OperatingSystem.IsLinux() ? "linux" : OperatingSystem.IsWindows() ? "windows" : OperatingSystem.IsMacOS() ? "macos" : "other";
-
-    // A random id, made the first time it is needed and kept beside the other Papyra state.
-    private string InstanceId()
-    {
-        var file = Path.Combine(PapyraPaths.DotPapyra(config, env.ContentRootPath), "instance-id");
-        if (File.Exists(file) && Guid.TryParse(File.ReadAllText(file).Trim(), out var existing)) return existing.ToString("D", CultureInfo.InvariantCulture);
-        Directory.CreateDirectory(Path.GetDirectoryName(file)!);
-        var made = Guid.NewGuid().ToString("D", CultureInfo.InvariantCulture);
-        File.WriteAllText(file, made);
-        return made;
     }
 }

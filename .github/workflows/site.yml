@@ -44,12 +44,9 @@ on:
   # Re-run a site without an empty commit: run on main for production, or on
   # development for the dev site.
   workflow_dispatch:
-  # Daily rebuild of main, so the Docker Hub pull count, GitHub star count and install
-  # count baked into the pages stay current (src/lib/stats.mjs). The site itself stays
-  # fully static — no Functions or Workers — so traffic never meets a limit.
-  # 03:00 UTC (08:30 IST) is the middle of the quiet hour, 02:30–03:30 UTC, in which no
-  # Papyra install sends its update check (papyra.api Storage/UpdateSchedule.cs), so the
-  # install count is steady while it is read. Move both together.
+  # Daily rebuild of main, so the Docker Hub pull count and GitHub star count baked into
+  # the pages stay current (src/lib/stats.mjs). The site itself stays fully static — no
+  # Functions or Workers — so traffic never meets a limit.
   schedule:
     - cron: '0 3 * * *'
 

@@ -36,7 +36,7 @@
 - **Your notes are just files.** Every note is a `.md` file with a small YAML header, in a folder you own. If you ever stop using Papyra, you still have a normal folder of Markdown.
 - **One container, one volume.** No database server, no search server, no sidecars. amd64 and arm64, so a Raspberry Pi 4 or 5 is plenty.
 - **Plays well with your other tools.** Obsidian, VS Code, `grep`, Syncthing and git can all work on the same folder. Papyra notices outside changes and catches up live.
-- **Private by default.** No tracking, analytics or crash reports, and your notes stay on your server. The only call home is a daily check for updates, and I use it as a count of installs to keep myself motivated. It is optional: set `PAPYRA_UPDATE_CHECK_ENABLED: "false"` in the compose file and Papyra never calls out. [What it sends](https://papyra.app/docs/update-check/). GPLv3.
+- **Private by default.** No tracking, analytics or crash reports, and your notes stay on your server. Papyra makes no request to any server of mine. Once a day it looks at GitHub for a newer version and sends nothing about you; it is optional, so set `PAPYRA_UPDATE_CHECK_ENABLED: "false"` in the compose file and it never calls out. [What it asks](https://papyra.app/docs/update-check/). GPLv3.
 
 <p align="center">
   <img src="assets/readme/shell-edit.gif" alt="A shell appends a line to a note's file and the open app updates on its own" width="760" />
@@ -64,7 +64,7 @@ Open **http://localhost:8080** and create the first account. That's it.
 - **File ownership:** `PUID` / `PGID` in the compose file decide who owns the files in the volume, so you can edit them over SMB or Syncthing.
 - **Want the notes in a folder you can see?** Swap the named volume for a bind mount, e.g. `./papyra-data:/data`. See [Your files](https://papyra.app/docs/files/).
 - **Updating:** `docker compose -f docker-compose.hub.yml pull && docker compose -f docker-compose.hub.yml up -d`.
-- **Don't want the daily update check?** It's optional. Set `PAPYRA_UPDATE_CHECK_ENABLED: "false"` in the compose file and Papyra makes no requests of its own. You then won't be told when a new version is out.
+- **Don't want the daily update check?** It's optional. Set `PAPYRA_UPDATE_CHECK_ENABLED: "false"` in the compose file and Papyra never looks at GitHub. You then won't be told when a new version is out.
 - **Every setting:** [Configuration](https://papyra.app/docs/configuration/).
 
 </details>
@@ -252,7 +252,7 @@ papyra/
 ├── papyra.web/              # Vite + React 19 app (also built in demo mode)
 ├── papyra.collab/           # Live-editing engine (Hocuspocus + Yjs), a child process of the API
 ├── papyra.app/              # Astro marketing site + docs + demo host
-├── papyra.versions/         # Cloudflare Worker behind the daily update check
+├── papyra.versions/         # Retired: the old install-count Worker, removed once its Cloudflare side is deleted
 ├── data/                    # Git-ignored local dev storage volume (see below)
 ├── Dockerfile               # 4-stage, multi-arch (amd64 + arm64)
 ├── docker-compose.hub.yml   # The self-hosting file — pulls lyfie/papyra:latest
@@ -277,7 +277,6 @@ data/
     ├── papyra.db            # SQLite: accounts, sharing, settings — NOT disposable
     ├── lucene-index/        # full-text index — rebuildable
     ├── media-jobs.json      # OCR / transcription work still to do (or given up on)
-    ├── instance-id          # random install ID for the update check (absent if it is off)
     └── keys/                # Data Protection key ring — NOT disposable
 ```
 

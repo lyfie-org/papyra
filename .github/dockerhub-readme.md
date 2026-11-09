@@ -44,6 +44,6 @@ docker compose -f docker-compose.hub.yml up -d
 
 ## Privacy
 
-No analytics, no crash reports, no third-party requests. The server makes one outbound call, a daily check for updates, which I also use as a count of installs. Set `PAPYRA_UPDATE_CHECK_ENABLED=false` to turn it off. What it sends: https://papyra.app/docs/update-check
+No analytics, no crash reports, no third-party requests. The only call the server makes on its own is a daily look at GitHub for a newer version; it sends nothing about you, and nothing goes to any server of mine. Set `PAPYRA_UPDATE_CHECK_ENABLED=false` to turn it off. What it asks: https://papyra.app/docs/update-check
 
 Parts of Papyra are written with AI coding assistants; I review and test what ships.
