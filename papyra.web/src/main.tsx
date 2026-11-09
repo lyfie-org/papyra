@@ -30,6 +30,7 @@ import { installClientErrorLog } from './lib/clientLog.ts';
 import { installSelectionGuards } from './lib/selectionGuards.ts';
 import { installResumeRefresh } from './lib/resume.ts';
 import { installAutoTooltips } from './lib/autoTooltips.ts';
+import { initLocale } from './i18n/store.ts';
 import { installChecklistRoles } from './lib/checklistRoles.ts';
 import { trimAudioControls } from './lib/audioControls.ts';
 
@@ -45,6 +46,10 @@ installAutoTooltips();
 installChecklistRoles();
 // The browser player's "more options" button clashes with the page's own media bar.
 trimAudioControls(document.body);
+
+// The language (?lang=, the saved choice, or the browser's) is set before the first paint, so nothing flashes in English.
+// With no language file besides English this does nothing and loads nothing.
+await initLocale();
 
 // Demo mode: stand up the in-browser fake server BEFORE React mounts, so the
 // very first request the app makes (the /api/auth/me session probe) is already

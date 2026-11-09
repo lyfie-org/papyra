@@ -1,0 +1,14 @@
+{
+  "meta.name": "English",
+
+  "update.badge.label": "Update available: Papyra {version}. Show details.",
+  "update.badge.tip": "Papyra {version} is available",
+  "update.badge.tag": "New update!",
+  "update.dialog.title": "New version available",
+  "update.dialog.close": "Close",
+  "update.dialog.lede": "A new version of Papyra is available. Please take a moment to read the <link>release notes</link> before you update, especially if something updates your container for you.",
+  "update.dialog.serverVersion": "Server version: {version}",
+  "update.dialog.latestVersion": "Latest version: {version}",
+  "update.dialog.fine": "Papyra looks at GitHub once a day. Nothing about your server is sent.",
+  "update.dialog.acknowledge": "Acknowledge"
+}

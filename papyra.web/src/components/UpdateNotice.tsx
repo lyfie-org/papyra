@@ -4,6 +4,8 @@ import { CircleAlert, X } from 'lucide-react';
 import { useDialogFocus } from '../hooks/useDialogFocus';
 import { useUpdateStatus, type UpdateStatus } from '../hooks/useUpdateStatus';
 import { versionLabel } from '../lib/serverVersion';
+import { useT } from '../i18n/store';
+import T from '../i18n/T';
 import './UpdateNotice.css';
 
 /**
@@ -13,6 +15,7 @@ import './UpdateNotice.css';
  */
 export default function UpdateNotice() {
   const { status } = useUpdateStatus();
+  const t = useT();
   const [open, setOpen] = useState(false);
   if (!status?.available || !status.latest) return null;
   return (
@@ -22,12 +25,12 @@ export default function UpdateNotice() {
         className="update-notice"
         onClick={() => setOpen(true)}
         aria-haspopup="dialog"
-        aria-label={`Update available: Papyra ${versionLabel(status.latest)}. Show details.`}
-        title={`Papyra ${versionLabel(status.latest)} is available`}
+        aria-label={t('update.badge.label', { version: versionLabel(status.latest) })}
+        title={t('update.badge.tip', { version: versionLabel(status.latest) })}
       >
         <CircleAlert size={16} aria-hidden="true" className="update-notice__icon" />
         <span className="update-notice__version workspace__nav-label">{versionLabel(status.latest)}</span>
-        <span className="update-notice__tag workspace__nav-label">New update!</span>
+        <span className="update-notice__tag workspace__nav-label">{t('update.badge.tag')}</span>
       </button>
       {open && <UpdateDialog status={status} onClose={() => setOpen(false)} />}
     </>
@@ -35,6 +38,7 @@ export default function UpdateNotice() {
 }
 
 function UpdateDialog({ status, onClose }: { status: UpdateStatus; onClose: () => void }) {
+  const t = useT();
   const ref = useRef<HTMLDivElement | null>(null);
   useDialogFocus(ref);
 
@@ -46,25 +50,23 @@ function UpdateDialog({ status, onClose }: { status: UpdateStatus; onClose: () =
     >
       <div ref={ref} className="update-dialog__card" role="dialog" aria-modal="true" aria-labelledby="update-title">
         <header className="update-dialog__head">
-          <h2 id="update-title" className="update-dialog__title">New version available</h2>
-          <button type="button" className="update-dialog__close" aria-label="Close" onClick={onClose}><X size={18} /></button>
+          <h2 id="update-title" className="update-dialog__title">{t('update.dialog.title')}</h2>
+          <button type="button" className="update-dialog__close" aria-label={t('update.dialog.close')} onClick={onClose}><X size={18} /></button>
         </header>
 
         <p className="update-dialog__lede">
-          A new version of Papyra is available. Please take a moment to read the{' '}
-          <a href={status.url ?? undefined} target="_blank" rel="noreferrer">release notes</a> before
-          you update, especially if something updates your container for you.
+          <T k="update.dialog.lede" components={{ link: <a href={status.url ?? undefined} target="_blank" rel="noreferrer" /> }} />
         </p>
 
         <p className="update-dialog__versions">
-          Server version: {versionLabel(status.current)}
+          {t('update.dialog.serverVersion', { version: versionLabel(status.current) })}
           <br />
-          Latest version: {status.latest ? versionLabel(status.latest) : ''}
+          {t('update.dialog.latestVersion', { version: status.latest ? versionLabel(status.latest) : '' })}
         </p>
 
-        <p className="update-dialog__fine">Papyra looks at GitHub once a day. Nothing about your server is sent.</p>
+        <p className="update-dialog__fine">{t('update.dialog.fine')}</p>
 
-        <button type="button" className="update-dialog__ack" autoFocus onClick={onClose}>Acknowledge</button>
+        <button type="button" className="update-dialog__ack" autoFocus onClick={onClose}>{t('update.dialog.acknowledge')}</button>
       </div>
     </div>,
     document.body,
