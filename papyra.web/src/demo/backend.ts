@@ -276,9 +276,9 @@ const routes: Route[] = [
     passphraseSet: false, local: false, keep: 7, gitRemote: '', gitBranch: '', gitTokenSet: false,
     lastLocalUtc: null, lastGitUtc: null, lastError: null, copies: [],
   })],
-  ['PUT', /^\/api\/instance-backup$/, () => serverOnly('Instance backups')],
-  ['POST', /^\/api\/instance-backup\//, () => serverOnly('Instance backups')],
-  ['GET', /^\/api\/instance-backup\//, () => serverOnly('Instance backups')],
+  ['PUT', /^\/api\/instance-backup$/, () => serverOnly('Server backups')],
+  ['POST', /^\/api\/instance-backup\//, () => serverOnly('Server backups')],
+  ['GET', /^\/api\/instance-backup\//, () => serverOnly('Server backups')],
   ['GET', /^\/api\/users\/search$/, () => json([{ username: 'dana', name: 'Dana' }])],
 
   // ------------------------------------------------------------------- notes

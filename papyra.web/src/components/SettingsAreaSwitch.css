@@ -1,0 +1,37 @@
+/* A two-option switch in the settings column. Neutral at rest; the pressed option wears the same wash as the
+   rail's current page (selected is the only thing that is green). */
+.area-switch {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-pill);
+  background: var(--surface);
+}
+
+.area-switch__option {
+  min-width: 0;
+  padding: var(--space-2) var(--space-2);
+  border: none;
+  border-radius: var(--radius-pill);
+  background: transparent;
+  color: var(--text);
+  font: 500 var(--fs-xs)/1.2 var(--sans);
+  text-align: center;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: background var(--dur-fast) var(--ease), color var(--dur-fast) var(--ease);
+}
+
+.area-switch__option:hover:not(.is-active) { background: var(--bg); color: var(--text-h); }
+
+.area-switch__option.is-active {
+  background: var(--accent-bg);
+  color: var(--accent-text);
+  font-weight: 600;
+}
+
+.area-switch__option:focus-visible { outline: 2px solid var(--border-focus); outline-offset: 1px; }
+
+@media (prefers-reduced-motion: reduce) { .area-switch__option { transition: none; } }

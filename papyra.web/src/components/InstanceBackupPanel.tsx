@@ -11,8 +11,9 @@ import BusyButton from './BusyButton';
 import LoadingBar from './LoadingBar';
 import RestartWatch from './RestartWatch';
 import SettingRow, { SettingGroup } from './SettingRow';
+import { useT } from '../i18n/store';
 
-// Settings → Instance backup (administrators). Everything in papyra.db that no
+// Server settings → Server backup (administrators). Everything in papyra.db that no
 // per-account backup carries (accounts, passkeys, sharing, API keys, the mail and
 // SSO settings) plus the key ring that seals part of it, encrypted under a
 // passphrase. Notes are not in it: those are the files, or each account's backup.
@@ -26,10 +27,11 @@ function size(bytes: number): string {
 }
 
 export default function InstanceBackupPanel() {
+  const t = useT();
   const { data, isLoading, isError } = useInstanceBackup();
 
   if (isLoading) return <div className="settings__panel"><LoadingBar label="Loading settings" /></div>;
-  if (isError || !data) return <div className="settings__panel"><p className="settings__error">Couldn’t load the instance backup settings.</p></div>;
+  if (isError || !data) return <div className="settings__panel"><p className="settings__error">{t('settings.serverBackup.loadError')}</p></div>;
 
   return (
     <div className="settings__panel">
@@ -41,6 +43,7 @@ export default function InstanceBackupPanel() {
 }
 
 function StatusGroup({ status }: { status: InstanceBackupStatus }) {
+  const t = useT();
   const save = useSaveInstanceBackup();
   const run = useRunInstanceBackup();
   const [passphrase, setPassphrase] = useState('');
@@ -84,7 +87,7 @@ function StatusGroup({ status }: { status: InstanceBackupStatus }) {
 
   return (
     <SettingGroup
-      title="Instance backup"
+      title={t('settings.serverBackup.title')}
       id="instance-backup"
       footer={(
         <>
@@ -116,7 +119,7 @@ function StatusGroup({ status }: { status: InstanceBackupStatus }) {
         value={status.passphraseSet ? 'Set' : undefined}
         empty="Not set"
         action={status.passphraseSet ? 'Change' : 'Set'}
-        hint="Choose one before anything is backed up. It opens every instance backup and can’t be recovered: keep it somewhere other than this server."
+        hint="Choose one before anything is backed up. It opens every server backup and can’t be recovered: keep it somewhere other than this server."
       >
         {close => (
           <form className="settings__form" onSubmit={e => { e.preventDefault(); void setNewPassphrase(close); }}>
@@ -255,6 +258,7 @@ function DestinationsGroup({ status }: { status: InstanceBackupStatus }) {
 }
 
 function RestoreGroup() {
+  const t = useT();
   const confirm = useConfirm();
   const [kind, setKind] = useState<'file' | 'git'>('file');
   const [file, setFile] = useState<File | null>(null);
@@ -310,7 +314,7 @@ function RestoreGroup() {
 
   return (
     <SettingGroup
-      title="Restore an instance backup"
+      title={t('settings.serverBackup.restore')}
       id="instance-restore"
       footer={restarting ? <RestartWatch /> : undefined}
     >

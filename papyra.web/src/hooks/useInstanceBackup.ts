@@ -1,6 +1,7 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
+import { t } from '../i18n/store';
 
-// The accounts-and-settings backup (Settings → Instance backup, administrators).
+// The accounts-and-settings backup (Server settings → Server backup, administrators).
 // Notes are not in it; those are the files, or each account's own backup. The
 // passphrase and the git token are write-only: the server says whether one is
 // saved, never what it is, so a blank field on save means "keep what you have".
@@ -55,7 +56,7 @@ async function parse<T>(res: Response, fallback: string): Promise<T> {
 export function useInstanceBackup() {
   return useQuery({
     queryKey: INSTANCE_BACKUP_KEY,
-    queryFn: async () => parse<InstanceBackupStatus>(await fetch('/api/instance-backup'), 'Couldn’t load the instance backup settings.'),
+    queryFn: async () => parse<InstanceBackupStatus>(await fetch('/api/instance-backup'), t('settings.serverBackup.loadError')),
   });
 }
 

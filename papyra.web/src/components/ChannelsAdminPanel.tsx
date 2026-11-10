@@ -8,6 +8,7 @@ import {
 import BusyButton from './BusyButton';
 import LoadingBar from './LoadingBar';
 import SettingRow, { SettingGroup } from './SettingRow';
+import { useT } from '../i18n/store';
 
 // Settings → Chat notifications (administrators). Each chat service is switched on here once, like the
 // mail server; people then connect their own place to send to under Settings → Notifications. Tokens and
@@ -35,9 +36,10 @@ function Result({ ok, error, doneText }: { ok?: boolean; error?: string | null; 
 }
 
 export default function ChannelsAdminPanel() {
+  const t = useT();
   const { data, isLoading, isError } = useChannelAdmin();
   if (isLoading) return <div className="settings__panel"><LoadingBar label="Loading settings" /></div>;
-  if (isError || !data) return <div className="settings__panel"><p className="settings__error">Couldn’t load the chat notification settings.</p></div>;
+  if (isError || !data) return <div className="settings__panel"><p className="settings__error">{t('settings.channels.loadError')}</p></div>;
 
   return (
     <div className="settings__panel">

@@ -15,6 +15,7 @@ import type { Note } from '../types/note';
 import type { TagEntry } from '../hooks/useTags';
 import type { SmartCollection } from '../hooks/useCollections';
 import { searchSettings, settingsHref } from './settingsIndex';
+import { t } from '../i18n/store';
 import { locateHref, noteLocation } from './locateNote';
 import { longDate, parseLooseDay, type Day } from './journalDay';
 
@@ -138,6 +139,8 @@ export function dayJumpResults(query: string, today: Day | null): SearchResult[]
   }];
 }
 
+const areaName = (area: 'you' | 'server') => (area === 'server' ? t('settings.area.server') : t('settings.title'));
+
 export function settingsResults(query: string, isAdmin: boolean, journalOn = true): SearchResult[] {
   return searchSettings(query, isAdmin, journalOn).map(entry => ({
     key: `settings:${entry.tab}:${entry.section ?? ''}`,
@@ -146,7 +149,8 @@ export function settingsResults(query: string, isAdmin: boolean, journalOn = tru
     // inside Settings, which is the exact confusion this split set out to fix.
     source: entry.href ? 'page' as const : 'settings' as const,
     title: entry.sectionLabel ?? entry.tabLabel,
-    breadcrumb: entry.href ? ['Page'] : entry.section ? ['Settings', entry.tabLabel] : ['Settings'],
+    // The first crumb names the area, so "Email delivery" is never mistaken for a personal setting.
+    breadcrumb: entry.href ? ['Page'] : entry.section ? [areaName(entry.area), entry.tabLabel] : [areaName(entry.area)],
     to: settingsHref(entry),
     rank: entry.rank,
   }));

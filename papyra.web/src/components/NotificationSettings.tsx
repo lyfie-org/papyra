@@ -45,7 +45,7 @@ export default function NotificationSettings() {
             <strong>Email isn’t set up on this Papyra yet.</strong>
             <p>
               Your choices are saved, but nothing is sent until an administrator connects a mail
-              server under Settings → Email.
+              server under Server settings → Email delivery.
             </p>
           </div>
         </div>

@@ -294,8 +294,8 @@ export default function SetupPage() {
               </button>
               <button type="button" className="setup__choice" onClick={() => go('instance')}>
                 <DatabaseBackup size={20} aria-hidden="true" />
-                <strong>Restore a whole instance</strong>
-                <span>Move to a new server: bring back every account, passkey, sharing and setting from an instance backup.</span>
+                <strong>Restore a whole server</strong>
+                <span>Move to a new server: bring back every account, passkey, sharing and setting from a server backup.</span>
               </button>
             </div>
           </section>
@@ -428,7 +428,7 @@ export default function SetupPage() {
             <h1 className="auth__title">Already have a GitHub backup?</h1>
             <p className="auth__tagline">
               If an earlier Papyra backed your notes up to GitHub, bring them back now — plain or encrypted.
-              Otherwise skip this; you can set a new backup up later in Settings → Backup.
+              Otherwise skip this; you can set a new backup up later in Settings → Git backup.
             </p>
             <GitRestorePanel confirmReplace={false} accountPassword={password} onRestored={n => setRestoredCount(n)} />
             <div className="setup__nav">
@@ -641,9 +641,9 @@ function InstanceRestoreStep({ onBack }: { onBack: () => void }) {
 
   return (
     <form className="setup__body" onSubmit={e => { e.preventDefault(); if (ready) void restore(); }}>
-      <h1 className="auth__title">Restore a whole instance</h1>
+      <h1 className="auth__title">Restore a whole server</h1>
       <p className="auth__tagline">
-        An instance backup holds accounts, passkeys, sharing and settings, not notes. Papyra restarts on it, and your
+        A server backup holds accounts, passkeys, sharing and settings, not notes. Papyra restarts on it, and your
         notes come back from your files or each person’s own backup.
       </p>
       <div className="setup__tabs" role="tablist">
@@ -677,7 +677,7 @@ function InstanceRestoreStep({ onBack }: { onBack: () => void }) {
         </>
       )}
       <label className="auth__field">Backup passphrase
-        <input {...MASKED_SECRET} value={passphrase} onChange={e => setPassphrase(e.target.value)} placeholder="The one set in Settings → Instance backup" />
+        <input {...MASKED_SECRET} value={passphrase} onChange={e => setPassphrase(e.target.value)} placeholder="The one set in Server settings → Server backup" />
       </label>
       {error && <p className="setup__field-error" role="alert"><TriangleAlert size={14} aria-hidden="true" /> {error}</p>}
       <Nav onBack={onBack} nextDisabled={!ready} busy={busy} busyLabel="Restoring…" nextLabel="Restore" />
@@ -829,7 +829,7 @@ function ImportStep({ restoredCount, onNext }: { restoredCount: number | null; o
       )}
       <p className="auth__tagline">
         Optional. Import from Google Keep or Obsidian now — as many archives as you like — or skip and do it later
-        from Settings → Data &amp; Storage. Importing the same archive twice never duplicates a note.
+        from Settings → Your data. Importing the same archive twice never duplicates a note.
       </p>
       <div className="setup__tabs" role="tablist">
         <button type="button" role="tab" aria-selected={provider === 'keep'} className={provider === 'keep' ? 'is-on' : ''} disabled={running} onClick={() => setProvider('keep')}>

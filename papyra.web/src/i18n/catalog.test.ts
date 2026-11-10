@@ -54,6 +54,15 @@ describe('the code and the catalog agree', () => {
     for (const m of text.matchAll(/\bk="([a-z][A-Za-z0-9.]*)"/g)) used.set(m[1], file);
   }
   const bases = new Set(Object.keys(en).map(baseKey));
+  // A key can also be held as data (a rail item's `label: 'settings.nav.data'`) and looked up later. Typed as
+  // MessageKey, so it cannot be wrong; here it only has to count as used.
+  for (const [file, text] of Object.entries(sources)) {
+    for (const m of text.matchAll(/'([a-z][A-Za-z0-9]*(?:\.[a-z][A-Za-z0-9]*)+)'/g)) if (bases.has(m[1]) && !used.has(m[1])) used.set(m[1], file);
+    // A key built from a union, such as `settings.nav.${tab}`: count every key under that prefix.
+    for (const m of text.matchAll(/`([a-z][A-Za-z0-9]*(?:\.[a-z][A-Za-z0-9]*)*\.)\$\{/g)) {
+      for (const base of bases) if (base.startsWith(m[1]) && !used.has(base)) used.set(base, file);
+    }
+  }
 
   it('every message the code asks for is in en.json', () => {
     const missing = [...used].filter(([key]) => !bases.has(key)).map(([key, file]) => `${key} (${file})`);

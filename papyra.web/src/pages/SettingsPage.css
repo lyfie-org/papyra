@@ -356,17 +356,6 @@
     scrollbar-width: none;
   }
   .settings__rail::-webkit-scrollbar { display: none; }
-  /* In the pill row the group heading shrinks to a hairline between the groups. */
-  .settings__rail-group {
-    flex: none;
-    align-self: stretch;
-    width: 1px;
-    margin: var(--space-1) var(--space-1);
-    padding: 0;
-    overflow: hidden;
-    background: var(--border);
-    font-size: 0;
-  }
   .settings__rail-item {
     flex: none;
     scroll-snap-align: center;
@@ -392,14 +381,6 @@
   text-align: left;
   cursor: pointer;
 }
-.settings__rail-group {
-  margin: var(--space-4) 0 var(--space-1);
-  padding: 0 0.8rem;
-  font: 500 var(--fs-2xs) / 1.2 var(--sans);
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  color: var(--text);
-}
 .settings__rail-item:hover {
   background: var(--accent-bg);
   color: var(--accent-text);
@@ -417,6 +398,23 @@
   border-radius: var(--radius-md);
   background: var(--surface);
   box-shadow: var(--shadow-card);
+}
+
+/* Server settings look different on purpose: a person should never wonder whether a switch is theirs alone or
+   everyone's. A quiet line under the title says so, and the page carries a firm neutral top edge (borders only,
+   no colour of its own; green stays reserved for what is selected). */
+.settings__server-note {
+  margin: 0;
+  padding: 0 0.8rem;
+  color: var(--text);
+  font: 400 var(--fs-xs)/1.4 var(--sans);
+}
+.settings--server .settings__content {
+  border-color: var(--border-hover);
+  box-shadow: var(--shadow-card), inset 0 3px 0 var(--border-hover);
+}
+@media (max-width: 700px) {
+  .settings__server-note { padding: 0; }
 }
 
 /* ── Profile ─────────────────────────────────────────────────────── */

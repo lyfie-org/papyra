@@ -13,6 +13,7 @@ import { SsoIcon } from './SsoIcon';
 import './SsoGuide.css';
 
 import BusyButton from './BusyButton';
+import { useT } from '../i18n/store';
 interface Kind {
   id: SsoKind;
   name: string;
@@ -79,7 +80,6 @@ const KINDS: Kind[] = [
  * OnTokenValidated in Program.cs. Worth stating: SSO never creates accounts.
  */
 const ACCOUNT_RULES = [
-  'Existing accounts only — SSO never creates one. Add people under Administration first.',
   'First sign-in through a provider matches its email to the Papyra account’s email, then remembers that provider’s user id (sub).',
   'No roles or groups needed: admin rights stay in Papyra.',
   'Keep sub stable, and don’t let people change their own email in the provider.',
@@ -128,6 +128,7 @@ export function SsoGuide({ provider, taken, redirectUriPrefix, onDone }: {
   redirectUriPrefix: string;
   onDone: () => void;
 }) {
+  const t = useT();
   const save = useSaveSsoProvider();
   const [kind, setKind] = useState<SsoKind>(provider?.kind ?? 'authentik');
   const [authority, setAuthority] = useState(provider?.authority ?? '');
@@ -214,6 +215,7 @@ export function SsoGuide({ provider, taken, redirectUriPrefix, onDone }: {
         <li>
           <h3 className="sso-guide__step-title">Who can sign in</h3>
           <ul className="sso-guide__howto">
+            <li>{t('settings.sso.existingOnly')}</li>
             {ACCOUNT_RULES.map(rule => <li key={rule}>{rule}</li>)}
           </ul>
         </li>

@@ -51,6 +51,10 @@ import { bumpAvatarVersion, useAvatarVersion } from '../lib/avatarVersion';
 import { useSettings, useUpdateSettings, RETENTION_OPTIONS } from '../hooks/useSettings';
 import { useImportStatus, importSummary, IMPORT_STATUS_KEY, type ImportStatus } from '../hooks/useImportStatus';
 import './SettingsPage.css';
+import { useT } from '../i18n/store';
+import type { MessageKey } from '../i18n/store';
+import SettingsAreaSwitch from '../components/SettingsAreaSwitch';
+import { areaOf, DEFAULT_TAB, isTab, type Area, type Tab } from '../lib/settingsAreas';
 import LoadingBar from '../components/LoadingBar';
 import BusyButton from '../components/BusyButton';
 import { useActivityTask, useBusy } from '../hooks/useBusy';
@@ -78,30 +82,26 @@ const IMPORT_LABEL: Record<ImportProvider, string> = {
   obsidian: 'Obsidian', keep: 'Google Keep', dayone: 'Day One', journal: 'journal',
 };
 
-type Tab = 'profile' | 'appearance' | 'journal' | 'notifications' | 'security' | 'data' | 'keys' | 'sync'
-  | 'users' | 'sso' | 'email' | 'channels' | 'instance' | 'ai' | 'jobs' | 'logs' | 'about';
-
-// Two groups. The first is yours — it changes what happens to you, and everyone
-// sees it. "Administration" changes the whole instance and only admins see it;
-// the heading keeps the two from reading as the same kind of setting.
-const NAV: { id: Tab; label: string; icon: typeof UserIcon; adminOnly?: boolean }[] = [
-  { id: 'profile', label: 'Profile', icon: UserIcon },
-  { id: 'appearance', label: 'Appearance', icon: Palette },
-  { id: 'journal', label: 'Journal', icon: BookOpen },
-  { id: 'notifications', label: 'Notifications', icon: Bell },
-  { id: 'security', label: 'Security', icon: Fingerprint },
-  { id: 'data', label: 'Data & Storage', icon: Database },
-  { id: 'keys', label: 'API Keys', icon: KeyRound },
-  { id: 'sync', label: 'Backup', icon: GitBranch },
-  { id: 'about', label: 'About', icon: Info },
-  { id: 'users', label: 'Users', icon: Users, adminOnly: true },
-  { id: 'sso', label: 'SSO', icon: KeySquare, adminOnly: true },
-  { id: 'email', label: 'Email', icon: Mail, adminOnly: true },
-  { id: 'channels', label: 'Chat notifications', icon: BellRing, adminOnly: true },
-  { id: 'instance', label: 'Instance backup', icon: DatabaseBackup, adminOnly: true },
-  { id: 'ai', label: 'AI', icon: Sparkles, adminOnly: true },
-  { id: 'jobs', label: 'Jobs', icon: Cog, adminOnly: true },
-  { id: 'logs', label: 'Logs', icon: ScrollText, adminOnly: true },
+// The rail for each area. Which area a tab belongs to is decided in lib/settingsAreas (and only there); labels are
+// catalog keys (settings.nav.<tab>) so the rail can be translated and renamed without touching this list.
+const NAV: { id: Tab; label: MessageKey; icon: typeof UserIcon }[] = [
+  { id: 'profile', label: 'settings.nav.profile', icon: UserIcon },
+  { id: 'appearance', label: 'settings.nav.appearance', icon: Palette },
+  { id: 'journal', label: 'settings.nav.journal', icon: BookOpen },
+  { id: 'notifications', label: 'settings.nav.notifications', icon: Bell },
+  { id: 'security', label: 'settings.nav.security', icon: Fingerprint },
+  { id: 'data', label: 'settings.nav.data', icon: Database },
+  { id: 'keys', label: 'settings.nav.keys', icon: KeyRound },
+  { id: 'sync', label: 'settings.nav.sync', icon: GitBranch },
+  { id: 'about', label: 'settings.nav.about', icon: Info },
+  { id: 'users', label: 'settings.nav.users', icon: Users },
+  { id: 'sso', label: 'settings.nav.sso', icon: KeySquare },
+  { id: 'email', label: 'settings.nav.email', icon: Mail },
+  { id: 'channels', label: 'settings.nav.channels', icon: BellRing },
+  { id: 'instance', label: 'settings.nav.instance', icon: DatabaseBackup },
+  { id: 'ai', label: 'settings.nav.ai', icon: Sparkles },
+  { id: 'jobs', label: 'settings.nav.jobs', icon: Cog },
+  { id: 'logs', label: 'settings.nav.logs', icon: ScrollText },
 ];
 
 // The AI tab is hidden while the assistant is held back for a later release.
@@ -149,15 +149,24 @@ export default function SettingsPage() {
   const { user } = useAuth();
   const isAdmin = user?.role === 'Admin';
   const [params, setParams] = useSearchParams();
-  const requested = params.get('tab') as Tab | null;
-  const valid = VISIBLE_NAV.find(n => n.id === requested && (!n.adminOnly || isAdmin));
+  const t = useT();
+  const requested = params.get('tab');
+  // A server tab asked for by someone who isn't an administrator is no tab at all: they land on their own Profile.
+  const valid = isTab(requested) ? VISIBLE_NAV.find(n => n.id === requested && (areaOf(n.id) === 'you' || isAdmin)) : undefined;
   const tab: Tab = valid?.id ?? 'profile';
+  const area: Area = areaOf(tab);
   // Clearing `s` on a manual tab click stops a stale section from being chased
   // after the user has navigated somewhere else themselves.
   // (The desk scrolls back to the top on its own: the tab is in the URL, and a
   // new URL is a new page — see DeskScrollReset.)
-  const setTab = (t: Tab) => setParams(t === 'profile' ? {} : { tab: t }, { replace: true });
+  const setTab = (next: Tab) => setParams(next === 'profile' ? {} : { tab: next }, { replace: true });
   useScrollToSection(params.get('s'), tab);
+
+  // Switching area returns to the last page you had open there (the first time: Profile, or Users).
+  const lastTab = useRef<Record<Area, Tab>>({ ...DEFAULT_TAB });
+  useEffect(() => { lastTab.current[area] = tab; }, [area, tab]);
+  const switchArea = (next: Area) => { if (next !== area) setTab(lastTab.current[next]); };
+  const railItems = VISIBLE_NAV.filter(n => areaOf(n.id) === area);
 
   // On a phone the sections are one swipeable row; keep the active pill in
   // view (scrollLeft only — scrollIntoView would also scroll the page).
@@ -166,26 +175,22 @@ export default function SettingsPage() {
     const rail = railRef.current;
     const active = rail?.querySelector<HTMLElement>('.is-active');
     if (!rail || !active || rail.scrollWidth <= rail.clientWidth) return;
-    rail.scrollTo({ left: active.offsetLeft - (rail.clientWidth - active.offsetWidth) / 2, behavior: 'smooth' });
+    const calm = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    rail.scrollTo({ left: active.offsetLeft - (rail.clientWidth - active.offsetWidth) / 2, behavior: calm ? 'auto' : 'smooth' });
   }, [tab]);
 
   return (
-    <section className="settings">
+    <section className={`settings${area === 'server' ? ' settings--server' : ''}`}>
       <div className="settings__shell">
         <div className="settings__side">
-          <h1 className="page-title settings__title">Settings</h1>
-          <nav className="settings__rail" aria-label="Settings sections" ref={railRef}>
-            {VISIBLE_NAV.filter(n => !n.adminOnly).map(item => (
+          <h1 className="page-title settings__title">{t(area === 'server' ? 'settings.titleServer' : 'settings.title')}</h1>
+          {/* Only an administrator has a second area. Nobody else sees a switch, or any hint that there is one. */}
+          {isAdmin && <SettingsAreaSwitch area={area} onChange={switchArea} />}
+          {area === 'server' && <p className="settings__server-note">{t('settings.serverNote')}</p>}
+          <nav className="settings__rail" aria-label={t(area === 'server' ? 'settings.area.server' : 'settings.area.you')} ref={railRef}>
+            {railItems.map(item => (
               <RailItem key={item.id} item={item} active={tab === item.id} onSelect={setTab} />
             ))}
-            {isAdmin && (
-              <>
-                <p className="settings__rail-group" aria-hidden="true">Administration</p>
-                {VISIBLE_NAV.filter(n => n.adminOnly).map(item => (
-                  <RailItem key={item.id} item={item} active={tab === item.id} onSelect={setTab} />
-                ))}
-              </>
-            )}
           </nav>
         </div>
 
@@ -214,8 +219,9 @@ export default function SettingsPage() {
 }
 
 function RailItem({ item, active, onSelect }: {
-  item: (typeof NAV)[number]; active: boolean; onSelect: (t: Tab) => void;
+  item: (typeof NAV)[number]; active: boolean; onSelect: (tab: Tab) => void;
 }) {
+  const t = useT();
   const Icon = item.icon;
   return (
     <button
@@ -224,7 +230,7 @@ function RailItem({ item, active, onSelect }: {
       aria-current={active}
       onClick={() => onSelect(item.id)}
     >
-      <Icon size={17} /> {item.label}
+      <Icon size={17} /> {t(item.label)}
     </button>
   );
 }
@@ -807,6 +813,7 @@ function DataTab() {
 // AES-GCM vault export/restore, gated by the account password. Restore replaces
 // the signed-in user's notes + media with the backup's contents.
 function EncryptedBackupSection() {
+  const t = useT();
   const confirm = useConfirm();
   const queryClient = useQueryClient();
   const restoreRef = useRef<HTMLInputElement | null>(null);
@@ -876,7 +883,7 @@ function EncryptedBackupSection() {
   }
 
   return (
-    <SettingGroup title="Encrypted backup" id="encrypted-backup">
+    <SettingGroup title={t('settings.backupFile.title')} id="encrypted-backup">
       <SettingRow label="Download" value="A sealed copy of every note and file" hint="Locked with your account password" action="Download">
         {close => (
           <form className="settings__form" onSubmit={async e => { await generate(e); }}>
@@ -1239,6 +1246,7 @@ function JobsTab() {
 // typed here. That warning previously existed only in the API docs, which is
 // not where an admin is standing when they paste a URL.
 function SyncTab() {
+  const t = useT();
   const { data, isLoading, isError } = useGitConfig();
   const save = useSaveGitConfig();
 
@@ -1267,8 +1275,8 @@ function SyncTab() {
 
   return (
     <div className="settings__panel">
-      <h2 id="git-backup" className="settings__subhead">Back up to GitHub</h2>
-      <p className="settings__hint">An off-server copy of your notes, with full history.</p>
+      <h2 id="git-backup" className="settings__subhead">{t('settings.git.title')}</h2>
+      <p className="settings__hint">{t('settings.git.hint')}</p>
 
       <GitSetupGuide />
 
@@ -1369,6 +1377,7 @@ function SsoTab() {
 
 // ── Email / SMTP (admin) ─────────────────────────────────────────────────────────
 function EmailTab() {
+  const t = useT();
   const { data, isLoading, isError } = useSmtpConfig();
   const save = useSaveSmtpConfig();
   const test = useSendTestEmail();
@@ -1424,7 +1433,7 @@ function EmailTab() {
     <div className="settings__panel">
       {editing ? (
         <>
-          <h2 id="smtp" className="settings__subhead">Outbound email</h2>
+          <h2 id="smtp" className="settings__subhead">{t('settings.mail.title')}</h2>
           <form className="settings__form" onSubmit={submit}>
             <label className="settings__field settings__field--inline">
               <input type="checkbox" role="switch" className="switch" checked={v('enabled')} onChange={e => set('enabled', e.target.checked)} />
@@ -1476,7 +1485,7 @@ function EmailTab() {
         </>
       ) : (
         <SettingGroup
-          title="Outbound email"
+          title={t('settings.mail.title')}
           id="smtp"
           footer={
             <button type="button" className={`settings__btn${configured ? ' settings__btn--quiet' : ''}`} onClick={() => { setSaved(false); setEditing(true); }}>
