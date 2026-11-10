@@ -5,7 +5,8 @@
 // axe-core (WCAG 2.0/2.1/2.2 A + AA) and fails on any violation. Then it checks
 // what axe cannot see:
 //   - keyboard: the formatting-toolbar toggle is reachable by Tab, shows a focus
-//     ring, and works with Enter;
+//     ring, and works with Enter; the settings area switch, the service tiles (one stop,
+//     arrows, Home/End, panel wiring) and the tooltip (hover, focus, Escape);
 //   - the caret holds 3:1 against the sheet it blinks on (WCAG 1.4.11);
 //   - selected text — body and links — holds 4.5:1 on the selection wash.
 //
@@ -196,43 +197,70 @@ const FLOWS = [
     await page.goto(`${ORIGIN}/demo/journal/${dayAgo(1)}`);
     await page.getByRole('heading', { name: 'The journal is off' }).waitFor();
   } },
-  // Chat notifications: the "Where to send" rows at rest, a set-up open under its row, and the list
-  // once a place is connected (an extra switch column beside email).
+  // Chat notifications: the "Where to send" tiles at rest (email chosen), a service's set-up open in its panel, and the
+  // list once a place is connected (an extra switch column beside email). Then the same tiles on the administrator's side.
   { name: 'settings / notifications', run: async (page) => {
     await page.goto(`${ORIGIN}/demo/settings?tab=notifications`);
     await page.getByRole('heading', { name: 'Where to send' }).waitFor();
   } },
   { name: 'settings / notifications / ntfy set-up', run: async (page) => {
-    await page.goto(`${ORIGIN}/demo/settings?tab=notifications`);
+    await page.goto(`${ORIGIN}/demo/settings?tab=notifications&service=ntfy`);
     await page.getByRole('heading', { name: 'Where to send' }).waitFor();
-    await page.locator('.setting-row').filter({ has: page.getByText('ntfy', { exact: true }) }).getByRole('button', { name: 'Set up' }).click();
+    await page.getByRole('tabpanel').getByRole('button', { name: 'Set up' }).click();
     await page.getByLabel('Topic').waitFor();
   } },
   { name: 'settings / notifications / ntfy connected', run: async (page) => {
-    await page.goto(`${ORIGIN}/demo/settings?tab=notifications`);
+    await page.goto(`${ORIGIN}/demo/settings?tab=notifications&service=ntfy`);
     await page.getByRole('heading', { name: 'Where to send' }).waitFor();
-    await page.locator('.setting-row').filter({ has: page.getByText('ntfy', { exact: true }) }).getByRole('button', { name: 'Set up' }).click();
+    await page.getByRole('tabpanel').getByRole('button', { name: 'Set up' }).click();
     await page.getByRole('button', { name: 'Continue' }).click();
     await page.getByRole('button', { name: /Send a test/ }).click();
     await page.getByText('Sent. Look for it in ntfy.').waitFor();
     await page.getByRole('button', { name: 'Yes, it arrived' }).click();
+    await page.getByRole('switch', { name: 'Send notifications here' }).waitFor();
     await page.getByRole('switch', { name: 'Mentions — ntfy' }).waitFor();
   } },
   // Discord offers a choice of ways in the demo (a direct message from the bot, or a channel webhook).
   { name: 'settings / notifications / discord choice', run: async (page) => {
-    await page.goto(`${ORIGIN}/demo/settings?tab=notifications`);
+    await page.goto(`${ORIGIN}/demo/settings?tab=notifications&service=discord`);
     await page.getByRole('heading', { name: 'Where to send' }).waitFor();
-    await page.locator('.setting-row').filter({ has: page.getByText('Discord', { exact: true }) }).getByRole('button', { name: 'Set up' }).click();
-    await page.getByRole('radio', { name: /direct message from the bot/ }).waitFor();
+    await page.getByRole('tabpanel').getByRole('button', { name: 'Set up' }).click();
+    await page.getByRole('radio', { name: /direct message/ }).waitFor();
   } },
   { name: 'settings / notifications / discord code', run: async (page) => {
-    await page.goto(`${ORIGIN}/demo/settings?tab=notifications`);
+    await page.goto(`${ORIGIN}/demo/settings?tab=notifications&service=discord`);
     await page.getByRole('heading', { name: 'Where to send' }).waitFor();
-    await page.locator('.setting-row').filter({ has: page.getByText('Discord', { exact: true }) }).getByRole('button', { name: 'Set up' }).click();
+    await page.getByRole('tabpanel').getByRole('button', { name: 'Set up' }).click();
     await page.getByRole('button', { name: 'Continue' }).click();
     await page.getByLabel('Your Discord user ID').fill('123456789012345678');
     await page.getByRole('button', { name: 'Send me a code' }).click();
     await page.getByLabel('Code from the bot').waitFor();
+  } },
+  { name: 'settings / notifications / telegram', run: async (page) => {
+    await page.goto(`${ORIGIN}/demo/settings?tab=notifications&service=telegram`);
+    await page.getByRole('heading', { name: 'Where to send' }).waitFor();
+    await page.getByRole('tabpanel').getByRole('button', { name: 'Set up' }).click();
+    await page.getByRole('button', { name: 'Get a link' }).waitFor();
+  } },
+  // Server settings: the area switch's other side, and the administrator's chat services as tiles.
+  { name: 'settings / server settings', run: async (page) => {
+    await page.goto(`${ORIGIN}/demo/settings?tab=users`);
+    await page.getByText('Changes here apply to everyone on this server.').waitFor();
+  } },
+  { name: 'settings / chat services', run: async (page) => {
+    await page.goto(`${ORIGIN}/demo/settings?tab=channels`);
+    await page.getByRole('tab', { name: /^ntfy/ }).waitFor();
+    await page.getByRole('tabpanel').getByText('Status').waitFor();
+  } },
+  { name: 'settings / chat services / discord', run: async (page) => {
+    await page.goto(`${ORIGIN}/demo/settings?tab=channels&service=discord`);
+    await page.getByRole('tab', { name: /^Discord/ }).waitFor();
+    await page.getByRole('tabpanel').getByText('Direct messages').waitFor();
+  } },
+  { name: 'settings / chat services / network access', run: async (page) => {
+    await page.goto(`${ORIGIN}/demo/settings?tab=channels&service=network`);
+    await page.getByRole('tab', { name: /^Network access/ }).waitFor();
+    await page.getByRole('tabpanel').getByText('Allowed servers').waitFor();
   } },
   { name: 'settings / appearance', run: async (page) => {
     await page.goto(`${ORIGIN}/demo/settings?tab=appearance`);
@@ -387,6 +415,63 @@ async function checkToolbarKeyboard(page, failures, label) {
   if (pressed !== 'true') failures.push(`${label}: toggle does not report aria-pressed=true once on`);
 }
 
+
+// The area switch, the service tiles and the tooltip, by keyboard and by hover. axe cannot see these.
+async function checkSettingsKeyboard(page, failures, label) {
+  // Service tiles: one Tab stop; arrows and Home/End move and choose; the panel follows the chosen tile.
+  await page.goto(`${ORIGIN}/demo/settings?tab=notifications`);
+  await page.getByRole('heading', { name: 'Where to send' }).waitFor();
+  const selected = () => page.getByRole('tab', { selected: true });
+  const stops = await page.locator('[role="tab"][tabindex="0"]').count();
+  if (stops !== 1) failures.push(`${label}: the tile row has ${stops} Tab stops, expected 1`);
+  await selected().focus();
+  const name = async () => (await page.evaluate(() => document.activeElement?.querySelector('.service-tab__name')?.textContent)) ?? '';
+  const first = await name();
+  await page.keyboard.press('ArrowRight');
+  const second = await name();
+  if (!second || second === first) failures.push(`${label}: ArrowRight did not move to the next tile`);
+  // The choice goes through the address, so give the page a moment to catch up before reading it.
+  const followed = await page.waitForFunction(
+    (n) => document.querySelector('[role="tab"][aria-selected="true"] .service-tab__name')?.textContent === n,
+    second, { timeout: 2000 },
+  ).then(() => true, () => false);
+  if (!followed) failures.push(`${label}: the chosen tile did not follow the arrow key`);
+  await page.keyboard.press('End');
+  const last = await name();
+  if (last !== 'Telegram') failures.push(`${label}: End went to "${last}", expected Telegram`);
+  if (!page.url().includes('service=telegram')) failures.push(`${label}: the chosen service is not in the address`);
+  await page.keyboard.press('Home');
+  if ((await name()) !== first) failures.push(`${label}: Home did not return to the first tile`);
+  const owned = await page.evaluate(() => {
+    const tab = document.querySelector('[role="tab"][aria-selected="true"]');
+    const panel = document.querySelector('[role="tabpanel"]');
+    return !!tab && !!panel && panel.getAttribute('aria-labelledby') === tab.id && tab.getAttribute('aria-controls') === panel.id;
+  });
+  if (!owned) failures.push(`${label}: the tab and its panel do not point at each other`);
+
+  // Area switch (administrator): reachable, operable with Enter, focus stays put.
+  await page.goto(`${ORIGIN}/demo/settings?tab=about`);
+  await page.getByRole('group', { name: 'Settings area' }).waitFor();
+  await page.getByRole('button', { name: 'Server settings' }).focus();
+  await page.keyboard.press('Enter');
+  if (!page.url().includes('tab=users')) failures.push(`${label}: Enter on "Server settings" did not open Server settings`);
+  const kept = await page.evaluate(() => document.activeElement?.textContent?.trim());
+  if (kept !== 'Server settings') failures.push(`${label}: focus left the area switch after using it`);
+
+  // Tooltip: by pointer (after its wait) and by keyboard focus (at once); Escape closes it.
+  await page.goto(`${ORIGIN}/demo/settings?tab=about`);
+  const bell = page.locator('button[data-tooltip="Notifications"]').first();
+  await bell.hover();
+  try { await page.getByRole('tooltip').waitFor({ timeout: 2000 }); } catch { failures.push(`${label}: hovering a control with a tooltip showed none`); return; }
+  await page.keyboard.press('Escape');
+  if (await page.getByRole('tooltip').count()) failures.push(`${label}: Escape did not close the tooltip`);
+  await page.mouse.move(2, 400);
+  await bell.focus();
+  await page.keyboard.press('Shift+Tab');
+  await page.keyboard.press('Tab');
+  try { await page.getByRole('tooltip').waitFor({ timeout: 1000 }); } catch { failures.push(`${label}: keyboard focus on a control with a tooltip showed none`); }
+}
+
 // ── Run ───────────────────────────────────────────────────────────────────────
 const server = await startServer();
 const browser = await chromium.launch();
@@ -442,6 +527,19 @@ try {
         failures.push(`${label}: flow failed — ${err.message.split('\n')[0]}`);
       } finally {
         await context.close();
+      }
+
+      // Settings: area switch, service tiles and tooltip.
+      const settingsLabel = `[${theme} · ${vpName}] keyboard: settings`;
+      const settingsContext = await browser.newContext({ viewport, colorScheme: theme, reducedMotion: 'reduce' });
+      await settingsContext.addInitScript((t) => localStorage.setItem('papyra-theme', t), theme);
+      const settingsPage = await settingsContext.newPage();
+      try {
+        await checkSettingsKeyboard(settingsPage, failures, settingsLabel);
+      } catch (err) {
+        failures.push(`${settingsLabel}: flow failed — ${err.message.split('\n')[0]}`);
+      } finally {
+        await settingsContext.close();
       }
     }
   }

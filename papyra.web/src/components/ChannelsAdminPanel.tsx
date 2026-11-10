@@ -9,8 +9,11 @@ import BusyButton from './BusyButton';
 import LoadingBar from './LoadingBar';
 import SettingRow, { SettingGroup } from './SettingRow';
 import { useT } from '../i18n/store';
+import { useServiceParam } from '../hooks/useServiceParam';
+import ServiceMark from './ServiceMark';
+import ServiceTabs, { type ServiceTabItem, type ServiceTone } from './ServiceTabs';
 
-// Settings → Chat notifications (administrators). Each chat service is switched on here once, like the
+// Server settings → Chat services (administrators). Each chat service is switched on here once, like the
 // mail server; people then connect their own place to send to under Settings → Notifications. Tokens and
 // webhook addresses go up and are sealed on the server — nothing here shows one again.
 
@@ -43,11 +46,71 @@ export default function ChannelsAdminPanel() {
 
   return (
     <div className="settings__panel">
-      <NtfyGroup data={data} />
-      <DiscordGroup data={data} />
-      <TelegramGroup data={data} />
-      <HostsGroup data={data} />
+      <ChannelTabs data={data} />
     </div>
+  );
+}
+
+const SERVICES = ['ntfy', 'discord', 'telegram', 'network'] as const;
+type Service = (typeof SERVICES)[number];
+
+/** The old `?s=` links into this page (`channels-discord`, `discord-test`…) open the service they belong to. */
+const SECTION_SERVICE: Record<string, Service> = {
+  'channels-ntfy': 'ntfy', 'ntfy-test': 'ntfy',
+  'channels-discord': 'discord', 'discord-check': 'discord', 'discord-test': 'discord',
+  'channels-telegram': 'telegram', 'telegram-check': 'telegram',
+  'channels-hosts': 'network',
+};
+
+type Chip = { tone: ServiceTone; text: string };
+
+/** Where each service stands, for its tile: on and usable, needing a fix, set up but off, or not set up. */
+function chipFor(service: Service, data: ChannelAdmin, t: ReturnType<typeof useT>): Chip {
+  const on: Chip = { tone: 'on', text: t('service.state.on') };
+  const off: Chip = { tone: 'off', text: t('service.state.off') };
+  const unset: Chip = { tone: 'idle', text: t('service.state.unset') };
+  const attention: Chip = { tone: 'attention', text: t('service.state.attention') };
+  switch (service) {
+    case 'ntfy': return data.ntfy.enabled ? on : off;
+    case 'discord': {
+      const d = data.discord;
+      if (!d.enabled) return d.hasBotToken || d.webhooksAllowed ? off : unset;
+      return d.hasBotToken || d.webhooksAllowed ? on : attention;      // on, but nobody has a way to connect
+    }
+    case 'telegram': {
+      const g = data.telegram;
+      if (!g.enabled) return g.hasToken ? off : unset;
+      return g.hasToken && !g.pollError ? on : attention;
+    }
+    case 'network': {
+      const n = data.allowedHosts.length;
+      return n > 0 ? { tone: 'on', text: t('settings.channels.hostsCount', { count: n }) } : { tone: 'idle', text: t('settings.channels.hostsNone') };
+    }
+  }
+}
+
+const NAMES: Record<Service, string> = { ntfy: 'ntfy', discord: 'Discord', telegram: 'Telegram', network: '' };
+
+function ChannelTabs({ data }: { data: ChannelAdmin }) {
+  const t = useT();
+  const [service, setService] = useServiceParam(SERVICES, 'ntfy', s => (s ? SECTION_SERVICE[s] ?? null : null));
+  const items: ServiceTabItem[] = SERVICES.map(id => {
+    const chip = chipFor(id, data, t);
+    return {
+      id,
+      name: id === 'network' ? t('settings.channels.network') : NAMES[id],
+      mark: <ServiceMark service={id} lit={chip.tone === 'on'} />,
+      chip: chip.text,
+      tone: chip.tone,
+    };
+  });
+  return (
+    <ServiceTabs label={t('settings.nav.channels')} items={items} value={service} onChange={setService}>
+      {service === 'ntfy' && <NtfyGroup data={data} />}
+      {service === 'discord' && <DiscordGroup data={data} />}
+      {service === 'telegram' && <TelegramGroup data={data} />}
+      {service === 'network' && <HostsGroup data={data} />}
+    </ServiceTabs>
   );
 }
 
@@ -59,7 +122,7 @@ function NtfyGroup({ data }: { data: ChannelAdmin }) {
   const [topic, setTopic] = useState('');
 
   return (
-    <SettingGroup title="ntfy" id="channels-ntfy">
+    <SettingGroup title="ntfy" id="channels-ntfy" titleHidden>
       <SettingRow label="Status" value={n.enabled ? 'On' : 'Off'} hint="Phone and desktop notifications from ntfy.sh or your own server.">
         {close => <NtfyEditor data={data} close={close} />}
       </SettingRow>
@@ -152,7 +215,7 @@ function DiscordGroup({ data }: { data: ChannelAdmin }) {
   const [url, setUrl] = useState('');
 
   return (
-    <SettingGroup title="Discord" id="channels-discord">
+    <SettingGroup title="Discord" id="channels-discord" titleHidden>
       <SettingRow label="Status" value={d.enabled ? 'On' : 'Off'} hint="Notifications by direct message from a bot, or into a channel through a webhook.">
         {close => <DiscordEditor data={data} close={close} />}
       </SettingRow>
@@ -236,7 +299,7 @@ function TelegramGroup({ data }: { data: ChannelAdmin }) {
   const check = useCheckTelegramAdmin();
 
   return (
-    <SettingGroup title="Telegram" id="channels-telegram">
+    <SettingGroup title="Telegram" id="channels-telegram" titleHidden>
       <SettingRow
         label="Status" value={t.enabled ? 'On' : 'Off'}
         hint={t.pollError ? `Not reading messages: ${t.pollError}` : 'Notifications to a chat with your bot.'}
@@ -298,13 +361,14 @@ function TelegramEditor({ data, close }: { data: ChannelAdmin; close: () => void
 // ── Hosts on your own network ───────────────────────────────────────────────────
 
 function HostsGroup({ data }: { data: ChannelAdmin }) {
+  const t = useT();
   return (
-    <SettingGroup title="Servers on your network" id="channels-hosts">
+    <SettingGroup title={t('settings.channels.network')} id="channels-hosts" titleHidden>
       <SettingRow
-        label="Allowed hosts"
+        label={t('settings.channels.allowedServers')}
         value={data.allowedHosts.length > 0 ? data.allowedHosts.join(', ') : null}
         empty="None"
-        hint="Papyra only connects to the open internet unless you list a server here."
+        hint={t('settings.channels.networkHint')}
       >
         {close => <HostsEditor hosts={data.allowedHosts} close={close} />}
       </SettingRow>

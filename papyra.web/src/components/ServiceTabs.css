@@ -1,0 +1,71 @@
+/* Service tiles: one per service, in a row that scrolls sideways on a phone. Colour carries state: a mark is
+   drawn in the heading ink and takes its service's colour only while that service is on (see ServiceMark).
+   Selected is the only green here, as everywhere. */
+.service-tabs__list {
+  display: flex;
+  gap: var(--space-2);
+  padding: 2px;                    /* room for the focus ring */
+  overflow-x: auto;
+  scroll-snap-type: x proximity;
+  scrollbar-width: none;
+}
+.service-tabs__list::-webkit-scrollbar { display: none; }
+
+.service-tab {
+  flex: 1 0 auto;               /* share the row when there is room, scroll when there is not */
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  grid-template-rows: auto auto;
+  column-gap: var(--space-3);
+  align-items: center;
+  min-width: 8rem;
+  padding: var(--space-3) var(--space-3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  color: var(--text-h);
+  font-family: var(--sans);
+  text-align: left;
+  cursor: pointer;
+  scroll-snap-align: center;
+  transition: border-color var(--dur-fast) var(--ease), background-color var(--dur-fast) var(--ease);
+}
+.service-tab:hover:not(.is-selected) { border-color: var(--border-hover); }
+.service-tab:focus-visible { outline: 2px solid var(--border-focus); outline-offset: 1px; }
+.service-tab.is-selected {
+  border-color: var(--accent-border);
+  background: var(--accent-bg);
+}
+
+.service-tab__mark { grid-row: 1 / span 2; display: inline-flex; color: var(--text-h); }
+.service-tab__name { font-size: var(--fs-sm); font-weight: 600; line-height: 1.25; }
+
+.service-tab__chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  color: var(--text);
+  font-size: var(--fs-xs);
+  line-height: 1.3;
+}
+/* The dot only echoes the words beside it. */
+.service-tab__chip::before {
+  content: '';
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  border: 1.5px solid var(--text);
+}
+/* The chosen tile wears a green wash: the quiet ink and the warn ink are both under 4.5:1 on it (3.75 dark, 4.17 light),
+   so the words go to the heading ink there. The dot still carries the tone. */
+.service-tab[data-tone='attention'] .service-tab__chip { color: var(--warn); }
+.service-tab.is-selected .service-tab__chip,
+.service-tab.is-selected[data-tone='attention'] .service-tab__chip { color: var(--text-h); }
+.service-tab[data-tone='on'] .service-tab__chip::before { background: var(--accent); border-color: var(--accent); }
+.service-tab[data-tone='attention'] .service-tab__chip::before { background: var(--warn); border-color: var(--warn); }
+.service-tab[data-tone='off'] .service-tab__chip::before { border-style: dashed; }
+
+.service-tabs__panel { margin-top: var(--space-4); }
+
+@media (prefers-reduced-motion: reduce) { .service-tab { transition: none; } }

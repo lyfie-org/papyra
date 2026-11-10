@@ -1,81 +1,129 @@
 import { useState } from 'react';
+import { useT, type MessageKey } from '../i18n/store';
+import { useServiceParam } from '../hooks/useServiceParam';
+import ServiceMark from './ServiceMark';
+import ServiceTabs, { type ServiceTabItem, type ServiceTone } from './ServiceTabs';
 import { CheckCircle2, Copy, ExternalLink, Send, Trash2 } from 'lucide-react';
 import { useConfirm } from '../lib/confirmContext';
 import { useNotificationPrefs } from '../hooks/useInstanceConfig';
 import { MASKED_SECRET } from '../lib/autofill';
 import {
-  CHANNEL_NAMES, CHAT_CHANNELS, telegramPolling, useConfirmDestination, useConfirmDiscordDirect, useDestinations, useNtfyAddress, useRemoveDestination,
+  CHANNEL_NAMES, telegramPolling, useConfirmDestination, useConfirmDiscordDirect, useDestinations, useNtfyAddress, useRemoveDestination,
   useSetupDiscordDirect, useSetupDiscordWebhook, useSetupNtfy, useTelegramLink, useTestDestination, useUpdateDestination,
   type ChatChannel, type Destination, type NtfySetup,
 } from '../hooks/useChannels';
 import BusyButton from './BusyButton';
-import SettingRow, { SettingGroup } from './SettingRow';
 import './ChannelCards.css';
 
+/** The order the tiles are shown in. Email is yours already; the chat services follow. */
+const TILE_ORDER: ChatChannel[] = ['ntfy', 'discord', 'telegram'];
+
+type Chip = { tone: ServiceTone; text: MessageKey };
+
+/** Where a place stands, for its tile. The words say it; the dot and the mark's colour only echo it. */
+function chipFor(d: Destination | undefined, available: boolean): Chip {
+  if (!d) return { tone: 'idle', text: 'service.state.unset' };
+  if (!available) return { tone: 'off', text: 'service.state.offHere' };
+  switch (d.state) {
+    case 'unverified': return { tone: 'idle', text: 'service.state.unset' };
+    case 'paused':
+    case 'attention': return { tone: 'attention', text: 'service.state.attention' };
+    case 'off': return { tone: 'off', text: 'service.state.turnedOff' };
+    default: return { tone: 'on', text: 'service.state.connected' };
+  }
+}
+
 /**
- * Settings → Notifications → Where to send. Email is the account's address; each chat service the
- * administrator switched on gets a row here. A row reads as one line at rest (what is connected, or "Not
- * set up") and opens a short guided set-up, or — once connected — the few things you can do with it.
- * Nothing is sent to a place until you have said it is yours.
+ * Settings → Notifications → Where to send. One tile per place: Email (your account's address) and each chat
+ * service the administrator switched on. Choosing a tile opens that service below it: a short guided set-up when
+ * nothing is connected, or the few things you can do once it is. Nothing is sent to a place until you have said it
+ * is yours. Which tile is open lives in the address (`?service=telegram`).
  */
 export default function ChannelCards() {
+  const t = useT();
   const { data } = useDestinations();
   const prefs = useNotificationPrefs().data;
   const emailConfigured = prefs?.emailConfigured ?? false;
   const hasAddress = prefs?.hasAddress ?? true;
   const available = data?.available ?? [];
   const byChannel = new Map((data?.destinations ?? []).map(d => [d.channel, d]));
-  const shown = CHAT_CHANNELS.filter(c => available.includes(c) || byChannel.has(c));
+  const shown = TILE_ORDER.filter(c => available.includes(c) || byChannel.has(c));
+  const ids = ['email', ...shown];
+  const [service, setService] = useServiceParam(ids, 'email');
   if (shown.length === 0) return null;
 
+  const emailChip: Chip = !emailConfigured ? { tone: 'off', text: 'service.state.offHere' }
+    : hasAddress ? { tone: 'on', text: 'service.state.connected' } : { tone: 'attention', text: 'service.state.attention' };
+  const items: ServiceTabItem[] = [
+    { id: 'email', name: CHANNEL_NAMES.email, mark: <ServiceMark service="email" />, chip: t(emailChip.text), tone: emailChip.tone },
+    ...shown.map(channel => {
+      const chip = chipFor(byChannel.get(channel), available.includes(channel));
+      return { id: channel, name: CHANNEL_NAMES[channel], mark: <ServiceMark service={channel} lit={chip.tone === 'on'} />, chip: t(chip.text), tone: chip.tone };
+    }),
+  ];
+  const chosen = shown.find(c => c === service);
+
   return (
-    <SettingGroup title="Where to send" id="where-to-send">
-      <SettingRow
-        label="Email"
-        value={emailConfigured ? (hasAddress ? 'To your account address' : 'No address on your account') : null}
-        empty="Not set up on this Papyra"
-      />
-      {shown.map(channel => (
-        <ChannelRow key={channel} channel={channel} destination={byChannel.get(channel)} available={available.includes(channel)} />
-      ))}
-    </SettingGroup>
+    <section className="setting-group" aria-labelledby="where-to-send">
+      <h2 id="where-to-send" className="settings__subhead">{t('notifications.where.title')}</h2>
+      <ServiceTabs label={t('notifications.where.title')} items={items} value={service} onChange={setService}>
+        {chosen
+          ? <ChannelPanel key={chosen} channel={chosen} destination={byChannel.get(chosen)} available={available.includes(chosen)} />
+          : <EmailPanel configured={emailConfigured} hasAddress={hasAddress} />}
+      </ServiceTabs>
+    </section>
   );
 }
 
-function describe(d: Destination | undefined, available: boolean): { value: string | null; hint?: string } {
-  if (!d) return { value: null };
-  if (!available) return { value: `${d.label} · switched off by an administrator` };
-  switch (d.state) {
-    case 'unverified': return { value: 'Not confirmed yet', hint: 'Send a test, then say it arrived.' };
-    case 'paused': return { value: 'Paused', hint: d.lastError ?? undefined };
-    case 'attention': return { value: d.label, hint: d.lastError ? `Needs attention: ${d.lastError}` : 'Needs attention' };
-    case 'off': return { value: `${d.label} · off` };
-    default: return { value: d.label };
-  }
+function EmailPanel({ configured, hasAddress }: { configured: boolean; hasAddress: boolean }) {
+  const t = useT();
+  return (
+    <div className="service-panel">
+      <p className="service-panel__lede">{t(!configured ? 'notifications.email.off' : hasAddress ? 'notifications.email.ok' : 'notifications.email.noAddress')}</p>
+    </div>
+  );
 }
 
-function ChannelRow({ channel, destination, available }: { channel: ChatChannel; destination: Destination | undefined; available: boolean }) {
-  const { value, hint } = describe(destination, available);
-  const finishing = destination?.state === 'unverified';
-  const action = !destination ? 'Set up' : finishing ? 'Finish' : 'Manage';
+const INTRO: Record<ChatChannel, MessageKey> = {
+  ntfy: 'notifications.ntfy.intro', discord: 'notifications.discord.intro', telegram: 'notifications.telegram.intro',
+};
 
-  const [open, setOpen] = useState(false);
-  const [seen, setSeen] = useState(destination?.id);
-  if (destination?.id !== seen) {
-    setSeen(destination?.id);
-    // A chat that connects by itself (Telegram, from its link) folds away the steps that were waiting for it.
-    if (channel === 'telegram' && destination) setOpen(false);
+function ChannelPanel({ channel, destination, available }: { channel: ChatChannel; destination: Destination | undefined; available: boolean }) {
+  const t = useT();
+  const [setting, setSetting] = useState(false);
+  const finishing = destination?.state === 'unverified';
+  const stop = () => setSetting(false);
+
+  // Connected (or paused, or switched off by you): what you can do with it, right here.
+  if (destination && !finishing) {
+    return (
+      <div className="service-panel">
+        {!available && <p className="service-panel__lede">{t('notifications.service.offByAdmin')}</p>}
+        {available && destination.state === 'attention' && (
+          <p className="service-panel__lede service-panel__lede--warn">
+            {destination.lastError ? t('notifications.service.needsAttention', { reason: destination.lastError }) : t('service.state.attention')}
+          </p>
+        )}
+        <Manage destination={destination} close={stop} />
+      </div>
+    );
   }
 
   return (
-    <SettingRow label={CHANNEL_NAMES[channel]} value={value} empty="Not set up" hint={hint} action={action} actionDisabled={!available && !destination}
-      open={open} onOpenChange={setOpen}>
-      {close => (destination && !finishing
-        ? <Manage destination={destination} close={close} />
-        : channel === 'ntfy' ? <SetupNtfy existing={destination} close={close} />
-        : channel === 'discord' ? <SetupDiscord existing={destination} close={close} />
-        : <SetupTelegram close={close} />)}
-    </SettingRow>
+    <div className="service-panel">
+      <p className="service-panel__lede">{t(finishing ? 'notifications.service.unconfirmed' : INTRO[channel])}</p>
+      {setting ? (
+        channel === 'ntfy' ? <SetupNtfy existing={destination} close={stop} />
+          : channel === 'discord' ? <SetupDiscord existing={destination} close={stop} />
+          : <SetupTelegram close={stop} />
+      ) : (
+        <div className="settings__form-actions">
+          <button type="button" className="settings__btn" onClick={() => setSetting(true)}>
+            {t(finishing ? 'notifications.service.finish' : 'notifications.service.setUp')}
+          </button>
+        </div>
+      )}
+    </div>
   );
 }
 
@@ -426,7 +474,6 @@ function Manage({ destination, close }: { destination: Destination; close: () =>
         <BusyButton type="button" className="settings__btn settings__btn--quiet" busy={remove.isPending} busyLabel="Disconnecting…" onClick={removeIt}>
           <Trash2 size={15} aria-hidden="true" /> Disconnect
         </BusyButton>
-        <button type="button" className="settings__btn settings__btn--quiet" onClick={close}>Done</button>
       </div>
 
       {address.data && (

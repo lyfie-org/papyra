@@ -110,7 +110,7 @@ export const SETTINGS_INDEX: SettingsSource[] = [
   { tab: 'channels', section: 'channels-ntfy', sectionLabel: 'ntfy', adminOnly: true, keywords: ['push', 'topic', 'notification server', 'self-hosted'] },
   { tab: 'channels', section: 'channels-discord', sectionLabel: 'Discord', adminOnly: true, keywords: ['webhook', 'channel', 'discord server'] },
   { tab: 'channels', section: 'channels-telegram', sectionLabel: 'Telegram', adminOnly: true, keywords: ['bot', 'botfather', 'token'] },
-  { tab: 'channels', section: 'channels-hosts', sectionLabel: 'Servers on your network', adminOnly: true, keywords: ['allowed hosts', 'allow list', 'lan', 'private address', 'self-hosted', 'tailscale'] },
+  { tab: 'channels', section: 'channels-hosts', sectionKey: 'settings.channels.network', adminOnly: true, keywords: ['servers on your network', 'allowed hosts', 'allow list', 'lan', 'private address', 'self-hosted', 'tailscale'] },
   { tab: 'email', section: 'invite', sectionLabel: 'Invite someone', adminOnly: true, keywords: ['invitation', 'new person', 'join'] },
 
   // The assistant is held back for a later release. Its entries drop out of the

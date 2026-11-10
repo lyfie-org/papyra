@@ -59,11 +59,16 @@ export default function SettingRow({
   );
 }
 
-/** A titled group of rows, like a card in a settings app. */
-export function SettingGroup({ title, id, children, footer }: { title: ReactNode; id?: string; children: ReactNode; footer?: ReactNode }) {
+/**
+ * A titled group of rows, like a card in a settings app. `titleHidden` keeps the heading for screen readers and
+ * for links that jump to `id`, but does not draw it: used where a tab already says what the group is.
+ */
+export function SettingGroup({ title, id, children, footer, titleHidden }: {
+  title: ReactNode; id?: string; children: ReactNode; footer?: ReactNode; titleHidden?: boolean;
+}) {
   return (
     <section className="setting-group" aria-labelledby={id}>
-      <h2 id={id} className="settings__subhead">{title}</h2>
+      <h2 id={id} className={`settings__subhead${titleHidden ? ' settings__subhead--hidden' : ''}`}>{title}</h2>
       <div className="setting-group__rows">{children}</div>
       {footer && <div className="setting-group__footer">{footer}</div>}
     </section>

@@ -58,6 +58,12 @@
   --brand-github: #181717;
   --brand-docker: #1d63ed;
 
+  /* Chat services, in their own colours, shown only while a service is connected (colour carries state).
+     Telegram's official #26A5E4 is 2.6:1 on the light surface, so light uses a deeper blue; the rest pass 3:1 as they are. */
+  --brand-ntfy: #317f6f;
+  --brand-discord: #5865f2;
+  --brand-telegram: #1d8fc7;
+
   /* Ink for surfaces painted with a note's YAML colour. Those tints are always
      light pastels, in both themes, so the text on them is always dark — these
      three deliberately do NOT flip in dark mode. */
@@ -289,6 +295,10 @@
 
   --brand-github: #f0f6fc;
   --brand-docker: #5b93f2;
+
+  --brand-ntfy: #317f6f;
+  --brand-discord: #5865f2;
+  --brand-telegram: #26a5e4;
 
   --shadow-nav: 0 1px 4px rgba(0, 0, 0, 0.25);
   --shadow-card:

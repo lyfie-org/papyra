@@ -1,4 +1,20 @@
-/* Settings → Notifications → Where to send. The set-up steps open under their row, like any setting. */
+/* Settings → Notifications → Where to send. The tile row is ServiceTabs; what you can do with the chosen one is a
+   panel under it, in the same card the settings rows use. */
+.service-panel {
+  display: grid;
+  gap: var(--space-4);
+  padding: var(--space-4);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+}
+.service-panel__lede {
+  margin: 0;
+  font: 400 var(--fs-sm) / 1.5 var(--sans);
+  color: var(--text-h);
+}
+.service-panel__lede--warn { color: var(--warn); }
+
 .channel-step {
   display: grid;
   gap: var(--space-3);

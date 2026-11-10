@@ -16,9 +16,10 @@ so they are never sent only to a chat app. Password resets, invitations and one-
 
 ## Connecting a place to send to
 
-Go to *Settings → Notifications*. At the top, **Where to send** lists email and every chat service the
-administrator switched on. Each one reads as a single line (*Not set up*, *Telegram · @you*, *Paused*…) with a
-button to set it up or manage it.
+Go to *Settings → Notifications*. At the top, **Where to send** shows a tile for email and one for every chat
+service the administrator switched on. Each tile says where that service stands: *Connected*, *Not set up*,
+*Needs attention* or *Off on this server*. Choose a tile to set that service up, or to manage it once it is
+connected. The service you chose stays in the address, so a link or a reload opens the same one.
 
 ### ntfy
 
@@ -30,7 +31,7 @@ button to set it up or manage it.
    characters.
 3. Choose **Send a test**. When it arrives, choose **Yes, it arrived**.
 
-*Manage → Show my topic* shows it again when you set up a new device.
+**Show my topic** shows it again when you set up a new device.
 
 ### Discord
 
@@ -40,7 +41,7 @@ Two ways, if the administrator allowed both. The **direct message** is the one t
 
 1. In Discord, turn on *Settings → Advanced → Developer Mode*, then right-click your name and choose **Copy
    User ID**.
-2. In Papyra, choose **Set up → Discord → Direct message**, paste the ID, and choose **Send me a code**.
+2. In Papyra, open the **Discord** tile, choose **Set up**, then **Direct message**, paste the ID, and choose **Send me a code**.
 3. The bot sends the code to you on Discord. Type it into Papyra. It works for 10 minutes, once.
 
 The bot can only message you if you share a server with it, and your Discord privacy settings must allow
@@ -49,14 +50,14 @@ direct messages from server members. If they don't, Papyra says so and connects 
 **Channel webhook**
 
 1. In Discord: *Server Settings → Integrations → Webhooks → New Webhook → Copy Webhook URL*.
-2. In Papyra, choose **Set up → Discord → Channel webhook**, paste the address, then send a test and confirm it.
+2. In Papyra, open the **Discord** tile, choose **Set up**, then **Channel webhook**, paste the address, then send a test and confirm it.
 
 **Everyone who can read that channel can read these messages.** Use a channel only you can see. The webhook
 address is stored sealed and is never shown again.
 
 ### Telegram
 
-1. Choose **Set up → Get a link**, then **Open Telegram** and press **Start**.
+1. Open the **Telegram** tile, choose **Set up** and then **Get a link**, then **Open Telegram** and press **Start**.
 2. The page updates by itself. The bot replies naming your Papyra account, so a link that was forwarded to
    the wrong person is noticed. Send `/stop` to the bot at any time to disconnect.
 
@@ -69,7 +70,7 @@ By default, **a short generic line** and nothing else: *You were mentioned in a 
 with you*, *Your backup needs attention*. No names, no note titles, no text from any note. Locked notes can't
 be shared, commented on or mentioned from, so nothing about them is ever sent.
 
-After you connect a place, *Manage → What it shows* lets you choose **The line with names and note titles**.
+After you connect a place, **What it shows** lets you choose **The line with names and note titles**.
 Then the line is the same subject an email would have, such as *@bea shared “Trip plan” with you*. Note text
 is never sent, either way.
 
@@ -91,7 +92,9 @@ and the line in Settings explains why. Fix it, then choose **Turn back on**.
 
 ## For administrators
 
-Open *Settings → Chat notifications*. Each service is switched on once here; people connect their own.
+Open *Server settings → Chat services* (administrators see a **Server settings** switch at the top of Settings).
+There is a tile for each service and one for **Network access**. Each service is switched on once here; people
+connect their own.
 
 **ntfy.** Switch it on. The server is `ntfy.sh` unless you give your own, with an access token if it needs one.
 The token is stored sealed and never shown again. *Send a test* sends a message to any topic.
@@ -106,8 +109,8 @@ Papyra checks it with Telegram when you save it and learns the bot's name for th
 bot's messages by asking Telegram for them, so **no public address is needed**. A bot can have only one reader:
 if something else (a webhook, a second Papyra) uses the same bot, Settings says so.
 
-**Servers on your network.** Papyra connects only to the open internet. If your ntfy runs at home (say
-`ntfy.lan`, or a Tailscale address), list it under *Servers on your network*, or choose **Allow … and save**
+**Network access.** Papyra connects only to the open internet. If your ntfy runs at home (say
+`ntfy.lan`, or a Tailscale address), list it under *Network access*, or choose **Allow … and save**
 when Papyra offers. A plain `http://` address works only for a listed host. Some addresses are never
 reachable, even listed: the server itself, link-local addresses and cloud metadata addresses.
 
@@ -134,7 +137,7 @@ didn't choose. What the update check asks is on [its own page](/docs/update-chec
 | --- | --- | --- | --- |
 | Update check | `api.github.com` | A plain request for the latest release, once a day. Nothing about your install. **On by default; one setting turns it off.** | Nobody: it is the default |
 | Email | The mail server in *Settings → Email* | The notice or message | An administrator |
-| ntfy | The ntfy server in *Settings → Chat notifications* | One short line, an optional link, the access token if set | An administrator, then each person |
+| ntfy | The ntfy server in *Server settings → Chat services* | One short line, an optional link, the access token if set | An administrator, then each person |
 | Discord webhook | `discord.com` (the address the person pasted) | One short line as a small card, an optional link | The person |
 | Discord direct message | `discord.com/api` | The same card, and the confirmation code | An administrator, then each person |
 | Telegram | `api.telegram.org` | The same line as text; also asks Telegram for the messages sent to the bot | An administrator, then each person |
@@ -146,3 +149,6 @@ didn't choose. What the update check asks is on [its own page](/docs/update-chec
 Chat messages travel through the service you chose (ntfy, Discord, Telegram), which sees them. That is why
 the default is a line with no names and no titles. If you don't want a service to see even that, don't connect
 it.
+
+The ntfy, Discord and Telegram names and logos belong to their owners. Papyra shows them only to say which
+service a tile is about, and does not imply that any of them endorses it.
