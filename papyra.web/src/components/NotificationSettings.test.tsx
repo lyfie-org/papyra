@@ -115,12 +115,12 @@ describe('NotificationSettings', () => {
     mount();
     // A chat place is connected, so "nothing is sent" would be untrue.
     await screen.findByRole('switch', { name: 'Mentions — ntfy' });
-    expect(screen.queryByText('Email isn’t set up on this Papyra yet.')).toBeNull();
+    expect(screen.queryByText('Email isn’t set up on this server yet.')).toBeNull();
 
     cleanup();
     destinations = [];
     mount();
-    expect(await screen.findByText('Email isn’t set up on this Papyra yet.')).toBeTruthy();
+    expect(await screen.findByText('Email isn’t set up on this server yet.')).toBeTruthy();
     expect(within(document.body).queryByRole('switch', { name: /Mentions — / })).toBeNull();
   });
 });

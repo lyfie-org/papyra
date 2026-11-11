@@ -2,6 +2,7 @@ import { useState } from 'react';
 import { AlertTriangle, Check, ChevronRight, Copy } from 'lucide-react';
 import { errorReportText, type ErrorInfo } from '../lib/errorReport';
 import './ErrorPanel.css';
+import { useT } from '../i18n/store';
 
 export interface ErrorAction {
   label: string;
@@ -25,6 +26,7 @@ export default function ErrorPanel({ info, actions = [], variant = 'page', code,
   code?: string;
   icon?: boolean;
 }) {
+  const t = useT();
   const [copied, setCopied] = useState(false);
   const hasTrace = !!(info.stack || info.componentStack);
   const reportable = hasTrace || !!info.errorId;
@@ -95,7 +97,7 @@ export default function ErrorPanel({ info, actions = [], variant = 'page', code,
         )}
       </div>
       {reportable && (
-        <p className="error-panel__hint">If this keeps happening, send the copied details to whoever runs this Papyra.</p>
+        <p className="error-panel__hint">{t('error.panel.hint')}</p>
       )}
     </section>
   );

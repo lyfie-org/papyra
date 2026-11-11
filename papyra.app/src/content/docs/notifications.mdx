@@ -136,15 +136,15 @@ didn't choose. What the update check asks is on [its own page](/docs/update-chec
 | What | Goes to | Sent | Set up by |
 | --- | --- | --- | --- |
 | Update check | `api.github.com` | A plain request for the latest release, once a day. Nothing about your install. **On by default; one setting turns it off.** | Nobody: it is the default |
-| Email | The mail server in *Settings → Email* | The notice or message | An administrator |
+| Email | The mail server in *Server settings → Email delivery* | The notice or message | An administrator |
 | ntfy | The ntfy server in *Server settings → Chat services* | One short line, an optional link, the access token if set | An administrator, then each person |
 | Discord webhook | `discord.com` (the address the person pasted) | One short line as a small card, an optional link | The person |
 | Discord direct message | `discord.com/api` | The same card, and the confirmation code | An administrator, then each person |
 | Telegram | `api.telegram.org` | The same line as text; also asks Telegram for the messages sent to the bot | An administrator, then each person |
-| Git backup | The repository in *Settings → Backup* | Your notes, plain or encrypted as you chose | Each person |
+| Git backup | The repository in *Settings → Git backup* | Your notes, plain or encrypted as you chose | Each person |
 | Webhooks | The addresses a person registered | The event's details | Each person |
 | Link cards and saved articles | The sites a note links to | A page request from your server; only public addresses | Happens when a note holds a link |
-| Single sign-on | The identity provider in *Settings → SSO* | The sign-in exchange | An administrator |
+| Single sign-on | The identity provider in *Server settings → Single sign-on* | The sign-in exchange | An administrator |
 
 Chat messages travel through the service you chose (ntfy, Discord, Telegram), which sees them. That is why
 the default is a line with no names and no titles. If you don't want a service to see even that, don't connect

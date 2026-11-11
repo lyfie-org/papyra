@@ -104,7 +104,7 @@ public sealed class DiscordBot(OutboundPolicy outbound)
     {
         429 => ChannelSendResult.Retry("Discord is limiting how fast Papyra can send.", reply.RetryAfter),
         // The bot's own token was refused: the admin's to fix, so keep trying rather than give up on a person.
-        401 => ChannelSendResult.Retry("The Discord bot's token was refused. An administrator should check it in Settings → Chat notifications."),
+        401 => ChannelSendResult.Retry("The Discord bot's token was refused. An administrator should check it in Server settings → Chat services."),
         // 50007: cannot send messages to this user (no shared server, or direct messages closed).
         403 => ChannelSendResult.Rejected(CannotMessage),
         404 => ChannelSendResult.Rejected("Discord can't find that user. Connect Discord again."),

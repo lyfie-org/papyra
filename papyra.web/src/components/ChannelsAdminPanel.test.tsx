@@ -83,7 +83,7 @@ describe('ChannelsAdminPanel', () => {
 
     it('turns it on with a server and a token', async () => {
       await openEditor();
-      fireEvent.click(screen.getByRole('switch', { name: /Let people send to ntfy/ }));
+      fireEvent.click(screen.getByRole('switch', { name: /Let people use ntfy/ }));
       fireEvent.change(screen.getByLabelText('Server'), { target: { value: 'https://ntfy.example.com' } });
       fireEvent.change(screen.getByLabelText('Access token'), { target: { value: 'tk_secret' } });
       fireEvent.click(screen.getByRole('button', { name: 'Save' }));
@@ -159,8 +159,8 @@ describe('ChannelsAdminPanel', () => {
       mount();
       await screen.findByRole('tablist');
       fireEvent.click(within(groupFor('Discord')).getAllByRole('button', { name: 'Edit' })[0]);
-      fireEvent.click(screen.getByRole('switch', { name: /Let people send to Discord/ }));
-      fireEvent.click(screen.getByRole('switch', { name: /Allow channel webhooks/ }));
+      fireEvent.click(screen.getByRole('switch', { name: /Let people use Discord/ }));
+      fireEvent.click(screen.getByRole('switch', { name: /Allow channel messages/ }));
       fireEvent.click(screen.getByRole('button', { name: 'Save' }));
 
       await waitFor(() => expect(calls.find(c => c.method === 'PUT')?.body).toEqual({ enabled: true, webhooksAllowed: false }));
@@ -224,7 +224,7 @@ describe('ChannelsAdminPanel', () => {
 
     it('saves the bot token with the switch', async () => {
       await openEditor();
-      fireEvent.click(screen.getByRole('switch', { name: /Let people send to Telegram/ }));
+      fireEvent.click(screen.getByRole('switch', { name: /Let people use Telegram/ }));
       fireEvent.change(screen.getByLabelText('Bot token'), { target: { value: '123:abc' } });
       fireEvent.click(screen.getByRole('button', { name: 'Save' }));
       await waitFor(() => expect(calls.find(c => c.method === 'PUT')?.body).toEqual({ enabled: true, token: '123:abc' }));

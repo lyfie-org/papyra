@@ -11,6 +11,7 @@ import LoadingBar from '../LoadingBar';
 import SettingRow, { SettingGroup } from '../SettingRow';
 import JournalTemplatesGroup from './JournalTemplatesGroup';
 import type { JournalPrefsPatch } from '../../types/journal';
+import { useT } from '../../i18n/store';
 
 const HOURS = [0, 1, 2, 3, 4, 5];
 
@@ -34,6 +35,7 @@ function Switch({ label, hint, checked, disabled, onChange }: {
 
 /** Settings → Journal: when the day turns over, how it reads, and who may read it. */
 export default function JournalSettingsPanel() {
+  const t = useT();
   const prefs = useJournalPrefs();
   const save = useSaveJournalPrefs();
   const confirm = useConfirm();
@@ -70,7 +72,7 @@ export default function JournalSettingsPanel() {
     <SettingGroup
       title="Use the journal"
       id="journal-use"
-      footer="Turning it off hides it. Your days stay safe in your folder."
+      footer={t('journal.use.footer')}
     >
       <Switch label="Use the journal" checked={settings.enabled} onChange={(on) => void change({ enabled: on })} />
     </SettingGroup>
@@ -116,7 +118,7 @@ export default function JournalSettingsPanel() {
       <SettingGroup title="Reminder" id="journal-reminder">
         <Switch
           label="Remind me by email" checked={settings.reminderOn}
-          hint="Once a day, only if that day is still blank. Never says what you wrote."
+          hint={t('journal.reminder.hint')}
           onChange={(on) => void change({ reminderOn: on, ...(on && !settings.reminderTime ? { reminderTime: '21:00' } : {}) })}
         />
         {settings.reminderOn && (
@@ -144,7 +146,7 @@ export default function JournalSettingsPanel() {
       <SettingGroup
         title="Locking"
         id="journal-locking"
-        footer="Locking scrambles a day on disk, so the folder, a Git remote and backups hold only scrambled text. Papyra keeps the key."
+        footer={t('journal.locking.footer')}
       >
         <Switch
           label="Lock new days" checked={settings.lockNewEntries} disabled={!pinSet && !settings.lockNewEntries}

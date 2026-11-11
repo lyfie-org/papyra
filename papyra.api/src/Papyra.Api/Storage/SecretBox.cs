@@ -82,7 +82,7 @@ public static class SecretSettings
     {
         SmtpKeys.Password => "The saved email password",
         OidcKeys.ClientSecret => "The saved SSO client secret",
-        InstanceBackupKeys.GitToken => "The saved instance backup token",
+        InstanceBackupKeys.GitToken => "The saved server backup token",
         Channels.ChannelKeys.TelegramBotToken => "The saved Telegram bot token",
         Channels.ChannelKeys.DiscordBotToken => "The saved Discord bot token",
         Channels.ChannelKeys.NtfyToken => "The saved ntfy access token",

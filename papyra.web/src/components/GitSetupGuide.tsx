@@ -10,6 +10,7 @@ import {
 } from '../hooks/useGitSync';
 import { MASKED_SECRET, NO_AUTOFILL } from '../lib/autofill';
 import './GitSetupGuide.css';
+import { useT } from '../i18n/store';
 
 const REPO_NAME = 'papyra-notes';
 const NEW_REPO_URL =
@@ -36,6 +37,7 @@ function when(iso: string | null): string {
  * card: where the notes go, when they last went, and "Back up now".
  */
 export default function GitSetupGuide() {
+  const t = useT();
   const { data } = useGitConfig();
   const run = useRunGitSync();
   // A push of the whole vault can take a while: name it where it can be seen.
@@ -86,7 +88,7 @@ export default function GitSetupGuide() {
               <div><dt>Format</dt><dd>
                 {encrypted
                   ? <><Lock size={12} aria-hidden="true" /> Encrypted — your Papyra password unlocks it</>
-                  : <><FileText size={12} aria-hidden="true" /> Readable files — notes/, todos/, vault/, media/, settings/</>}
+                  : <><FileText size={12} aria-hidden="true" /> {t('git.guide.filesPlain')}</>}
               </dd></div>
             </dl>
             {data!.lastError && <p className="git-card__problem">{data!.lastError}</p>}
@@ -442,6 +444,7 @@ function SetupGuide({ initialUrl, hasToken, onClose }: { initialUrl: string; has
 function ModeSwitch({ to, remoteUrl, branch, onDone, onCancel }: {
   to: 'plain' | 'encrypted'; remoteUrl: string; branch: string; onDone: () => void; onCancel: () => void;
 }) {
+  const t = useT();
   const save = useSaveGitConfig();
   const [password, setPassword] = useState('');
   const [error, setError] = useState<string | null>(null);
@@ -466,7 +469,7 @@ function ModeSwitch({ to, remoteUrl, branch, onDone, onCancel }: {
           </label>
         </>
       ) : (
-        <p className="settings__hint">Backups become readable Markdown — locked notes included.</p>
+        <p className="settings__hint">{t('git.guide.plainNote')}</p>
       )}
       {error && <p className="settings__error" role="alert">{error}</p>}
       <div className="git-card__actions">

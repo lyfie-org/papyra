@@ -152,6 +152,7 @@ function NtfyGroup({ data }: { data: ChannelAdmin }) {
 }
 
 function NtfyEditor({ data, close }: { data: ChannelAdmin; close: () => void }) {
+  const t = useT();
   const save = useSaveNtfyAdmin();
   const [enabled, setEnabled] = useState(data.ntfy.enabled);
   const [server, setServer] = useState(data.ntfy.serverUrl);
@@ -169,7 +170,7 @@ function NtfyEditor({ data, close }: { data: ChannelAdmin; close: () => void }) 
 
   return (
     <form className="settings__form" onSubmit={(e: FormEvent) => { e.preventDefault(); write(false); }}>
-      <Switch label="Let people send to ntfy" checked={enabled} onChange={setEnabled} />
+      <Switch label={t('settings.channels.letUse', { service: 'ntfy' })} checked={enabled} onChange={setEnabled} />
       <label className="settings__field">Server
         <input type="url" value={server} placeholder={data.ntfy.defaultServerUrl} autoComplete="off" spellCheck={false}
           onChange={e => setServer(e.target.value)} />
@@ -209,6 +210,7 @@ function NtfyEditor({ data, close }: { data: ChannelAdmin; close: () => void }) 
 // ── Discord ────────────────────────────────────────────────────────────────────
 
 function DiscordGroup({ data }: { data: ChannelAdmin }) {
+  const t = useT();
   const d = data.discord;
   const test = useTestDiscordAdmin();
   const check = useCheckDiscordBotAdmin();
@@ -216,7 +218,7 @@ function DiscordGroup({ data }: { data: ChannelAdmin }) {
 
   return (
     <SettingGroup title="Discord" id="channels-discord" titleHidden>
-      <SettingRow label="Status" value={d.enabled ? 'On' : 'Off'} hint="Notifications by direct message from a bot, or into a channel through a webhook.">
+      <SettingRow label="Status" value={d.enabled ? 'On' : 'Off'} hint={t('settings.channels.discord.hint')}>
         {close => <DiscordEditor data={data} close={close} />}
       </SettingRow>
       <SettingRow label="Direct messages" value={d.hasBotToken ? (d.botUsername ? `Bot ${d.botUsername}` : 'Bot saved') : null} empty="No bot yet"
@@ -237,7 +239,7 @@ function DiscordGroup({ data }: { data: ChannelAdmin }) {
           )}
         </SettingRow>
       )}
-      <SettingRow label="Channel webhooks" value={d.webhooksAllowed ? 'People may connect one' : 'Not allowed'} />
+      <SettingRow label={t('settings.channels.discord.messagesRow')} value={d.webhooksAllowed ? 'People may connect one' : 'Not allowed'} />
       <SettingRow label="Test" value="Send a test message to a webhook" action="Send…" id="discord-test">
         {close => (
           <div className="settings__form">
@@ -261,6 +263,7 @@ function DiscordGroup({ data }: { data: ChannelAdmin }) {
 }
 
 function DiscordEditor({ data, close }: { data: ChannelAdmin; close: () => void }) {
+  const t = useT();
   const save = useSaveDiscordAdmin();
   const [enabled, setEnabled] = useState(data.discord.enabled);
   const [webhooks, setWebhooks] = useState(data.discord.webhooksAllowed);
@@ -271,8 +274,8 @@ function DiscordEditor({ data, close }: { data: ChannelAdmin; close: () => void 
       e.preventDefault();
       save.mutate({ enabled, webhooksAllowed: webhooks, ...(botToken.trim() ? { botToken: botToken.trim() } : {}) }, { onSuccess: close });
     }}>
-      <Switch label="Let people send to Discord" checked={enabled} onChange={setEnabled} />
-      <Switch label="Allow channel webhooks" hint="A webhook posts into a channel everyone in it can read." checked={webhooks} onChange={setWebhooks} />
+      <Switch label={t('settings.channels.letUse', { service: 'Discord' })} checked={enabled} onChange={setEnabled} />
+      <Switch label={t('settings.channels.discord.allowLabel')} hint={t('settings.channels.discord.allowHint')} checked={webhooks} onChange={setWebhooks} />
       <label className="settings__field">Bot token (for direct messages)
         <input {...MASKED_SECRET} value={botToken} placeholder={data.discord.hasBotToken ? 'Saved — leave blank to keep' : 'Optional'}
           onChange={e => setBotToken(e.target.value)} />
@@ -329,6 +332,7 @@ function TelegramGroup({ data }: { data: ChannelAdmin }) {
 }
 
 function TelegramEditor({ data, close }: { data: ChannelAdmin; close: () => void }) {
+  const t = useT();
   const save = useSaveTelegramAdmin();
   const [enabled, setEnabled] = useState(data.telegram.enabled);
   const [token, setToken] = useState('');
@@ -338,7 +342,7 @@ function TelegramEditor({ data, close }: { data: ChannelAdmin; close: () => void
       e.preventDefault();
       save.mutate({ enabled, ...(token.trim() ? { token: token.trim() } : {}) }, { onSuccess: close });
     }}>
-      <Switch label="Let people send to Telegram" checked={enabled} onChange={setEnabled} />
+      <Switch label={t('settings.channels.letUse', { service: 'Telegram' })} checked={enabled} onChange={setEnabled} />
       <label className="settings__field">Bot token
         <input {...MASKED_SECRET} value={token} placeholder={data.telegram.hasToken ? 'Saved — leave blank to keep' : 'From BotFather'}
           onChange={e => setToken(e.target.value)} />

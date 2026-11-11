@@ -237,9 +237,9 @@ public sealed class AiClient
         var (ready, reason) = s.ChatProvider switch
         {
             AiProviderKind.OpenAi when string.IsNullOrWhiteSpace(s.OpenAiKey) =>
-                (false, "No OpenAI API key is configured. An admin can add one in Settings → AI."),
+                (false, "No OpenAI API key is configured. An admin can add one in Server settings → AI."),
             AiProviderKind.Anthropic when string.IsNullOrWhiteSpace(s.AnthropicKey) =>
-                (false, "No Anthropic API key is configured. An admin can add one in Settings → AI."),
+                (false, "No Anthropic API key is configured. An admin can add one in Server settings → AI."),
             // Deliberately no model identifiers or URLs in these sentences — they
             // are read by someone deciding what to click, not debugging a service.
             AiProviderKind.Ollama when !ollamaUp =>

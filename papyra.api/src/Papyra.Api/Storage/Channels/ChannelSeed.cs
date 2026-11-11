@@ -34,7 +34,7 @@ public static class ChannelSeed
             else
             {
                 logger.LogWarning(
-                    "The ntfy address in the environment was not used ({Code}). Fix it, or set ntfy up under Settings → Chat notifications; "
+                    "The ntfy address in the environment was not used ({Code}). Fix it, or set ntfy up under Server settings → Chat services; "
                     + "an address on your own network must be on the allowed list first", problem);
             }
         }

@@ -181,6 +181,7 @@ function TestAndConfirm({ id, name, alreadyTested, close }: { id: number; name: 
 // ── ntfy ───────────────────────────────────────────────────────────────────────
 
 function SetupNtfy({ existing, close }: { existing: Destination | undefined; close: () => void }) {
+  const t = useT();
   const setup = useSetupNtfy();
   const address = useNtfyAddress();
   const [topic, setTopic] = useState('');
@@ -195,7 +196,7 @@ function SetupNtfy({ existing, close }: { existing: Destination | undefined; clo
           <input type="text" value={topic} autoFocus maxLength={64} placeholder="Leave blank for a long random one"
             autoComplete="off" spellCheck={false} onChange={e => setTopic(e.target.value)} />
         </label>
-        <p className="channel-step__text">The topic is the only thing keeping your notifications private, so a long one is safer.</p>
+        <p className="channel-step__text">{t('notifications.ntfy.topicHint')}</p>
         {setup.isError && <p className="settings__error" role="alert">{(setup.error as Error).message}</p>}
         <div className="settings__form-actions">
           <BusyButton type="submit" className="settings__btn" busy={setup.isPending} busyLabel="Creating…">Continue</BusyButton>
@@ -230,6 +231,7 @@ function SetupNtfy({ existing, close }: { existing: Destination | undefined; clo
 // ── Discord ────────────────────────────────────────────────────────────────────
 
 function SetupDiscord({ existing, close }: { existing: Destination | undefined; close: () => void }) {
+  const t = useT();
   const { data } = useDestinations();
   const kinds = data?.discord ?? { webhook: true, dm: false };
   const [choice, setChoice] = useState<'dm' | 'webhook'>('dm');
@@ -248,7 +250,7 @@ function SetupDiscord({ existing, close }: { existing: Destination | undefined; 
   if (!kinds.dm && !kinds.webhook) {
     return (
       <div className="settings__form">
-        <p className="channel-step__text">An administrator hasn’t opened a way to connect Discord yet.</p>
+        <p className="channel-step__text">{t('notifications.discord.notReady')}</p>
         <div className="settings__form-actions">
           <button type="button" className="settings__btn settings__btn--quiet" onClick={close}>Close</button>
         </div>
@@ -266,11 +268,11 @@ function SetupDiscord({ existing, close }: { existing: Destination | undefined; 
         <legend>How should Discord reach you?</legend>
         <label>
           <input type="radio" name="discord-kind" checked={choice === 'dm'} onChange={() => setChoice('dm')} />
-          A direct message from the bot. Only you see it.
+          {t('notifications.discord.kindDm')}
         </label>
         <label>
           <input type="radio" name="discord-kind" checked={choice === 'webhook'} onChange={() => setChoice('webhook')} />
-          A channel webhook. Everyone who can read that channel sees it.
+          {t('notifications.discord.kindWebhook')}
         </label>
       </fieldset>
       <div className="settings__form-actions">
@@ -312,6 +314,7 @@ function SetupDiscordWebhook({ existing, close }: { existing: Destination | unde
 
 /** Direct messages: the bot sends a code to the account, and typing it back shows the account is yours. */
 function SetupDiscordDirect({ onSent, close }: { onSent: () => void; close: () => void }) {
+  const t = useT();
   const send = useSetupDiscordDirect();
   const [userId, setUserId] = useState('');
 
@@ -322,7 +325,7 @@ function SetupDiscordDirect({ onSent, close }: { onSent: () => void; close: () =
           placeholder="18 or 19 digits" onChange={e => setUserId(e.target.value)} />
       </label>
       <p className="channel-step__text">In Discord: Settings → Advanced → turn on Developer Mode, then right-click your name → Copy User ID.</p>
-      <p className="channel-step__text">You and the bot need a server in common, and your privacy settings must allow direct messages from server members.</p>
+      <p className="channel-step__text">{t('notifications.discord.dmNeeds')}</p>
       {send.isError && <p className="settings__error" role="alert">{(send.error as Error).message}</p>}
       <div className="settings__form-actions">
         <BusyButton type="submit" className="settings__btn" disabled={userId.trim() === ''} busy={send.isPending} busyLabel="Sending…">
@@ -407,6 +410,7 @@ function SetupTelegram({ close }: { close: () => void }) {
 // ── A connected place ───────────────────────────────────────────────────────────
 
 function Manage({ destination, close }: { destination: Destination; close: () => void }) {
+  const t = useT();
   const confirm = useConfirm();
   const update = useUpdateDestination();
   const test = useTestDestination();
@@ -449,7 +453,7 @@ function Manage({ destination, close }: { destination: Destination; close: () =>
       )}
 
       <fieldset className="channel-tier">
-        <legend>What it shows</legend>
+        <legend>{t('notifications.manage.shows')}</legend>
         <label>
           <input type="radio" name={`tier-${destination.id}`} checked={destination.privacyTier === 'minimal'}
             onChange={() => update.mutate({ id: destination.id, privacyTier: 'minimal' })} />

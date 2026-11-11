@@ -14,6 +14,7 @@ import { usePopoverMenu } from '../hooks/usePopoverMenu';
 import { useAuth } from '../hooks/useAuth';
 import { noteLink } from '../hooks/useShares';
 import './CardMenu.css';
+import { useT } from '../i18n/store';
 
 /**
  * The "…" menu on a desk card (notes and to-do lists).
@@ -32,6 +33,7 @@ export default function CardMenu({ note, onShare, onArchive, onDelete, triggerCl
   onDelete?: () => unknown;
   triggerClassName?: string;
 }) {
+  const t = useT();
   const { open, pos, triggerRef, menuRef, toggle, onMenuKey, run } = usePopoverMenu();
   const auth = useAuth();
   const queryClient = useQueryClient();
@@ -156,14 +158,14 @@ export default function CardMenu({ note, onShare, onArchive, onDelete, triggerCl
           </button>
           <div className="card-menu__sep" role="separator" />
           <button type="button" role="menuitem" className="card-menu__item" disabled={note.secure}
-            data-tooltip={note.secure ? 'Unlock the note to copy it' : undefined} onClick={run(duplicate)}>
+            data-tooltip={note.secure ? t('vault.copyTip') : undefined} onClick={run(duplicate)}>
             <Copy size={15} /> Make a copy
           </button>
           <button type="button" role="menuitem" className="card-menu__item" onClick={run(copyLink)}>
             <Link2 size={15} /> Copy link
           </button>
           <button type="button" role="menuitem" className="card-menu__item" disabled={note.secure || !online}
-            data-tooltip={note.secure ? 'Unlock the note to download it' : offline} onClick={run(download)}>
+            data-tooltip={note.secure ? t('vault.downloadTip') : offline} onClick={run(download)}>
             <Download size={15} /> Download .md
           </button>
           {(onArchive || onDelete) && <div className="card-menu__sep" role="separator" />}

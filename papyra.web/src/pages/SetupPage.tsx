@@ -24,6 +24,7 @@ import './AuthForm.css';
 import './SetupPage.css';
 
 import BusyButton from '../components/BusyButton';
+import { useT } from '../i18n/store';
 // The first-run wizard for a brand-new Papyra. Before the account exists:
 //   welcome (fresh, or restore a backup first) → username → authenticator →
 //   email → code → password → vault PIN → time zone → create.
@@ -69,6 +70,7 @@ function pinRule(pin: string): string | null {
 }
 
 export default function SetupPage() {
+  const t = useT();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { preference, setPreference } = useTheme();
@@ -321,7 +323,7 @@ export default function SetupPage() {
             {restoreSummary && (
               <p className="setup__note"><CheckCircle2 size={15} aria-hidden="true" /> Backup ready to restore: {summaryLine(restoreSummary)}. Now set up your account again.</p>
             )}
-            <p className="auth__tagline">How you sign in and how people @mention you. It’s unique on this Papyra.</p>
+            <p className="auth__tagline">{t('setup.username.hint')}</p>
             <label className="auth__field">Username
               <span className="setup__affix"><span aria-hidden="true">@</span>
                 <input value={username} onChange={e => setUsername(e.target.value)} autoComplete="username"
@@ -380,7 +382,7 @@ export default function SetupPage() {
         {step === 'password' && (
           <form className="setup__body" onSubmit={e => { e.preventDefault(); if (!passwordProblem && password === password2) go('pin'); }}>
             <h1 className="auth__title">Set a password</h1>
-            <p className="auth__tagline">At least 8 characters. It also unlocks encrypted backups of your notes.</p>
+            <p className="auth__tagline">{t('setup.password.hint')}</p>
             <label className="auth__field">Password
               <input type="password" value={password} onChange={e => setPassword(e.target.value)} autoComplete="new-password" autoFocus required />
               {passwordProblem && <span className="setup__field-error">{passwordProblem}</span>}

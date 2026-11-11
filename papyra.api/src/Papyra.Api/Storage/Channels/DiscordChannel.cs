@@ -125,7 +125,7 @@ public sealed partial class DiscordChannel(InstanceConfigStore config, OutboundP
     {
         var token = config.Get(ChannelKeys.DiscordBotToken);
         if (bot is null || string.IsNullOrEmpty(token))
-            return ChannelSendResult.Retry("Discord direct messages aren't set up on this server. An administrator can add the bot in Settings → Chat notifications.");
+            return ChannelSendResult.Retry("Discord direct messages aren't set up on this server. An administrator can add the bot in Server settings → Chat services.");
         if (!UserIdPattern().IsMatch(destination.Handle))
             return ChannelSendResult.Rejected("The Discord user is missing. Connect Discord again.");
 

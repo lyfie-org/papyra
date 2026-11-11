@@ -158,7 +158,7 @@ export function SsoGuide({ provider, taken, redirectUriPrefix, onDone }: {
       });
       setTest(await res.json());
     } catch {
-      setTest({ ok: false, error: 'Couldn’t reach this Papyra.' });
+      setTest({ ok: false, error: t('settings.sso.unreachable') });
     } finally {
       setTesting(false);
     }
@@ -311,6 +311,7 @@ export function SsoGuide({ provider, taken, redirectUriPrefix, onDone }: {
  * sign-in page shows them, and a guide to add another.
  */
 export default function SsoSettings() {
+  const t = useT();
   const { data, isLoading, isError } = useOidcConfig();
   const saveDisplay = useSaveSsoDisplay();
   const remove = useDeleteSsoProvider();
@@ -366,7 +367,7 @@ export default function SsoSettings() {
           </div></div>
         ))}
         {data.providers.length > 0 && (
-          <SettingRow label="Accounts" value="Existing only" hint="Linked by email on first sign-in, then by each provider’s user id (sub)" />
+          <SettingRow label="Accounts" value="Existing only" hint={t('settings.sso.matched')} />
         )}
       </SettingGroup>
 

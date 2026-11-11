@@ -494,6 +494,7 @@ function AppearanceTab() {
 // shortcut on top. Adding or removing a device needs the vault open, so a
 // borrowed session cannot quietly add its own fingerprint.
 function SecurityTab() {
+  const t = useT();
   const confirm = useConfirm();
   const { user } = useAuth();
   const { status, open, lock } = useVault();
@@ -573,7 +574,7 @@ function SecurityTab() {
               {renamingPasskey !== d.id && <>
                 <button type="button" className="setting-row__action" onClick={() => setRenamingPasskey(d.id)}>Rename</button>
                 <BusyButton type="button" className="setting-row__action" disabled={!open}
-                  data-tooltip={open ? undefined : 'Unlock your vault to remove a passkey'} onClick={() => remove(d)} busyLabel="Removing…">
+                  data-tooltip={open ? undefined : t('vault.removePasskeyTip')} onClick={() => remove(d)} busyLabel="Removing…">
                   Remove
                 </BusyButton>
               </>}
@@ -599,7 +600,7 @@ function SecurityTab() {
           <div className="setting-row is-open"><div className="setting-row__editor setting-row__editor--solo">
             {!open ? (
               <div className="settings__vault-unlock">
-                <p className="settings__hint">Unlock your vault first.</p>
+                <p className="settings__hint">{t('vault.openFirst')}</p>
                 <VaultUnlock onUnlocked={() => setError(null)} />
               </div>
             ) : (
@@ -630,10 +631,10 @@ function SecurityTab() {
         {status.isLoading && <div className="setting-row"><div className="setting-row__line"><LoadingBar label="Loading" /></div></div>}
         {s && (
           <SettingRow
-            label="PIN"
-            value={s.pinDisabled ? 'Switched off after too many wrong tries' : pinSet ? '••••••' : null}
+            label={t('vault.pin.label')}
+            value={s.pinDisabled ? t('vault.pin.disabled') : pinSet ? '••••••' : null}
             empty="Not set"
-            hint={pinSet ? 'Opens locked notes. Separate from your password.' : undefined}
+            hint={pinSet ? t('vault.pin.hint') : undefined}
             action={pinSet && !s.pinDisabled ? 'Change' : 'Set up'}
           >
             {close => (
@@ -649,9 +650,9 @@ function SecurityTab() {
         {pinSet && open && (
           <div className="setting-row"><div className="setting-row__line">
             <div className="setting-row__text">
-              <span className="setting-row__value"><LockOpen size={14} /> Vault open on this device</span>
+              <span className="setting-row__value"><LockOpen size={14} /> {t('vault.openHere')}</span>
             </div>
-            <BusyButton type="button" className="setting-row__action" onClick={() => lock()} busyLabel="Locking…">Lock now</BusyButton>
+            <BusyButton type="button" className="setting-row__action" onClick={() => lock()} busyLabel={t('vault.closing')}>{t('vault.closeIt')}</BusyButton>
           </div></div>
         )}
       </SettingGroup>
@@ -850,7 +851,7 @@ function EncryptedBackupSection() {
       a.click();
       URL.revokeObjectURL(url);
       setExportPw('');
-      setExportMsg('Encrypted backup downloaded.');
+      setExportMsg(t('backupFile.downloaded'));
     } finally {
       setExportBusy(false);
     }
@@ -884,14 +885,14 @@ function EncryptedBackupSection() {
 
   return (
     <SettingGroup title={t('settings.backupFile.title')} id="encrypted-backup">
-      <SettingRow label="Download" value="A sealed copy of every note and file" hint="Locked with your account password" action="Download">
+      <SettingRow label="Download" value={t('backupFile.download.value')} hint={t('backupFile.download.hint')} action="Download">
         {close => (
           <form className="settings__form" onSubmit={async e => { await generate(e); }}>
             <label className="settings__field">Your password
               <input type="password" autoComplete="current-password" autoFocus value={exportPw}
                 onChange={e => setExportPw(e.target.value)} required />
             </label>
-            <p className="settings__hint">Lose the password and the backup can’t be opened.</p>
+            <p className="settings__hint">{t('backupFile.forgot')}</p>
             {exportMsg && <p className="settings__msg">{exportMsg}</p>}
             <div className="settings__form-actions">
               <BusyButton type="submit" className="settings__btn" disabled={!exportPw} busy={exportBusy} busyLabel="Encrypting…">
@@ -1296,10 +1297,8 @@ function SyncTab() {
         <div className="settings__callout" role="note">
           <AlertTriangle size={18} aria-hidden="true" />
           <div>
-            <strong>Anyone who can read the repository can read your notes.</strong>
-            <p>
-              Notes are stored as plain text, locked notes included. Keep it private, or switch on encryption above.
-            </p>
+            <strong>{t('settings.git.plain.title')}</strong>
+            <p>{t('settings.git.plain.body')}</p>
           </div>
         </div>
       ) : (
@@ -1316,8 +1315,8 @@ function SyncTab() {
       )}
 
       <details className="settings__advanced">
-        <summary>Another git host, or a different branch</summary>
-        <p className="settings__hint">Any https Git host that takes a token as the password.</p>
+        <summary>{t('settings.git.hostSummary')}</summary>
+        <p className="settings__hint">{t('settings.git.hostHint')}</p>
         <form className="settings__form" onSubmit={submit}>
           <label className="settings__field">Repository address
             <input

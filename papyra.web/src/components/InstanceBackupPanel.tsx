@@ -119,7 +119,7 @@ function StatusGroup({ status }: { status: InstanceBackupStatus }) {
         value={status.passphraseSet ? 'Set' : undefined}
         empty="Not set"
         action={status.passphraseSet ? 'Change' : 'Set'}
-        hint="Choose one before anything is backed up. It opens every server backup and can’t be recovered: keep it somewhere other than this server."
+        hint={t('settings.serverBackup.passphraseHint')}
       >
         {close => (
           <form className="settings__form" onSubmit={e => { e.preventDefault(); void setNewPassphrase(close); }}>
@@ -154,6 +154,7 @@ function StatusGroup({ status }: { status: InstanceBackupStatus }) {
 }
 
 function DestinationsGroup({ status }: { status: InstanceBackupStatus }) {
+  const t = useT();
   const save = useSaveInstanceBackup();
   const [keep, setKeep] = useState(String(status.keep));
   const [remote, setRemote] = useState(status.gitRemote);
@@ -182,7 +183,7 @@ function DestinationsGroup({ status }: { status: InstanceBackupStatus }) {
           ? `On, keeping the newest ${status.keep}${status.copies.length ? ` (${status.copies.length} now, ${size(status.copies.reduce((n, c) => n + c.bytes, 0))})` : ''}`
           : 'Off'}
         action="Change"
-        hint="A daily encrypted file in .papyra/instance-backups. It survives a corrupted database, not a lost disk."
+        hint={t('settings.serverBackup.localHint')}
       >
         {close => (
           <form className="settings__form" onSubmit={e => {
@@ -214,7 +215,7 @@ function DestinationsGroup({ status }: { status: InstanceBackupStatus }) {
         label={<><GitBranch size={14} aria-hidden="true" /> Git repository</>}
         value={status.gitRemote ? `${status.gitRemote} (${status.gitBranch || 'main'})` : 'Off'}
         action={status.gitRemote ? 'Change' : 'Set up'}
-        hint="Pushes the same encrypted file once a day. Use a private repository of its own, not the one that holds your notes."
+        hint={t('settings.serverBackup.gitHint')}
       >
         {close => (
           <form className="settings__form" onSubmit={e => {
@@ -322,7 +323,7 @@ function RestoreGroup() {
         label="Restore"
         value="Replace accounts and settings"
         action="Restore…"
-        hint="For a new or damaged install. Notes come back from your files or each person’s own backup."
+        hint={t('settings.serverBackup.restoreHint')}
       >
         {close => (
           <form className="settings__form" onSubmit={e => { e.preventDefault(); if (ready && !staged) void check(); }}>

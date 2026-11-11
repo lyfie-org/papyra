@@ -51,7 +51,7 @@ describe('JournalSettingsPanel', () => {
     mount();
     const use = await screen.findByRole('switch', { name: /Use the journal/ });
     expect((use as HTMLInputElement).checked).toBe(true);
-    expect(screen.getByText('Turning it off hides it. Your days stay safe in your folder.')).toBeTruthy();
+    expect(screen.getByText('Turning it off hides the Journal. Your days stay exactly as they are.')).toBeTruthy();
     fireEvent.click(use);
     await waitFor(() => expect(calls.some((c) => c.method === 'PUT' && c.body === JSON.stringify({ enabled: false }))).toBe(true));
   });
@@ -61,7 +61,7 @@ describe('JournalSettingsPanel', () => {
     mount();
     const use = await screen.findByRole('switch', { name: /Use the journal/ });
     expect((use as HTMLInputElement).checked).toBe(false);
-    expect(screen.getByText('Turning it off hides it. Your days stay safe in your folder.')).toBeTruthy();
+    expect(screen.getByText('Turning it off hides the Journal. Your days stay exactly as they are.')).toBeTruthy();
     expect(screen.queryByText('A new day starts at')).toBeNull();
     expect(screen.queryByRole('switch', { name: /Writing prompts/ })).toBeNull();
     expect(screen.queryByRole('button', { name: 'Lock all…' })).toBeNull();
@@ -127,5 +127,16 @@ describe('JournalSettingsPanel', () => {
     fireEvent.click(screen.getByRole('button', { name: 'Lock all days' }));
     fireEvent.click(await screen.findByRole('button', { name: 'Lock them all' }));
     expect(await screen.findByText('Set a vault PIN before locking entries.')).toBeTruthy();
+  });
+
+  it('says what locking does in terms of what a person can and cannot read, not how it is stored', async () => {
+    mount();
+    expect(await screen.findByText('Locked days can’t be read outside Papyra — not in your folder, your backups or a Git copy. You open them with your Vault PIN.')).toBeTruthy();
+    expect(document.body.textContent).not.toMatch(/scrambl|on disk|remote/i);
+  });
+
+  it('describes the reminder as one email, only when nothing is written yet, and never what was written', async () => {
+    mount();
+    expect(await screen.findByText('One email a day, only if you haven’t written yet. It never says what you wrote.')).toBeTruthy();
   });
 });

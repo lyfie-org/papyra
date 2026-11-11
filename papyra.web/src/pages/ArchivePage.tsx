@@ -6,8 +6,10 @@ import './NotesPage.css';
 import LoadingBar from '../components/LoadingBar';
 import JournalBin from '../components/journal/JournalBin';
 import { useJournalBin } from '../hooks/useJournal';
+import { useT } from '../i18n/store';
 
 export default function ArchivePage() {
+  const t = useT();
   const { data: notes, isLoading, isError } = useNotes();
   // Days of the journal set aside count: "Nothing archived" would be untrue above them.
   const journalDays = useJournalBin('archived').data?.length ?? 0;
@@ -19,7 +21,7 @@ export default function ArchivePage() {
       </header>
 
       {isLoading && <LoadingBar label="Loading archive" />}
-      {isError && <p className="notes-page__status">Couldn’t reach the server.</p>}
+      {isError && <p className="notes-page__status">{t('common.serverUnreachable')}</p>}
       {!isLoading && !isError && (
         <NoteGrid
           notes={notes ?? []}

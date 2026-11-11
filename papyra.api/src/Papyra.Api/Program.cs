@@ -955,7 +955,7 @@ app.UseStaticFiles(new StaticFileOptions
             mailer.NotifyInBackground(admin, NotificationCatalog.AdminJobFailed,
                 $"“{job.Name}” failed on your Papyra",
                 $"The background job “{job.Name}” failed. It will try again on its next run; you'll hear again only "
-                + "if it fails after working.\n\nSee Settings → Jobs in Papyra for details, or run it again from there.",
+                + "if it fails after working.\n\nSee Server settings → Jobs in Papyra for details, or run it again from there.",
                 [new("Job", job.Name), new("Error", error.Length > 300 ? error[..300] + "…" : error)]);
     };
 }
@@ -1259,7 +1259,7 @@ app.Use(async (context, next) =>
         context.Response.StatusCode = StatusCodes.Status502BadGateway;
         await context.Response.WriteAsJsonAsync(new
         {
-            error = "Couldn't reach the identity provider. Check the Authority URL in Settings → SSO.",
+            error = "Couldn't reach the identity provider. Check the Authority URL in Server settings → Single sign-on.",
             errorId,
         });
     }
@@ -6503,7 +6503,7 @@ app.MapPost("/api/ai/chat", async (
         // which the probe can see without spending a request.
         failure = status.Reason
             ?? $"The {status.ChatProvider} backend accepted the request but returned nothing. "
-             + "Check the API key and the model name in Settings → AI.";
+             + "Check the API key and the model name in Server settings → AI.";
     }
 
     await writer.WriteLineAsync(JsonSerializer.Serialize(new { type = "done", error = failure }));

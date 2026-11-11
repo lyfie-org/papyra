@@ -181,7 +181,7 @@ public sealed class InstanceBackupService
         var failed = new List<string>();
         try
         {
-            if (!HasPassphrase) throw new InvalidOperationException("The backup passphrase is missing. Set it again in Settings → Instance backup.");
+            if (!HasPassphrase) throw new InvalidOperationException("The backup passphrase is missing. Set it again in Server settings → Server backup.");
             await using (var fs = new FileStream(bundle, FileMode.CreateNew, FileAccess.Write, FileShare.None))
                 await WriteBundleAsync(fs, ct);
 
@@ -238,11 +238,11 @@ public sealed class InstanceBackupService
     }
 
     private const string GitReadme =
-        "# Papyra instance backup\n\n"
+        "# Papyra server backup\n\n"
         + "`papyra-instance-backup.papyra-instance` is an encrypted copy of this Papyra's accounts, passkeys,\n"
         + "sharing and settings, with the key ring that seals them. It does not hold notes.\n\n"
-        + "To restore it, choose \"Restore whole instance\" on a new Papyra's first screen, or Settings →\n"
-        + "Instance backup on a running one, and give it this repository and the backup passphrase.\n"
+        + "To restore it, choose \"Restore a whole server\" on a new Papyra's first screen, or Server settings →\n"
+        + "Server backup on a running one, and give it this repository and the backup passphrase.\n"
         + "Without the passphrase it cannot be read by anyone.\n";
 
     private void Prune(int keep)
@@ -289,15 +289,15 @@ public sealed class InstanceBackupService
         {
             try { await _crypto.RestoreAsync(source, passphrase, dir, ct); }
             catch (CryptographicException) { throw new InstanceRestoreException("That passphrase doesn't open this backup."); }
-            catch (InvalidDataException) { throw new InstanceRestoreException("That isn't a Papyra instance backup, or it is damaged."); }
+            catch (InvalidDataException) { throw new InstanceRestoreException("That isn't a Papyra server backup, or it is damaged."); }
 
             var manifestPath = Path.Combine(dir, InstanceBackupManifest.FileName);
             if (!File.Exists(manifestPath) || !File.Exists(Path.Combine(dir, DbFile)))
-                throw new InstanceRestoreException("That is a Papyra backup, but not an instance backup. It holds notes, not accounts and settings.");
+                throw new InstanceRestoreException("That is a Papyra backup, but not a server backup. It holds notes, not accounts and settings.");
 
             var manifest = JsonSerializer.Deserialize<InstanceBackupManifest>(await File.ReadAllTextAsync(manifestPath, ct), GitSyncService.JsonOpts);
             if (manifest is null || manifest.Format != InstanceBackupManifest.FormatName)
-                throw new InstanceRestoreException("That isn't a Papyra instance backup, or it is damaged.");
+                throw new InstanceRestoreException("That isn't a Papyra server backup, or it is damaged.");
             if (manifest.Version > InstanceBackupManifest.CurrentVersion)
                 throw new InstanceRestoreException("This backup was made by a newer Papyra. Update Papyra first, then restore it.");
 
@@ -325,7 +325,7 @@ public sealed class InstanceBackupService
             var problem = await Task.Run(() => GitSyncService.CloneForRestore(remote, string.IsNullOrWhiteSpace(branch) ? "main" : branch.Trim(), token, clone), ct);
             if (problem is not null) throw new InstanceRestoreException(problem);
             var file = Path.Combine(clone, "papyra-instance-backup" + Extension);
-            if (!File.Exists(file)) throw new InstanceRestoreException("That repository has no Papyra instance backup in it.");
+            if (!File.Exists(file)) throw new InstanceRestoreException("That repository has no Papyra server backup in it.");
             await using var fs = File.OpenRead(file);
             return await StageRestoreAsync(fs, passphrase, ct);
         }
@@ -446,7 +446,7 @@ public sealed class InstanceBackupJob(InstanceBackupService backup, JobRegistry 
     protected override string JobName => "Back up accounts and settings";
     protected override string JobDescription =>
         "Makes an encrypted copy of the accounts, passkeys, sharing and settings, with the keys that seal them, "
-        + "and keeps it locally and/or pushes it to your git repository, as set in Settings → Instance backup. "
+        + "and keeps it locally and/or pushes it to your git repository, as set in Server settings → Server backup. "
         + "Does nothing until one is chosen.";
     protected override TimeSpan Interval => TimeSpan.FromHours(24);
     // After the cold-boot scan and the first search rebuild, not alongside them.

@@ -35,31 +35,31 @@ taken while it is running, can be missing recent changes.
 The zip export, encrypted archive and git mirror below hold one account's notes,
 files and preferences. They do not carry accounts, passkeys, sharing or
 settings. The folder copy does, and so does the
-[instance backup](#instance-backup), which exists for exactly that.
+[server backup](#server-backup), which exists for exactly that.
 
 ## Zip export
 
-**Settings → Data & Storage → Export**. Downloads your whole vault as a zip. Per
+**Settings → Your data → Export**. Downloads your whole vault as a zip. Per
 account, on demand, no scheduling. Good for taking a copy before you change
 something. The journal has its own export beside it; see
 [The journal](/docs/journal/).
 
-## Encrypted archives
+## Backup file
 
-**Settings → Data & Storage → Encrypted backup → Download**. Produces a sealed
-archive of every note and file, locked with your account password.
+**Settings → Your data → Backup file → Download**. Produces a password-protected
+copy of every note and file, opened with your account password.
 **Restore** in the same place replaces everything with a backup, and a fresh
 instance's first screen offers to restore one too.
 
 Use this when the backup will sit somewhere you do not fully trust: object
 storage, a USB stick, a friend's NAS.
 
-> The password is not recoverable. Papyra cannot open a sealed backup without
+> The password is not recoverable. Papyra cannot open a backup file without
 > it, so a forgotten password means a lost backup.
 
 ## Automatic git mirror
 
-**Settings → Backup**, per account. Give it a remote and a branch and Papyra
+**Settings → Git backup**, per account. Give it a remote and a branch and Papyra
 commits and pushes your notes on a schedule, using a real git implementation
 rather than shelling out.
 
@@ -72,11 +72,15 @@ moved apart from Papyra's (you pushed from elsewhere, or rewrote history), the
 sync stops and reports it rather than overwriting whatever is there. Resolve it
 by hand and it resumes.
 
+A mirror is either **plain** (readable Markdown files) or **encrypted** (every file sealed with your account
+password). In a plain mirror your locked notes stay locked: they are stored as they are on your server, not as
+readable text. In an encrypted mirror everything is sealed, locked notes included.
+
 Push manually any time with **Sync now**.
 
-## Instance backup
+## Server backup
 
-**Settings → Instance backup**, for administrators. The other backups are about
+**Server settings → Server backup**, for administrators. The other backups are about
 one person's notes. This one is about the server: every account, passkey and
 authenticator, sharing, API keys, webhooks, comments, and the email and SSO
 settings. It is the part of `papyra.db` that nothing else can rebuild.
@@ -92,7 +96,7 @@ files on the first start.
 own backup above.
 
 Set a **backup passphrase** first (12 characters or more). It opens every
-instance backup and cannot be recovered, so keep it somewhere other than this
+server backup and cannot be recovered, so keep it somewhere other than this
 server. Then choose where copies go:
 
 - **Copies on this server.** A daily file in `.papyra/instance-backups`, keeping
@@ -104,18 +108,18 @@ server. Then choose where copies go:
 - **Download.** The same file on demand, to keep wherever you like.
 
 **Back up now** runs the daily pass straight away. The pass also shows under
-**Settings → Jobs**, and a failure is reported there and by email like any other
+**Server settings → Jobs**, and a failure is reported there and by email like any other
 job.
 
 ### Restoring one
 
-On a **new install**, the first screen offers **Restore a whole instance**.
+On a **new install**, the first screen offers **Restore a whole server**.
 Choose the file, or the repository, and give the passphrase. Papyra restarts on
 the restored accounts and settings, and the people in the backup sign in as they
 always did. Their notes come back from the files in `/data/users`, or from each
 person's own backup once they are signed in.
 
-On a **running instance**, use **Settings → Instance backup → Restore**. It asks
+On a **running server**, use **Server settings → Server backup → Restore**. It asks
 for the passphrase and your own password, opens the backup and tells you how many
 accounts it holds, and only then replaces anything. Papyra stops and starts again
 on the backup, which needs a restart policy such as the
@@ -150,13 +154,13 @@ also mean everyone setting up their passkeys, authenticators and shares again.
 
 On start-up Papyra reconciles disk against cache **before** it opens the port, so
 notes restored underneath it are picked up on the way up. You do not need to
-rebuild anything by hand, though **Settings → Data & Storage** will rebuild the
+rebuild anything by hand, though **Settings → Your data** will rebuild the
 search index if search looks stale afterwards.
 
 ## Trash is not a backup
 
 Deleted notes sit in Trash for the retention period (30 days by default,
-configurable in **Settings → Data & Storage**, including "keep forever" and
+configurable in **Settings → Your data**, including "keep forever" and
 "delete immediately"). Once retention expires the note is erased for good.
 
 Snapshots of overwritten text are a different mechanism again, kept per note and

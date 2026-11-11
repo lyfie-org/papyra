@@ -200,7 +200,7 @@ public sealed class GitSyncService : BackgroundService
             {
                 if (string.IsNullOrEmpty(sealedKey) || string.IsNullOrEmpty(crypto))
                     return await FinishAsync(userId, new GitSyncResult("error",
-                        "The encrypted backup has lost its key. Switch encryption off and on again in Settings → Backup."), ct);
+                        "The encrypted backup has lost its key. Switch encryption off and on again in Settings → Git backup."), ct);
                 var header = JsonSerializer.Deserialize<EncryptedGitHeader>(crypto, JsonOpts)!;
                 var key = UnprotectKey(sealedKey);
                 try
@@ -418,10 +418,10 @@ public sealed class GitSyncService : BackgroundService
                 result.Status == "conflict"
                     ? "The git repository your notes back up to has changes Papyra doesn't have, so it stopped "
                       + "rather than overwrite them. Nothing was lost on either side.\n\n"
-                      + "Open Settings → Backup in Papyra to see what to do."
+                      + "Open Settings → Git backup in Papyra to see what to do."
                     : "Papyra couldn't push your notes to your git repository. It will keep trying every half hour, "
                       + "but won't email again until it has worked once.\n\n"
-                      + "Open Settings → Backup in Papyra to check the repository address and access token.",
+                      + "Open Settings → Git backup in Papyra to check the repository address and access token.",
                 [new("What happened", Short(result.Detail ?? result.Status))], ct);
         }
         else if (result.Status == "pushed")

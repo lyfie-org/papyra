@@ -315,7 +315,7 @@ public sealed class LogCleanupJob(IServiceScopeFactory scopes, ActivityLogStore 
 {
     protected override string JobId => "log-cleanup";
     protected override string JobName => "Trim the logs";
-    protected override string JobDescription => "Deletes log entries older than the time chosen in Settings → Logs.";
+    protected override string JobDescription => "Deletes log entries older than the time chosen in Server settings → Logs.";
     protected override TimeSpan Interval => TimeSpan.FromHours(1);
 
     protected override async Task<string?> RunOnceAsync(CancellationToken ct)

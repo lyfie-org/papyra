@@ -228,8 +228,8 @@ describe('ChannelCards', () => {
     it('asks which way when both are open, with the private one first', async () => {
       withBoth();
       await open();
-      const dm = screen.getByRole('radio', { name: /direct message from the bot/ }) as HTMLInputElement;
-      const hook = screen.getByRole('radio', { name: /channel webhook/ }) as HTMLInputElement;
+      const dm = screen.getByRole('radio', { name: /direct message/ }) as HTMLInputElement;
+      const hook = screen.getByRole('radio', { name: /message in a channel/ }) as HTMLInputElement;
       expect(dm.checked).toBe(true);
       expect(hook.checked).toBe(false);
 
@@ -248,7 +248,7 @@ describe('ChannelCards', () => {
     it('says so when no way is open', async () => {
       replies['GET /api/notifications/destinations'] = () => json({ available, discord: { webhook: false, dm: false }, destinations });
       await open();
-      expect(await screen.findByText(/hasn’t opened a way to connect Discord/)).toBeTruthy();
+      expect(await screen.findByText(/Discord isn’t ready to connect yet/)).toBeTruthy();
     });
 
     it('sends a code to the account, then connects when the person types it back', async () => {

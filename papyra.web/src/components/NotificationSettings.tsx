@@ -3,6 +3,7 @@ import { useNotificationPrefs, useSaveNotificationPrefs, type NotificationEvent 
 import { CHANNEL_NAMES, CHAT_CHANNELS, useDestinations } from '../hooks/useChannels';
 import LoadingBar from './LoadingBar';
 import './NotificationSettings.css';
+import { useT } from '../i18n/store';
 
 /**
  * Everything Papyra can tell you about, grouped, one switch each.
@@ -16,6 +17,7 @@ import './NotificationSettings.css';
  * places. Always-on security notices stay email only.
  */
 export default function NotificationSettings() {
+  const t = useT();
   const { data, isLoading, isError } = useNotificationPrefs();
   const destinations = useDestinations();
   const save = useSaveNotificationPrefs();
@@ -42,7 +44,7 @@ export default function NotificationSettings() {
         <div className="settings__callout" role="note">
           <AlertTriangle size={18} aria-hidden="true" />
           <div>
-            <strong>Email isn’t set up on this Papyra yet.</strong>
+            <strong>{t('notifications.email.notSetUp')}</strong>
             <p>
               Your choices are saved, but nothing is sent until an administrator connects a mail
               server under Server settings → Email delivery.

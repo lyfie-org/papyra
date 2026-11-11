@@ -21,9 +21,10 @@ vi.mock('./ManageUsersPage', () => panel('users'));
 
 function Where() { const l = useLocation(); return <output data-testid="where">{l.pathname}{l.search}</output>; }
 
-function open(url: string) {
+function open(url: string, routes: Record<string, unknown> = {}) {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  vi.stubGlobal('fetch', vi.fn(async () => new Response('{}', { status: 200, headers: { 'Content-Type': 'application/json' } })));
+  vi.stubGlobal('fetch', vi.fn(async (path: string) =>
+    new Response(JSON.stringify(routes[path] ?? {}), { status: 200, headers: { 'Content-Type': 'application/json' } })));
   return render(
     <MemoryRouter initialEntries={[url]}>
       <QueryClientProvider client={client}><SettingsPage /><Where /></QueryClientProvider>
@@ -113,3 +114,27 @@ describe('Settings areas', () => {
     expect(screen.queryByRole('group', { name: 'Settings area' })).toBeNull();
   });
 });
+
+// What the Git backup screen says about locked notes has to be what the server does (BackupLayout: a readable backup
+// keeps locked notes encrypted; an encrypted one encrypts everything). It used to say "locked notes included" as plain text.
+describe('Git backup: what it says about your notes', () => {
+  const git = (mode: 'plain' | 'encrypted') => ({
+    '/api/git': { remoteUrl: 'https://github.com/me/notes.git', branch: 'main', hasToken: true, conflict: false, lastSyncUtc: null, lastError: null, mode },
+  });
+
+  it('says a readable backup is plain Markdown but keeps locked notes locked', async () => {
+    auth.role = 'User';
+    open('/settings?tab=sync', git('plain'));
+    expect(await screen.findByText('Anyone who can read the repository can read your notes.')).toBeTruthy();
+    expect(screen.getByText('They are saved as plain Markdown files. Locked notes stay locked. Keep the repository private, or switch on encryption above.')).toBeTruthy();
+    expect(document.body.textContent).not.toContain('locked notes included');
+  });
+
+  it('says an encrypted backup seals everything', async () => {
+    auth.role = 'User';
+    open('/settings?tab=sync', git('encrypted'));
+    expect(await screen.findByText('Your backup is encrypted.')).toBeTruthy();
+    expect(screen.queryByText('Anyone who can read the repository can read your notes.')).toBeNull();
+  });
+});
+
