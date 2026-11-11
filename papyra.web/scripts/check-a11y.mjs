@@ -190,7 +190,7 @@ const FLOWS = [
   // so a reload lands on the off state.
   { name: 'settings / journal switched off', run: async (page) => {
     await turnJournalOff(page);
-    await page.getByText('Turning it off hides it.').waitFor();
+    await page.getByText('Turning it off hides the Journal.').waitFor();
   } },
   { name: 'journal off page', run: async (page) => {
     await turnJournalOff(page);
@@ -255,7 +255,7 @@ const FLOWS = [
   { name: 'settings / chat services / discord', run: async (page) => {
     await page.goto(`${ORIGIN}/demo/settings?tab=channels&service=discord`);
     await page.getByRole('tab', { name: /^Discord/ }).waitFor();
-    await page.getByRole('tabpanel').getByText('Direct messages').waitFor();
+    await page.getByRole('tabpanel').getByText('Direct messages', { exact: true }).waitFor();
   } },
   { name: 'settings / chat services / network access', run: async (page) => {
     await page.goto(`${ORIGIN}/demo/settings?tab=channels&service=network`);
@@ -472,10 +472,19 @@ async function checkSettingsKeyboard(page, failures, label) {
   try { await page.getByRole('tooltip').waitFor({ timeout: 1000 }); } catch { failures.push(`${label}: keyboard focus on a control with a tooltip showed none`); }
 }
 
+// A failed flow, said briefly but with what it was waiting for (Playwright's call log names the locator), so a timeout
+// explains itself instead of reading "Timeout 30000ms exceeded".
+const why = (err) => {
+  const lines = String(err.message).split('\n').map((l) => l.trim());
+  const waiting = lines.find((l) => l.startsWith('- waiting for'));
+  return waiting ? `${lines[0]} (${waiting.slice(2)})` : lines[0];
+};
+
 // ── Run ───────────────────────────────────────────────────────────────────────
 const server = await startServer();
 const browser = await chromium.launch();
 const failures = [];
+const retried = [];
 let scans = 0;
 
 try {
@@ -483,14 +492,31 @@ try {
     for (const [vpName, viewport] of Object.entries(VIEWPORTS)) {
       for (const flow of FLOWS) {
         const label = `[${theme} · ${vpName}] ${flow.name}`;
-        const context = await browser.newContext({ viewport, colorScheme: theme, reducedMotion: 'reduce' });
-        await context.addInitScript(({ theme, toolbar }) => {
-          localStorage.setItem('papyra-theme', theme);
-          if (toolbar) localStorage.setItem('papyra-editor-toolbar', 'always');
-        }, { theme, toolbar: Boolean(flow.toolbar) });
-        const page = await context.newPage();
+        // Getting the page to the state worth scanning is tried twice, each time in a fresh context: about one flow in
+        // a hundred and sixty has timed out on a page that simply did not render (never reproducible on its own, and
+        // different each run). A flow that throws twice fails. Accessibility violations are never retried, and every
+        // retry is printed at the end so a rising rate cannot hide.
+        let context = null;
+        let page = null;
+        for (let attempt = 1; attempt <= 2; attempt++) {
+          context = await browser.newContext({ viewport, colorScheme: theme, reducedMotion: 'reduce' });
+          await context.addInitScript(({ theme, toolbar }) => {
+            localStorage.setItem('papyra-theme', theme);
+            if (toolbar) localStorage.setItem('papyra-editor-toolbar', 'always');
+          }, { theme, toolbar: Boolean(flow.toolbar) });
+          page = await context.newPage();
+          try {
+            await flow.run(page);
+            break;
+          } catch (err) {
+            await context.close();
+            context = null;
+            if (attempt === 1) retried.push(`${label}: ${why(err)}`);
+            else failures.push(`${label}: flow failed twice — ${why(err)}`);
+          }
+        }
+        if (!context) continue;
         try {
-          await flow.run(page);
           const { violations } = await new AxeBuilder({ page }).withTags(WCAG).analyze();
           scans++;
           for (const v of violations) {
@@ -509,7 +535,7 @@ try {
             await checkCaretAndSelection(page, failures, label);
           }
         } catch (err) {
-          failures.push(`${label}: flow failed — ${err.message.split('\n')[0]}`);
+          failures.push(`${label}: flow failed — ${why(err)}`);
         } finally {
           await context.close();
         }
@@ -524,7 +550,7 @@ try {
         await openNote(page, 'quarterly-review');
         await checkToolbarKeyboard(page, failures, label);
       } catch (err) {
-        failures.push(`${label}: flow failed — ${err.message.split('\n')[0]}`);
+        failures.push(`${label}: flow failed — ${why(err)}`);
       } finally {
         await context.close();
       }
@@ -537,7 +563,7 @@ try {
       try {
         await checkSettingsKeyboard(settingsPage, failures, settingsLabel);
       } catch (err) {
-        failures.push(`${settingsLabel}: flow failed — ${err.message.split('\n')[0]}`);
+        failures.push(`${settingsLabel}: flow failed — ${why(err)}`);
       } finally {
         await settingsContext.close();
       }
@@ -548,6 +574,10 @@ try {
   server.kill();
 }
 
+if (retried.length > 0) {
+  console.warn(`check-a11y: ${retried.length} flow(s) needed a second try (the page was slow to get ready; nothing about accessibility):`);
+  for (const r of retried) console.warn(`  - ${r}`);
+}
 if (failures.length > 0) {
   console.error(`check-a11y: ${failures.length} problem(s) across ${scans} axe scans:\n`);
   for (const f of failures) console.error(`  ✗ ${f}`);
