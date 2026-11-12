@@ -65,7 +65,8 @@ describe('ChannelsAdminPanel', () => {
     expect(ntfy.getByText('Saved')).toBeTruthy();                                   // the token: saved, never shown
     expect(within(groupFor('Discord')).getByText('Off')).toBeTruthy();
     expect(within(groupFor('Telegram')).getByText('@PapyraBot')).toBeTruthy();
-    expect(within(groupFor('Network access')).getByText('ntfy.home.lan')).toBeTruthy();
+    expect(ntfy.getByText('Servers on your network')).toBeTruthy();                  // listed, so it is shown inside ntfy
+    expect(ntfy.getByText('ntfy.home.lan')).toBeTruthy();
   });
 
   it('says the public ntfy is used when no server is set', async () => {
@@ -269,17 +270,25 @@ describe('ChannelsAdminPanel', () => {
       current = admin({ allowedHosts: ['ntfy.lan'] });
       mount();
       await screen.findByRole('tablist');
-      fireEvent.click(within(groupFor('Network access')).getByRole('button', { name: 'Edit' }));
+      fireEvent.click(within(groupFor('ntfy')).getAllByRole('button', { name: 'Edit' })[1]);   // the second Edit: the list, after Status
       fireEvent.change(screen.getByLabelText('One name or address per line'), { target: { value: 'ntfy.lan\n\n  192.168.1.5  \n' } });
       fireEvent.click(screen.getByRole('button', { name: 'Save' }));
       await waitFor(() => expect(calls.find(c => c.method === 'PUT')?.body).toEqual({ hosts: ['ntfy.lan', '192.168.1.5'] }));
     });
 
+    it('shows nothing about servers until one is allowed', async () => {
+      mount();
+      await screen.findByRole('tablist');
+      expect(within(groupFor('ntfy')).queryByText('Servers on your network')).toBeNull();
+      expect(screen.queryByRole('tab', { name: /Network/ })).toBeNull();                       // no tile of its own
+    });
+
     it('shows the server’s complaint about an entry', async () => {
+      current = admin({ allowedHosts: ['ntfy.lan'] });
       replies['PUT /api/admin/notifications/allowed-hosts'] = () => json({ error: '“https://x” isn’t a host name or address. Enter just the name or IP, without https:// or a port.' }, 400);
       mount();
       await screen.findByRole('tablist');
-      fireEvent.click(within(groupFor('Network access')).getByRole('button', { name: 'Edit' }));
+      fireEvent.click(within(groupFor('ntfy')).getAllByRole('button', { name: 'Edit' })[1]);   // the second Edit: the list, after Status
       fireEvent.change(screen.getByLabelText('One name or address per line'), { target: { value: 'https://x' } });
       fireEvent.click(screen.getByRole('button', { name: 'Save' }));
       expect((await screen.findByRole('alert')).textContent).toContain('without https://');
@@ -289,7 +298,7 @@ describe('ChannelsAdminPanel', () => {
   describe('the tiles', () => {
     const chip = (name: string) => tile(name).querySelector('.service-tab__chip')!.textContent;
 
-    it('show ntfy, Discord, Telegram and Network access, each saying where it stands', async () => {
+    it('show ntfy, Discord and Telegram, each saying where it stands', async () => {
       current = admin({
         ntfy: { enabled: true, serverUrl: '', defaultServerUrl: 'https://ntfy.sh', hasToken: false },
         discord: { enabled: true, webhooksAllowed: false, hasBotToken: false, botUsername: '' },     // on, but nobody can connect
@@ -298,11 +307,10 @@ describe('ChannelsAdminPanel', () => {
       });
       mount();
       await screen.findByRole('tablist');
-      expect(screen.getAllByRole('tab').map(t => t.querySelector('.service-tab__name')!.textContent)).toEqual(['ntfy', 'Discord', 'Telegram', 'Network access']);
+      expect(screen.getAllByRole('tab').map(t => t.querySelector('.service-tab__name')!.textContent)).toEqual(['ntfy', 'Discord', 'Telegram']);
       expect(chip('ntfy')).toBe('On');
       expect(chip('Discord')).toBe('Needs attention');
       expect(chip('Telegram')).toBe('Not set up');
-      expect(chip('Network access')).toBe('2 servers added');
       expect(tile('ntfy').getAttribute('data-tone')).toBe('on');
       expect(tile('Discord').getAttribute('data-tone')).toBe('attention');
     });
@@ -318,7 +326,6 @@ describe('ChannelsAdminPanel', () => {
       expect(chip('ntfy')).toBe('Off');
       expect(chip('Discord')).toBe('Off');
       expect(chip('Telegram')).toBe('Needs attention');
-      expect(chip('Network access')).toBe('None added');
     });
 
     it('open the first service by default, and keep the chosen one in the address', async () => {
@@ -333,7 +340,7 @@ describe('ChannelsAdminPanel', () => {
     it('open from the old section links, so nothing already shared breaks', async () => {
       mount('/settings?tab=channels&s=channels-hosts');
       await screen.findByRole('tablist');
-      expect(tile('Network access').getAttribute('aria-selected')).toBe('true');
+      expect(tile('ntfy').getAttribute('aria-selected')).toBe('true');                     // the servers list moved into ntfy
       cleanup();
       mount('/settings?tab=channels&s=channels-discord');
       await screen.findByRole('tablist');
@@ -352,8 +359,8 @@ describe('ChannelsAdminPanel', () => {
       expect(document.activeElement).toBe(tile('Discord'));
       expect(screen.getByRole('tabpanel').getAttribute('aria-labelledby')).toBe(tile('Discord').id);
       fireEvent.keyDown(tile('Discord'), { key: 'End' });
-      expect(document.activeElement).toBe(tile('Network access'));
-      expect(screen.getByRole('heading', { name: 'Network access' })).toBeTruthy();
+      expect(document.activeElement).toBe(tile('Telegram'));
+      expect(screen.getByRole('heading', { name: 'Telegram' })).toBeTruthy();
     });
   });
 });

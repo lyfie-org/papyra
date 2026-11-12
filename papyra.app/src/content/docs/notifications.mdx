@@ -93,8 +93,7 @@ and the line in Settings explains why. Fix it, then choose **Turn back on**.
 ## For administrators
 
 Open *Administration → Notifications* (administrators see **Personal** and **Administration** tabs at the top of Settings).
-There is a tile for each service and one for **Network access**. Each service is switched on once here; people
-connect their own.
+There is a tile for each service. Each service is switched on once here; people connect their own.
 
 **ntfy.** Switch it on. The server is `ntfy.sh` unless you give your own, with an access token if it needs one.
 The token is stored sealed and never shown again. *Send a test* sends a message to any topic.
@@ -109,10 +108,11 @@ Papyra checks it with Telegram when you save it and learns the bot's name for th
 bot's messages by asking Telegram for them, so **no public address is needed**. A bot can have only one reader:
 if something else (a webhook, a second Papyra) uses the same bot, Settings says so.
 
-**Network access.** Papyra connects only to the open internet. If your ntfy runs at home (say
-`ntfy.lan`, or a Tailscale address), list it under *Network access*, or choose **Allow … and save**
-when Papyra offers. A plain `http://` address works only for a listed host. Some addresses are never
-reachable, even listed: the server itself, link-local addresses and cloud metadata addresses.
+**A server on your own network.** Papyra connects only to the open internet. If your ntfy runs at home (say
+`ntfy.lan`, or a Tailscale address), enter it as the ntfy server and choose **Allow … and save** when Papyra
+offers. It then appears as *Servers on your network* in the ntfy tile, where you can change or remove it. A
+plain `http://` address works only for a server on that list. Some addresses are never reachable, even
+listed: the server itself, link-local addresses and cloud metadata addresses.
 
 ### In your compose file
 

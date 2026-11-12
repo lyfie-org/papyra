@@ -51,7 +51,7 @@ export default function ChannelsAdminPanel() {
   );
 }
 
-const SERVICES = ['ntfy', 'discord', 'telegram', 'network'] as const;
+const SERVICES = ['ntfy', 'discord', 'telegram'] as const;
 type Service = (typeof SERVICES)[number];
 
 /** The old `?s=` links into this page (`channels-discord`, `discord-test`…) open the service they belong to. */
@@ -59,7 +59,7 @@ const SECTION_SERVICE: Record<string, Service> = {
   'channels-ntfy': 'ntfy', 'ntfy-test': 'ntfy',
   'channels-discord': 'discord', 'discord-check': 'discord', 'discord-test': 'discord',
   'channels-telegram': 'telegram', 'telegram-check': 'telegram',
-  'channels-hosts': 'network',
+  'channels-hosts': 'ntfy',          // the servers list lives inside ntfy, the only service that can sit on a home network
 };
 
 type Chip = { tone: ServiceTone; text: string };
@@ -82,14 +82,10 @@ function chipFor(service: Service, data: ChannelAdmin, t: ReturnType<typeof useT
       if (!g.enabled) return g.hasToken ? off : unset;
       return g.hasToken && !g.pollError ? on : attention;
     }
-    case 'network': {
-      const n = data.allowedHosts.length;
-      return n > 0 ? { tone: 'on', text: t('settings.channels.hostsCount', { count: n }) } : { tone: 'idle', text: t('settings.channels.hostsNone') };
-    }
   }
 }
 
-const NAMES: Record<Service, string> = { ntfy: 'ntfy', discord: 'Discord', telegram: 'Telegram', network: '' };
+const NAMES: Record<Service, string> = { ntfy: 'ntfy', discord: 'Discord', telegram: 'Telegram' };
 
 function ChannelTabs({ data }: { data: ChannelAdmin }) {
   const t = useT();
@@ -98,7 +94,7 @@ function ChannelTabs({ data }: { data: ChannelAdmin }) {
     const chip = chipFor(id, data, t);
     return {
       id,
-      name: id === 'network' ? t('settings.channels.network') : NAMES[id],
+      name: NAMES[id],
       mark: <ServiceMark service={id} lit={chip.tone === 'on'} />,
       chip: chip.text,
       tone: chip.tone,
@@ -109,7 +105,6 @@ function ChannelTabs({ data }: { data: ChannelAdmin }) {
       {service === 'ntfy' && <NtfyGroup data={data} />}
       {service === 'discord' && <DiscordGroup data={data} />}
       {service === 'telegram' && <TelegramGroup data={data} />}
-      {service === 'network' && <HostsGroup data={data} />}
     </ServiceTabs>
   );
 }
@@ -117,6 +112,7 @@ function ChannelTabs({ data }: { data: ChannelAdmin }) {
 // ── ntfy ───────────────────────────────────────────────────────────────────────
 
 function NtfyGroup({ data }: { data: ChannelAdmin }) {
+  const t = useT();
   const n = data.ntfy;
   const test = useTestNtfyAdmin();
   const [topic, setTopic] = useState('');
@@ -128,6 +124,12 @@ function NtfyGroup({ data }: { data: ChannelAdmin }) {
       </SettingRow>
       <SettingRow label="Server" value={n.serverUrl || `${n.defaultServerUrl.replace(/^https?:\/\//, '')} (public)`} />
       <SettingRow label="Access token" value={n.hasToken ? 'Saved' : null} empty="None" />
+      {/* Only once there is something to show: a server on the admin's own network is added by the Allow button in the Status editor. */}
+      {data.allowedHosts.length > 0 && (
+        <SettingRow id="channels-hosts" label={t('settings.channels.allowedServers')} value={data.allowedHosts.join(', ')} hint={t('settings.channels.networkHint')}>
+          {close => <HostsEditor hosts={data.allowedHosts} close={close} />}
+        </SettingRow>
+      )}
       <SettingRow label="Test" value="Send a test message to a topic" action="Send…" id="ntfy-test">
         {close => (
           <div className="settings__form">
@@ -362,23 +364,7 @@ function TelegramEditor({ data, close }: { data: ChannelAdmin; close: () => void
   );
 }
 
-// ── Hosts on your own network ───────────────────────────────────────────────────
-
-function HostsGroup({ data }: { data: ChannelAdmin }) {
-  const t = useT();
-  return (
-    <SettingGroup title={t('settings.channels.network')} id="channels-hosts" titleHidden>
-      <SettingRow
-        label={t('settings.channels.allowedServers')}
-        value={data.allowedHosts.length > 0 ? data.allowedHosts.join(', ') : null}
-        empty="None"
-        hint={t('settings.channels.networkHint')}
-      >
-        {close => <HostsEditor hosts={data.allowedHosts} close={close} />}
-      </SettingRow>
-    </SettingGroup>
-  );
-}
+// ── Servers on your own network (edited from the ntfy panel) ────────────────────
 
 function HostsEditor({ hosts, close }: { hosts: string[]; close: () => void }) {
   const save = useSaveAllowedHosts();

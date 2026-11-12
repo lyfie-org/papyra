@@ -3,7 +3,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { cleanup, fireEvent, render, screen } from '@testing-library/react';
 import ServiceTabs, { type ServiceTabItem } from './ServiceTabs';
 
-const items: ServiceTabItem[] = ['ntfy', 'discord', 'telegram', 'network'].map(id => ({
+const items: ServiceTabItem[] = ['ntfy', 'discord', 'telegram'].map(id => ({
   id, name: id, mark: null, chip: 'On', tone: 'on',
 }));
 

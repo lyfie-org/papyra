@@ -1,15 +1,14 @@
-import { Globe, Mail, type LucideIcon } from 'lucide-react';
+import { Mail } from 'lucide-react';
 
 /**
  * The small mark for a service. ntfy, Discord and Telegram are the glyphs vendored in `./brand/*.svg` (Simple Icons,
- * CC0; the marks belong to their owners and only say which service a row is about). Email and network access use
- * the app's own icon set.
+ * CC0; the marks belong to their owners and only say which service a row is about). Email uses the app's own icon.
  *
  * Marks wear Papyra's own colours, never the services' brand colours, so they sit in the page in light and dark:
  * the heading ink at rest, and the green ink (`--accent-text`) while the service is on or connected, so colour
  * still says which rows are live and an unset row stays calm.
  */
-export type ServiceId = 'email' | 'ntfy' | 'discord' | 'telegram' | 'network';
+export type ServiceId = 'email' | 'ntfy' | 'discord' | 'telegram';
 
 const PATHS: Record<'ntfy' | 'discord' | 'telegram', string> = {
   ntfy: 'M12.597 13.693v2.156h6.205v-2.156ZM5.183 6.549v2.363l3.591 1.901.023.01-.023.009-3.591 1.901v2.35l.386-.211 5.456-2.969V9.729ZM3.659 2.037C1.915 2.037.42 3.41.42 5.154v.002L.438 18.73 0 21.963l5.956-1.583h14.806c1.744 0 3.238-1.374 3.238-3.118V5.154c0-1.744-1.493-3.116-3.237-3.117h-.001zm0 2.2h17.104c.613.001 1.037.447 1.037.917v12.108c0 .47-.424.916-1.038.916H5.633l-3.026.915.031-.179-.017-13.76c0-.47.424-.917 1.038-.917z',
@@ -17,14 +16,9 @@ const PATHS: Record<'ntfy' | 'discord' | 'telegram', string> = {
   telegram: 'M11.944 0A12 12 0 0 0 0 12a12 12 0 0 0 12 12 12 12 0 0 0 12-12A12 12 0 0 0 12 0a12 12 0 0 0-.056 0zm4.962 7.224c.1-.002.321.023.465.14a.506.506 0 0 1 .171.325c.016.093.036.306.02.472-.18 1.898-.962 6.502-1.36 8.627-.168.9-.499 1.201-.82 1.23-.696.065-1.225-.46-1.9-.902-1.056-.693-1.653-1.124-2.678-1.8-1.185-.78-.417-1.21.258-1.91.177-.184 3.247-2.977 3.307-3.23.007-.032.014-.15-.056-.212s-.174-.041-.249-.024c-.106.024-1.793 1.14-5.061 3.345-.48.33-.913.49-1.302.48-.428-.008-1.252-.241-1.865-.44-.752-.245-1.349-.374-1.297-.789.027-.216.325-.437.893-.663 3.498-1.524 5.83-2.529 6.998-3.014 3.332-1.386 4.025-1.627 4.476-1.635z',
 };
 
-const ICONS: Record<'email' | 'network', LucideIcon> = { email: Mail, network: Globe };
-
 export default function ServiceMark({ service, lit = false, size = 22 }: { service: ServiceId; lit?: boolean; size?: number }) {
-  const style = lit && service !== 'email' && service !== 'network' ? { color: 'var(--accent-text)' } : undefined;
-  if (service === 'email' || service === 'network') {
-    const Icon = ICONS[service];
-    return <Icon className="service-mark" size={size} aria-hidden="true" />;
-  }
+  const style = lit && service !== 'email' ? { color: 'var(--accent-text)' } : undefined;
+  if (service === 'email') return <Mail className="service-mark" size={size} aria-hidden="true" />;
   return (
     <svg className="service-mark" width={size} height={size} viewBox="0 0 24 24" fill="currentColor" aria-hidden="true" focusable="false" style={style}>
       <path d={PATHS[service]} />

@@ -257,11 +257,6 @@ const FLOWS = [
     await page.getByRole('tab', { name: /^Discord/ }).waitFor();
     await page.getByRole('tabpanel').getByText('Direct messages', { exact: true }).waitFor();
   } },
-  { name: 'settings / server notifications / network access', run: async (page) => {
-    await page.goto(`${ORIGIN}/demo/settings?tab=channels&service=network`);
-    await page.getByRole('tab', { name: /^Network access/ }).waitFor();
-    await page.getByRole('tabpanel').getByText('Allowed servers').waitFor();
-  } },
   { name: 'settings / appearance', run: async (page) => {
     await page.goto(`${ORIGIN}/demo/settings?tab=appearance`);
     await page.getByText('Always show the formatting toolbar').waitFor();
