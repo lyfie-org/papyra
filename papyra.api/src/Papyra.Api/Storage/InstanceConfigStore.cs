@@ -28,10 +28,26 @@ public sealed class InstanceConfigStore
     /// <summary>Bumped on every successful write. Watch it to invalidate derived state.</summary>
     public int Version { get; private set; }
 
-    public InstanceConfigStore(IServiceScopeFactory scopes, ILogger<InstanceConfigStore> logger)
+    /// <summary>
+    /// Seals and opens the secrets in this store (<see cref="SecretSettings.StoreKeys"/>): they are
+    /// written sealed, and everything that reads them here gets the plain value.
+    /// </summary>
+    public SecretBox Secrets { get; }
+
+    public InstanceConfigStore(IServiceScopeFactory scopes, ILogger<InstanceConfigStore> logger, SecretBox secrets)
     {
         _scopes = scopes;
         _logger = logger;
+        Secrets = secrets;
+    }
+
+    // Every row, with the secrets opened. An older plain value passes through as it is.
+    private async Task<Dictionary<string, string?>> ReadAllAsync(AppDbContext db, CancellationToken ct)
+    {
+        var all = await db.Settings.ToDictionaryAsync(s => s.Key, s => s.Value, StringComparer.Ordinal, ct);
+        foreach (var key in SecretSettings.StoreKeys)
+            if (all.TryGetValue(key, out var stored)) all[key] = Secrets.Open(stored, SecretSettings.Describe(key));
+        return all;
     }
 
     /// <summary>
@@ -47,7 +63,7 @@ public sealed class InstanceConfigStore
             if (_loaded) return;
             using var scope = _scopes.CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-            _cache = await db.Settings.ToDictionaryAsync(s => s.Key, s => s.Value, StringComparer.Ordinal, ct);
+            _cache = await ReadAllAsync(db, ct);
             _loaded = true;
         }
         catch (Exception ex)
@@ -88,14 +104,15 @@ public sealed class InstanceConfigStore
         {
             using var scope = _scopes.CreateScope();
             var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();
-            foreach (var (key, value) in values)
+            foreach (var (key, plain) in values)
             {
+                var value = SecretSettings.StoreKeys.Contains(key) ? Secrets.Seal(plain) : plain;
                 var row = await db.Settings.FindAsync([key], ct);
                 if (row is null) db.Settings.Add(new AppSetting { Key = key, Value = value });
                 else row.Value = value;
             }
             await db.SaveChangesAsync(ct);
-            _cache = await db.Settings.ToDictionaryAsync(s => s.Key, s => s.Value, StringComparer.Ordinal, ct);
+            _cache = await ReadAllAsync(db, ct);
             _loaded = true;
             Version++;
         }

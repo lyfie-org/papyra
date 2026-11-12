@@ -115,7 +115,7 @@ const openItems = (body: string): string[] => body.split('\n').filter((l) => /^\
 
 export function journalSearchHits(query: string): { id: string; title: string; snippet: string; secure: boolean; kind: 'journal' }[] {
   const q = query.trim().toLowerCase();
-  if (!q) return [];
+  if (!q || getState().journalPrefs.enabled === false) return [];
   return Object.entries(getState().journal)
     .filter(([, d]) => !d.trashed && !d.locked && d.body.toLowerCase().includes(q))
     .sort(([a], [b]) => (a < b ? 1 : -1))
@@ -142,7 +142,7 @@ export function journalRoutes(): Route[] {
     return json(body, 200, day && (!day.locked || revealed(p.request)) ? { ETag: etagOf(day.body) } : {});
   };
 
-  return [
+  const routes: Route[] = [
     ['GET', /^\/api\/journal\/today$/, () => {
       const now = today();
       const day = getState().journal[now];
@@ -263,4 +263,11 @@ export function journalRoutes(): Route[] {
       return day ? json({ id: `journal-${match[1]}`, title: match[1], body: day.body, secure: true }) : new Response(null, { status: 404 });
     }],
   ];
+
+  // A switched-off journal answers 404 everywhere except its settings, like the server.
+  const off = () => error('The journal is off.', 'journal_off', 404);
+  return routes.map(([method, pattern, handler]): Route => (
+    pattern.source.includes('settings') ? [method, pattern, handler]
+      : [method, pattern, (p) => (getState().journalPrefs.enabled === false ? off() : handler(p))]
+  ));
 }

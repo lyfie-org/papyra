@@ -71,7 +71,7 @@ export default function NoteToolbar({
         className={`note-toolbar__btn${formattingOpen ? ' is-active' : ''}`}
         aria-pressed={formattingOpen}
         aria-label={formattingOpen ? 'Hide formatting toolbar' : 'Show formatting toolbar'}
-        title={formattingOpen ? 'Hide formatting toolbar' : 'Show formatting toolbar'}
+        data-tooltip={formattingOpen ? 'Hide formatting toolbar' : 'Show formatting toolbar'}
         onClick={onFormatting}
       >
         <Type size={18} />
@@ -109,7 +109,7 @@ export default function NoteToolbar({
         className={`note-toolbar__btn${historyOpen ? ' is-active' : ''}`}
         aria-label="Version history"
         aria-pressed={historyOpen}
-        title="Version history"
+        data-tooltip="Version history"
         onClick={onHistory}
       >
         <History size={18} />
@@ -137,7 +137,7 @@ export default function NoteToolbar({
         aria-label="Share note"
         // Creating a share is a server-side write with no offline equivalent.
         disabled={!online}
-        title={online ? 'Share this note' : 'Needs a connection'}
+        data-tooltip={online ? 'Share this note' : 'Needs a connection'}
         onClick={onShare}
       >
         <Share2 size={18} />
@@ -153,7 +153,7 @@ export default function NoteToolbar({
             aria-pressed={secure}
             aria-label={secure ? 'Unlock this note' : 'Lock this note'}
             disabled={!canToggleSecure}
-            title={!canToggleSecure
+            data-tooltip={!canToggleSecure
               ? 'Unlock the note with your device first'
               : secure
                 ? 'Unlock — the note leaves the Vault and becomes searchable again'
@@ -169,7 +169,7 @@ export default function NoteToolbar({
             aria-label="Delete note"
             // Deleting the .md is a server-side move with no offline equivalent.
             disabled={!online}
-            title={online ? undefined : 'Needs a connection'}
+            data-tooltip={online ? undefined : 'Needs a connection'}
             onClick={onTrash}
           >
             <Trash2 size={18} />

@@ -27,6 +27,14 @@ public sealed class SsoProvider
     public string? HoverText { get; set; }
 
     public bool Ready => Enabled && Authority.Length > 0 && ClientId.Length > 0;
+
+    /// <summary>A copy of this provider carrying <paramref name="secret"/> instead.</summary>
+    public SsoProvider WithSecret(string? secret)
+    {
+        var copy = (SsoProvider)MemberwiseClone();
+        copy.ClientSecret = secret;
+        return copy;
+    }
 }
 
 /// <summary>Carries the shared OIDC event handlers (defined in Program) to every provider's scheme.</summary>
@@ -55,7 +63,14 @@ public static partial class SsoProviders
         var raw = config.Get(ProvidersKey);
         if (!string.IsNullOrWhiteSpace(raw))
         {
-            try { return JsonSerializer.Deserialize<List<SsoProvider>>(raw, Json) ?? []; }
+            try
+            {
+                var stored = JsonSerializer.Deserialize<List<SsoProvider>>(raw, Json) ?? [];
+                // Client secrets are stored sealed; everything past this point sees the plain value.
+                foreach (var p in stored)
+                    p.ClientSecret = config.Secrets.Open(p.ClientSecret, $"The client secret of SSO provider '{p.Id}'");
+                return stored;
+            }
             catch (JsonException) { return []; }
         }
         if (!config.Has(OidcKeys.Authority) && !config.Has(OidcKeys.ClientId)) return [];
@@ -79,13 +94,30 @@ public static partial class SsoProviders
     public static Task WriteAsync(InstanceConfigStore config, List<SsoProvider> providers, CancellationToken ct) =>
         config.SetAsync(new Dictionary<string, string?>
         {
-            [ProvidersKey] = JsonSerializer.Serialize(providers, Json),
+            [ProvidersKey] = JsonSerializer.Serialize(
+                providers.Select(p => p.WithSecret(config.Secrets.Seal(p.ClientSecret))).ToList(), Json),
             [OidcKeys.Enabled] = null,
             [OidcKeys.Authority] = null,
             [OidcKeys.ClientId] = null,
             [OidcKeys.ClientSecret] = null,
             [OidcKeys.DisplayName] = null,
         }, ct);
+
+    /// <summary>
+    /// The stored provider list with any plain client secret sealed, or null when there is nothing
+    /// to change (no list, unreadable, or every secret already sealed or blank). Used by the
+    /// start-up upgrade of older installs.
+    /// </summary>
+    public static string? SealStored(string? json, SecretBox box)
+    {
+        if (string.IsNullOrWhiteSpace(json)) return null;
+        List<SsoProvider>? list;
+        try { list = JsonSerializer.Deserialize<List<SsoProvider>>(json, Json); }
+        catch (JsonException) { return null; }
+        if (list is null || !list.Any(p => !string.IsNullOrEmpty(p.ClientSecret) && !SecretBox.IsSealed(p.ClientSecret)))
+            return null;
+        return JsonSerializer.Serialize(list.Select(p => p.WithSecret(box.Seal(p.ClientSecret))).ToList(), Json);
+    }
 
     /// <summary>"buttons" (a full-width button per provider) or "icons" (a row of round icons).</summary>
     public static string Display(InstanceConfigStore config) =>

@@ -12,6 +12,7 @@ import './VaultPage.css';
 import LoadingBar from '../components/LoadingBar';
 
 import BusyButton from '../components/BusyButton';
+import { useT } from '../i18n/store';
 /**
  * The locked vault: every note, to-do list and journal day marked `secure: true`, in a
  * foldable section each.
@@ -22,6 +23,7 @@ import BusyButton from '../components/BusyButton';
  * until one exists this page is where it gets set.
  */
 export default function VaultPage() {
+  const t = useT();
   const { data: notes, isLoading, isError } = useNotes();
   const { status, open, lock } = useVault();
   const secure = (notes ?? []).filter((n) => n.secure && !n.trashed);
@@ -60,7 +62,7 @@ export default function VaultPage() {
       )}
 
       {isLoading && <LoadingBar label="Loading vault" />}
-      {isError && <p className="notes-page__status">Couldn’t reach the server.</p>}
+      {isError && <p className="notes-page__status">{t('common.serverUnreachable')}</p>}
       {!isLoading && !isError && pinSet !== false && (
         secure.length + lockedDays.length === 0 ? (
           <EmptyState

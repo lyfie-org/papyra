@@ -3,8 +3,10 @@ import { useNavigate } from 'react-router-dom';
 import { useQueryClient } from '@tanstack/react-query';
 import {
   ArrowLeft, ArrowRight, Check, CheckCircle2, CloudDownload, ExternalLink, FileArchive, FolderInput,
-  GitBranch, Loader2, Monitor, Moon, Sparkles, Sun, TriangleAlert, Upload,
+  DatabaseBackup, GitBranch, Loader2, Monitor, Moon, Sparkles, Sun, TriangleAlert, Upload,
 } from 'lucide-react';
+import RestartWatch from '../components/RestartWatch';
+import { restoreForm, type RestoreSource } from '../hooks/useInstanceBackup';
 import TimeZonePicker from '../components/TimeZonePicker';
 import TotpQr from '../components/TotpQr';
 import GitRestorePanel from '../components/GitRestorePanel';
@@ -22,6 +24,7 @@ import './AuthForm.css';
 import './SetupPage.css';
 
 import BusyButton from '../components/BusyButton';
+import { useT } from '../i18n/store';
 // The first-run wizard for a brand-new Papyra. Before the account exists:
 //   welcome (fresh, or restore a backup first) → username → authenticator →
 //   email → code → password → vault PIN → time zone → create.
@@ -33,7 +36,7 @@ import BusyButton from '../components/BusyButton';
 // the person still chooses their username, email, password and PIN again.
 
 type Step =
-  | 'welcome' | 'restore' | 'username' | 'authenticator' | 'email' | 'code' | 'password' | 'pin' | 'timezone'
+  | 'welcome' | 'restore' | 'instance' | 'username' | 'authenticator' | 'email' | 'code' | 'password' | 'pin' | 'timezone'
   | 'backup' | 'import' | 'theme';
 
 const ACCOUNT_STEPS: Step[] = ['username', 'authenticator', 'email', 'code', 'password', 'pin', 'timezone'];
@@ -67,6 +70,7 @@ function pinRule(pin: string): string | null {
 }
 
 export default function SetupPage() {
+  const t = useT();
   const navigate = useNavigate();
   const queryClient = useQueryClient();
   const { preference, setPreference } = useTheme();
@@ -290,6 +294,11 @@ export default function SetupPage() {
                 <strong>Restore from a backup</strong>
                 <span>Bring back notes, to-dos, locked notes, attachments and preferences from GitHub or an encrypted backup file.</span>
               </button>
+              <button type="button" className="setup__choice" onClick={() => go('instance')}>
+                <DatabaseBackup size={20} aria-hidden="true" />
+                <strong>Restore a whole server</strong>
+                <span>Move to a new server: bring back every account, passkey, sharing and setting from a server backup.</span>
+              </button>
             </div>
           </section>
         )}
@@ -306,13 +315,15 @@ export default function SetupPage() {
           />
         )}
 
+        {step === 'instance' && <InstanceRestoreStep onBack={() => go('welcome')} />}
+
         {step === 'username' && (
           <form className="setup__body" onSubmit={e => { e.preventDefault(); if (!usernameProblem && username.trim()) void startAuthenticator(); }}>
             <h1 className="auth__title">Choose a username</h1>
             {restoreSummary && (
               <p className="setup__note"><CheckCircle2 size={15} aria-hidden="true" /> Backup ready to restore: {summaryLine(restoreSummary)}. Now set up your account again.</p>
             )}
-            <p className="auth__tagline">How you sign in and how people @mention you. It’s unique on this Papyra.</p>
+            <p className="auth__tagline">{t('setup.username.hint')}</p>
             <label className="auth__field">Username
               <span className="setup__affix"><span aria-hidden="true">@</span>
                 <input value={username} onChange={e => setUsername(e.target.value)} autoComplete="username"
@@ -371,7 +382,7 @@ export default function SetupPage() {
         {step === 'password' && (
           <form className="setup__body" onSubmit={e => { e.preventDefault(); if (!passwordProblem && password === password2) go('pin'); }}>
             <h1 className="auth__title">Set a password</h1>
-            <p className="auth__tagline">At least 8 characters. It also unlocks encrypted backups of your notes.</p>
+            <p className="auth__tagline">{t('setup.password.hint')}</p>
             <label className="auth__field">Password
               <input type="password" value={password} onChange={e => setPassword(e.target.value)} autoComplete="new-password" autoFocus required />
               {passwordProblem && <span className="setup__field-error">{passwordProblem}</span>}
@@ -419,7 +430,7 @@ export default function SetupPage() {
             <h1 className="auth__title">Already have a GitHub backup?</h1>
             <p className="auth__tagline">
               If an earlier Papyra backed your notes up to GitHub, bring them back now — plain or encrypted.
-              Otherwise skip this; you can set a new backup up later in Settings → Backup.
+              Otherwise skip this; you can set a new backup up later in Settings → Git backup.
             </p>
             <GitRestorePanel confirmReplace={false} accountPassword={password} onRestored={n => setRestoredCount(n)} />
             <div className="setup__nav">
@@ -579,6 +590,103 @@ function RestoreStep({ onStaged, onBack }: { onStaged: (id: string, summary: Bac
   );
 }
 
+// ── Restore a whole instance (accounts and settings) ──────────────────────────────
+
+// Unlike the notes restore above, this one replaces the accounts themselves, so
+// there is no account to create afterwards: the server queues the backup, stops,
+// and starts again on it. The people in the backup sign in as they always did.
+function InstanceRestoreStep({ onBack }: { onBack: () => void }) {
+  const [kind, setKind] = useState<'file' | 'git'>('file');
+  const [file, setFile] = useState<File | null>(null);
+  const [repo, setRepo] = useState('');
+  const [branch, setBranch] = useState('main');
+  const [token, setToken] = useState('');
+  const [passphrase, setPassphrase] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [users, setUsers] = useState<number | null>(null);
+  const fileRef = useRef<HTMLInputElement | null>(null);
+  const repoUrl = normaliseRepoUrl(repo);
+
+  const ready = !!passphrase && (kind === 'file' ? !!file : !!repoUrl);
+
+  async function restore() {
+    setBusy(true);
+    setError(null);
+    try {
+      const source: RestoreSource = kind === 'file'
+        ? { kind, file: file! }
+        : { kind, remoteUrl: repoUrl ?? '', branch: branch.trim() || 'main', token: token.trim() };
+      const res = await fetch('/api/auth/setup/restore-instance', { method: 'POST', body: restoreForm(source, passphrase) });
+      const data = await res.json().catch(() => null) as { users?: number; error?: string } | null;
+      if (!res.ok) {
+        setError(data?.error ?? 'That backup couldn’t be read.');
+        return;
+      }
+      setUsers(data?.users ?? 0);
+    } catch {
+      setError('Couldn’t reach the server.');
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  if (users !== null) {
+    return (
+      <section className="setup__body">
+        <h1 className="auth__title">Restoring</h1>
+        <p className="setup__note"><CheckCircle2 size={15} aria-hidden="true" /> Backup opened: {users} {users === 1 ? 'account' : 'accounts'}.</p>
+        <RestartWatch />
+      </section>
+    );
+  }
+
+  return (
+    <form className="setup__body" onSubmit={e => { e.preventDefault(); if (ready) void restore(); }}>
+      <h1 className="auth__title">Restore a whole server</h1>
+      <p className="auth__tagline">
+        A server backup holds accounts, passkeys, sharing and settings, not notes. Papyra restarts on it, and your
+        notes come back from your files or each person’s own backup.
+      </p>
+      <div className="setup__tabs" role="tablist">
+        <button type="button" role="tab" aria-selected={kind === 'file'} className={kind === 'file' ? 'is-on' : ''} onClick={() => setKind('file')}>
+          <FileArchive size={15} aria-hidden="true" /> Backup file
+        </button>
+        <button type="button" role="tab" aria-selected={kind === 'git'} className={kind === 'git' ? 'is-on' : ''} onClick={() => setKind('git')}>
+          <GitBranch size={15} aria-hidden="true" /> GitHub
+        </button>
+      </div>
+      {kind === 'file' ? (
+        <div className="auth__field">Backup file (.papyra-instance)
+          <button type="button" className="setup__file" onClick={() => fileRef.current?.click()}>
+            <Upload size={15} aria-hidden="true" /> {file ? file.name : 'Choose file…'}
+          </button>
+          <input ref={fileRef} type="file" accept=".papyra-instance" hidden onChange={e => setFile(e.target.files?.[0] ?? null)} />
+        </div>
+      ) : (
+        <>
+          <label className="auth__field">Repository address
+            <input type="url" value={repo} {...NO_AUTOFILL} placeholder="https://github.com/your-name/papyra-instance" onChange={e => setRepo(e.target.value)} autoFocus />
+          </label>
+          <div className="setup__row">
+            <label className="auth__field setup__narrow">Branch
+              <input value={branch} {...NO_AUTOFILL} onChange={e => setBranch(e.target.value)} />
+            </label>
+            <label className="auth__field setup__grow">Access token
+              <input {...MASKED_SECRET} value={token} placeholder="github_pat_…" onChange={e => setToken(e.target.value)} />
+            </label>
+          </div>
+        </>
+      )}
+      <label className="auth__field">Backup passphrase
+        <input {...MASKED_SECRET} value={passphrase} onChange={e => setPassphrase(e.target.value)} placeholder="The one set in Administration → Server backup" />
+      </label>
+      {error && <p className="setup__field-error" role="alert"><TriangleAlert size={14} aria-hidden="true" /> {error}</p>}
+      <Nav onBack={onBack} nextDisabled={!ready} busy={busy} busyLabel="Restoring…" nextLabel="Restore" />
+    </form>
+  );
+}
+
 // ── Email, with outgoing mail set up on the spot when needed ────────────────────
 
 function EmailStep({ email, setEmail, emailConfigured, busy, onConfigured, onSend, onSkip, onBack, onError }: {
@@ -723,7 +831,7 @@ function ImportStep({ restoredCount, onNext }: { restoredCount: number | null; o
       )}
       <p className="auth__tagline">
         Optional. Import from Google Keep or Obsidian now — as many archives as you like — or skip and do it later
-        from Settings → Data &amp; Storage. Importing the same archive twice never duplicates a note.
+        from Settings → Your data. Importing the same archive twice never duplicates a note.
       </p>
       <div className="setup__tabs" role="tablist">
         <button type="button" role="tab" aria-selected={provider === 'keep'} className={provider === 'keep' ? 'is-on' : ''} disabled={running} onClick={() => setProvider('keep')}>

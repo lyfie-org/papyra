@@ -1,0 +1,78 @@
+/* One card: the two tabs are its header, the chosen one underlined, and the pages sit beneath them in the same
+   surface. Only the card has a border, a radius and a shadow, so the tabs cannot read as a separate piece. Two equal
+   tabs share the row (grid, `minmax(0, 1fr)`), so neither can grow past the card whatever the label says. Tokens only. */
+.area-tabs {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  overflow: clip;               /* the header's corners follow the card's */
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-card);
+}
+
+.area-tabs__list {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  border-bottom: 1px solid var(--border);
+}
+
+.area-tabs__tab {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  min-height: 40px;
+  padding: var(--space-2) var(--space-1);
+  border: none;
+  background: transparent;
+  color: var(--text);
+  font: 500 var(--fs-xs)/1.2 var(--sans);
+  cursor: pointer;
+  touch-action: manipulation;
+  transition: color var(--dur-fast) var(--ease);
+}
+.area-tabs__tab:hover:not(.is-selected) { color: var(--text-h); }
+.area-tabs__tab:focus-visible { outline: 2px solid var(--border-focus); outline-offset: -3px; }
+
+.area-tabs__tab.is-selected { color: var(--text-h); font-weight: 600; }
+/* The underline lies on the header's rule, so the choice sits on the line that divides the header from the pages. */
+.area-tabs__tab.is-selected::after {
+  content: '';
+  position: absolute;
+  inset-inline: 0;
+  bottom: -1px;
+  height: 2px;
+  background: var(--accent-text);
+}
+
+.area-tabs__label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.area-tabs__sheet {
+  display: flex;
+  flex-direction: column;
+  gap: var(--space-3);
+  padding: var(--space-3) var(--space-2);
+}
+.area-tabs__sheet .settings__server-note { padding: 0 var(--space-2); }
+
+@media (pointer: coarse) { .area-tabs__tab { min-height: 44px; } }
+
+/* On a phone the page's sticky bar is already the container: the card gives up its own box and the same header runs
+   the bar's full width, the page pills beneath it. */
+@media (max-width: 700px) {
+  .area-tabs {
+    overflow: visible;
+    border: none;
+    border-radius: 0;
+    background: transparent;
+    box-shadow: none;
+  }
+  .area-tabs__list { margin-inline: calc(-1 * var(--space-4)); }
+  .area-tabs__sheet { gap: var(--space-2); padding: var(--space-2) 0 0; }
+  .area-tabs__sheet .settings__server-note { padding: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) { .area-tabs__tab { transition: none; } }

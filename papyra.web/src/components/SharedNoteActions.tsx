@@ -9,6 +9,7 @@ import { usePopoverMenu } from '../hooks/usePopoverMenu';
 import { useDismiss } from '../hooks/useDismiss';
 import { useDialogFocus } from '../hooks/useDialogFocus';
 import { putNote } from '../lib/notesApi';
+import { downloadNote } from '../lib/noteDownload';
 import { uuid } from '../lib/uuid';
 import { useToast } from '../lib/toastContext';
 import PalettePicker from './PalettePicker';
@@ -22,25 +23,6 @@ import BusyButton from './BusyButton';
 function stop(e: React.SyntheticEvent) {
   e.preventDefault();
   e.stopPropagation();
-}
-
-/** A shared note as the .md file Papyra would write — the owner's note, your tags. */
-function toMarkdown(share: Pick<IncomingShare, 'title' | 'body' | 'color' | 'tags'>): string {
-  const q = (s: string) => JSON.stringify(s);
-  const tags = share.tags ?? [];
-  return [
-    '---',
-    `title: ${q(share.title)}`,
-    ...(tags.length ? [`tags: [${tags.map(q).join(', ')}]`] : []),
-    ...(share.color ? [`color: ${q(share.color)}`] : []),
-    '---',
-    '',
-  ].join('\n') + share.body;
-}
-
-function fileName(title: string): string {
-  const base = (title.trim() || 'Untitled').replace(/[\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim();
-  return `${base.slice(0, 80) || 'Untitled'}.md`;
 }
 
 export type SharedActionsShare = Pick<
@@ -68,7 +50,7 @@ export default function SharedNoteActions({ share, variant }: { share: SharedAct
     <>
       {canEdit && <ColorButton share={share} className={btn} size={size} variant={variant} />}
       {canEdit && (
-        <button type="button" className={btn} aria-label="Share note" title="Share with someone else"
+        <button type="button" className={btn} aria-label="Share note" data-tooltip="Share with someone else"
           onClick={(e) => { stop(e); setSharing(true); }}>
           <Share2 size={size} />
         </button>
@@ -96,7 +78,7 @@ function ColorButton({ share, className, size, variant }: {
     <div className={`shared-actions__palette shared-actions__palette--${variant}`} ref={wrap}
       onClick={stop} onPointerDown={(e) => e.stopPropagation()}>
       <button type="button" className={className} aria-label="Change color" aria-expanded={open}
-        title="Change colour (everyone with this note sees it)"
+        data-tooltip="Change colour (everyone with this note sees it)"
         onClick={(e) => { stop(e); setOpen((o) => !o); }}>
         <Palette size={size} />
       </button>
@@ -146,18 +128,19 @@ function SharedMenu({ share, className, size, onTags }: {
     }
   }
 
-  function download() {
-    const blob = new Blob([toMarkdown(share)], { type: 'text/markdown;charset=utf-8' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = fileName(share.title);
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  // The owner's note with your tags; a note with pictures arrives as a zip with
+  // the ones it embeds, so its ![[embeds]] still resolve.
+  async function download() {
+    try {
+      await downloadNote(`/api/shares/incoming/${share.shareId}/export`, share.title);
+    } catch (e) {
+      toast((e as Error).message);
+    }
   }
 
   return (
     <>
-      <button ref={triggerRef} type="button" className={className} aria-label="More actions" title="More actions"
+      <button ref={triggerRef} type="button" className={className} aria-label="More actions" data-tooltip="More actions"
         aria-haspopup="menu" aria-expanded={open} onClick={toggle}>
         <MoreHorizontal size={size} />
       </button>

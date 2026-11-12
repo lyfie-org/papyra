@@ -3,7 +3,10 @@ using Papyra.Api.Models;
 
 namespace Papyra.Api.Data;
 
-// Relational cache (SQLite). Disposable — the filesystem is the source of truth.
+// SQLite. For notes the filesystem is the source of truth, so NoteCache and
+// NoteEmbeddings are disposable mirrors. Everything else (Users, sessions,
+// passkeys, TOTP, ApiKeys, Shares, Webhooks, comments, notifications, Settings)
+// exists only here: NOT disposable, and not in any per-account backup.
 public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(options)
 {
     public DbSet<AppSetting> Settings => Set<AppSetting>();
@@ -27,6 +30,9 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
     public DbSet<ChatMessage> ChatMessages => Set<ChatMessage>();
     public DbSet<NoteComment> NoteComments => Set<NoteComment>();
     public DbSet<CommentReaction> CommentReactions => Set<CommentReaction>();
+    public DbSet<ChannelDestination> ChannelDestinations => Set<ChannelDestination>();
+    public DbSet<ChannelDelivery> ChannelDeliveries => Set<ChannelDelivery>();
+    public DbSet<ChannelLinkCode> ChannelLinkCodes => Set<ChannelLinkCode>();
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -82,5 +88,13 @@ public class AppDbContext(DbContextOptions<AppDbContext> options) : DbContext(op
         modelBuilder.Entity<NoteComment>().HasIndex(c => c.ThreadId);
         // One of each emoji per person per comment: reacting again takes it back.
         modelBuilder.Entity<CommentReaction>().HasIndex(r => new { r.CommentId, r.UserId, r.Emoji }).IsUnique();
+        // One place to send to per person per chat service.
+        modelBuilder.Entity<ChannelDestination>().HasIndex(d => new { d.UserId, d.Channel }).IsUnique();
+        // The worker asks "what is due?", and prunes by age.
+        modelBuilder.Entity<ChannelDelivery>().HasIndex(d => new { d.Status, d.NextAttemptUtc });
+        modelBuilder.Entity<ChannelDelivery>().HasIndex(d => d.DestinationId);
+        // A code is looked up by its hash; a person has one live code per chat service.
+        modelBuilder.Entity<ChannelLinkCode>().HasIndex(c => c.CodeHash).IsUnique();
+        modelBuilder.Entity<ChannelLinkCode>().HasIndex(c => new { c.UserId, c.Channel });
     }
 }

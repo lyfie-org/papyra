@@ -267,7 +267,6 @@ public static partial class CommentEndpoints
         foreach (var r in recipients)
         {
             await hub.Clients.User(r.Id.ToString()).SendAsync("NotificationsChanged", ct);
-            if (!email.IsConfigured || !NotificationPrefs.Wants(r, NotificationCatalog.Comments)) continue;
             var subject = told[r.Id] switch
             {
                 "comment_mention" => $"@{author} mentioned you in a comment",

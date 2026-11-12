@@ -270,6 +270,30 @@ async function checkMedia(page) {
   check(!!pasted, 'media: a Word paste did not insert its text');
   check(((pasted ?? '').match(/!\[\[/g)?.length ?? 0) === uploadsBefore, 'media: a Word paste also uploaded a picture of itself');
 
+  // Markdown from a plain-text source (a code editor, a terminal) arrives formatted, as if typed:
+  // `## Heading` is a heading and `- item` a list, not the literal characters. A heading used to be
+  // turned into a link of itself, because "#…" counts as a page anchor.
+  console.log('· media: markdown paste');
+  await page.evaluate(() => {
+    const root = document.querySelector('.luthor-content-editable');
+    const range = document.createRange();
+    range.selectNodeContents(root.lastElementChild);
+    range.collapse(false);
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+    root.focus();
+    const dt = new DataTransfer();
+    dt.setData('text/plain', '## Pasted heading\n\n- first item\n- **second** item');
+    root.dispatchEvent(new ClipboardEvent('paste', { clipboardData: dt, bubbles: true, cancelable: true }));
+  });
+  const mdPasted = await waitForBody(page, MEDIA_NOTE, (b) => b.includes('Pasted heading'));
+  // Each block carries its `^id` anchor once saved, so match the line up to it.
+  const at = (b, line) => new RegExp(`^${line}( \\^[\\w-]+)?$`, 'm').test(b ?? '');
+  check(at(mdPasted, '## Pasted heading'), `media: a pasted ## heading did not become a heading (${JSON.stringify(mdPasted?.match(/.*Pasted heading.*/)?.[0])})`);
+  check(at(mdPasted, '- first item') && (mdPasted ?? '').includes('**second**'), 'media: a pasted list did not arrive as a list with bold');
+  check(!!mdPasted && !mdPasted.includes('[## Pasted heading]'), 'media: a pasted heading was turned into a link');
+
   // Cancel an upload in flight: nothing lands, nothing is left behind.
   console.log('· media: cancel');
   await page.route('**/api/media/upload**', async (route) => { await new Promise((r) => setTimeout(r, 4000)); await route.continue().catch(() => {}); });

@@ -51,7 +51,7 @@ const CardMedia = memo(function CardMedia({ body, part }: {
           {others.slice(0, 3).map((m) => {
             const Icon = ICON[m.kind];
             return (
-              <li key={m.url} className="card-media__chip" title={m.name}>
+              <li key={m.url} className="card-media__chip" data-tooltip={m.name}>
                 <Icon size={13} aria-hidden="true" /> {mediaLabel(m)}
               </li>
             );

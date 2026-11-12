@@ -1,6 +1,5 @@
 name: Bug report
 description: Something in Papyra doesn't work the way it should
-labels: ["bug"]
 body:
   - type: markdown
     attributes:

@@ -1,17 +1,18 @@
-// App-wide activity store behind the top progress bar. Anything slow enough to be
-// felt — an upload, a first load, an import — registers a task here; the bar shows
-// while any task is open. A task that can measure itself (an upload's bytes, a
-// download with a Content-Length) reports a real fraction; one that can't leaves
-// it null and the bar trickles on its own.
+// App-wide activity store. Work slow enough to be felt — an upload, an import, a
+// backup — registers a task here. A task with a label ("Backing up to GitHub") is
+// shown by name in the ActivityDock; an unlabelled one is shown by whatever
+// started it (its BusyButton, the editor's upload placeholder, an inline message).
+// A task that can measure itself reports a real fraction for its own display.
 //
-// A task with a label ("Backing up to GitHub") is also shown by name in the
-// ActivityDock — the more visible in-page card for work that takes a while.
+// It also counts the progress indicators on screen right now (in-page
+// LoadingBars, busy BusyButtons): the top line (TopProgressBar) is only a
+// fallback for a slow first load that nothing else is showing.
 //
 // Framework-free so plain helpers (notesApi, the editor adapter) can use it; React
 // reads it through useSyncExternalStore (see useActivity).
 
 export interface Task {
-  /** Real completion, 0..1. Never lowers what the bar already shows. */
+  /** Real completion, 0..1. Never lowers what it already reported. */
   update(fraction: number): void;
   /** Rename it in the dock (e.g. "Importing 40/120"); null hides it from the dock. */
   label(text: string | null): void;
@@ -34,6 +35,8 @@ export interface Activity {
   progress: number | null;
   /** Open tasks with a label, oldest first. */
   labelled: LabelledTask[];
+  /** Progress indicators on screen right now (LoadingBar, busy BusyButton). */
+  indicators: number;
 }
 
 interface Entry {
@@ -45,7 +48,8 @@ interface Entry {
 const tasks = new Map<number, Entry>();
 const listeners = new Set<() => void>();
 let seq = 0;
-let snapshot: Activity = { active: 0, progress: null, labelled: [] };
+let indicators = 0;
+let snapshot: Activity = { active: 0, progress: null, labelled: [], indicators: 0 };
 
 function emit() {
   const known = [...tasks.values()].map((t) => t.progress).filter((p): p is number => p !== null);
@@ -55,6 +59,7 @@ function emit() {
     labelled: [...tasks.entries()]
       .filter(([, t]) => t.label)
       .map(([id, t]) => ({ id, label: t.label!, progress: t.progress, startedAt: t.startedAt })),
+    indicators,
   };
   listeners.forEach((l) => l());
 }
@@ -66,6 +71,22 @@ export function subscribeActivity(listener: () => void): () => void {
 
 export function getActivity(): Activity {
   return snapshot;
+}
+
+/**
+ * Note that a progress indicator is on screen until the returned function runs,
+ * so the top line stays out of its way.
+ */
+export function showIndicator(): () => void {
+  indicators += 1;
+  emit();
+  let done = false;
+  return () => {
+    if (done) return;
+    done = true;
+    indicators -= 1;
+    emit();
+  };
 }
 
 export function beginTask(options: { label?: string } = {}): Task {
@@ -94,8 +115,8 @@ export function beginTask(options: { label?: string } = {}): Task {
 }
 
 /**
- * Show the bar for as long as `work` runs (no measurable progress) — and, given
- * a label, a named card in the ActivityDock too.
+ * Mark `work` as an open task while it runs — given a label, a named card in the
+ * ActivityDock.
  */
 export async function track<T>(work: Promise<T>, label?: string): Promise<T> {
   const task = beginTask({ label });
@@ -126,7 +147,7 @@ function parseHeaders(raw: string): Headers {
 }
 
 // Uploads go through XHR — fetch still can't report upload progress. The upload
-// is the first 90% of the bar; the server's answer is the rest.
+// is the first 90% of the progress; the server's answer is the rest.
 function xhrWithProgress(url: string, init: ProgressInit, report: (f: number) => void): Promise<Response> {
   return new Promise((resolve, reject) => {
     const xhr = new XMLHttpRequest();
@@ -149,7 +170,7 @@ function xhrWithProgress(url: string, init: ProgressInit, report: (f: number) =>
   });
 }
 
-// A download that states its size is read chunk by chunk so the bar follows the
+// A download that states its size is read chunk by chunk so progress follows the
 // bytes; one that doesn't (chunked JSON) is passed straight through.
 async function streamWithProgress(res: Response, report: (f: number) => void): Promise<Response> {
   const total = Number(res.headers.get('Content-Length'));
@@ -170,8 +191,8 @@ async function streamWithProgress(res: Response, report: (f: number) => void): P
 }
 
 /**
- * fetch() that drives the top bar — with real progress where the browser can
- * measure it (upload bytes; download bytes when sized), a trickle otherwise.
+ * fetch() that reports progress (`onProgress`, and a named dock card given a
+ * `label`) where the browser can measure it: upload bytes; download bytes when sized.
  * Same contract as fetch: resolves to a Response, rejects on network failure.
  */
 export async function fetchWithProgress(url: string, init: ProgressInit = {}): Promise<Response> {

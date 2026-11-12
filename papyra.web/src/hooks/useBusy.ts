@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { beginTask, type Task } from '../lib/progress';
+import { beginTask, showIndicator, type Task } from '../lib/progress';
 
 /**
  * Busy state for one action: `run(work)` marks it busy until `work` settles and
@@ -61,4 +61,12 @@ export function useActivityTask(label: string | null | false | undefined, progre
   useEffect(() => {
     if (progress !== null) task.current?.update(progress);
   }, [progress, on]);
+}
+
+/**
+ * Tell the app a progress indicator is on screen while `on` — so the top line
+ * (a fallback for loads nothing else shows) stays out of the way.
+ */
+export function useIndicator(on = true) {
+  useEffect(() => (on ? showIndicator() : undefined), [on]);
 }

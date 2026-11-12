@@ -4,6 +4,7 @@ import { flushOutbox } from '../lib/notesApi';
 import { flushJournalOutbox } from '../lib/journalApi';
 import { getSyncState, refreshPending, setSync, subscribeSync, type SyncState } from '../lib/syncStatus';
 import { checkServerVersion } from '../lib/serverVersion';
+import { useJournalEnabled } from './useJournal';
 
 // Read-only view of connectivity + outbox depth. Any component can subscribe.
 export function useSyncState(): SyncState {
@@ -20,16 +21,20 @@ const RETRY_MS = 15_000;
 export function useSyncEngine(): SyncState {
   const state = useSyncState();
   const queryClient = useQueryClient();
+  const journalOn = useJournalEnabled();
 
   const drain = useCallback(async () => {
     if (!navigator.onLine || getSyncState().syncing) return;
     if (getSyncState().pending === 0) return;
     const { synced } = await flushOutbox();
     if (synced > 0) await queryClient.invalidateQueries({ queryKey: ['notes'] });
-    // Days written offline in the journal go up the same way.
+    // Days written offline in the journal go up the same way — unless the journal is off. The
+    // server answers 404 to a switched-off journal and a 404 would throw the queued days away;
+    // they wait, and go up the moment it is switched back on (this callback changes, so it re-runs).
+    if (!journalOn) return;
     const days = await flushJournalOutbox();
     if (days.synced > 0) await queryClient.invalidateQueries({ queryKey: ['journal'] });
-  }, [queryClient]);
+  }, [queryClient, journalOn]);
 
   // Back online after an outage is when the server most likely changed under us
   // (an upgrade is a restart), so re-read its version with the rest of the catch-up.

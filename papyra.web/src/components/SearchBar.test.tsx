@@ -27,8 +27,10 @@ const notes: Note[] = [
 ];
 
 let role = 'Admin';
+let journalOn = true;
 vi.mock('../hooks/useNotes', () => ({ useNotes: () => ({ data: notes }) }));
 vi.mock('../hooks/useAuth', () => ({ useAuth: () => ({ state: 'authed', user: { id: 1, username: 'a', name: 'A', email: '', role } }) }));
+vi.mock('../hooks/useJournal', () => ({ useJournalEnabled: () => journalOn }));
 vi.mock('../hooks/useTags', () => ({
   useTags: () => ({ data: [{ name: 'Recipes', color: null, count: 4 }] }),
 }));
@@ -48,10 +50,29 @@ function type(value: string) {
   return input;
 }
 
-beforeEach(() => { role = 'Admin'; navigate.mockClear(); });
+beforeEach(() => { role = 'Admin'; journalOn = true; navigate.mockClear(); });
 afterEach(cleanup);
 
 describe('SearchBar', () => {
+  it('jumps to a day of the journal while it is on, and not while it is off', () => {
+    type('yesterday');
+    expect(screen.getAllByRole('option').some(o => o.textContent?.includes('Go to day'))).toBe(true);
+    cleanup();
+
+    journalOn = false;
+    type('yesterday');
+    expect(screen.queryAllByRole('option').some(o => o.textContent?.includes('Go to day'))).toBe(false);
+  });
+
+  it('stops offering the journal’s own settings while it is off, but keeps its switch', () => {
+    journalOn = false;
+    type('reminder');
+    expect(screen.queryAllByRole('option').some(o => o.textContent?.includes('Reminder'))).toBe(false);
+    cleanup();
+    type('turn off');
+    expect(screen.getAllByRole('option').some(o => o.textContent?.includes('Use the journal'))).toBe(true);
+  });
+
   it('groups results by what they are, in a fixed order', () => {
     type('recipes');
     // By class, not by text: "To Do" is also a breadcrumb inside its own rows.
@@ -71,11 +92,11 @@ describe('SearchBar', () => {
     expect(within(titled('Recipes to try')!).getByText('Collection')).toBeTruthy();
   });
 
-  it('finds a settings page and breadcrumbs it under its tab', () => {
+  it('finds a settings page and breadcrumbs it under its area and tab', () => {
     type('smtp');
     const option = screen.getAllByRole('option')[0];
-    expect(option.querySelector('.search__hit-title')?.textContent).toBe('Outbound email (SMTP)');
-    expect(within(option).getByText('Settings › Email')).toBeTruthy();
+    expect(option.querySelector('.search__hit-title')?.textContent).toBe('Mail server (SMTP)');
+    expect(within(option).getByText('Administration › Email')).toBeTruthy();
   });
 
   it('highlights the query inside each hit, whatever its case', () => {

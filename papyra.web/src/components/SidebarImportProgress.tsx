@@ -36,7 +36,7 @@ export default function SidebarImportProgress() {
     <Link
       to="/settings?tab=data&s=import"
       className="sidebar-import"
-      title={`${label} — open Import settings`}
+      data-tooltip={`${label} — open Import settings`}
     >
       <span className="sidebar-import__row">
         <Upload className="workspace__nav-icon sidebar-import__icon" size={14} aria-hidden="true" />

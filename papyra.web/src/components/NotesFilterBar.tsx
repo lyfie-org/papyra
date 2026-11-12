@@ -146,7 +146,6 @@ export default function NotesFilterBar({
             type="button"
             className={`notes-filters__pill notes-filters__pill--collection${on ? ' is-active' : ''}`}
             aria-pressed={on}
-            title={`Show the ${c.name} collection`}
             onClick={() => onCollectionChange(on ? null : c.id)}
           >
             <Layers size={13} aria-hidden="true" /> {c.name}

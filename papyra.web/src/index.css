@@ -527,6 +527,11 @@ b,
    role="switch" className="switch">`. Still a real checkbox underneath, so the
    wrapping <label>, Space, forms and screen readers ("switch, on") all work.
    Sage only when on — the one place the accent means "this is enabled". */
+/* Native radios and checkboxes wear Papyra's green, not the browser's blue. The text green rather than --accent, which
+   is under 3:1 on a light surface; the browser draws the dot or tick to contrast with it. */
+input[type='radio'],
+input[type='checkbox'] { accent-color: var(--accent-text); }
+
 input.switch {
   appearance: none;
   position: relative;

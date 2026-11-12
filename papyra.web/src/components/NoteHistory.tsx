@@ -222,7 +222,7 @@ export default function NoteHistory({ noteId, live, onPreview, onRestore, onClos
                   <span className="note-history__ago note-history__by">Edited by {selected.editors.join(', ')}</span>
                 )}
                 {stats && (stats.added > 0 || stats.removed > 0 || titleChanged) && (
-                  <span className="note-history__stats" title="Compared with the note now">
+                  <span className="note-history__stats" data-tooltip="Compared with the note now">
                     {stats.removed > 0 && <span className="is-del">−{stats.removed}</span>}
                     {stats.added > 0 && <span className="is-add">+{stats.added}</span>}
                     {titleChanged && <span>title</span>}
@@ -284,14 +284,13 @@ export default function NoteHistory({ noteId, live, onPreview, onRestore, onClos
                   className={`note-history__stop${i === index ? ' is-active' : ''}`}
                   style={{ left: `${(i / count) * 100}%` }}
                   aria-hidden="true"
-                  title={formatStamp(new Date(v.timestamp))}
+                  data-tooltip={formatStamp(new Date(v.timestamp))}
                 />
               ))}
               <span
                 className={`note-history__stop note-history__stop--now${atNow ? ' is-active' : ''}`}
                 style={{ left: '100%' }}
                 aria-hidden="true"
-                title="Now"
               />
             </div>
 

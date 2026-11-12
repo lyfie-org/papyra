@@ -27,4 +27,23 @@ export default defineConfig([
       'react-hooks/refs': 'warn',
     },
   },
+  {
+    // One tooltip for the whole app (components/TooltipLayer). The browser's own `title` tooltip is unstyled,
+    // slow, mouse-only and unreadable on touch. Say `data-tooltip="…"` (and `data-tooltip-keys="Ctrl+B"` for a
+    // shortcut) instead. An <iframe title> is its accessible name, not a tooltip, so it stays.
+    files: ['**/*.tsx'],
+    ignores: ['**/*.test.tsx'],
+    rules: {
+      'no-restricted-syntax': ['error',
+        {
+          selector: "JSXOpeningElement[name.type='JSXIdentifier'][name.name=/^[a-z]/][name.name!='iframe'] > JSXAttribute[name.name='title']",
+          message: 'Use data-tooltip instead of title: the browser tooltip is replaced by <TooltipLayer>.',
+        },
+        {
+          selector: "JSXOpeningElement[name.name=/^(Link|NavLink|BusyButton)$/] > JSXAttribute[name.name='title']",
+          message: 'Use data-tooltip instead of title: the browser tooltip is replaced by <TooltipLayer>.',
+        },
+      ],
+    },
+  },
 ])

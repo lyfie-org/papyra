@@ -24,12 +24,13 @@ import ErrorBoundary from './components/ErrorBoundary.tsx';
 import ErrorScreen from './components/ErrorScreen.tsx';
 import { crashActions } from './lib/errorActions.ts';
 import ServerErrorNotices from './components/ServerErrorNotices.tsx';
+import TooltipLayer from './components/TooltipLayer.tsx';
 import DocumentPreviewHost from './components/DocumentPreview.tsx';
 import { installServerErrorWatch } from './lib/errorReport.ts';
 import { installClientErrorLog } from './lib/clientLog.ts';
 import { installSelectionGuards } from './lib/selectionGuards.ts';
 import { installResumeRefresh } from './lib/resume.ts';
-import { installAutoTooltips } from './lib/autoTooltips.ts';
+import { initLocale } from './i18n/store.ts';
 import { installChecklistRoles } from './lib/checklistRoles.ts';
 import { trimAudioControls } from './lib/audioControls.ts';
 
@@ -39,12 +40,14 @@ installServerErrorWatch();
 installClientErrorLog();
 // Selection menus: hidden mid-drag, docked above the keyboard on a phone.
 installSelectionGuards();
-// Icon-only buttons show their aria-label as a hover tooltip.
-installAutoTooltips();
 // A checklist is a group of checkboxes, not a list (axe and screen readers both ask).
 installChecklistRoles();
 // The browser player's "more options" button clashes with the page's own media bar.
 trimAudioControls(document.body);
+
+// The language (?lang=, the saved choice, or the browser's) is set before the first paint, so nothing flashes in English.
+// With no language file besides English this does nothing and loads nothing.
+await initLocale();
 
 // Demo mode: stand up the in-browser fake server BEFORE React mounts, so the
 // very first request the app makes (the /api/auth/me session probe) is already
@@ -95,6 +98,8 @@ createRoot(document.getElementById('root')!).render(
         <TopProgressBar />
         {/* Named long-running work (backup, restore, jobs), as a card in the corner. */}
         <ActivityDock />
+        {/* The one tooltip: any element with data-tooltip (or a plain title, or an icon-only aria-label) gets it. */}
+        <TooltipLayer />
         {/* A document opened from a note (PDF, text), over whatever page. */}
         <DocumentPreviewHost />
         <ToastProvider>

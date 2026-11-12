@@ -76,7 +76,7 @@ export default function GhostCards({ noteId }: { noteId: string }) {
             const day = b.noteId.replace(/^journal-/, '');
             return (
               <li key={b.noteId}>
-                <button type="button" className="ghost-cards__day" onClick={() => navigate(`/journal/${day}`)} title={b.snippet.replace(/<\/?mark>/g, '')}>
+                <button type="button" className="ghost-cards__day" onClick={() => navigate(`/journal/${day}`)} data-tooltip={b.snippet.replace(/<\/?mark>/g, '')}>
                   {shortDate(day)} <span className="ghost-cards__year">{day.slice(0, 4)}</span>
                 </button>
               </li>

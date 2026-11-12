@@ -11,7 +11,7 @@ public sealed record JournalAppend(string? Text, string? Heading);
 
 public sealed record JournalPrefsWrite(
     int? DayStartsAt, bool? LockNewEntries, bool? PromptsOn, bool? HideStreak,
-    bool? ReminderOn, string? ReminderTime, string? DefaultTemplate, bool? ClearDefaultTemplate);
+    bool? ReminderOn, string? ReminderTime, string? DefaultTemplate, bool? ClearDefaultTemplate, bool? Enabled = null);
 
 public sealed record JournalTemplateWrite(string? Body);
 
@@ -34,29 +34,34 @@ public static class JournalEndpoints
     {
         var g = app.MapGroup("/api/journal").RequireAuthorization().WithTags("Journal");
 
-        g.MapGet("/today", Today).WithSummary("Today's page")
-            .WithDescription("The journal day for this account (its time zone and day-start hour), its entry if there is one, and the streak. The server decides what \"today\" is.");
-        g.MapGet("/", List).WithSummary("Entries in a date range")
-            .WithDescription("Summaries (date, mood, tags, words, media, lock) for ?from=&to= (yyyy-MM-dd, at most ~3 years). Defaults to the current month.");
-        g.MapGet("/stats", Stats).WithSummary("Streak and totals");
-        g.MapGet("/on-this-day", OnThisDay).WithSummary("Earlier years' entries for this day");
+        // The settings hold the on/off switch, so they answer even when the journal is off.
         g.MapGet("/settings", GetSettings).WithSummary("Journal preferences");
         g.MapPut("/settings", PutSettings).WithSummary("Change journal preferences");
-        g.MapGet("/templates", GetTemplates).WithSummary("The pages a day can start from");
-        g.MapPut("/templates/{name}", PutTemplate).WithSummary("Save a template")
+
+        // Everything else answers 404 journal_off while the person has the journal switched off.
+        var days = g.MapGroup("").AddEndpointFilter<JournalOnFilter>();
+
+        days.MapGet("/today", Today).WithSummary("Today's page")
+            .WithDescription("The journal day for this account (its time zone and day-start hour), its entry if there is one, and the streak. The server decides what \"today\" is.");
+        days.MapGet("/", List).WithSummary("Entries in a date range")
+            .WithDescription("Summaries (date, mood, tags, words, media, lock) for ?from=&to= (yyyy-MM-dd, at most ~3 years). Defaults to the current month.");
+        days.MapGet("/stats", Stats).WithSummary("Streak and totals");
+        days.MapGet("/on-this-day", OnThisDay).WithSummary("Earlier years' entries for this day");
+        days.MapGet("/templates", GetTemplates).WithSummary("The pages a day can start from");
+        days.MapPut("/templates/{name}", PutTemplate).WithSummary("Save a template")
             .WithDescription("The person only. Markdown with {{date}}, {{weekday}} and {{streak}}; at most 20 templates of 20 KB.");
-        g.MapDelete("/templates/{name}", DeleteTemplate).WithSummary("Remove a template");
-        g.MapGet("/bin", Bin).WithSummary("Archived, trashed or locked days")
+        days.MapDelete("/templates/{name}", DeleteTemplate).WithSummary("Remove a template");
+        days.MapGet("/bin", Bin).WithSummary("Archived, trashed or locked days")
             .WithDescription("The person only. ?state=archived (default), trashed or locked, newest day first; a trashed day says when it went. Locked days carry no words. ?state=locked is what the Vault page lists: every locked day that isn't in the Trash.");
-        g.MapPost("/lock-all", LockAll).WithSummary("Lock every entry")
+        days.MapPost("/lock-all", LockAll).WithSummary("Lock every entry")
             .WithDescription("The person only. Seals each unlocked, untrashed entry with the vault cipher; needs a vault PIN. Answers { locked }.");
-        g.MapGet("/{date}", GetEntry).WithSummary("One day's entry")
+        days.MapGet("/{date}", GetEntry).WithSummary("One day's entry")
             .WithDescription("The entry with an ETag naming its body. A day with no entry answers 200 { exists: false }. A locked entry answers metadata only.");
-        g.MapPut("/{date}", PutEntry).WithSummary("Write one day's entry")
+        days.MapPut("/{date}", PutEntry).WithSummary("Write one day's entry")
             .WithDescription("Absent fields keep what the entry has. Send the ETag back as If-Match: 412 stale when the entry moved on. An empty body with no mood on a missing day writes nothing. Future days are refused (422).");
-        g.MapPost("/{date}/carry-over", CarryOver).WithSummary("Carry unticked items forward")
+        days.MapPost("/{date}/carry-over", CarryOver).WithSummary("Carry unticked items forward")
             .WithDescription("Copies the unticked checklist items of the latest earlier day into this one, skipping any already there. The earlier day is untouched.");
-        g.MapPost("/{date}/append", Append).WithSummary("Append to a day")
+        days.MapPost("/{date}/append", Append).WithSummary("Append to a day")
             .WithDescription("Atomically adds text to the end of the day (or to a heading's section). The verb for \"log this to today\".");
     }
 
@@ -235,6 +240,7 @@ public static class JournalEndpoints
 
         var next = cur with
         {
+            Enabled = body.Enabled ?? cur.Enabled,
             DayStartsAt = body.DayStartsAt ?? cur.DayStartsAt,
             LockNewEntries = body.LockNewEntries ?? cur.LockNewEntries,
             PromptsOn = body.PromptsOn ?? cur.PromptsOn,

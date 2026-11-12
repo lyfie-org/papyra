@@ -18,7 +18,7 @@ export default function SelectTick({ title, selected, selecting, onToggle }: {
       className="select-tick"
       aria-pressed={selected}
       aria-label={`${selected ? 'Deselect' : 'Select'} “${title}”`}
-      title={selecting ? undefined : 'Select'}
+      data-tooltip={selecting ? undefined : 'Select'}
       onPointerDown={(e) => e.stopPropagation()}
       onClick={(e) => { e.preventDefault(); e.stopPropagation(); onToggle(e.shiftKey); }}
     >

@@ -100,7 +100,9 @@ public sealed class EmbeddingLifecycleTests
         return new AiClient(
             new InstanceConfigStore(
                 provider.GetRequiredService<IServiceScopeFactory>(),
-                NullLogger<InstanceConfigStore>.Instance),
+                NullLogger<InstanceConfigStore>.Instance,
+                new SecretBox(new Microsoft.AspNetCore.DataProtection.EphemeralDataProtectionProvider(),
+                    NullLogger<SecretBox>.Instance)),
             new ConfigurationBuilder().Build(),
             provider.GetRequiredService<IHttpClientFactory>(),
             NullLogger<AiClient>.Instance);

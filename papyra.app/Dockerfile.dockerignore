@@ -1,0 +1,21 @@
+# Used instead of the repository's .dockerignore when building papyra.app/Dockerfile
+# (BuildKit picks up <Dockerfile>.dockerignore). Send only what the site is built from.
+*
+!pnpm-workspace.yaml
+!package.json
+!pnpm-lock.yaml
+!VERSION
+!CHANGELOG.md
+!CONTRIBUTING.md
+!papyra.web
+!papyra.app
+!papyra.collab/package.json
+
+**/node_modules
+**/.astro
+papyra.web/dist
+papyra.app/dist
+# Rebuilt inside the image; a stale local copy must not leak in.
+papyra.app/public/demo
+papyra.app/Dockerfile
+papyra.app/Dockerfile.dockerignore

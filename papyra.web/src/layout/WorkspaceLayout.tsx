@@ -31,6 +31,7 @@ import VaultOpenPill from '../components/VaultOpenPill';
 import { useVaultOpen } from '../hooks/useVault';
 import { useLocateEffect } from '../lib/locateNote';
 import { useNavOrder } from '../lib/navOrder';
+import { useJournalEnabled } from '../hooks/useJournal';
 import UpdateNotice from '../components/UpdateNotice';
 
 // Settings deliberately lives with Trash at the foot of the rail, not in this
@@ -85,8 +86,10 @@ export default function WorkspaceLayout() {
   const serverStatus = useSignalR();
   const vaultOpen = useVaultOpen();
   const order = useNavOrder();
+  const journalOn = useJournalEnabled();
   const navItems = [
-    ...order.map((id) => WRITING_NAV[id]),
+    // A switched-off journal leaves the rail; its slot in the saved order is kept for when it comes back.
+    ...order.filter((id) => id !== 'journal' || journalOn).map((id) => WRITING_NAV[id]),
     ...OTHER_NAV,
   ];
 
@@ -188,7 +191,7 @@ export default function WorkspaceLayout() {
               className="workspace__theme-toggle"
               onClick={() => setChatOpen(o => !o)}
               aria-label="Ask your notes"
-              title="Ask your notes"
+              data-tooltip="Ask your notes"
               aria-expanded={chatOpen}
             >
               <Sparkles size={18} />
@@ -249,7 +252,7 @@ export default function WorkspaceLayout() {
                 <NavLink
                   to={to}
                   end={end}
-                  title={to === '/vault' && vaultOpen ? 'Vault — open on this device' : label}
+                  data-tooltip={to === '/vault' && vaultOpen ? 'Vault — open on this device' : label}
                   aria-label={to === '/vault' && vaultOpen ? 'Vault (open)' : undefined}
                   className={({ isActive }) => `workspace__nav-link${isActive ? ' workspace__nav-link--active' : ''}`}
                 >
@@ -279,7 +282,7 @@ export default function WorkspaceLayout() {
             <SidebarImportProgress />
             <NavLink
               to="/trash"
-              title="Trash"
+              data-tooltip="Trash"
               className={({ isActive }) =>
                 `workspace__nav-link${isActive ? ' workspace__nav-link--active' : ''}`
               }
@@ -290,7 +293,7 @@ export default function WorkspaceLayout() {
 
             <NavLink
               to="/settings"
-              title="Settings"
+              data-tooltip="Settings"
               className={({ isActive }) =>
                 `workspace__nav-link${isActive ? ' workspace__nav-link--active' : ''}`
               }
@@ -304,7 +307,7 @@ export default function WorkspaceLayout() {
               <Link
                 to="/settings?tab=about"
                 className={`workspace__build workspace__build--${syncTone}`}
-                title={`${syncTitle}
+                data-tooltip={`${syncTitle}
 Papyra ${versionText}${server.stale ? ' — reload to finish updating' : ''} — about this Papyra`}
                 aria-label={`${syncTitle}. Papyra ${versionText}. About this Papyra.`}
               >
@@ -353,7 +356,7 @@ function ThemeToggle() {
       className="workspace__theme-toggle"
       onClick={toggleTheme}
       aria-label={`Switch to ${next} mode`}
-      title={`Switch to ${next} mode`}
+      data-tooltip={`Switch to ${next} mode`}
     >
       {theme === 'light' ? <Moon size={18} /> : <Sun size={18} />}
     </button>

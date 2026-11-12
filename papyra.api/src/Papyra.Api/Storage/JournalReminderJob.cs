@@ -39,6 +39,9 @@ public sealed class JournalReminderJob : PeriodicJob
         "Sends the daily email to people who turned on a journal reminder, at the time they chose, if that day is still blank.";
     protected override TimeSpan Interval => SweepEvery;
 
+    /// <summary>Whether this person gets reminders at all: the journal is on and they asked for one.</summary>
+    internal static bool Wanted(JournalPrefs prefs) => prefs.Enabled && prefs.ReminderOn;
+
     /// <summary>
     /// The journal day to remind about right now, or null: not yet the hour, or already
     /// sent for that day. Pure, so the clock rules can be tested without a server.
@@ -65,7 +68,9 @@ public sealed class JournalReminderJob : PeriodicJob
             try
             {
                 var prefs = _settings.Read(uid);
-                if (!prefs.ReminderOn) continue;
+                // The day is not marked as reminded when skipped, so switching the journal back
+                // on before the reminder hour still gets that day's nudge.
+                if (!Wanted(prefs)) continue;
 
                 using var scope = _scopes.CreateScope();
                 var db = scope.ServiceProvider.GetRequiredService<AppDbContext>();

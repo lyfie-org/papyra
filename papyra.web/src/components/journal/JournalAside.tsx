@@ -81,7 +81,7 @@ export default function JournalAside({ bridge, date, writable }: Props) {
     const embedded = embeddedTodos.has(n.title.trim().toLowerCase());
     return (
       <li key={n.id} className="journal-aside__row">
-        <Link to={`/note/${encodeURIComponent(n.id)}`} className="journal-aside__title" title={n.title}>{n.title || 'Untitled'}</Link>
+        <Link to={`/note/${encodeURIComponent(n.id)}`} className="journal-aside__title" data-tooltip={n.title}>{n.title || 'Untitled'}</Link>
         {extra && <span className="journal-aside__count">{extra}</span>}
         <button
           type="button" className="journal-aside__link" disabled={!canLink || done}
@@ -92,7 +92,7 @@ export default function JournalAside({ bridge, date, writable }: Props) {
           <button
             type="button" className="journal-aside__link" disabled={!canLink || embedded}
             onClick={() => bridge.insertTodo(n.title)}
-            title="Show this list here, with boxes you can tick"
+            data-tooltip="Show this list here, with boxes you can tick"
             aria-label={`${embedded ? 'Embedded' : 'Embed'} ${n.title || 'Untitled'}`}
           >{embedded ? 'Embedded' : 'Embed'}</button>
         )}
@@ -114,7 +114,7 @@ export default function JournalAside({ bridge, date, writable }: Props) {
         {todos.length > SHOWN && <Link to="/todo" className="journal-aside__more">All {todos.length} lists</Link>}
         <BusyButton
           type="button" className="journal-aside__carry" disabled={!canLink} busyLabel="Bringing forward…"
-          onClick={bringForward} title="Copy the unticked items of the last day that had any into this day"
+          onClick={bringForward} data-tooltip="Copy the unticked items of the last day that had any into this day"
         ><ListPlus size={14} aria-hidden="true" /> Bring forward</BusyButton>
       </section>
 

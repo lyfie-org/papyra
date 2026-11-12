@@ -10,6 +10,30 @@ permissions:
   issues: write
 
 jobs:
+  kind:
+    name: Label by template
+    if: github.event_name == 'issues' && github.event.action == 'opened'
+    runs-on: ubuntu-latest
+    steps:
+      # Done here, not with `labels:` in the issue forms, so the timeline says
+      # github-actions added the label instead of crediting the issue author.
+      - uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3 # v9.0.0
+        with:
+          script: |
+            const body = context.payload.issue.body || '';
+            const kinds = [
+              [/###\s+What happened\?/i, 'bug'],
+              [/###\s+What are you trying to do\?/i, 'enhancement'],
+              [/###\s+Done when/i, 'help wanted'],
+            ];
+            const hit = kinds.find(([re]) => re.test(body));
+            if (!hit) return;
+            await github.rest.issues.addLabels({
+              ...context.repo,
+              issue_number: context.issue.number,
+              labels: [hit[1]],
+            });
+
   starter:
     name: Starter tasks
     if: github.event_name == 'issues'

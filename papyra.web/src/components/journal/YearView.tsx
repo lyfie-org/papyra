@@ -32,7 +32,7 @@ export default function YearView({ year, entries, today, monthHref }: {
                 const dayNo = Number(day.slice(8));
                 return day > today
                   ? <span key={i} className={cls} data-day={dayNo} aria-hidden="true" />
-                  : <Link key={i} to={`/journal/${day}`} className={cls} data-day={dayNo} aria-label={label} title={label} />;
+                  : <Link key={i} to={`/journal/${day}`} className={cls} data-day={dayNo} aria-label={label} data-tooltip={label} />;
               })}
             </div>
           </section>

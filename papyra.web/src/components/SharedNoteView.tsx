@@ -335,7 +335,7 @@ export default function SharedNoteView({
             className={`note-toolbar__btn${toolbarShown ? ' is-active' : ''}`}
             aria-pressed={toolbarShown}
             aria-label={toolbarShown ? 'Hide formatting toolbar' : 'Show formatting toolbar'}
-            title={toolbarShown ? 'Hide formatting toolbar' : 'Show formatting toolbar'}
+            data-tooltip={toolbarShown ? 'Hide formatting toolbar' : 'Show formatting toolbar'}
             onClick={() => setToolbarOverride(!toolbarShown)}
           >
             <Type size={18} />
@@ -347,7 +347,7 @@ export default function SharedNoteView({
             className={`note-toolbar__btn${pin.pinned ? ' is-active' : ''}`}
             aria-pressed={pin.pinned}
             aria-label={pin.pinned ? 'Unpin note' : 'Pin note'}
-            title={pin.pinned ? 'Unpin from your notes' : 'Pin to your notes'}
+            data-tooltip={pin.pinned ? 'Unpin from your notes' : 'Pin to your notes'}
             onClick={pin.onToggle}
           >
             <Pin size={18} fill={pin.pinned ? 'currentColor' : 'none'} />

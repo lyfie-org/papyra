@@ -23,6 +23,7 @@ using Papyra.Api.Hubs;
 using Papyra.Api.Models;
 using Papyra.Api.Security;
 using Papyra.Api.Storage;
+using Papyra.Api.Storage.Channels;
 using Scalar.AspNetCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -67,16 +68,20 @@ builder.Services.AddOpenApi(options =>
     });
 });
 
-// ── Relational cache (SQLite — disposable; filesystem is the authority) ──────
+// ── Database (SQLite) ────────────────────────────────────────────────────────
+// NOT wholly disposable. The note-metadata mirror (NoteCache) and embeddings are
+// caches the files rebuild, but accounts, sessions, passkeys, TOTP, API keys,
+// shares, webhooks, comments, notifications and instance settings live only here
+// and in no per-account backup. Back up papyra.db with the rest of /data.
 // Resolve the DB path at DI time (not builder time) so test/host config overrides
 // of "Papyra:DataDir" are honored — same deferral the vault paths use below.
 builder.Services.AddDbContext<AppDbContext>((sp, options) =>
 {
-    var dbPath = PapyraPaths.DbPath(
-        sp.GetRequiredService<IConfiguration>(),
-        sp.GetRequiredService<IHostEnvironment>().ContentRootPath);
+    var config = sp.GetRequiredService<IConfiguration>();
+    var dbPath = PapyraPaths.DbPath(config, sp.GetRequiredService<IHostEnvironment>().ContentRootPath);
     Directory.CreateDirectory(Path.GetDirectoryName(dbPath)!);
     options.UseSqlite($"Data Source={dbPath}");
+    options.AddInterceptors(new SqlitePragmaInterceptor(config.GetValue(SqlitePragmaInterceptor.FeatureKey, true)));
 });
 
 // Zero-trust markdown engine (filesystem is the authority; this is the only
@@ -233,7 +238,26 @@ builder.Services.AddHostedService(sp => sp.GetRequiredService<MentionDeliverySer
 // Native git sync of the notes vault. Singleton so the manual-trigger endpoint runs
 // the same instance as the background loop. Idle until a remote is configured.
 builder.Services.AddSingleton<GitSyncService>();
+// Accounts-and-settings backup: the database no per-account backup carries, plus its key ring.
+builder.Services.AddSingleton<InstanceBackupService>();
+builder.Services.AddHostedService<InstanceBackupJob>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<GitSyncService>());
+// Notifications to chat services (ntfy, Discord, Telegram). The providers are registered one by one
+// as they land; this is the queue and the retry loop they all share.
+builder.Services.AddSingleton<OutboundPolicy>();
+builder.Services.AddSingleton<NtfyChannel>();
+builder.Services.AddSingleton<INotificationChannel>(sp => sp.GetRequiredService<NtfyChannel>());
+builder.Services.AddSingleton<DiscordBot>();
+builder.Services.AddSingleton<DiscordChannel>();
+builder.Services.AddSingleton<INotificationChannel>(sp => sp.GetRequiredService<DiscordChannel>());
+builder.Services.AddSingleton<TelegramApi>();
+builder.Services.AddSingleton<TelegramChannel>();
+builder.Services.AddSingleton<INotificationChannel>(sp => sp.GetRequiredService<TelegramChannel>());
+// Connects Telegram chats: reads what people send the bot (a long poll — no public address needed).
+builder.Services.AddSingleton<TelegramLinker>();
+builder.Services.AddHostedService<TelegramPoller>();
+builder.Services.AddSingleton<ChannelDeliveryService>();
+builder.Services.AddHostedService(sp => sp.GetRequiredService<ChannelDeliveryService>());
 
 // ── WebAuthn (biometric gatekeeper) ─────────────────────────────────────────────
 // No fixed relying party: it is resolved per request from the address the app was
@@ -316,6 +340,7 @@ builder.Services.AddCollab(builder.Configuration);
 var oidcSeed = builder.Configuration.GetSection("Oidc").Get<OidcSettings>();
 
 // Instance configuration (SSO, outbound mail) an admin edits from the UI.
+builder.Services.AddSingleton<SecretBox>();
 builder.Services.AddSingleton<InstanceConfigStore>();
 
 // The cookie is only as durable as the key ring that signs it. By default those
@@ -595,6 +620,12 @@ builder.Services.AddRateLimiter(options =>
                 QueueProcessingOrder = QueueProcessingOrder.OldestFirst,
             }));
 
+    // "Send a test" to a chat service: a request to a third party each time, so a few per minute per account.
+    options.AddPolicy(ChannelEndpoints.TestRateLimit, ctx =>
+        RateLimitPartition.GetFixedWindowLimiter(
+            ctx.User.FindFirstValue(ClaimTypes.NameIdentifier) ?? ctx.Connection.RemoteIpAddress?.ToString() ?? "unknown",
+            _ => new FixedWindowRateLimiterOptions { PermitLimit = 6, Window = TimeSpan.FromMinutes(1), QueueLimit = 0 }));
+
     // Live-editing tickets: one per (re)connect of each open note/tab, so a healthy
     // client asks a handful of times an hour. Per account, well above a desk of
     // tabs riding out a flaky network, far below a loop hammering the endpoint.
@@ -654,6 +685,10 @@ if (enableCors)
 }
 
 var app = builder.Build();
+
+// A queued instance restore (Settings → Instance backup, or the first screen) is
+// swapped in here, before anything opens the database or the key ring.
+PendingInstanceRestore.ApplyIfAny(app.Configuration, app.Environment.ContentRootPath, app.Logger);
 
 // Whole-vault uploads — a backup restore, a Takeout/Obsidian import — are far
 // bigger than Kestrel's ~28.6 MB default body limit, which used to refuse any
@@ -751,6 +786,34 @@ using (var scope = app.Services.CreateScope())
         await db.SaveChangesAsync();
     }
 }
+
+// Secrets typed into Settings (the SMTP password, SSO client secrets, git tokens) used to be stored
+// as plain text. Seal the ones still in plain, once, so an upgrade needs nothing from the admin.
+// Idempotent; a failure here never stops the boot (the plain values keep working).
+using (var scope = app.Services.CreateScope())
+{
+    await SecretSettings.SealLegacyAsync(
+        scope.ServiceProvider.GetRequiredService<AppDbContext>(),
+        scope.ServiceProvider.GetRequiredService<SecretBox>(),
+        app.Logger);
+}
+
+// Chat services set up in the environment (PAPYRA_NTFY_URL, PAPYRA_TELEGRAM_BOT_TOKEN, …) are imported once.
+// In the background: the checks talk to the network, and starting up must not wait on them.
+app.Lifetime.ApplicationStarted.Register(() => _ = Task.Run(async () =>
+{
+    try
+    {
+        await ChannelSeed.SeedAsync(
+            app.Configuration, app.Services.GetRequiredService<InstanceConfigStore>(),
+            app.Services.GetRequiredService<OutboundPolicy>(), app.Services.GetRequiredService<TelegramApi>(),
+            app.Logger, app.Lifetime.ApplicationStopping);
+    }
+    catch (Exception ex) when (ex is not OperationCanceledException)
+    {
+        app.Logger.LogWarning("Chat notification settings from the environment could not be imported ({Type})", ex.GetType().Name);
+    }
+}));
 
 // First in the pipeline so everything downstream — the rate limiter's partition
 // key, the access log, the HTTPS check below — sees the real client rather than
@@ -892,7 +955,7 @@ app.UseStaticFiles(new StaticFileOptions
             mailer.NotifyInBackground(admin, NotificationCatalog.AdminJobFailed,
                 $"“{job.Name}” failed on your Papyra",
                 $"The background job “{job.Name}” failed. It will try again on its next run; you'll hear again only "
-                + "if it fails after working.\n\nSee Settings → Jobs in Papyra for details, or run it again from there.",
+                + "if it fails after working.\n\nSee Server settings → Jobs in Papyra for details, or run it again from there.",
                 [new("Job", job.Name), new("Error", error.Length > 300 ? error[..300] + "…" : error)]);
     };
 }
@@ -1196,7 +1259,7 @@ app.Use(async (context, next) =>
         context.Response.StatusCode = StatusCodes.Status502BadGateway;
         await context.Response.WriteAsJsonAsync(new
         {
-            error = "Couldn't reach the identity provider. Check the Authority URL in Settings → SSO.",
+            error = "Couldn't reach the identity provider. Check the Authority URL in Server settings → Single sign-on.",
             errorId,
         });
     }
@@ -1256,7 +1319,7 @@ var auth = app.MapGroup("/api/auth").WithTags("Auth");
 
 // A BCrypt hash no password will ever match, used to spend the same work on a
 // login for an account that doesn't exist as on one that does. Computed once.
-var DummyPasswordHash = BCrypt.Net.BCrypt.HashPassword(Guid.NewGuid().ToString("N"));
+var DummyPasswordHash = SecretHasher.HashPassword(Guid.NewGuid().ToString("N"));
 
 // ── First-run setup (guided) ─────────────────────────────────────────────────
 // Every /setup route answers only while the instance has no accounts: the first
@@ -1504,7 +1567,7 @@ auth.MapPost("/setup", async (
         Username = username,
         Name = string.IsNullOrWhiteSpace(body.Name) ? username : body.Name.Trim(),
         Email = address,
-        PasswordHash = BCrypt.Net.BCrypt.HashPassword(body.Password),
+        PasswordHash = SecretHasher.HashPassword(body.Password),
         PasswordChangedUtc = DateTime.UtcNow,
         Role = "Admin",
         TimeZone = string.IsNullOrEmpty(zone) ? null : zone,
@@ -1824,7 +1887,7 @@ auth.MapPost("/reset-password", async (
     if (user is null) return Results.BadRequest(new { error = "This link is invalid or has expired." });
     if (user.DisabledUtc is not null) return AccountDisabled();
 
-    user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(body.Password!);
+    user.PasswordHash = SecretHasher.HashPassword(body.Password!);
     user.PasswordChangedUtc = DateTime.UtcNow;
     user.MustChangePassword = false; // they chose this one themselves
     row.UsedUtc = DateTime.UtcNow;   // burn it in the same transaction as the change
@@ -1866,7 +1929,7 @@ auth.MapPost("/accept-invite", async (
         Username = row.Username,
         Name = row.Username,
         Email = row.Email,
-        PasswordHash = BCrypt.Net.BCrypt.HashPassword(body.Password!),
+        PasswordHash = SecretHasher.HashPassword(body.Password!),
         PasswordChangedUtc = DateTime.UtcNow,
         Role = row.Role == "Admin" ? "Admin" : "User",
     };
@@ -2618,7 +2681,7 @@ auth.MapPost("/password", async (
         && !BCrypt.Net.BCrypt.Verify(body.Current ?? string.Empty, user.PasswordHash))
         return Results.Json(new { error = "Current password is incorrect." }, statusCode: StatusCodes.Status400BadRequest);
 
-    user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(body.Next);
+    user.PasswordHash = SecretHasher.HashPassword(body.Next);
     user.PasswordChangedUtc = DateTime.UtcNow;
     // Picking your own password is exactly what the flag was waiting for.
     user.MustChangePassword = false;
@@ -2845,7 +2908,7 @@ admin.MapPost("/", async (
         Username = username,
         Name = string.IsNullOrWhiteSpace(body.Name) ? username : body.Name.Trim(),
         Email = address,
-        PasswordHash = BCrypt.Net.BCrypt.HashPassword(password),
+        PasswordHash = SecretHasher.HashPassword(password),
         PasswordChangedUtc = DateTime.UtcNow,
         Role = body.Role == "Admin" ? "Admin" : "User",
         MustChangePassword = true,
@@ -2893,7 +2956,7 @@ admin.MapPost("/{id:int}/reset", async (
     var user = await db.Users.FindAsync([id], ct);
     if (user is null) return Results.NotFound();
 
-    user.PasswordHash = BCrypt.Net.BCrypt.HashPassword(password);
+    user.PasswordHash = SecretHasher.HashPassword(password);
     user.PasswordChangedUtc = DateTime.UtcNow;
     user.MustChangePassword = true;
     // Lost the phone too: they set a new authenticator up at their next sign-in.
@@ -3223,8 +3286,9 @@ directory.MapGet("/search", async (string? q, ClaimsPrincipal me, AppDbContext d
 // The catalog of everything Papyra can tell a person about, with their switch for
 // each. Critical ones come back locked on. Email is the only channel today;
 // `channels` is how the settings screen will learn about push.
-auth.MapGet("/notifications", async (ClaimsPrincipal me, AppDbContext db, EmailSender email, CancellationToken ct) =>
+auth.MapGet("/notifications", async (ClaimsPrincipal me, AppDbContext db, EmailSender email, ChannelDeliveryService delivery, InstanceConfigStore config, CancellationToken ct) =>
 {
+    await config.EnsureLoadedAsync(ct);
     var user = await db.Users.FindAsync([int.Parse(Uid(me))], ct);
     if (user is null) return Results.NotFound();
     return Results.Ok(new
@@ -3234,6 +3298,8 @@ auth.MapGet("/notifications", async (ClaimsPrincipal me, AppDbContext db, EmailS
         emailConfigured = email.IsConfigured,
         hasAddress = !string.IsNullOrWhiteSpace(user.Email),
         channels = NotificationCatalog.Channels,
+        // The chat channels an admin has switched on and set up (empty until a provider is).
+        available = delivery.AvailableChannels(),
         groups = NotificationCatalog.Groups
             .Where(g => g.Key != "admin" || user.Role == "Admin")
             .Select(g => new { id = g.Key, label = g.Value }),
@@ -3243,6 +3309,11 @@ auth.MapGet("/notifications", async (ClaimsPrincipal me, AppDbContext db, EmailS
             {
                 e.Id, e.Group, e.Label, e.Description, e.Critical,
                 email = NotificationPrefs.Wants(user, e.Id, NotificationCatalog.Email),
+                // The same switch for each chat channel. Always-on notices are mail only.
+                chat = e.Critical
+                    ? new Dictionary<string, bool>()
+                    : NotificationCatalog.Channels.Where(NotificationCatalog.IsChatChannel)
+                        .ToDictionary(c => c, c => NotificationPrefs.Wants(user, e.Id, c)),
             }),
         // The two original switches, for clients that predate the catalog.
         mention = NotificationPrefs.Wants(user, NotificationCatalog.Mention),
@@ -4279,9 +4350,10 @@ notes.MapGet("/{id}/blocks/{blockId}", async (
     .WithSummary("Resolve one anchored block")
     .WithDescription("Returns only the anchored block's text — never the surrounding note body.");
 
-notes.MapGet("/{id}/backlinks", (string id, ClaimsPrincipal user, VaultState state, SearchIndexService search) =>
+notes.MapGet("/{id}/backlinks", (string id, ClaimsPrincipal user, VaultState state, SearchIndexService search, JournalSettings journalPrefs) =>
 {
     var uid = Uid(user);
+    var journalHidden = IsApiKey(user) || !journalPrefs.IsEnabled(uid);
     var path = state.PathFor(uid, id);
     if (path is null || !state.TryGet(uid, path, out var target) || target is null) return Results.NotFound();
 
@@ -4293,7 +4365,7 @@ notes.MapGet("/{id}/backlinks", (string id, ClaimsPrincipal user, VaultState sta
         // A secure note is left out entirely: even its title next to a snippet of
         // this note would confirm what it links to.
         .Where(n => !n.Trashed && !n.Secure && n.Id != id && !string.IsNullOrEmpty(n.Body)
-                    && !(IsApiKey(user) && JournalPaths.IsJournal(n))
+                    && !(journalHidden && JournalPaths.IsJournal(n))
                     && n.Body.Contains(needle, StringComparison.OrdinalIgnoreCase))
         .Select(n => new
         {
@@ -4792,7 +4864,7 @@ gitApi.MapPut("/", async (
     await Set(GitKeys.RemoteUrl(uid), remote);
     await Set(GitKeys.Branch(uid), branchName);
     // Only overwrite the token when one is supplied, so saving config doesn't wipe it.
-    if (body.Token is not null) await Set(GitKeys.Token(uid), body.Token.Trim());
+    if (body.Token is not null) await Set(GitKeys.Token(uid), git.SealToken(body.Token.Trim())!);
     await Set(GitKeys.Mode(uid), wantEncrypted ? "encrypted" : "plain");
     if (newKey is not null) { await Set(GitKeys.DataKey(uid), newKey); await Set(GitKeys.Crypto(uid), newHeader!); }
     if (!wantEncrypted) { await Set(GitKeys.DataKey(uid), string.Empty); await Set(GitKeys.Crypto(uid), string.Empty); }
@@ -4808,14 +4880,14 @@ gitApi.MapPut("/", async (
 // The guided setup's "Check the connection" step: try the address and token
 // before anything is saved, and say in plain words what's wrong. A stored token
 // is used when none is typed, so re-checking an existing setup needs no retyping.
-gitApi.MapPost("/test", async (GitConfigWrite body, ClaimsPrincipal user, AppDbContext db, CancellationToken ct) =>
+gitApi.MapPost("/test", async (GitConfigWrite body, ClaimsPrincipal user, AppDbContext db, GitSyncService git, CancellationToken ct) =>
 {
     var remote = body.RemoteUrl?.Trim() ?? string.Empty;
     if (!Uri.TryCreate(remote, UriKind.Absolute, out var uri) || uri.Scheme is not ("https" or "http"))
         return Results.BadRequest(new { error = "Paste the repository's https address, e.g. https://github.com/you/papyra-notes.git" });
     var tokenKey = GitKeys.Token(Uid(user));
     var token = string.IsNullOrWhiteSpace(body.Token)
-        ? (await db.Settings.FirstOrDefaultAsync(s => s.Key == tokenKey, ct))?.Value
+        ? git.OpenToken((await db.Settings.FirstOrDefaultAsync(s => s.Key == tokenKey, ct))?.Value)
         : body.Token.Trim();
     var (problem, branches) = await Task.Run(() => GitSyncService.Probe(remote, token), ct);
     return problem is null
@@ -6021,7 +6093,9 @@ accessRequests.MapPost("/", async (
     await hub.Clients.User(ownerUid).SendAsync("AccessRequested", new { request.Id }, ct);
     await hub.Clients.User(ownerUid).SendAsync("NotificationsChanged", ct);
     var owner = await db.Users.FindAsync([ownerId], ct);
-    if (owner is not null && NotificationPrefs.Wants(owner, NotificationCatalog.AccessRequested) && email.IsConfigured)
+    // Who gets this, and over which channel, is decided inside NotifyInBackground — not by whether
+    // mail is set up, since a chat channel may be the only one this person has.
+    if (owner is not null)
     {
         var who = await db.Users.Where(u => u.Id == uid).Select(u => u.Username).FirstOrDefaultAsync(ct);
         var url = email.PublicUrl($"{http.Request.Scheme}://{http.Request.Host}");
@@ -6250,7 +6324,7 @@ app.MapPut("/api/shared/{token}", async (
 // ── Search ────────────────────────────────────────────────────────────────────
 // Relevance-ranked full-text search over the Lucene index. The index stores only
 // metadata; snippets are highlighted against the live body in VaultState.
-app.MapGet("/api/search", (string? q, ClaimsPrincipal user, SearchIndexService search, VaultState state) =>
+app.MapGet("/api/search", (string? q, ClaimsPrincipal user, SearchIndexService search, VaultState state, JournalSettings journalPrefs) =>
 {
     if (string.IsNullOrWhiteSpace(q)) return Results.Ok(Array.Empty<object>());
 
@@ -6260,8 +6334,9 @@ app.MapGet("/api/search", (string? q, ClaimsPrincipal user, SearchIndexService s
     var hits = search.Search(uid, q).ToDictionary(h => h.Id, StringComparer.Ordinal);
     foreach (var t in search.MatchTitles(q, state.SnapshotAll(uid).Where(n => n.Secure && !n.Trashed)))
         hits[t.Id] = hits.TryGetValue(t.Id, out var h) ? h with { Score = h.Score + t.Score } : t;
-    // A script on a key never finds the journal through the notes search.
-    if (IsApiKey(user))
+    // A script on a key never finds the journal through the notes search; neither does
+    // anyone who switched their journal off (the index itself is left as it is).
+    if (IsApiKey(user) || !journalPrefs.IsEnabled(uid))
         foreach (var hitId in hits.Keys.ToList())
             if (JournalPaths.IsJournalId(hitId)) hits.Remove(hitId);
     var results = hits.Values.OrderByDescending(h => h.Score).Select(hit =>
@@ -6284,12 +6359,13 @@ app.MapGet("/api/search", (string? q, ClaimsPrincipal user, SearchIndexService s
 // callers should keep using /api/search for keyword results.
 app.MapGet("/api/search/semantic", async (
     string? q, int? take, ClaimsPrincipal user, EmbeddingService embeddings,
-    VaultState state, CancellationToken ct) =>
+    VaultState state, JournalSettings journalPrefs, CancellationToken ct) =>
 {
     if (string.IsNullOrWhiteSpace(q)) return Results.Ok(Array.Empty<object>());
 
     var uid = Uid(user);
     var hits = await embeddings.SearchAsync(uid, q, Math.Clamp(take ?? 5, 1, 25), ct);
+    if (!journalPrefs.IsEnabled(uid)) hits = hits.Where(h => !JournalPaths.IsJournalId(h.NoteId)).ToList();
     return Results.Ok(hits.Select(h =>
     {
         var note = state.PathFor(uid, h.NoteId) is { } p && state.TryGet(uid, p, out var n) ? n : null;
@@ -6427,7 +6503,7 @@ app.MapPost("/api/ai/chat", async (
         // which the probe can see without spending a request.
         failure = status.Reason
             ?? $"The {status.ChatProvider} backend accepted the request but returned nothing. "
-             + "Check the API key and the model name in Settings → AI.";
+             + "Check the API key and the model name in Server settings → AI.";
     }
 
     await writer.WriteLineAsync(JsonSerializer.Serialize(new { type = "done", error = failure }));
@@ -6721,6 +6797,8 @@ app.MapPost("/api/system/rebuild-index", async (
 // Upload, originals, thumbnails and metadata — for the owner, for sharees and
 // for share links — live in Features/MediaEndpoints.cs.
 app.MapMedia();
+app.MapNoteExport();
+app.MapInstanceBackup();
 
 // ── Import / Export ───────────────────────────────────────────────────────────
 // Import parks the uploaded archive on disk and hands it to the background queue,
@@ -7402,7 +7480,7 @@ backups.MapPost("/restore-git", async (
     if (string.IsNullOrEmpty(token))
     {
         var tokenKey = GitKeys.Token(uidStr);
-        token = (await db.Settings.FirstOrDefaultAsync(s => s.Key == tokenKey, ct))?.Value;
+        token = git.OpenToken((await db.Settings.FirstOrDefaultAsync(s => s.Key == tokenKey, ct))?.Value);
     }
 
     var staging = Path.Combine(PapyraPaths.UserDotPapyra(config, env.ContentRootPath, uidStr), $"restore-git-{Guid.NewGuid():N}");
@@ -7450,6 +7528,10 @@ app.MapFallback("/api/{**rest}", (HttpContext http) =>
 
 app.MapCollab();
 app.MapComments();
+app.MapChannelDestinations();
+app.MapNtfy();
+app.MapDiscord();
+app.MapTelegram();
 app.MapJournal();
 app.MapJournalExport();
 app.MapUpdates();
@@ -7493,7 +7575,6 @@ static async Task AnnounceShare(
     await hub.Clients.User(recipient.Id.ToString()).SendAsync("NotificationsChanged", ct);
 
     var eventId = kind == "access_approved" ? NotificationCatalog.AccessAnswered : NotificationCatalog.Shared;
-    if (!NotificationPrefs.Wants(recipient, eventId) || !email.IsConfigured) return;
     var who = sharer.FindFirstValue(ClaimTypes.Name) ?? "Someone";
     var name = string.IsNullOrWhiteSpace(title) ? "Untitled" : title;
     var url = email.PublicUrl($"{http.Request.Scheme}://{http.Request.Host}");
@@ -7983,7 +8064,7 @@ static async Task SaveGitBackupConfigAsync(
 
     await Set(GitKeys.RemoteUrl(uid), remote);
     await Set(GitKeys.Branch(uid), branch);
-    if (!string.IsNullOrEmpty(token)) await Set(GitKeys.Token(uid), token);
+    if (!string.IsNullOrEmpty(token)) await Set(GitKeys.Token(uid), git.SealToken(token)!);
     await Set(GitKeys.Mode(uid), source.Mode);
     await Set(GitKeys.DataKey(uid), source.SealedKey ?? string.Empty);
     await Set(GitKeys.Crypto(uid), source.HeaderJson ?? string.Empty);

@@ -21,6 +21,11 @@ defaults are what most installations want.
 | `PAPYRA_WHISPER_MODEL_PATH` | — | Enables audio transcription. |
 | `PAPYRA_OCR_TESSDATA_PATH` | — | Enables OCR of images. |
 | `PAPYRA_UPDATE_CHECK_ENABLED` | `true` | The daily check for a newer version. Set `false` to turn it off. |
+| `PAPYRA_NTFY_URL`, `PAPYRA_NTFY_TOKEN` | — | Set ntfy up on first start instead of in Settings. Read once. [Details](/docs/notifications/#in-your-compose-file). |
+| `PAPYRA_TELEGRAM_BOT_TOKEN` | — | Set the Telegram bot up on first start. Read once. [Details](/docs/notifications/#in-your-compose-file). |
+| `PAPYRA_COLLAB_ENABLED` | `true` | Live editing of shared notes, run by an engine the server starts inside the same container. Set `false` and it never starts; `/health` reports whether it is running. |
+| `PAPYRA_SQLITE_WAL` | `true` | Run the database in WAL mode, which is faster under load. Set `false` if `/data` is on a network share (NFS, SMB), where WAL is unsafe. |
+| `PAPYRA_ERROR_DETAILS` | `true` | Show a short stack trace on the error page. Set `false` to show only the reference. |
 | `PUID` / `PGID` | `1000` | Who owns the files on disk. |
 | `TZ` | `UTC` | Default time zone, as an IANA name (`Europe/London`, `Asia/Kolkata`). Each person can pick their own under Settings → Profile. |
 
@@ -42,16 +47,16 @@ thing HTTPS is protecting. See [HTTPS and reverse proxies](/docs/https/).
 
 ### `PAPYRA_UPDATE_CHECK_ENABLED`
 
-Once a day Papyra asks `versions.papyra.app` whether a newer version is out, so
-admins can be told, and the maker counts it as an install. It is optional.
-Set `false` and the server never makes that request, never creates its install
-ID, and admins simply aren't told about new versions:
+Once a day Papyra looks at GitHub to see whether a newer version is out, so
+admins can be told. It sends nothing about your server. It is optional. Set
+`false` and the server never makes that request, and admins simply aren't told
+about new versions:
 
 ```yaml
 PAPYRA_UPDATE_CHECK_ENABLED: "false"
 ```
 
-See [The update check](/docs/update-check/) for exactly what is sent.
+See [The update check](/docs/update-check/) for exactly what it asks.
 
 ### `PAPYRA_TRUSTED_PROXIES`
 
@@ -92,10 +97,11 @@ Passkeys require real HTTPS. They will not work over plain HTTP outside
 Deliberately **not** environment variables, because changing them should not mean
 editing a compose file and restarting a container:
 
-- **SSO / OIDC**: Settings → SSO, applied without a restart
-- **SMTP**: Settings → Email
-- **Trash retention**: Settings → Data & Storage
-- **Git backup**: Settings → Backup, per account
+- **SSO / OIDC**: Administration → Single sign-on, applied without a restart
+- **SMTP**: Administration → Email
+- **Notification services** (ntfy, Discord, Telegram): Administration → Notifications. See [Notifications](/docs/notifications/)
+- **Trash retention**: Settings → Your data
+- **Git backup**: Settings → Git backup, per account
 
 ## Optional extras, off unless configured
 

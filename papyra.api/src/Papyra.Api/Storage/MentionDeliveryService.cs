@@ -279,8 +279,6 @@ public sealed partial class MentionDeliveryService : BackgroundService
     // none of which is an error worth failing the job over.
     private async Task NotifyByEmailAsync(User recipient, Job job, CancellationToken ct)
     {
-        if (!NotificationPrefs.Wants(recipient, NotificationCatalog.Mention) || !_email.IsConfigured) return;
-
         // The body is NOT quoted here. A mention grants access to one block of a
         // note in someone else's vault, and email is outside that boundary —
         // copying the text into an inbox would leak it past the grant.

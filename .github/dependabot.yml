@@ -1,15 +1,16 @@
 version: 2
 updates:
+  # One weekly PR for every action the workflows and the composite setup-pnpm
+  # action use, raised against development (never main). Dependabot reads this
+  # file from the default branch (main), so a change here takes effect once it
+  # has reached main through a release.
   - package-ecosystem: github-actions
-    directory: /
+    directories:
+      - /
+      - /.github/actions/setup-pnpm
     target-branch: development
     schedule:
       interval: weekly
     groups:
       actions:
         patterns: ["*"]
-  - package-ecosystem: github-actions
-    directory: /.github/actions/setup-pnpm
-    target-branch: development
-    schedule:
-      interval: weekly

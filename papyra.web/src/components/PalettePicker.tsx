@@ -21,7 +21,7 @@ export default function PalettePicker({
             role="menuitemradio"
             aria-checked={isActive}
             aria-label={s.name}
-            title={s.name}
+            data-tooltip={s.name}
             className={`palette-picker__swatch${isActive ? ' is-active' : ''}${noneClass}`}
             style={s.value ? { background: s.value } : undefined}
             onClick={() => onPick(s.value)}

@@ -1,0 +1,259 @@
+---
+// The vertical roadmap line, shared by the home page (short) and /roadmap (whole).
+// Plans sit above, furthest first, so the next one is just above the newest
+// release; releases follow, newest first.
+import Icon from './Icon.astro';
+import { GITHUB_URL } from '../data/site';
+import type { Plan, Release } from '../data/roadmap';
+
+interface Props {
+  plans: Plan[];
+  releases: Release[];
+  /** Show each release's smaller extras (the roadmap page does; the home page does not). */
+  detail?: boolean;
+}
+
+const { plans, releases, detail = false } = Astro.props;
+
+const dayFmt = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
+const when = (r: Release) => dayFmt.format(new Date(`${r.date}T00:00:00Z`));
+---
+
+<ol class="journey">
+  {
+    plans.map((n) => (
+      <li class:list={['journey__item', 'journey__item--soon', { 'journey__item--next': n.next }]}>
+        <span class="journey__date">{n.when}</span>
+        <span class="journey__node" aria-hidden="true">
+          <Icon name={n.next ? 'sparkles' : 'history'} size={12} />
+        </span>
+        <div class="journey__card">
+          <h3>
+            <Icon name={n.icon} size={17} />
+            {n.title}
+          </h3>
+          <p>{n.text}</p>
+          {n.next && <span class="journey__tag journey__tag--next">Next up</span>}
+        </div>
+      </li>
+    ))
+  }
+  {
+    releases.map((r) => (
+      <li class:list={['journey__item', { 'journey__item--current': r.current }]}>
+        <time class="journey__date" datetime={r.date}>
+          {when(r)}
+        </time>
+        <span class="journey__node" aria-hidden="true">
+          {r.current ? <Icon name="star" size={12} /> : <Icon name="check" size={12} />}
+        </span>
+        <div class="journey__card">
+          <h3>
+            <Icon name={r.icon} size={17} />
+            {r.title}
+          </h3>
+          <p>{r.text}</p>
+          {detail && r.also && (
+            <ul class="journey__also">
+              {r.also.map((a) => (
+                <li>{a}</li>
+              ))}
+            </ul>
+          )}
+          <a
+            class="journey__tag"
+            href={`${GITHUB_URL}/releases/tag/v${r.version}`}
+            target="_blank"
+            rel="noopener noreferrer"
+            aria-label={`Release v${r.version} on GitHub`}
+          >
+            v{r.version}
+          </a>
+        </div>
+      </li>
+    ))
+  }
+</ol>
+
+<style>
+  .journey {
+    --date-w: 7.5rem;
+    list-style: none;
+    margin: 0;
+    padding: 0;
+    position: relative;
+  }
+
+  /* The line through every node. */
+  .journey::before {
+    content: '';
+    position: absolute;
+    top: 8px;
+    bottom: 8px;
+    left: calc(var(--date-w) + var(--space-5) + 11px);
+    width: 2px;
+    background: linear-gradient(var(--accent), var(--border) 30%);
+  }
+
+  .journey__item {
+    position: relative;
+    display: grid;
+    grid-template-columns: var(--date-w) 24px minmax(0, 1fr);
+    gap: var(--space-5);
+    align-items: start;
+    padding-bottom: var(--space-4);
+  }
+
+  .journey__date {
+    padding-top: 12px;
+    text-align: right;
+    font: 400 var(--fs-xs) / 1.4 var(--mono);
+    color: var(--text);
+    white-space: nowrap;
+  }
+
+  .journey__node {
+    position: relative;
+    z-index: 1;
+    display: grid;
+    place-items: center;
+    width: 24px;
+    height: 24px;
+    margin-top: 9px;
+    border-radius: 50%;
+    border: 2px solid var(--accent);
+    background: var(--bg);
+    color: var(--accent-text);
+  }
+
+  .journey__item--current .journey__node {
+    background: var(--accent);
+    color: var(--accent-fg);
+    box-shadow: 0 0 0 6px var(--accent-bg);
+  }
+
+  .journey__card {
+    position: relative;
+    padding: var(--space-3) var(--space-4);
+    padding-right: 4.5rem;
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background: var(--surface);
+  }
+
+  .journey__item--current .journey__card {
+    border-color: var(--accent-border);
+    box-shadow: var(--shadow-card);
+  }
+
+  .journey__card h3 {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    font: 500 var(--fs-sm) / 1.35 var(--sans);
+    letter-spacing: 0;
+    margin: 0 0 2px;
+  }
+
+  .journey__card h3 :global(svg) {
+    flex: none;
+    color: var(--accent);
+  }
+
+  .journey__card p {
+    margin: 0;
+    font-size: var(--fs-xs);
+    line-height: 1.5;
+    color: var(--text);
+  }
+
+  .journey__also {
+    margin: var(--space-2) 0 0;
+    padding-left: 1.1rem;
+    font-size: var(--fs-xs);
+    line-height: 1.5;
+    color: var(--text);
+  }
+
+  .journey__tag {
+    position: absolute;
+    top: var(--space-3);
+    right: var(--space-3);
+    padding: 2px 8px;
+    border: 1px solid var(--accent-border);
+    border-radius: var(--radius-pill);
+    background: var(--accent-bg);
+    font: 500 var(--fs-2xs) / 1.5 var(--mono);
+    color: var(--accent-text);
+    text-decoration: none;
+  }
+
+  .journey__tag:hover {
+    color: var(--text-h);
+  }
+
+  /* Plans: dashed, quieter — not yet on the line of things that shipped. */
+  .journey__item--soon .journey__date {
+    color: var(--accent-text);
+  }
+
+  .journey__item--soon .journey__node {
+    border-style: dashed;
+    color: var(--text);
+  }
+
+  .journey__item--soon .journey__card {
+    border-style: dashed;
+    background: color-mix(in srgb, var(--surface) 55%, transparent);
+  }
+
+  .journey__item--next .journey__node {
+    border-style: solid;
+    color: var(--accent-text);
+    box-shadow: 0 0 0 5px var(--accent-bg);
+  }
+
+  .journey__item--next .journey__card {
+    border-style: solid;
+    border-color: var(--accent-border);
+    background:
+      radial-gradient(24rem 8rem at 0% 0%, var(--accent-bg), transparent 70%),
+      var(--surface);
+  }
+
+  .journey__tag--next {
+    font-family: var(--sans);
+    font-weight: 600;
+  }
+
+  @media (max-width: 640px) {
+    .journey {
+      --date-w: 0px;
+    }
+
+    .journey__item {
+      grid-template-columns: 24px minmax(0, 1fr);
+      gap: var(--space-4);
+    }
+
+    .journey::before {
+      left: 11px;
+    }
+
+    .journey__date {
+      grid-column: 2;
+      grid-row: 1;
+      text-align: left;
+      padding-top: 0;
+    }
+
+    .journey__node {
+      grid-row: 1 / span 2;
+      grid-column: 1;
+    }
+
+    .journey__card {
+      grid-column: 2;
+    }
+  }
+</style>

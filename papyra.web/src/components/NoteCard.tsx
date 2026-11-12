@@ -164,14 +164,14 @@ function NoteCard({ note, variant = 'active', conflictId, conflictCount, onResol
           <>
             <button
               type="button" className="note-card__action" aria-label="Restore note"
-              disabled={!online} title={offlineHint}
+              disabled={!online} data-tooltip={offlineHint}
               onClick={(e) => { stop(e); void action('/untrash'); }}
             >
               <RotateCcw size={16} />
             </button>
             <button
               type="button" className="note-card__action note-card__action--danger" aria-label="Delete forever"
-              disabled={!online} title={offlineHint}
+              disabled={!online} data-tooltip={offlineHint}
               onClick={(e) => { stop(e); void deleteForever(); }}
             >
               <Trash2 size={16} />
@@ -196,14 +196,14 @@ function NoteCard({ note, variant = 'active', conflictId, conflictCount, onResol
             )}
             <button
               type="button" className="note-card__action" aria-label="Share note"
-              disabled={!online} title={offlineHint}
+              disabled={!online} data-tooltip={offlineHint}
               onClick={(e) => { stop(e); setShareOpen(true); }}
             >
               <Share2 size={16} />
             </button>
             <button
               type="button" className="note-card__action note-card__action--danger" aria-label="Delete note"
-              disabled={!online} title={offlineHint}
+              disabled={!online} data-tooltip={offlineHint}
               onClick={(e) => { stop(e); void trash(); }}
             >
               <Trash2 size={16} />
@@ -245,7 +245,7 @@ function PurgeDate({ trashedAt }: { trashedAt?: string | null }) {
   return (
     <p
       className={`note-card__purge${info.soon ? ' note-card__purge--soon' : ''}`}
-      title={info.title}
+      data-tooltip={info.title}
     >
       <Hourglass size={12} aria-hidden="true" />
       <span>{info.label}</span>

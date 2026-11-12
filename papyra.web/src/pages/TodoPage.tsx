@@ -6,8 +6,10 @@ import EmptyState from '../components/EmptyState';
 import { createDraft } from '../lib/noteDrafts';
 import './TodoPage.css';
 import LoadingBar from '../components/LoadingBar';
+import { useT } from '../i18n/store';
 
 export default function TodoPage() {
+  const t = useT();
   const { data: notes, isLoading, isError } = useNotes();
   const navigate = useNavigate();
 
@@ -29,7 +31,7 @@ export default function TodoPage() {
       </header>
 
       {isLoading && <LoadingBar label="Loading to-dos" />}
-      {isError && <p className="todo-page__status">Couldn’t reach the server.</p>}
+      {isError && <p className="todo-page__status">{t('common.serverUnreachable')}</p>}
       {!isLoading && !isError && todos.length === 0 && (
         <EmptyState
           icon={ListChecks}

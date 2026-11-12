@@ -165,6 +165,22 @@ describe('flushJournalOutbox', () => {
     expect([...queue.keys()]).toEqual(['2026-10-24']);
   });
 
+  it('keeps every queued day when the journal has been switched off, instead of treating the 404 as a missing day', async () => {
+    queue.set('2026-10-24', { date: '2026-10-24', patch: { body: 'a' }, queuedAt: '1' });
+    queue.set('2026-10-25', { date: '2026-10-25', patch: { body: 'b' }, queuedAt: '2' });
+    fetchMock.mockResolvedValue(json({ error: 'The journal is off.', code: 'journal_off' }, { status: 404 }));
+    expect(await flushJournalOutbox()).toEqual({ synced: 0, conflicts: [] });
+    expect([...queue.keys()]).toEqual(['2026-10-24', '2026-10-25']);
+    expect(fetchMock).toHaveBeenCalledTimes(1); // it stops at the first answer
+  });
+
+  it('still drops a queued day the server really has no place for (a plain 404)', async () => {
+    queue.set('2026-10-25', { date: '2026-10-25', patch: { body: 'b' }, queuedAt: '2' });
+    fetchMock.mockResolvedValue(json({ error: 'Not found' }, { status: 404 }));
+    await flushJournalOutbox();
+    expect(queue.size).toBe(0);
+  });
+
   it('keeps everything when the session has lapsed', async () => {
     queue.set('2026-10-25', { date: '2026-10-25', patch: { body: 'b' }, queuedAt: '2' });
     fetchMock.mockResolvedValue(json({}, { status: 401 }));

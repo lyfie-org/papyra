@@ -31,10 +31,15 @@ public static class EnvAliases
         ("PAPYRA_AI_ENABLED", "Features:Ai"),
         ("PAPYRA_COLLAB_ENABLED", "Features:Collab"),
         ("PAPYRA_UPDATE_CHECK_ENABLED", "Features:UpdateCheck"),
+        ("PAPYRA_SQLITE_WAL", "Features:SqliteWal"),
         ("PAPYRA_OLLAMA_URL", "Ollama:BaseUrl"),
         ("PAPYRA_WEBAUTHN_DOMAIN", "WebAuthn:ServerDomain"),
         ("PAPYRA_WHISPER_MODEL_PATH", "Whisper:ModelPath"),
         ("PAPYRA_OCR_TESSDATA_PATH", "Ocr:TessDataPath"),
+        // Chat notifications: imported once on first start (see ChannelSeed), then edited in the app.
+        ("PAPYRA_NTFY_URL", "Channels:Ntfy:Url"),
+        ("PAPYRA_NTFY_TOKEN", "Channels:Ntfy:Token"),
+        ("PAPYRA_TELEGRAM_BOT_TOKEN", "Channels:Telegram:BotToken"),
     ];
 
     /// <summary>

@@ -6,6 +6,7 @@ import {
   Sun, Moon, Monitor, Upload, Download, KeyRound, Copy, Trash2, Lock, ShieldAlert,
   Fingerprint, CheckCircle2, GitBranch, AlertTriangle, Bell, Mail, KeySquare, Send, UserPlus,
   Sparkles, Play, Cog, LockOpen, Eye, LogOut, X, Users, ScrollText, Repeat, Clock, Hand, BookOpen, FileText,
+  DatabaseBackup, BellRing,
 } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { useDismiss } from '../hooks/useDismiss';
@@ -14,6 +15,8 @@ import {
   useSmtpConfig, useSaveSmtpConfig,
   useSendTestEmail, useInviteUser,
 } from '../hooks/useInstanceConfig';
+import ChannelCards from '../components/ChannelCards';
+import ChannelsAdminPanel from '../components/ChannelsAdminPanel';
 import NotificationSettings from '../components/NotificationSettings';
 import UsersPanel from './ManageUsersPage';
 import GitSetupGuide from '../components/GitSetupGuide';
@@ -48,12 +51,20 @@ import { bumpAvatarVersion, useAvatarVersion } from '../lib/avatarVersion';
 import { useSettings, useUpdateSettings, RETENTION_OPTIONS } from '../hooks/useSettings';
 import { useImportStatus, importSummary, IMPORT_STATUS_KEY, type ImportStatus } from '../hooks/useImportStatus';
 import './SettingsPage.css';
+import { useT } from '../i18n/store';
+import type { MessageKey } from '../i18n/store';
+import RowArrows from '../components/RowArrows';
+import { rowScrollClass, useRowOverflow } from '../hooks/useRowOverflow';
+import SettingsAreaTabs from '../components/SettingsAreaTabs';
+import { areaOf, DEFAULT_TAB, isTab, type Area, type Tab } from '../lib/settingsAreas';
 import LoadingBar from '../components/LoadingBar';
 import BusyButton from '../components/BusyButton';
 import { useActivityTask, useBusy } from '../hooks/useBusy';
 import AboutPanel from '../components/AboutPanel';
 import JournalSettingsPanel from '../components/journal/JournalSettingsPanel';
+import { useJournalEnabled } from '../hooks/useJournal';
 import LogsPanel from '../components/LogsPanel';
+import InstanceBackupPanel from '../components/InstanceBackupPanel';
 import ExportDialog, { type ExportScope } from '../components/ExportDialog';
 import DeleteAccountSection from '../components/DeleteAccountSection';
 import CodeField from '../components/CodeField';
@@ -73,28 +84,26 @@ const IMPORT_LABEL: Record<ImportProvider, string> = {
   obsidian: 'Obsidian', keep: 'Google Keep', dayone: 'Day One', journal: 'journal',
 };
 
-type Tab = 'profile' | 'appearance' | 'journal' | 'notifications' | 'security' | 'data' | 'keys' | 'sync'
-  | 'users' | 'sso' | 'email' | 'ai' | 'jobs' | 'logs' | 'about';
-
-// Two groups. The first is yours — it changes what happens to you, and everyone
-// sees it. "Administration" changes the whole instance and only admins see it;
-// the heading keeps the two from reading as the same kind of setting.
-const NAV: { id: Tab; label: string; icon: typeof UserIcon; adminOnly?: boolean }[] = [
-  { id: 'profile', label: 'Profile', icon: UserIcon },
-  { id: 'appearance', label: 'Appearance', icon: Palette },
-  { id: 'journal', label: 'Journal', icon: BookOpen },
-  { id: 'notifications', label: 'Notifications', icon: Bell },
-  { id: 'security', label: 'Security', icon: Fingerprint },
-  { id: 'data', label: 'Data & Storage', icon: Database },
-  { id: 'keys', label: 'API Keys', icon: KeyRound },
-  { id: 'sync', label: 'Backup', icon: GitBranch },
-  { id: 'about', label: 'About', icon: Info },
-  { id: 'users', label: 'Users', icon: Users, adminOnly: true },
-  { id: 'sso', label: 'SSO', icon: KeySquare, adminOnly: true },
-  { id: 'email', label: 'Email', icon: Mail, adminOnly: true },
-  { id: 'ai', label: 'AI', icon: Sparkles, adminOnly: true },
-  { id: 'jobs', label: 'Jobs', icon: Cog, adminOnly: true },
-  { id: 'logs', label: 'Logs', icon: ScrollText, adminOnly: true },
+// The rail for each area. Which area a tab belongs to is decided in lib/settingsAreas (and only there); labels are
+// catalog keys (settings.nav.<tab>) so the rail can be translated and renamed without touching this list.
+const NAV: { id: Tab; label: MessageKey; icon: typeof UserIcon }[] = [
+  { id: 'profile', label: 'settings.nav.profile', icon: UserIcon },
+  { id: 'appearance', label: 'settings.nav.appearance', icon: Palette },
+  { id: 'journal', label: 'settings.nav.journal', icon: BookOpen },
+  { id: 'notifications', label: 'settings.nav.notifications', icon: Bell },
+  { id: 'security', label: 'settings.nav.security', icon: Fingerprint },
+  { id: 'data', label: 'settings.nav.data', icon: Database },
+  { id: 'keys', label: 'settings.nav.keys', icon: KeyRound },
+  { id: 'sync', label: 'settings.nav.sync', icon: GitBranch },
+  { id: 'about', label: 'settings.nav.about', icon: Info },
+  { id: 'users', label: 'settings.nav.users', icon: Users },
+  { id: 'sso', label: 'settings.nav.sso', icon: KeySquare },
+  { id: 'email', label: 'settings.nav.email', icon: Mail },
+  { id: 'channels', label: 'settings.nav.channels', icon: BellRing },
+  { id: 'instance', label: 'settings.nav.instance', icon: DatabaseBackup },
+  { id: 'ai', label: 'settings.nav.ai', icon: Sparkles },
+  { id: 'jobs', label: 'settings.nav.jobs', icon: Cog },
+  { id: 'logs', label: 'settings.nav.logs', icon: ScrollText },
 ];
 
 // The AI tab is hidden while the assistant is held back for a later release.
@@ -142,15 +151,24 @@ export default function SettingsPage() {
   const { user } = useAuth();
   const isAdmin = user?.role === 'Admin';
   const [params, setParams] = useSearchParams();
-  const requested = params.get('tab') as Tab | null;
-  const valid = VISIBLE_NAV.find(n => n.id === requested && (!n.adminOnly || isAdmin));
+  const t = useT();
+  const requested = params.get('tab');
+  // A server tab asked for by someone who isn't an administrator is no tab at all: they land on their own Profile.
+  const valid = isTab(requested) ? VISIBLE_NAV.find(n => n.id === requested && (areaOf(n.id) === 'you' || isAdmin)) : undefined;
   const tab: Tab = valid?.id ?? 'profile';
+  const area: Area = areaOf(tab);
   // Clearing `s` on a manual tab click stops a stale section from being chased
   // after the user has navigated somewhere else themselves.
   // (The desk scrolls back to the top on its own: the tab is in the URL, and a
   // new URL is a new page — see DeskScrollReset.)
-  const setTab = (t: Tab) => setParams(t === 'profile' ? {} : { tab: t }, { replace: true });
+  const setTab = (next: Tab) => setParams(next === 'profile' ? {} : { tab: next }, { replace: true });
   useScrollToSection(params.get('s'), tab);
+
+  // Switching area returns to the last page you had open there (the first time: Profile, or Users).
+  const lastTab = useRef<Record<Area, Tab>>({ ...DEFAULT_TAB });
+  useEffect(() => { lastTab.current[area] = tab; }, [area, tab]);
+  const switchArea = (next: Area) => { if (next !== area) setTab(lastTab.current[next]); };
+  const railItems = VISIBLE_NAV.filter(n => areaOf(n.id) === area);
 
   // On a phone the sections are one swipeable row; keep the active pill in
   // view (scrollLeft only — scrollIntoView would also scroll the page).
@@ -159,27 +177,33 @@ export default function SettingsPage() {
     const rail = railRef.current;
     const active = rail?.querySelector<HTMLElement>('.is-active');
     if (!rail || !active || rail.scrollWidth <= rail.clientWidth) return;
-    rail.scrollTo({ left: active.offsetLeft - (rail.clientWidth - active.offsetWidth) / 2, behavior: 'smooth' });
+    const calm = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
+    rail.scrollTo({ left: active.offsetLeft - (rail.clientWidth - active.offsetWidth) / 2, behavior: calm ? 'auto' : 'smooth' });
   }, [tab]);
 
+  const railRow = useRowOverflow(railRef, area);
+
+  const areaPages = (
+    <>
+      {area === 'server' && <p className="settings__server-note">{t('settings.serverNote')}</p>}
+      <div className={`settings__rail-row ${rowScrollClass(railRow)}`}>
+        <nav className="settings__rail row-scroll__scroller" aria-label={t(area === 'server' ? 'settings.area.server' : 'settings.area.you')} ref={railRef}>
+          {railItems.map(item => (
+            <RailItem key={item.id} item={item} active={tab === item.id} onSelect={setTab} />
+          ))}
+        </nav>
+        <RowArrows row={railRow} earlierLabel={t('settings.pages.earlier')} moreLabel={t('settings.pages.more')} />
+      </div>
+    </>
+  );
+
   return (
-    <section className="settings">
+    <section className={`settings${area === 'server' ? ' settings--server' : ''}${isAdmin ? ' settings--tabbed' : ''}`}>
       <div className="settings__shell">
         <div className="settings__side">
-          <h1 className="page-title settings__title">Settings</h1>
-          <nav className="settings__rail" aria-label="Settings sections" ref={railRef}>
-            {VISIBLE_NAV.filter(n => !n.adminOnly).map(item => (
-              <RailItem key={item.id} item={item} active={tab === item.id} onSelect={setTab} />
-            ))}
-            {isAdmin && (
-              <>
-                <p className="settings__rail-group" aria-hidden="true">Administration</p>
-                {VISIBLE_NAV.filter(n => n.adminOnly).map(item => (
-                  <RailItem key={item.id} item={item} active={tab === item.id} onSelect={setTab} />
-                ))}
-              </>
-            )}
-          </nav>
+          <h1 className="page-title settings__title">{t('settings.title')}</h1>
+          {/* Only an administrator has a second area. Nobody else sees tabs, or any hint that there is one. */}
+          {isAdmin ? <SettingsAreaTabs area={area} onChange={switchArea}>{areaPages}</SettingsAreaTabs> : areaPages}
         </div>
 
         <div className="settings__content">
@@ -194,6 +218,8 @@ export default function SettingsPage() {
           {tab === 'users' && isAdmin && <UsersPanel />}
           {tab === 'sso' && isAdmin && <SsoTab />}
           {tab === 'email' && isAdmin && <EmailTab />}
+          {tab === 'channels' && isAdmin && <ChannelsAdminPanel />}
+          {tab === 'instance' && isAdmin && <InstanceBackupPanel />}
           {tab === 'ai' && isAdmin && AI_ENABLED && <AiTab />}
           {tab === 'jobs' && isAdmin && <JobsTab />}
           {tab === 'logs' && isAdmin && <LogsPanel />}
@@ -205,8 +231,9 @@ export default function SettingsPage() {
 }
 
 function RailItem({ item, active, onSelect }: {
-  item: (typeof NAV)[number]; active: boolean; onSelect: (t: Tab) => void;
+  item: (typeof NAV)[number]; active: boolean; onSelect: (tab: Tab) => void;
 }) {
+  const t = useT();
   const Icon = item.icon;
   return (
     <button
@@ -215,7 +242,7 @@ function RailItem({ item, active, onSelect }: {
       aria-current={active}
       onClick={() => onSelect(item.id)}
     >
-      <Icon size={17} /> {item.label}
+      <Icon size={17} /> {t(item.label)}
     </button>
   );
 }
@@ -479,6 +506,7 @@ function AppearanceTab() {
 // shortcut on top. Adding or removing a device needs the vault open, so a
 // borrowed session cannot quietly add its own fingerprint.
 function SecurityTab() {
+  const t = useT();
   const confirm = useConfirm();
   const { user } = useAuth();
   const { status, open, lock } = useVault();
@@ -558,7 +586,7 @@ function SecurityTab() {
               {renamingPasskey !== d.id && <>
                 <button type="button" className="setting-row__action" onClick={() => setRenamingPasskey(d.id)}>Rename</button>
                 <BusyButton type="button" className="setting-row__action" disabled={!open}
-                  title={open ? undefined : 'Unlock your vault to remove a passkey'} onClick={() => remove(d)} busyLabel="Removing…">
+                  data-tooltip={open ? undefined : t('vault.removePasskeyTip')} onClick={() => remove(d)} busyLabel="Removing…">
                   Remove
                 </BusyButton>
               </>}
@@ -584,7 +612,7 @@ function SecurityTab() {
           <div className="setting-row is-open"><div className="setting-row__editor setting-row__editor--solo">
             {!open ? (
               <div className="settings__vault-unlock">
-                <p className="settings__hint">Unlock your vault first.</p>
+                <p className="settings__hint">{t('vault.openFirst')}</p>
                 <VaultUnlock onUnlocked={() => setError(null)} />
               </div>
             ) : (
@@ -615,10 +643,10 @@ function SecurityTab() {
         {status.isLoading && <div className="setting-row"><div className="setting-row__line"><LoadingBar label="Loading" /></div></div>}
         {s && (
           <SettingRow
-            label="PIN"
-            value={s.pinDisabled ? 'Switched off after too many wrong tries' : pinSet ? '••••••' : null}
+            label={t('vault.pin.label')}
+            value={s.pinDisabled ? t('vault.pin.disabled') : pinSet ? '••••••' : null}
             empty="Not set"
-            hint={pinSet ? 'Opens locked notes. Separate from your password.' : undefined}
+            hint={pinSet ? t('vault.pin.hint') : undefined}
             action={pinSet && !s.pinDisabled ? 'Change' : 'Set up'}
           >
             {close => (
@@ -634,9 +662,9 @@ function SecurityTab() {
         {pinSet && open && (
           <div className="setting-row"><div className="setting-row__line">
             <div className="setting-row__text">
-              <span className="setting-row__value"><LockOpen size={14} /> Vault open on this device</span>
+              <span className="setting-row__value"><LockOpen size={14} /> {t('vault.openHere')}</span>
             </div>
-            <BusyButton type="button" className="setting-row__action" onClick={() => lock()} busyLabel="Locking…">Lock now</BusyButton>
+            <BusyButton type="button" className="setting-row__action" onClick={() => lock()} busyLabel={t('vault.closing')}>{t('vault.closeIt')}</BusyButton>
           </div></div>
         )}
       </SettingGroup>
@@ -652,7 +680,10 @@ function SecurityTab() {
 function DataTab() {
   const { data: settings, isLoading } = useSettings();
   const update = useUpdateSettings();
-  const [provider, setProvider] = useState<ImportProvider>('obsidian');
+  const [picked, setProvider] = useState<ImportProvider>('obsidian');
+  const journalOn = useJournalEnabled();
+  // Importing into a journal that is switched off would be invisible, so those sources aren't offered.
+  const provider: ImportProvider = !journalOn && (picked === 'dayone' || picked === 'journal') ? 'obsidian' : picked;
   const [importMsg, setImportMsg] = useState<string | null>(null);
   const [uploading, setUploading] = useState(false);
   const [uploaded, setUploaded] = useState(0);
@@ -703,14 +734,16 @@ function DataTab() {
           onChange={e => setProvider(e.target.value as ImportProvider)}>
           <option value="obsidian">Obsidian vault (.zip)</option>
           <option value="keep">Google Keep (.zip)</option>
-          <optgroup label="Into your journal">
-            <option value="dayone">Day One (.zip)</option>
-            <option value="journal">Daily notes: 2024-03-02.md files (.zip)</option>
-          </optgroup>
+          {journalOn && (
+            <optgroup label="Into your journal">
+              <option value="dayone">Day One (.zip)</option>
+              <option value="journal">Daily notes: 2024-03-02.md files (.zip)</option>
+            </optgroup>
+          )}
         </select>
         <BusyButton type="button" className="settings__btn" disabled={importing && !uploading}
           busy={uploading} busyLabel="Uploading…" progress={uploading ? uploaded : null}
-          title={importing ? 'An import is already running' : undefined}
+          data-tooltip={importing ? 'An import is already running' : undefined}
           onClick={() => importRef.current?.click()}>
           <Upload size={16} /> Choose archive
         </BusyButton>
@@ -793,6 +826,7 @@ function DataTab() {
 // AES-GCM vault export/restore, gated by the account password. Restore replaces
 // the signed-in user's notes + media with the backup's contents.
 function EncryptedBackupSection() {
+  const t = useT();
   const confirm = useConfirm();
   const queryClient = useQueryClient();
   const restoreRef = useRef<HTMLInputElement | null>(null);
@@ -829,7 +863,7 @@ function EncryptedBackupSection() {
       a.click();
       URL.revokeObjectURL(url);
       setExportPw('');
-      setExportMsg('Encrypted backup downloaded.');
+      setExportMsg(t('backupFile.downloaded'));
     } finally {
       setExportBusy(false);
     }
@@ -862,15 +896,15 @@ function EncryptedBackupSection() {
   }
 
   return (
-    <SettingGroup title="Encrypted backup" id="encrypted-backup">
-      <SettingRow label="Download" value="A sealed copy of every note and file" hint="Locked with your account password" action="Download">
+    <SettingGroup title={t('settings.backupFile.title')} id="encrypted-backup">
+      <SettingRow label="Download" value={t('backupFile.download.value')} hint={t('backupFile.download.hint')} action="Download">
         {close => (
           <form className="settings__form" onSubmit={async e => { await generate(e); }}>
             <label className="settings__field">Your password
               <input type="password" autoComplete="current-password" autoFocus value={exportPw}
                 onChange={e => setExportPw(e.target.value)} required />
             </label>
-            <p className="settings__hint">Lose the password and the backup can’t be opened.</p>
+            <p className="settings__hint">{t('backupFile.forgot')}</p>
             {exportMsg && <p className="settings__msg">{exportMsg}</p>}
             <div className="settings__form-actions">
               <BusyButton type="submit" className="settings__btn" disabled={!exportPw} busy={exportBusy} busyLabel="Encrypting…">
@@ -1129,7 +1163,7 @@ function JobsTab() {
     const outcome = last.ok ? (last.summary || 'nothing needed doing') : last.error;
     return (
       <>
-        <span className={`jobs__chip ${last.ok ? 'jobs__chip--ok' : 'jobs__chip--failed'}`} title={at}>
+        <span className={`jobs__chip ${last.ok ? 'jobs__chip--ok' : 'jobs__chip--failed'}`} data-tooltip={at}>
           {last.ok ? <CheckCircle2 size={12} aria-hidden="true" /> : <AlertTriangle size={12} aria-hidden="true" />}
           {last.ok ? 'Last run' : 'Failed'} {agoPhrase(last.finishedUtc)}
         </span>
@@ -1225,6 +1259,7 @@ function JobsTab() {
 // typed here. That warning previously existed only in the API docs, which is
 // not where an admin is standing when they paste a URL.
 function SyncTab() {
+  const t = useT();
   const { data, isLoading, isError } = useGitConfig();
   const save = useSaveGitConfig();
 
@@ -1253,8 +1288,8 @@ function SyncTab() {
 
   return (
     <div className="settings__panel">
-      <h2 id="git-backup" className="settings__subhead">Back up to GitHub</h2>
-      <p className="settings__hint">An off-server copy of your notes, with full history.</p>
+      <h2 id="git-backup" className="settings__subhead">{t('settings.git.title')}</h2>
+      <p className="settings__hint">{t('settings.git.hint')}</p>
 
       <GitSetupGuide />
 
@@ -1274,10 +1309,8 @@ function SyncTab() {
         <div className="settings__callout" role="note">
           <AlertTriangle size={18} aria-hidden="true" />
           <div>
-            <strong>Anyone who can read the repository can read your notes.</strong>
-            <p>
-              Notes are stored as plain text, locked notes included. Keep it private, or switch on encryption above.
-            </p>
+            <strong>{t('settings.git.plain.title')}</strong>
+            <p>{t('settings.git.plain.body')}</p>
           </div>
         </div>
       ) : (
@@ -1294,8 +1327,8 @@ function SyncTab() {
       )}
 
       <details className="settings__advanced">
-        <summary>Another git host, or a different branch</summary>
-        <p className="settings__hint">Any https Git host that takes a token as the password.</p>
+        <summary>{t('settings.git.hostSummary')}</summary>
+        <p className="settings__hint">{t('settings.git.hostHint')}</p>
         <form className="settings__form" onSubmit={submit}>
           <label className="settings__field">Repository address
             <input
@@ -1334,6 +1367,7 @@ function SyncTab() {
 function NotificationsTab() {
   return (
     <div className="settings__panel">
+      <ChannelCards />
       <h2 id="email-notifications" className="settings__subhead">What Papyra tells you about</h2>
       <NotificationSettings />
     </div>
@@ -1354,6 +1388,7 @@ function SsoTab() {
 
 // ── Email / SMTP (admin) ─────────────────────────────────────────────────────────
 function EmailTab() {
+  const t = useT();
   const { data, isLoading, isError } = useSmtpConfig();
   const save = useSaveSmtpConfig();
   const test = useSendTestEmail();
@@ -1409,7 +1444,7 @@ function EmailTab() {
     <div className="settings__panel">
       {editing ? (
         <>
-          <h2 id="smtp" className="settings__subhead">Outbound email</h2>
+          <h2 id="smtp" className="settings__subhead">{t('settings.mail.title')}</h2>
           <form className="settings__form" onSubmit={submit}>
             <label className="settings__field settings__field--inline">
               <input type="checkbox" role="switch" className="switch" checked={v('enabled')} onChange={e => set('enabled', e.target.checked)} />
@@ -1461,7 +1496,7 @@ function EmailTab() {
         </>
       ) : (
         <SettingGroup
-          title="Outbound email"
+          title={t('settings.mail.title')}
           id="smtp"
           footer={
             <button type="button" className={`settings__btn${configured ? ' settings__btn--quiet' : ''}`} onClick={() => { setSaved(false); setEditing(true); }}>

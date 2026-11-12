@@ -91,7 +91,7 @@ export default function NotificationBell() {
         type="button"
         className="workspace__theme-toggle notif__button"
         aria-label={badge > 0 ? `Notifications, ${badge} new` : 'Notifications'}
-        title="Notifications"
+        data-tooltip="Notifications"
         aria-haspopup="dialog"
         aria-expanded={open}
         onClick={() => (open ? close() : setOpened(true))}

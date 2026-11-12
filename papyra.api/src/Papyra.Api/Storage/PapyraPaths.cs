@@ -69,6 +69,8 @@ public static class PapyraPaths
     public static string UserGitMirrorDir(IConfiguration config, string contentRoot, string userId)
         => Path.Combine(UsersDir(config, contentRoot), userId, ".papyra", "git-mirror");
 
+    // NOT disposable: accounts, passkeys, shares and instance settings live here.
+    // Only the NoteCache / embedding tables inside it are rebuildable.
     public static string DbPath(IConfiguration config, string contentRoot)
         => Path.Combine(DotPapyra(config, contentRoot), "papyra.db");
 

@@ -22,7 +22,7 @@ export const TAGLINE = 'A self-hosted notes app.';
 
 export const NAV = [
   { href: '/#features', label: 'Features' },
-  { href: '/#journey', label: 'Roadmap' },
+  { href: '/roadmap/', label: 'Roadmap' },
   { href: '/docs/', label: 'Docs' },
   { href: '/contribute/', label: 'Contribute' },
 ] as const;

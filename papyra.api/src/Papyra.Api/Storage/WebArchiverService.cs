@@ -382,29 +382,10 @@ public sealed partial class WebArchiverService : BackgroundService
         return $"archived-{hash}.md";
     }
 
-    // Reject anything that isn't a public unicast address (SSRF defense).
-    internal static bool IsPubliclyRoutable(IPAddress ip)
-    {
-        if (ip.IsIPv4MappedToIPv6) ip = ip.MapToIPv4();
-        if (IPAddress.IsLoopback(ip)) return false;
-
-        var b = ip.GetAddressBytes();
-        if (ip.AddressFamily == AddressFamily.InterNetwork)
-        {
-            if (b[0] is 0 or 10 or 127) return false;                 // "this", private, loopback
-            if (b[0] == 169 && b[1] == 254) return false;             // link-local (incl. 169.254.169.254 metadata)
-            if (b[0] == 172 && b[1] is >= 16 and <= 31) return false; // private
-            if (b[0] == 192 && b[1] == 168) return false;             // private
-            if (b[0] == 100 && b[1] is >= 64 and <= 127) return false;// CGNAT
-            if (b[0] >= 224) return false;                            // multicast + reserved
-            return true;
-        }
-
-        if (ip.IsIPv6LinkLocal || ip.IsIPv6Multicast || ip.IsIPv6SiteLocal) return false;
-        if (IPAddress.IPv6Any.Equals(ip)) return false;
-        if ((b[0] & 0xfe) == 0xfc) return false; // fc00::/7 unique-local
-        return true;
-    }
+    // Reject anything that isn't a public unicast address (SSRF defense). The rules live in
+    // OutboundPolicy, shared with the chat channels; the archiver fetches addresses strangers can
+    // influence, so unlike them it never honours the admin's allowed-hosts list.
+    internal static bool IsPubliclyRoutable(IPAddress ip) => OutboundPolicy.IsPubliclyRoutable(ip);
 
     internal static string BuildArchiveMarkdown(string url, SmartReader.Article article)
     {

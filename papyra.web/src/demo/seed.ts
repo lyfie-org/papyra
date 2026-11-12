@@ -227,7 +227,7 @@ Week 3 was the one where the sync engine ate its own tail. The write-ring came o
     updated: daysAgo(2, 13),
     body: `Half a sentence about something that seemed important at the time.
 
-Trash keeps a note for 30 days by default, so this is recoverable until it isn't. Change that in Settings → Data & Storage.`,
+Trash keeps a note for 30 days by default, so this is recoverable until it isn't. Change that in Settings → Your data.`,
   }),
 ];
 

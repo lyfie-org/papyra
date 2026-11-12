@@ -11,7 +11,7 @@ vi.mock('../hooks/useAuth', () => ({ useAuth: () => ({ user: { role: auth.role }
 const status = (over: Record<string, unknown> = {}) => ({
   enabled: true, current: '1.0.0', available: true, latest: '1.1.0',
   url: 'https://github.com/lyfie-org/papyra/releases/tag/v1.1.0',
-  checkedUtc: '2026-10-28T10:00:00Z', sends: { id: '2d1f0c2e-0000-4000-8000-000000000000', version: '1.0.0' }, ...over,
+  checkedUtc: '2026-10-28T10:00:00Z', ...over,
 });
 
 let calls: string[] = [];
@@ -42,6 +42,7 @@ describe('UpdateNotice', () => {
     const dialog = screen.getByRole('dialog', { name: /New version available/ });
     expect(dialog.textContent).toContain('Server version: v1.0.0');
     expect(dialog.textContent).toContain('Latest version: v1.1.0');
+    expect(dialog.textContent).toContain('Papyra looks at GitHub once a day. Nothing about your server is sent.');
     expect(screen.getByRole('link', { name: 'release notes' }).getAttribute('href')).toContain('github.com/lyfie-org/papyra');
     // Plain: no steps, no feature copy, no fine print.
     expect(dialog.textContent).not.toContain('docker');

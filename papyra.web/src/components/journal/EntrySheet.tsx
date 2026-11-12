@@ -451,7 +451,7 @@ export default function EntrySheet({ date, streakLine, bridge }: Props) {
           <p className="journal-sheet__weekday">{weekdayName(day)}</p>
           {/* The date opens the calendar, on this day's month. */}
           <h1 className="journal-sheet__date">
-            <Link to={`/journal/calendar?m=${day.slice(0, 7)}`} className="journal-sheet__date-link" title="Open the calendar">
+            <Link to={`/journal/calendar?m=${day.slice(0, 7)}`} className="journal-sheet__date-link" data-tooltip="Open the calendar">
               {longDate(day)}
             </Link>
           </h1>
@@ -616,7 +616,7 @@ export default function EntrySheet({ date, streakLine, bridge }: Props) {
             <BusyButton
               type="button" className="journal-sheet__tool" busyLabel={entry.locked ? 'Unlocking…' : 'Locking…'}
               onClick={() => setLock(!entry.locked)}
-              title={entry.locked ? 'Take the lock off this day' : 'Lock this day with your vault PIN'}
+              data-tooltip={entry.locked ? 'Take the lock off this day' : 'Lock this day with your vault PIN'}
             >
               {entry.locked ? <LockOpen size={14} aria-hidden="true" /> : <Lock size={14} aria-hidden="true" />}
               {entry.locked ? ' Remove lock' : ' Lock'}
@@ -626,17 +626,17 @@ export default function EntrySheet({ date, streakLine, bridge }: Props) {
             type="button" className="journal-sheet__tool"
             onClick={() => (history ? leaveHistory() : void openHistory())}
             aria-pressed={history} disabled={!entry?.exists || locked}
-            title="Earlier versions of this day"
+            data-tooltip="Earlier versions of this day"
           ><History size={14} aria-hidden="true" /> History</button>
           {entry?.exists && !entry.trashed && !locked && (
-            <button type="button" className="journal-sheet__tool" onClick={() => void moveToTrash()} title="Move this day to the Trash">
+            <button type="button" className="journal-sheet__tool" onClick={() => void moveToTrash()} data-tooltip="Move this day to the Trash">
               <Trash2 size={14} aria-hidden="true" /> Trash
             </button>
           )}
           <button
             type="button" className="journal-sheet__tool"
             onClick={() => (focus ? exitFocus() : enterFocus())}
-            aria-pressed={focus} title={focus ? 'Leave focus mode' : 'Focus mode'}
+            aria-pressed={focus} data-tooltip={focus ? 'Leave focus mode' : 'Focus mode'}
           >
             {focus ? <Minimize2 size={14} aria-hidden="true" /> : <Maximize2 size={14} aria-hidden="true" />}
             {focus ? ' Exit focus' : ' Focus'}

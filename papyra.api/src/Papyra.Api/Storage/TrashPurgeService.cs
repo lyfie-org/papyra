@@ -14,6 +14,7 @@ public sealed class TrashPurgeService : PeriodicJob
     private readonly VaultState _state;
     private readonly WriteRing _writeRing;
     private readonly SearchIndexService _search;
+    private readonly JournalSettings _journal;
     private readonly ILogger<TrashPurgeService> _logger;
 
     public TrashPurgeService(
@@ -21,6 +22,7 @@ public sealed class TrashPurgeService : PeriodicJob
         VaultState state,
         WriteRing writeRing,
         SearchIndexService search,
+        JournalSettings journal,
         JobRegistry registry,
         ILogger<TrashPurgeService> logger)
         : base(registry)
@@ -29,6 +31,7 @@ public sealed class TrashPurgeService : PeriodicJob
         _state = state;
         _writeRing = writeRing;
         _search = search;
+        _journal = journal;
         _logger = logger;
     }
 
@@ -60,9 +63,12 @@ public sealed class TrashPurgeService : PeriodicJob
 
         foreach (var userId in _state.Users)
         {
+            // A switched-off journal can't be seen or restored from, so its trashed days wait.
+            var journalOff = !_journal.IsEnabled(userId);
             foreach (var note in _state.SnapshotAll(userId))
             {
                 if (!note.Trashed) continue;
+                if (journalOff && JournalPaths.IsJournal(note)) continue;
                 // days == 0 → immediate; else only once the window has elapsed.
                 if (days > 0 && !(note.TrashedAt is { } t && t <= cutoff)) continue;
 

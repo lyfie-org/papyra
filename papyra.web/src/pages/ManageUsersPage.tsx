@@ -16,6 +16,7 @@ import LoadingBar from '../components/LoadingBar';
 import { MASKED_SECRET, NO_AUTOFILL } from '../lib/autofill';
 
 import BusyButton from '../components/BusyButton';
+import { useT } from '../i18n/store';
 // Accounts on this instance — Settings → Users, shown to admins only. It sits in
 // Settings' "Administration" group, apart from the preferences above it, so an
 // admin's own choices and the instance's roster don't read as the same thing.
@@ -93,7 +94,7 @@ export default function UsersPanel() {
       title: promote ? `Make ${target.username} an admin?` : `Make ${target.username} a regular user?`,
       body: promote
         ? 'They’ll be able to add, disable and remove accounts, and change this server’s settings (email, sign-on, jobs). Admins still can’t read anyone else’s notes.'
-        : 'They keep all their notes, and lose access to the Administration settings on their next click.',
+        : 'They keep all their notes, and lose access to Administration on their next click.',
       confirmLabel: promote ? 'Make admin' : 'Make regular user',
     }))) return;
     const res = await fetch(`/api/auth/users/${target.id}/role`, {
@@ -229,7 +230,7 @@ export default function UsersPanel() {
                     value={u.role}
                     aria-label={`Role for ${u.username}`}
                     disabled={isMe || u.disabled || (lastAdmin && u.role === 'Admin')}
-                    title={isMe ? 'Another admin has to change your role'
+                    data-tooltip={isMe ? 'Another admin has to change your role'
                       : lastAdmin ? 'The last admin can’t be made a regular user' : undefined}
                     onChange={e => void changeRole(u, e.target.value)}
                   >
@@ -294,7 +295,7 @@ export default function UsersPanel() {
 function PersonStatus({ user }: { user: ManagedUser }) {
   if (user.disabled) {
     return (
-      <span className="person-chip person-chip--off" title={user.disabledReason ?? undefined}>
+      <span className="person-chip person-chip--off" data-tooltip={user.disabledReason ?? undefined}>
         <Ban size={12} aria-hidden="true" /> Disabled
       </span>
     );
@@ -304,7 +305,7 @@ function PersonStatus({ user }: { user: ManagedUser }) {
   }
   if (user.mustChangePassword) {
     return (
-      <span className="person-chip person-chip--warn" title="Hasn’t chosen their own password yet">
+      <span className="person-chip person-chip--warn" data-tooltip="Hasn’t chosen their own password yet">
         <ShieldAlert size={12} aria-hidden="true" /> New password pending
       </span>
     );
@@ -387,7 +388,7 @@ function PersonMenu({ user, isMe, lastAdmin, onEdit, onReset, onResetBoth, onRes
             </button>
           )}
           <button type="button" role="menuitem" className="card-menu__item" onClick={run(onReset)} disabled={user.hasPassword === false}
-            title={user.hasPassword === false ? 'Signs in with single sign-on — no Papyra password' : undefined}>
+            data-tooltip={user.hasPassword === false ? 'Signs in with single sign-on — no Papyra password' : undefined}>
             <KeyRound size={15} /> Reset password
           </button>
           <button type="button" role="menuitem" className="card-menu__item" onClick={run(onLink)} disabled={user.hasPassword === false}>
@@ -396,7 +397,7 @@ function PersonMenu({ user, isMe, lastAdmin, onEdit, onReset, onResetBoth, onRes
           {!isMe && (
             <>
               <button type="button" role="menuitem" className="card-menu__item" onClick={run(onResetTotp)} disabled={!user.totpEnabled}
-                title={user.totpEnabled ? undefined : 'No authenticator set up yet'}>
+                data-tooltip={user.totpEnabled ? undefined : 'No authenticator set up yet'}>
                 <Smartphone size={15} /> Reset authenticator
               </button>
               <button type="button" role="menuitem" className="card-menu__item" onClick={run(onResetBoth)} disabled={user.hasPassword === false}>
@@ -413,7 +414,7 @@ function PersonMenu({ user, isMe, lastAdmin, onEdit, onReset, onResetBoth, onRes
                 </button>
               ) : (
                 <button type="button" role="menuitem" className="card-menu__item" onClick={run(onDisable)}
-                  disabled={lastAdmin} title={lastAdmin ? 'The last admin can’t be disabled' : undefined}>
+                  disabled={lastAdmin} data-tooltip={lastAdmin ? 'The last admin can’t be disabled' : undefined}>
                   <Ban size={15} /> Disable account…
                 </button>
               )}
@@ -555,6 +556,7 @@ function AddUserDialog({ onClose, onCreated }: {
   onClose: () => void;
   onCreated: (credentials: Credentials) => void | Promise<void>;
 }) {
+  const t = useT();
   const [username, setUsername] = useState('');
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
@@ -638,7 +640,7 @@ function AddUserDialog({ onClose, onCreated }: {
           <label className="users-dialog__field">Role
             <select value={role} onChange={e => setRole(e.target.value)}>
               <option value="User">User — their own notes</option>
-              <option value="Admin">Admin — can also manage accounts and instance settings</option>
+              <option value="Admin">{t('settings.users.roleAdmin')}</option>
             </select>
           </label>
 

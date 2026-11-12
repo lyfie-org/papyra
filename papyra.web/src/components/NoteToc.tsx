@@ -175,7 +175,7 @@ export default function NoteToc({ scrollRef }: { scrollRef: React.RefObject<HTML
               aria-current={i === active ? 'location' : undefined}
               className={`note-toc__item note-toc__item--h${h.level}${i === active ? ' is-active' : ''}${isFocused ? ' is-focused' : ''}`}
               style={{ height: step + (isFocused ? GROW : 0), '--toc-depth': depth } as CSSProperties}
-              title={open ? undefined : h.text}
+              data-tooltip={open ? undefined : h.text}
             >
               <span className="note-toc__label">{h.text}</span>
               <span className="note-toc__dash" aria-hidden="true" />

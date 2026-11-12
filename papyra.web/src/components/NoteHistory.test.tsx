@@ -65,7 +65,7 @@ describe('NoteHistory', () => {
     expect(slider().getAttribute('aria-valuemax')).toBe('3');
     expect(screen.getByText('3 of 3')).toBeTruthy();
     // live has one more line than version 300
-    expect(screen.getByTitle('Compared with the note now').textContent).toContain('+1');
+    expect(document.querySelector('[data-tooltip="Compared with the note now"]')!.textContent).toContain('+1');
   });
 
   it('steps with arrows and keys; Now hands the live note back and cannot be restored', async () => {

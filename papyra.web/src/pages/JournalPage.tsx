@@ -109,22 +109,22 @@ function DayView({ date }: { date: string }) {
       onTouchEnd={onTouchEnd}
     >
       <nav className="journal-page__bar" aria-label="Journal days">
-        <button type="button" className="journal-page__nav" onClick={() => go(addDays(date, -1))} aria-label="Previous day" title="Previous day (Alt+Shift+←)">
+        <button type="button" className="journal-page__nav" onClick={() => go(addDays(date, -1))} aria-label="Previous day" data-tooltip="Previous day" data-tooltip-keys="Alt+Shift+←">
           <ChevronLeft size={18} aria-hidden="true" />
         </button>
         <Link
           to={`/journal/calendar?m=${date.slice(0, 7)}`}
           className="journal-page__date"
-          title="Open the calendar"
+          data-tooltip="Open the calendar"
           aria-label={`${longDate(date)} — open the calendar`}
         >
           <CalendarDays size={15} aria-hidden="true" /> {mediumDate(date)}
         </Link>
-        <button type="button" className="journal-page__nav" onClick={() => go(addDays(date, 1))} disabled={!canNext} aria-label="Next day" title="Next day (Alt+Shift+→)">
+        <button type="button" className="journal-page__nav" onClick={() => go(addDays(date, 1))} disabled={!canNext} aria-label="Next day" data-tooltip="Next day" data-tooltip-keys="Alt+Shift+→">
           <ChevronRight size={18} aria-hidden="true" />
         </button>
         {today && date !== today && (
-          <button type="button" className="journal-page__today" onClick={() => go(today)} title="Back to today (Alt+T)">Today</button>
+          <button type="button" className="journal-page__today" onClick={() => go(today)} data-tooltip="Back to today" data-tooltip-keys="Alt+T">Today</button>
         )}
         <button
           type="button"
@@ -132,7 +132,7 @@ function DayView({ date }: { date: string }) {
           aria-pressed={asideOpen}
           aria-controls={asideOpen ? 'journal-aside' : undefined}
           onClick={() => setAsideOpen((o) => !o)}
-          title="Notes and to-dos to link, and this day in earlier years"
+          data-tooltip="Notes and to-dos to link, and this day in earlier years"
         >
           <PanelRight size={16} aria-hidden="true" /> Notes &amp; to-dos
         </button>

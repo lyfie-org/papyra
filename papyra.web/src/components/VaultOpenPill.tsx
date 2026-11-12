@@ -8,6 +8,7 @@ import { lockVault, touchVault } from '../lib/vault';
 import { useRealLocation } from '../lib/realLocation';
 import { useToast } from '../lib/toastContext';
 import './VaultOpenPill.css';
+import { useT } from '../i18n/store';
 
 // The last stretch before the vault locks itself, when the pill says so.
 const ENDING_S = 30;
@@ -60,6 +61,7 @@ function useVaultKeepAlive(open: boolean) {
  * quietly re-locking under the reader.
  */
 export default function VaultOpenPill() {
+  const t = useT();
   const left = useVaultTimeLeft();
   const open = left !== null;
   const { toast } = useToast();
@@ -122,11 +124,11 @@ export default function VaultOpenPill() {
         to="/vault"
         className="vault-pill__state"
         tabIndex={closing ? -1 : undefined}
-        title="Your vault is open on this device — locked notes are readable. It locks itself after 5 idle minutes."
+        data-tooltip={t('vault.pill.tip')}
       >
-        <span className="vault-pill__label">{closing ? 'Vault locked' : 'Vault open'}</span>
+        <span className="vault-pill__label">{closing ? t('vault.pill.closed') : t('vault.pill.open')}</span>
         {!closing && (
-          <span className="vault-pill__time" aria-label={`locks in ${Math.ceil(shown / 60)} minute${shown > 60 ? 's' : ''} if idle`}>
+          <span className="vault-pill__time" aria-label={t('vault.pill.closesIn', { count: Math.ceil(shown / 60) })}>
             {clock(shown)}
           </span>
         )}
@@ -136,8 +138,8 @@ export default function VaultOpenPill() {
         className="vault-pill__lock"
         onClick={() => void lock()}
         disabled={!!closing}
-        title="Lock vault now (⌘/Ctrl+Shift+L)"
-        aria-label="Lock vault now"
+        data-tooltip={t('vault.pill.close')} data-tooltip-keys="⌘/Ctrl+Shift+L"
+        aria-label={t('vault.pill.close')}
       >
         <span className="vault-pill__padlock" aria-hidden="true">
           <LockOpen size={14} className="vault-pill__padlock-open" />

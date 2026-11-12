@@ -6,6 +6,7 @@ import EmptyState from '../components/EmptyState';
 import LoadingBar from '../components/LoadingBar';
 import { useIncomingShares } from '../hooks/useShares';
 import './NotesPage.css';
+import { useT } from '../i18n/store';
 
 /**
  * Everything other people have shared with you, newest share first — nothing
@@ -14,6 +15,7 @@ import './NotesPage.css';
  * sit on your Notes desk, behind its "Shared with me" filter.
  */
 export default function SharedWithMePage() {
+  const t = useT();
   const { data: incoming, isLoading, isError } = useIncomingShares();
   const [params, setParams] = useSearchParams();
   const openShare = Number(params.get('open')) || null;
@@ -25,13 +27,13 @@ export default function SharedWithMePage() {
       </header>
 
       {isLoading && <LoadingBar label="Loading shared notes" />}
-      {isError && <p className="notes-page__status">Couldn’t reach the server.</p>}
+      {isError && <p className="notes-page__status">{t('common.serverUnreachable')}</p>}
       {!isLoading && !isError && (
         (incoming?.length ?? 0) === 0 ? (
           <EmptyState
             icon={Users}
             title="Nothing shared with you yet"
-            body="When someone on this Papyra shares a note with you, it shows up here — and on your Notes page too — with who shared it, when, and whether you can edit it."
+            body={t('shared.empty.body')}
           />
         ) : (
           <DraggableNoteGrid notes={[]} shared={incoming ?? []} showSharedDate />

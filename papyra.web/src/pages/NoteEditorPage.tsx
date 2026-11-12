@@ -4,6 +4,7 @@ import NoteEditor from '../components/NoteEditor';
 import { useNotes } from '../hooks/useNotes';
 import { retainDraft, useDraft } from '../lib/noteDrafts';
 import LoadingBar from '../components/LoadingBar';
+import { useT } from '../i18n/store';
 
 // Mounts the editor for /note/:id. The body lives in the notes snapshot the grid
 // already fetched, so we read the open note straight from that cache. Rendered by
@@ -13,6 +14,7 @@ import LoadingBar from '../components/LoadingBar';
 // it in the cache; the editor is the same component either way, so the switch
 // from draft to saved note happens under the caret without a remount.
 export default function NoteEditorPage({ id }: { id: string }) {
+  const t = useT();
   const { data: notes, isLoading, isError } = useNotes();
   const draft = useDraft(id);
 
@@ -24,7 +26,7 @@ export default function NoteEditorPage({ id }: { id: string }) {
   const note = saved ?? draft;
   if (!note) {
     if (isLoading) return <LoadingBar label="Loading note" />;
-    if (isError) return <p className="notes-page__status">Couldn’t reach the server.</p>;
+    if (isError) return <p className="notes-page__status">{t('common.serverUnreachable')}</p>;
     return (
       <p className="notes-page__status">
         Note not found. <Link to="/">Back to notes</Link>

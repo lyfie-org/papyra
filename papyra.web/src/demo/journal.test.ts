@@ -101,3 +101,35 @@ describe('the demo journal', () => {
     expect((await get<{ locked: number }>('/api/journal/lock-all', { method: 'POST' })).locked).toBe(0);
   });
 });
+
+describe('the demo journal, switched off', () => {
+  const setEnabled = (enabled: boolean) => put('/api/journal/settings', { enabled });
+
+  it('answers 404 journal_off everywhere but its settings, and nothing is lost when it comes back', async () => {
+    const day = addDays(now(), -2);
+    const before = await get<JournalEntry>(`/api/journal/${day}`);
+
+    expect((await setEnabled(false)).status).toBe(200);
+    const settings = await get<{ settings: { enabled: boolean } }>('/api/journal/settings');
+    expect(settings.settings.enabled).toBe(false);
+
+    for (const url of ['/api/journal/today', '/api/journal/stats', `/api/journal/${day}`, '/api/journal/bin?state=locked', '/api/journal/templates']) {
+      const res = await api(url);
+      expect(res.status, url).toBe(404);
+      expect((await res.json()).code).toBe('journal_off');
+    }
+    expect((await put(`/api/journal/${now()}`, { body: 'nope' })).status).toBe(404);
+
+    await setEnabled(true);
+    expect(await get<JournalEntry>(`/api/journal/${day}`)).toEqual(before);
+  });
+
+  it('leaves the journal out of search while it is off', async () => {
+    const { journalSearchHits } = await import('./journal');
+    const word = (await get<JournalEntry>(`/api/journal/${addDays(now(), -2)}`)).body.split(/\s+/).find((w) => w.length > 4)!;
+    expect(journalSearchHits(word).length).toBeGreaterThan(0);
+    await setEnabled(false);
+    expect(journalSearchHits(word)).toEqual([]);
+  });
+});
+

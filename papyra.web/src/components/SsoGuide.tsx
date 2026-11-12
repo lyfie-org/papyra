@@ -13,6 +13,7 @@ import { SsoIcon } from './SsoIcon';
 import './SsoGuide.css';
 
 import BusyButton from './BusyButton';
+import { useT } from '../i18n/store';
 interface Kind {
   id: SsoKind;
   name: string;
@@ -79,7 +80,6 @@ const KINDS: Kind[] = [
  * OnTokenValidated in Program.cs. Worth stating: SSO never creates accounts.
  */
 const ACCOUNT_RULES = [
-  'Existing accounts only — SSO never creates one. Add people under Administration first.',
   'First sign-in through a provider matches its email to the Papyra account’s email, then remembers that provider’s user id (sub).',
   'No roles or groups needed: admin rights stay in Papyra.',
   'Keep sub stable, and don’t let people change their own email in the provider.',
@@ -128,6 +128,7 @@ export function SsoGuide({ provider, taken, redirectUriPrefix, onDone }: {
   redirectUriPrefix: string;
   onDone: () => void;
 }) {
+  const t = useT();
   const save = useSaveSsoProvider();
   const [kind, setKind] = useState<SsoKind>(provider?.kind ?? 'authentik');
   const [authority, setAuthority] = useState(provider?.authority ?? '');
@@ -157,7 +158,7 @@ export function SsoGuide({ provider, taken, redirectUriPrefix, onDone }: {
       });
       setTest(await res.json());
     } catch {
-      setTest({ ok: false, error: 'Couldn’t reach this Papyra.' });
+      setTest({ ok: false, error: t('settings.sso.unreachable') });
     } finally {
       setTesting(false);
     }
@@ -214,6 +215,7 @@ export function SsoGuide({ provider, taken, redirectUriPrefix, onDone }: {
         <li>
           <h3 className="sso-guide__step-title">Who can sign in</h3>
           <ul className="sso-guide__howto">
+            <li>{t('settings.sso.existingOnly')}</li>
             {ACCOUNT_RULES.map(rule => <li key={rule}>{rule}</li>)}
           </ul>
         </li>
@@ -250,21 +252,21 @@ export function SsoGuide({ provider, taken, redirectUriPrefix, onDone }: {
             <div className="settings__field" role="radiogroup" aria-label="Icon">
               Icon
               <div className="sso-guide__icons">
-                <button type="button" role="radio" aria-checked={chosen === 'default'} title={`Default (${iconLabel(KIND_ICON[kind])})`}
+                <button type="button" role="radio" aria-checked={chosen === 'default'} data-tooltip={`Default (${iconLabel(KIND_ICON[kind])})`}
                   className={`sso-guide__icon${chosen === 'default' ? ' is-active' : ''}`}
                   onClick={() => { setIcon(null); setIconData(null); }}>
                   <SsoIcon kind={kind} size={20} />
                   <span className="sso-guide__icon-note">Default</span>
                 </button>
                 {ICON_CHOICES.map(key => (
-                  <button key={key} type="button" role="radio" aria-checked={chosen === key} title={iconLabel(key)}
+                  <button key={key} type="button" role="radio" aria-checked={chosen === key} data-tooltip={iconLabel(key)}
                     aria-label={iconLabel(key)}
                     className={`sso-guide__icon${chosen === key ? ' is-active' : ''}`}
                     onClick={() => { setIcon(key); setIconData(null); }}>
                     <SsoIcon kind="other" icon={key} size={20} />
                   </button>
                 ))}
-                <button type="button" role="radio" aria-checked={chosen === 'upload'} title="Upload your own"
+                <button type="button" role="radio" aria-checked={chosen === 'upload'} data-tooltip="Upload your own"
                   className={`sso-guide__icon${chosen === 'upload' ? ' is-active' : ''}`}
                   onClick={() => fileRef.current?.click()}>
                   {iconData ? <SsoIcon kind={kind} iconData={iconData} size={20} /> : <Upload size={18} aria-hidden="true" />}
@@ -309,6 +311,7 @@ export function SsoGuide({ provider, taken, redirectUriPrefix, onDone }: {
  * sign-in page shows them, and a guide to add another.
  */
 export default function SsoSettings() {
+  const t = useT();
   const { data, isLoading, isError } = useOidcConfig();
   const saveDisplay = useSaveSsoDisplay();
   const remove = useDeleteSsoProvider();
@@ -364,7 +367,7 @@ export default function SsoSettings() {
           </div></div>
         ))}
         {data.providers.length > 0 && (
-          <SettingRow label="Accounts" value="Existing only" hint="Linked by email on first sign-in, then by each provider’s user id (sub)" />
+          <SettingRow label="Accounts" value="Existing only" hint={t('settings.sso.matched')} />
         )}
       </SettingGroup>
 

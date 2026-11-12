@@ -16,6 +16,7 @@ import { stripBlockAnchors } from '../lib/plainText';
 import { getState, loadState, mutate, nextId, recountCategories } from './store';
 import { CHAT_FALLBACK, CHAT_SCRIPT, DEMO_USER } from './seed';
 import { journalRoutes, journalSearchHits } from './journal';
+import { DEMO_AVAILABLE_CHANNELS, channelRoutes, demoChatFor, setDemoChatSwitch } from './channels';
 
 export type Handler = (ctx: {
   match: RegExpMatchArray;
@@ -58,14 +59,15 @@ const DEMO_EVENTS = [
 const demoNotificationPrefs = () => ({
   emailConfigured: false,
   hasAddress: true,
-  channels: ['email'],
+  channels: ['email', ...DEMO_AVAILABLE_CHANNELS],
+  available: DEMO_AVAILABLE_CHANNELS,
   groups: [
     { id: 'security', label: 'Security & account' },
     { id: 'data', label: 'Your notes & backups' },
     { id: 'collab', label: 'Other people' },
   ],
   events: DEMO_EVENTS.map(([id, group, label, description, critical]) => ({
-    id, group, label, description, critical, email: critical || !demoNotifyOff[id],
+    id, group, label, description, critical, email: critical || !demoNotifyOff[id], chat: demoChatFor(id, critical),
   })),
   mention: !demoNotifyOff['collab.mention'],
   share: !demoNotifyOff['collab.shared'],
@@ -207,14 +209,18 @@ function chatStream(question: string, sessionId: number | null): Response {
 const routes: Route[] = [
   // The journal first: its `journal-…` note ids must not fall into the generic note routes below.
   ...journalRoutes(),
+  ...channelRoutes(),
 
   // ---------------------------------------------------------------- identity
   ['GET', /^\/api\/auth\/me$/, () => json(DEMO_USER)],
   ['GET', /^\/api\/auth\/providers$/, () => json({ password: true, oidc: null })],
   ['GET', /^\/api\/auth\/notifications$/, () => json(demoNotificationPrefs())],
   ['PUT', /^\/api\/auth\/notifications$/, async ({ body }) => {
-    const next = await body() as { events?: { id: string; enabled: boolean }[] };
-    for (const e of next.events ?? []) demoNotifyOff[e.id] = !e.enabled;
+    const next = await body() as { events?: { id: string; enabled: boolean; channel?: string }[] };
+    for (const e of next.events ?? []) {
+      if (e.channel && e.channel !== 'email') setDemoChatSwitch(e.channel, e.id, e.enabled);
+      else demoNotifyOff[e.id] = !e.enabled;
+    }
     return noContent();
   }],
   ['GET', /^\/api\/account\/delete$/, () => json({ graceDays: 7, blockers: [], scheduledUtc: null, needsEmailCode: false })],
@@ -266,6 +272,23 @@ const routes: Route[] = [
   ['GET', /^\/api\/auth\/smtp$/, () => json({ enabled: false, host: '', port: 587, fromAddress: '', username: '', hasPassword: false, useStartTls: true })],
   ['PUT', /^\/api\/auth\/smtp$/, () => serverOnly('Email settings')],
   ['POST', /^\/api\/auth\/smtp\//, () => serverOnly('Sending email')],
+  ['GET', /^\/api\/instance-backup$/, () => json({
+    passphraseSet: false, local: false, keep: 7, gitRemote: '', gitBranch: '', gitTokenSet: false,
+    lastLocalUtc: null, lastGitUtc: null, lastError: null, copies: [],
+  })],
+  ['PUT', /^\/api\/instance-backup$/, () => serverOnly('Server backups')],
+  ['POST', /^\/api\/instance-backup\//, () => serverOnly('Server backups')],
+  ['GET', /^\/api\/instance-backup\//, () => serverOnly('Server backups')],
+  // The notification services an administrator switches on. The demo shows them as they would look, switched on; changing
+  // them needs a real server (it has to talk to ntfy, Discord and Telegram).
+  ['GET', /^\/api\/admin\/notifications$/, () => json({
+    ntfy: { enabled: true, serverUrl: '', defaultServerUrl: 'https://ntfy.sh', hasToken: false },
+    discord: { enabled: true, webhooksAllowed: true, hasBotToken: true, botUsername: 'PapyraDemoBot' },
+    telegram: { enabled: true, hasToken: true, botUsername: 'PapyraDemoBot', pollError: null },
+    allowedHosts: [],
+  })],
+  ['PUT', /^\/api\/admin\/notifications\//, () => serverOnly('Changing notification services')],
+  ['POST', /^\/api\/admin\/notifications\//, () => serverOnly('Testing notification services')],
   ['GET', /^\/api\/users\/search$/, () => json([{ username: 'dana', name: 'Dana' }])],
 
   // ------------------------------------------------------------------- notes
@@ -331,6 +354,28 @@ const routes: Route[] = [
             color: n.color,
           })),
       );
+    },
+  ],
+  // "Download .md": the demo has no uploads, so it is always the plain text.
+  [
+    'GET',
+    /^\/api\/notes\/([^/]+)\/export$/,
+    ({ match }) => {
+      const note = findNote(decodeURIComponent(match[1]));
+      if (!note) return json({ error: 'not found' }, 404);
+      const q = (s: string) => JSON.stringify(s);
+      const front = [
+        '---',
+        `title: ${q(note.title)}`,
+        ...(note.tags.length ? [`tags: [${note.tags.map(q).join(', ')}]`] : []),
+        ...(note.color ? [`color: ${q(note.color)}`] : []),
+        ...(note.kind && note.kind !== 'note' ? [`kind: ${note.kind}`] : []),
+        '---',
+        '',
+      ];
+      return new Response(front.join('\n') + stripBlockAnchors(note.body), {
+        headers: { 'Content-Type': 'text/markdown; charset=utf-8' },
+      });
     },
   ],
   [

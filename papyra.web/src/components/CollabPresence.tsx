@@ -142,7 +142,7 @@ export default function CollabPresence({
                   <span
                     className="collab-presence__person collab-presence__person--agent"
                     style={{ '--collab-ring': peer.color } as CSSProperties}
-                    title={`${peer.name} — agent, editing`}
+                    data-tooltip={`${peer.name} — agent, editing`}
                     role="img"
                     aria-label={`${peer.name}, an agent, is editing`}
                   >
@@ -157,7 +157,7 @@ export default function CollabPresence({
                   type="button"
                   className={`collab-presence__person${editing ? '' : ' collab-presence__person--idle'}`}
                   style={{ '--collab-ring': peer.color } as CSSProperties}
-                  title={label}
+                  data-tooltip={label}
                   aria-label={`${label}. Show their cursor`}
                   onClick={() => revealCursor(cursorsRef.current, peer.name)}
                 >

@@ -28,17 +28,21 @@ Everything lives under `/data`. Back that up and you have backed up everything.
 
 ```
 /data
-├── .papyra/              instance state, all of it disposable except keys/
-│   ├── papyra.db         SQLite cache, rebuildable from the notes
+├── .papyra/              instance state; papyra.db and keys/ are NOT disposable
+│   ├── papyra.db         SQLite: accounts, passkeys, sharing, settings, NOT disposable
 │   ├── lucene-index/     full-text index, rebuildable
+│   ├── instance-backups/ daily encrypted copies of papyra.db + keys/, if turned on
 │   └── keys/             data-protection keys, NOT disposable, see below
 └── users/
     └── <user>/
         ├── notes/        your notes, as .md files. This is the real thing.
+        │   └── journal/  journal days, one file each (year/month/date.md)
         ├── media/        images you pasted or uploaded
         ├── .trash/       deleted notes, until retention expires
         └── .papyra/
             ├── snapshots/     earlier revisions of each note
+            ├── vault-keys.json  keys for locked notes, NOT disposable
+            ├── journal-templates/
             ├── order.json     manual card positions
             └── categories.json
 ```
@@ -55,9 +59,13 @@ Then set `PUID`/`PGID` to your own user so the files belong to you rather than
 root. Find them with `id -u` and `id -g`.
 
 > **`.papyra/keys` is the one directory you must not lose.** It holds the keys
-> your session cookies are signed with. Delete it and every signed-in browser is
-> logged out. It lives on the volume so that upgrading the container does not
-> invalidate every session.
+> your session cookies are signed with, and the keys that unlock each person's
+> `vault-keys.json`, which seals their locked notes and locked journal days.
+> Delete it and everyone is logged out, **and locked notes stay locked for
+> good.** It lives on the volume so that upgrading the container does not log
+> anyone out. `.papyra/papyra.db` matters just as much: it holds the accounts,
+> passkeys, sharing and settings, and nothing else can rebuild them. Back up all
+> of `/data`, hidden folders included.
 
 ## Changing the port
 

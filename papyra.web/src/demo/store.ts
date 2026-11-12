@@ -72,7 +72,11 @@ export function loadState(): DemoState {
       const parsed = JSON.parse(raw) as DemoState;
       // A vault written by an older build is replaced rather than migrated —
       // this is a demo, and a half-migrated one would be worse than a fresh one.
-      if (parsed.version === VERSION) state = parsed;
+      if (parsed.version === VERSION) {
+        state = parsed;
+        // Preferences added since this was saved (the journal switch) start at their defaults.
+        state.journalPrefs = { ...SEED_JOURNAL_PREFS, ...parsed.journalPrefs };
+      }
     }
   } catch {
     // Private browsing, disabled storage, corrupt JSON: fall back to the seed.

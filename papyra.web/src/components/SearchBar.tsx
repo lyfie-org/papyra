@@ -10,6 +10,7 @@ import { useTimeZone } from '../lib/timeZone';
 import { todayIn } from '../lib/journalDay';
 import { flattenMarkdown, normaliseLines } from '../lib/plainText';
 import { highlightParts } from '../lib/highlight';
+import { useJournalEnabled } from '../hooks/useJournal';
 import {
   GROUP_LABEL, tagResults, collectionResults, dayJumpResults, noteResult, orderResults, settingsResults,
   type ResultKind, type SearchResult,
@@ -105,6 +106,7 @@ export default function SearchBar() {
   const cached = useMemo(() => notes ?? [], [notes]);
   const isAdmin = user?.role === 'Admin';
   const zone = useTimeZone();
+  const journalOn = useJournalEnabled();
 
   const close = useCallback(() => { setOpen(false); setSummoned(false); setActive(0); }, []);
 
@@ -158,16 +160,17 @@ export default function SearchBar() {
     if (!q) return [];
     const byId = new Map(cached.map(n => [n.id, n]));
     return orderResults([
-      ...dayJumpResults(q, todayIn(new Date(), zone)),
+      // The journal being off takes the jump-to-a-day shortcut with it.
+      ...(journalOn ? dayJumpResults(q, todayIn(new Date(), zone)) : []),
       ...noteHits.map(hit => {
         const n = byId.get(hit.id);
         return noteResult(hit, hit.kind === 'journal' ? 'journal' : n?.kind ?? 'note', hit.rank, n);
       }),
-      ...settingsResults(q, isAdmin),
+      ...settingsResults(q, isAdmin, journalOn),
       ...tagResults(tags ?? [], q),
       ...collectionResults(collections ?? [], q),
     ]);
-  }, [query, noteHits, cached, isAdmin, tags, collections, zone]);
+  }, [query, noteHits, cached, isAdmin, tags, collections, zone, journalOn]);
 
   // The keyboard walks a flat list; the headings are drawn from it, not around
   // it. Clamp on read rather than in an effect — the list shrinks on every
@@ -328,7 +331,7 @@ export default function SearchBar() {
                     tabIndex={-1}
                     aria-hidden="true"
                     className="search__locate"
-                    title={`Show it in ${hit.locate.label}`}
+                    data-tooltip={`Show it in ${hit.locate.label}`}
                     aria-label={`Show “${hit.title}” in ${hit.locate.label}`}
                     onClick={() => locateHit(hit)}
                   >

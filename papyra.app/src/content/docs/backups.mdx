@@ -1,6 +1,6 @@
 ---
 title: Backups and git
-summary: Four ways to back up your notes. Copy the folder, export a zip, make an encrypted archive, or keep an automatic git mirror.
+summary: Ways to back up your notes and your server. Copy the folder, export a zip, make an encrypted archive, keep an automatic git mirror, or back up the accounts and settings.
 group: Living with it
 order: 2
 ---
@@ -18,33 +18,50 @@ existing backup tool at it. None of this needs Papyra's help.
 rsync -a --delete /var/lib/docker/volumes/papyra-data/_data/ /backup/papyra/
 ```
 
-Restoring is putting the folder back. The SQLite cache and Lucene index inside
-`.papyra/` are rebuildable, so a backup that skips them is still complete. But
-**do keep `/data/.papyra/keys/`**, or every signed-in browser is logged out on
-restore.
+Restoring is putting the folder back. The Lucene index in `.papyra/` is
+rebuildable, so a backup may skip it. **Do keep**:
+
+- `/data/.papyra/papyra.db`. It is not just a cache: it holds accounts, passkeys,
+  sharing, API keys and settings. Without it you start with no accounts.
+- `/data/.papyra/keys/` and each account's `.papyra/vault-keys.json`. Without
+  them every signed-in browser is logged out on restore, and locked notes and
+  locked journal days cannot be opened.
+
+The database runs in WAL mode, so `papyra.db` has `papyra.db-wal` and
+`papyra.db-shm` beside it while Papyra is running. Copy the three together, from
+a volume snapshot or with the container stopped. A copy of `papyra.db` alone,
+taken while it is running, can be missing recent changes.
+
+The zip export, encrypted archive and git mirror below hold one account's notes,
+files and preferences. They do not carry accounts, passkeys, sharing or
+settings. The folder copy does, and so does the
+[server backup](#server-backup), which exists for exactly that.
 
 ## Zip export
 
-**Settings → Backup → Export**. Downloads your whole vault as a zip. Per account,
-on demand, no scheduling. Good for taking a copy before you change something.
+**Settings → Your data → Export**. Downloads your whole vault as a zip. Per
+account, on demand, no scheduling. Good for taking a copy before you change
+something. The journal has its own export beside it; see
+[The journal](/docs/journal/).
 
-## Encrypted archives
+## Backup file
 
-**Settings → Backup → Generate**. Produces an AES-GCM encrypted archive with a
-key derived from a password you choose. **Settings → Backup → Restore** takes one
-back.
+**Settings → Your data → Backup file → Download**. Produces a password-protected
+copy of every note and file, opened with your account password.
+**Restore** in the same place replaces everything with a backup, and a fresh
+instance's first screen offers to restore one too.
 
 Use this when the backup will sit somewhere you do not fully trust: object
 storage, a USB stick, a friend's NAS.
 
-> The password is not recoverable. Papyra does not store it and cannot reset it.
-> An encrypted backup with a forgotten password is lost.
+> The password is not recoverable. Papyra cannot open a backup file without
+> it, so a forgotten password means a lost backup.
 
 ## Automatic git mirror
 
-**Settings → Backup → Git**, per account. Give it a remote and a branch and
-Papyra commits and pushes your notes on a schedule, using a real git
-implementation rather than shelling out.
+**Settings → Git backup**, per account. Give it a remote and a branch and Papyra
+commits and pushes your notes on a schedule, using a real git implementation
+rather than shelling out.
 
 This is the one to set up if you want the backup to happen without you
 remembering. It also gives you a full history of every note, browsable with any
@@ -55,7 +72,67 @@ moved apart from Papyra's (you pushed from elsewhere, or rewrote history), the
 sync stops and reports it rather than overwriting whatever is there. Resolve it
 by hand and it resumes.
 
+A mirror is either **plain** (readable Markdown files) or **encrypted** (every file sealed with your account
+password). In a plain mirror your locked notes stay locked: they are stored as they are on your server, not as
+readable text. In an encrypted mirror everything is sealed, locked notes included.
+
 Push manually any time with **Sync now**.
+
+## Server backup
+
+**Administration → Server backup**, for administrators. The other backups are about
+one person's notes. This one is about the server: every account, passkey and
+authenticator, sharing, API keys, webhooks, comments, and the email and SSO
+settings. It is the part of `papyra.db` that nothing else can rebuild.
+
+Each backup is one encrypted file: a consistent snapshot of the database, taken
+while Papyra runs, together with the `.papyra/keys/` folder that seals part of
+it. The keys have to travel with it. Authenticator secrets are sealed by them,
+so a database restored without them comes back with authenticators that can
+never verify. The note list and search index are left out, and rebuild from the
+files on the first start.
+
+**It holds no notes.** Those are the files in `/data/users`, or each account's
+own backup above.
+
+Set a **backup passphrase** first (12 characters or more). It opens every
+server backup and cannot be recovered, so keep it somewhere other than this
+server. Then choose where copies go:
+
+- **Copies on this server.** A daily file in `.papyra/instance-backups`, keeping
+  the newest few. It survives a damaged database, not a lost disk.
+- **A git repository.** The same file, pushed once a day with a token that can
+  write to it. Use a private repository of its own, not your notes repository.
+  The file is encrypted, so the repository holds nothing readable, but each
+  push adds a new copy to its history.
+- **Download.** The same file on demand, to keep wherever you like.
+
+**Back up now** runs the daily pass straight away. The pass also shows under
+**Administration → Jobs**, and a failure is reported there and by email like any other
+job.
+
+### Restoring one
+
+On a **new install**, the first screen offers **Restore a whole server**.
+Choose the file, or the repository, and give the passphrase. Papyra restarts on
+the restored accounts and settings, and the people in the backup sign in as they
+always did. Their notes come back from the files in `/data/users`, or from each
+person's own backup once they are signed in.
+
+On a **running server**, use **Administration → Server backup → Restore**. It asks
+for the passphrase and your own password, opens the backup and tells you how many
+accounts it holds, and only then replaces anything. Papyra stops and starts again
+on the backup, which needs a restart policy such as the
+`restart: unless-stopped` in the supplied compose files; without one, start it
+yourself.
+
+Nothing is thrown away. The database and keys it replaced are moved to
+`.papyra/replaced-by-restore-<date>`, so a wrong restore is undone by stopping
+Papyra and moving them back.
+
+A backup from a newer Papyra is refused with a message to update first. One from
+an older Papyra restores, and its database is brought up to date on the first
+start.
 
 ## What to actually do
 
@@ -63,24 +140,27 @@ For most people: keep the volume in whatever backs up the rest of the machine,
 and turn on the git mirror. The first protects you from losing the disk; the
 second from losing a note you wanted back.
 
-Add encrypted archives when the copy leaves your control.
+Add encrypted archives when the copy leaves your control. Turn on the instance
+backup when more than one person has an account, so that a lost server does not
+also mean everyone setting up their passkeys, authenticators and shares again.
 
 ## Restoring onto a fresh instance
 
 1. Bring up Papyra with an empty volume so it initialises.
 2. Stop the container.
-3. Put the backed-up `/data` in place, including `.papyra/keys/`.
+3. Put the backed-up `/data` in place, including `.papyra/papyra.db`,
+   `.papyra/keys/` and each account's `.papyra/vault-keys.json`.
 4. Start it again.
 
 On start-up Papyra reconciles disk against cache **before** it opens the port, so
 notes restored underneath it are picked up on the way up. You do not need to
-rebuild anything by hand, though **Settings → Data & Storage** will rebuild the
+rebuild anything by hand, though **Settings → Your data** will rebuild the
 search index if search looks stale afterwards.
 
 ## Trash is not a backup
 
 Deleted notes sit in Trash for the retention period (30 days by default,
-configurable in **Settings → Data & Storage**, including "keep forever" and
+configurable in **Settings → Your data**, including "keep forever" and
 "delete immediately"). Once retention expires the note is erased for good.
 
 Snapshots of overwritten text are a different mechanism again, kept per note and

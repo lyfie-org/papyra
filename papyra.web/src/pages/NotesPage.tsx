@@ -16,8 +16,10 @@ import { createDraft } from '../lib/noteDrafts';
 import './NotesPage.css';
 import LoadingBar from '../components/LoadingBar';
 import { fetchWithProgress } from '../lib/progress';
+import { useT } from '../i18n/store';
 
 export default function NotesPage() {
+  const t = useT();
   const { data: notes, isLoading, isError } = useNotes();
   const { data: conflicts } = useConflicts();
   const navigate = useNavigate();
@@ -189,7 +191,7 @@ export default function NotesPage() {
       )}
 
       {isLoading && <LoadingBar label="Loading notes" />}
-      {isError && <p className="notes-page__status">Couldn’t reach the server.</p>}
+      {isError && <p className="notes-page__status">{t('common.serverUnreachable')}</p>}
       {/* A brand-new vault gets an explanation, not the word "empty". */}
       {!isLoading && !isError && isFirstRun && <FirstRun onCreate={createNote} />}
       {!isLoading && !isError && !isFirstRun && (

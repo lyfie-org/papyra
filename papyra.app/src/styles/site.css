@@ -55,6 +55,47 @@ html {
   }
 }
 
+/* Scrollbars: a slim, rounded ink pill on a bare track, the same as the app
+   (papyra.web/src/index.css), so the page, the docs sidebar, code blocks and
+   tables all match in light and dark. The transparent border insets the pill
+   from the edge. Colours come from --scroll-*. Firefox has no ::-webkit-scrollbar,
+   so it gets the standard thin coloured one; Chromium 121+ ignores the webkit
+   pseudo-elements once scrollbar-color is set, hence the @supports split. */
+@supports not selector(::-webkit-scrollbar) {
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: var(--scroll-thumb) var(--scroll-track);
+  }
+}
+
+::-webkit-scrollbar {
+  width: 12px;
+  height: 12px;
+}
+
+::-webkit-scrollbar-track,
+::-webkit-scrollbar-corner {
+  background: var(--scroll-track);
+}
+
+::-webkit-scrollbar-thumb {
+  min-height: 40px;
+  border: 4px solid transparent;
+  border-radius: 999px;
+  background: var(--scroll-thumb) padding-box;
+  transition: background-color var(--dur-fast) var(--ease);
+}
+
+::-webkit-scrollbar-thumb:hover,
+::-webkit-scrollbar-thumb:active {
+  border-width: 3px;
+  background-color: var(--scroll-thumb-hover);
+}
+
+::-webkit-scrollbar-button {
+  display: none;
+}
+
 body {
   margin: 0;
   min-height: 100%;

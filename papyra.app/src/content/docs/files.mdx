@@ -66,14 +66,16 @@ between machines creates conflicts that mean nothing.
 
 Leave these to Papyra:
 
-- `.papyra/`: snapshots, card order, category colours
+- `.papyra/`: snapshots, card order, category colours, and `vault-keys.json`
 - `.trash/`: deleted notes awaiting retention expiry
-- `/data/.papyra/`: the SQLite cache, the Lucene index, and the
+- `/data/.papyra/`: the SQLite database, the Lucene index, and the
   data-protection keys
 
-The cache and index are disposable; Papyra rebuilds them from the notes on
-demand (Settings → Data & Storage). The **keys** directory is not disposable.
-Losing it signs out every browser.
+The search index is disposable, and so is the note list inside the database;
+Papyra rebuilds both from the notes on demand (Settings → Your data). The
+rest of the database (accounts, passkeys, sharing, settings), the **keys**
+directory and each `vault-keys.json` are not; see [Install](/docs/install/).
+Exclude `.papyra/` from a syncer, but keep it in your backups.
 
 ## git
 

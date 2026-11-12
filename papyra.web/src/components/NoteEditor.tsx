@@ -98,7 +98,7 @@ function EditedStamp({ updated }: { updated: string }) {
   const label = editedLabel(updated, zone, now);
   if (!label) return null;
   return (
-    <time className="note-editor__edited" dateTime={updated} title={fullStamp(updated, zone)}>
+    <time className="note-editor__edited" dateTime={updated} data-tooltip={fullStamp(updated, zone)}>
       {label}
     </time>
   );
@@ -897,12 +897,12 @@ export default function NoteEditor({ note, isDraft = false }: { note: Note; isDr
               className={`note-toolbar__btn${note.pinned ? ' is-active' : ''}`}
               aria-pressed={note.pinned}
               aria-label={note.pinned ? 'Unpin note' : 'Pin note'}
-              title={note.pinned ? 'Unpin' : 'Pin'}
+              data-tooltip={note.pinned ? 'Unpin' : 'Pin'}
               onClick={() => void saveFrontmatter({ pinned: !note.pinned })}
             >
               <Pin size={18} fill={note.pinned ? 'currentColor' : 'none'} />
             </button>
-            <button type="button" className="note-toolbar__btn" aria-label="Focus mode" title="Focus mode" onClick={enterFocus}>
+            <button type="button" className="note-toolbar__btn" aria-label="Focus mode" data-tooltip="Focus mode" onClick={enterFocus}>
               <Maximize2 size={18} />
             </button>
           </div>

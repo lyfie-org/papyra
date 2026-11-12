@@ -170,7 +170,7 @@ export default function RuleBuilder({ collection, onSaved, onCancel }: {
                     role="radio"
                     aria-checked={on}
                     aria-label={label}
-                    title={label}
+                    data-tooltip={label}
                     className={`rule-builder__swatch${on ? ' is-on' : ''}`}
                     style={{ background: col.value }}
                     onClick={() => update(i, { value: col.value })}

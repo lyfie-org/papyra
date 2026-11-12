@@ -110,7 +110,9 @@ public sealed class SearchIndexService : IDisposable
         // (indexed terms are readable from it even when not stored), so it stays
         // out; the search route matches locked titles in memory (MatchTitles).
         new TextField("title", note.Secure ? string.Empty : note.Title ?? string.Empty, Field.Store.YES) { Boost = 2f },
-        new StringField("tags", string.Join(' ', note.Tags), Field.Store.YES),
+        // Analysed like the other searched fields. A StringField is one untokenised
+        // term, so "work home" only ever matched a search for exactly "work home".
+        new TextField("tags", string.Join(' ', note.Tags), Field.Store.YES),
         // A secure note is findable by title and tags only. Indexing its body would
         // turn search into an oracle for the locked text: a hit on a word answers
         // "does the secret note contain this?" without ever unlocking it.

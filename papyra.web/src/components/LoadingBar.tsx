@@ -1,4 +1,5 @@
 import type { CSSProperties } from 'react';
+import { useIndicator } from '../hooks/useBusy';
 import './LoadingBar.css';
 
 /**
@@ -12,6 +13,7 @@ export default function LoadingBar({ label, value, className }: {
   value?: number | null;
   className?: string;
 }) {
+  useIndicator();
   const known = typeof value === 'number';
   const pct = known ? Math.round(Math.min(1, Math.max(0, value)) * 100) : undefined;
   return (

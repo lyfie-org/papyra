@@ -89,8 +89,10 @@ public sealed class GitSyncService : BackgroundService
         ILogger<GitSyncService> logger,
         IDataProtectionProvider dataProtection,
         BackupLayout layout,
+        SecretBox secrets,
         EmailSender? email = null)
     {
+        _secrets = secrets;
         _scopes = scopes;
         _config = config;
         _env = env;
@@ -100,6 +102,14 @@ public sealed class GitSyncService : BackgroundService
         _keyProtector = dataProtection.CreateProtector("Papyra.GitBackupKey.v1");
         _layout = layout;
     }
+
+    private readonly SecretBox _secrets;
+
+    /// <summary>A git access token as it is stored: sealed, so the database alone doesn't show it.</summary>
+    public string? SealToken(string? token) => _secrets.Seal(token);
+
+    /// <summary>The usable token behind a stored one (an older plain value passes through).</summary>
+    public string? OpenToken(string? stored) => _secrets.Open(stored, "A saved git access token");
 
     public string ProtectKey(byte[] dataKey) => _keyProtector.Protect(Convert.ToBase64String(dataKey));
     public byte[] UnprotectKey(string sealedKey) => Convert.FromBase64String(_keyProtector.Unprotect(sealedKey));
@@ -173,7 +183,7 @@ public sealed class GitSyncService : BackgroundService
                     return new GitSyncResult("disabled", null);
 
                 branch = await ReadSetting(db, GitKeys.Branch(userId), ct);
-                token = await ReadSetting(db, GitKeys.Token(userId), ct);
+                token = OpenToken(await ReadSetting(db, GitKeys.Token(userId), ct));
                 mode = await ReadSetting(db, GitKeys.Mode(userId), ct);
                 sealedKey = await ReadSetting(db, GitKeys.DataKey(userId), ct);
                 crypto = await ReadSetting(db, GitKeys.Crypto(userId), ct);
@@ -190,7 +200,7 @@ public sealed class GitSyncService : BackgroundService
             {
                 if (string.IsNullOrEmpty(sealedKey) || string.IsNullOrEmpty(crypto))
                     return await FinishAsync(userId, new GitSyncResult("error",
-                        "The encrypted backup has lost its key. Switch encryption off and on again in Settings → Backup."), ct);
+                        "The encrypted backup has lost its key. Switch encryption off and on again in Settings → Git backup."), ct);
                 var header = JsonSerializer.Deserialize<EncryptedGitHeader>(crypto, JsonOpts)!;
                 var key = UnprotectKey(sealedKey);
                 try
@@ -292,7 +302,7 @@ public sealed class GitSyncService : BackgroundService
         }
     }
 
-    private static GitSyncResult RunSync(string dir, string content, string remoteUrl, string branch, string? token)
+    internal static GitSyncResult RunSync(string dir, string content, string remoteUrl, string branch, string? token)
     {
         Directory.CreateDirectory(dir);
         if (!Repository.IsValid(dir))
@@ -408,10 +418,10 @@ public sealed class GitSyncService : BackgroundService
                 result.Status == "conflict"
                     ? "The git repository your notes back up to has changes Papyra doesn't have, so it stopped "
                       + "rather than overwrite them. Nothing was lost on either side.\n\n"
-                      + "Open Settings → Backup in Papyra to see what to do."
+                      + "Open Settings → Git backup in Papyra to see what to do."
                     : "Papyra couldn't push your notes to your git repository. It will keep trying every half hour, "
                       + "but won't email again until it has worked once.\n\n"
-                      + "Open Settings → Backup in Papyra to check the repository address and access token.",
+                      + "Open Settings → Git backup in Papyra to check the repository address and access token.",
                 [new("What happened", Short(result.Detail ?? result.Status))], ct);
         }
         else if (result.Status == "pushed")

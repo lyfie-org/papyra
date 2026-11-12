@@ -7,32 +7,14 @@ import { putNote } from '../lib/notesApi';
 import { uuid } from '../lib/uuid';
 import { patchNoteInCache } from '../lib/notesCache';
 import { vaultFetch } from '../lib/vault';
+import { downloadNote } from '../lib/noteDownload';
 import { useToast } from '../lib/toastContext';
 import { useSyncState } from '../hooks/useSync';
 import { usePopoverMenu } from '../hooks/usePopoverMenu';
 import { useAuth } from '../hooks/useAuth';
 import { noteLink } from '../hooks/useShares';
 import './CardMenu.css';
-
-/** A note as the .md file Papyra would write: YAML front matter, then the body. */
-function toMarkdown(note: Note): string {
-  const q = (s: string) => JSON.stringify(s);
-  const fm = [
-    '---',
-    `title: ${q(note.title)}`,
-    ...(note.tags.length ? [`tags: [${note.tags.map(q).join(', ')}]`] : []),
-    ...(note.color ? [`color: ${q(note.color)}`] : []),
-    ...(note.kind && note.kind !== 'note' ? [`kind: ${note.kind}`] : []),
-    '---',
-    '',
-  ];
-  return `${fm.join('\n')}${note.body}`;
-}
-
-function fileName(note: Note): string {
-  const base = (note.title.trim() || 'Untitled').replace(/[\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim();
-  return `${base.slice(0, 80) || 'Untitled'}.md`;
-}
+import { useT } from '../i18n/store';
 
 /**
  * The "…" menu on a desk card (notes and to-do lists).
@@ -51,6 +33,7 @@ export default function CardMenu({ note, onShare, onArchive, onDelete, triggerCl
   onDelete?: () => unknown;
   triggerClassName?: string;
 }) {
+  const t = useT();
   const { open, pos, triggerRef, menuRef, toggle, onMenuKey, run } = usePopoverMenu();
   const auth = useAuth();
   const queryClient = useQueryClient();
@@ -123,13 +106,14 @@ export default function CardMenu({ note, onShare, onArchive, onDelete, triggerCl
     }
   }
 
-  function download() {
-    const blob = new Blob([toMarkdown(note)], { type: 'text/markdown;charset=utf-8' });
-    const a = document.createElement('a');
-    a.href = URL.createObjectURL(blob);
-    a.download = fileName(note);
-    a.click();
-    setTimeout(() => URL.revokeObjectURL(a.href), 1000);
+  // The server builds it: a note with pictures arrives as a zip with them in, so
+  // its ![[embeds]] still resolve once it is opened somewhere else.
+  async function download() {
+    try {
+      await downloadNote(`/api/notes/${encodeURIComponent(note.id)}/export`, note.title);
+    } catch (e) {
+      toast((e as Error).message);
+    }
   }
 
   const offline = online ? undefined : 'Needs a connection';
@@ -141,7 +125,7 @@ export default function CardMenu({ note, onShare, onArchive, onDelete, triggerCl
         type="button"
         className={triggerClassName ?? 'note-card__action'}
         aria-label="More actions"
-        title="More actions"
+        data-tooltip="More actions"
         aria-haspopup="menu"
         aria-expanded={open}
         onClick={toggle}
@@ -164,24 +148,24 @@ export default function CardMenu({ note, onShare, onArchive, onDelete, triggerCl
           <button type="button" role="menuitem" className="card-menu__item" onClick={run(togglePin)}>
             {note.pinned ? <PinOff size={15} /> : <Pin size={15} />} {note.pinned ? 'Unpin' : 'Pin to top'}
           </button>
-          <button type="button" role="menuitem" className="card-menu__item" disabled={!online} title={offline}
+          <button type="button" role="menuitem" className="card-menu__item" disabled={!online} data-tooltip={offline}
             onClick={run(toggleLock)}>
             {note.secure ? <LockOpen size={15} /> : <Lock size={15} />} {note.secure ? 'Unlock note' : 'Lock in Vault'}
           </button>
-          <button type="button" role="menuitem" className="card-menu__item" disabled={!online} title={offline}
+          <button type="button" role="menuitem" className="card-menu__item" disabled={!online} data-tooltip={offline}
             onClick={run(onShare)}>
             <Share2 size={15} /> Share…
           </button>
           <div className="card-menu__sep" role="separator" />
           <button type="button" role="menuitem" className="card-menu__item" disabled={note.secure}
-            title={note.secure ? 'Unlock the note to copy it' : undefined} onClick={run(duplicate)}>
+            data-tooltip={note.secure ? t('vault.copyTip') : undefined} onClick={run(duplicate)}>
             <Copy size={15} /> Make a copy
           </button>
           <button type="button" role="menuitem" className="card-menu__item" onClick={run(copyLink)}>
             <Link2 size={15} /> Copy link
           </button>
-          <button type="button" role="menuitem" className="card-menu__item" disabled={note.secure}
-            title={note.secure ? 'Unlock the note to download it' : undefined} onClick={run(download)}>
+          <button type="button" role="menuitem" className="card-menu__item" disabled={note.secure || !online}
+            data-tooltip={note.secure ? t('vault.downloadTip') : offline} onClick={run(download)}>
             <Download size={15} /> Download .md
           </button>
           {(onArchive || onDelete) && <div className="card-menu__sep" role="separator" />}
@@ -192,7 +176,7 @@ export default function CardMenu({ note, onShare, onArchive, onDelete, triggerCl
           )}
           {onDelete && (
             <button type="button" role="menuitem" className="card-menu__item card-menu__item--danger"
-              disabled={!online} title={offline} onClick={run(onDelete)}>
+              disabled={!online} data-tooltip={offline} onClick={run(onDelete)}>
               <Trash2 size={15} /> Move to Trash
             </button>
           )}

@@ -193,7 +193,7 @@ describe('BulkBar', () => {
     for (const name of ['Pin', 'Archive', 'Share', 'Delete']) {
       const btn = within(bar).getByRole('button', { name }) as HTMLButtonElement;
       expect(btn.disabled).toBe(true);
-      expect(btn.title).toBe('Needs a connection');
+      expect(btn.getAttribute('data-tooltip')).toBe('Needs a connection');
     }
     // Clearing the selection never needs the server.
     expect((within(bar).getByRole('button', { name: 'Clear selection' }) as HTMLButtonElement).disabled).toBe(false);

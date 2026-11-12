@@ -1,0 +1,56 @@
+/* The one tooltip. The look is the journal's mood-picker tip (surface, 1px border, soft card shadow, heading ink),
+   made available everywhere. Colours only through tokens; nothing here is green. */
+.tip {
+  position: fixed;
+  left: 0;
+  top: 0;
+  z-index: 2000;
+  max-width: 18rem;
+  display: flex;
+  align-items: baseline;
+  flex-wrap: wrap;
+  gap: var(--space-1) var(--space-2);
+  padding: var(--space-1) var(--space-2);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  box-shadow: var(--shadow-card);
+  color: var(--text-h);
+  font: 500 var(--fs-xs)/1.35 var(--sans);
+  letter-spacing: 0.01em;
+  /* Hovered on purpose (to read it, or to select its text), so it takes the pointer. */
+  pointer-events: auto;
+  /* Hidden until positioned, so it never flashes in the corner. */
+  visibility: hidden;
+}
+
+.tip[data-ready='true'] {
+  visibility: visible;
+  animation: tip-rise-down var(--dur-fast) var(--ease) both;
+}
+.tip[data-ready='true'][data-side='top'] { animation-name: tip-rise-up; }
+
+.tip__text {
+  white-space: pre-line;
+  overflow-wrap: anywhere;
+}
+
+.tip__keys { display: inline-flex; gap: 3px; }
+
+.tip__key {
+  padding: 0 5px;
+  border: 1px solid var(--border);
+  border-bottom-width: 2px;
+  border-radius: 4px;
+  background: var(--bg);
+  color: var(--text);
+  font: 500 11px/1.5 var(--mono);
+  white-space: nowrap;
+}
+
+@keyframes tip-rise-down { from { opacity: 0; transform: translateY(-4px); } to { opacity: 1; transform: none; } }
+@keyframes tip-rise-up   { from { opacity: 0; transform: translateY(4px);  } to { opacity: 1; transform: none; } }
+
+@media (prefers-reduced-motion: reduce) {
+  .tip[data-ready='true'] { animation: none; }
+}

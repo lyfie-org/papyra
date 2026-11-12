@@ -5,7 +5,8 @@
 // axe-core (WCAG 2.0/2.1/2.2 A + AA) and fails on any violation. Then it checks
 // what axe cannot see:
 //   - keyboard: the formatting-toolbar toggle is reachable by Tab, shows a focus
-//     ring, and works with Enter;
+//     ring, and works with Enter; the settings area tabs, the service tiles (one stop,
+//     arrows, Home/End, panel wiring) and the tooltip (hover, focus, Escape);
 //   - the caret holds 3:1 against the sheet it blinks on (WCAG 1.4.11);
 //   - selected text — body and links — holds 4.5:1 on the selection wash.
 //
@@ -83,6 +84,14 @@ const dayAgo = (n) => {
   const d = new Date();
   d.setDate(d.getDate() - n);
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+};
+
+// Flip "Use the journal" off in Settings → Journal and wait until the tab has collapsed.
+const turnJournalOff = async (page) => {
+  await page.goto(`${ORIGIN}/demo/settings?tab=journal`);
+  await page.getByText('Writing prompts').waitFor();
+  await page.getByRole('switch', { name: 'Use the journal' }).click();
+  await page.getByText('Writing prompts').waitFor({ state: 'detached' });
 };
 
 const FLOWS = [
@@ -175,6 +184,78 @@ const FLOWS = [
   { name: 'settings / journal', run: async (page) => {
     await page.goto(`${ORIGIN}/demo/settings?tab=journal`);
     await page.getByText('Writing prompts').waitFor();
+  } },
+  // The journal switched off: the tab shrinks to the one switch and its line, and any
+  // journal address shows the quiet "off" page. The demo keeps the choice in localStorage,
+  // so a reload lands on the off state.
+  { name: 'settings / journal switched off', run: async (page) => {
+    await turnJournalOff(page);
+    await page.getByText('Turning it off hides the Journal.').waitFor();
+  } },
+  { name: 'journal off page', run: async (page) => {
+    await turnJournalOff(page);
+    await page.goto(`${ORIGIN}/demo/journal/${dayAgo(1)}`);
+    await page.getByRole('heading', { name: 'The journal is off' }).waitFor();
+  } },
+  // Notification services: the "Where to send" tiles at rest (email chosen), a service's set-up open in its panel, and the
+  // list once a place is connected (an extra switch column beside email). Then the same tiles on the administrator's side.
+  { name: 'settings / notifications', run: async (page) => {
+    await page.goto(`${ORIGIN}/demo/settings?tab=notifications`);
+    await page.getByRole('heading', { name: 'Where to send' }).waitFor();
+  } },
+  { name: 'settings / notifications / ntfy set-up', run: async (page) => {
+    await page.goto(`${ORIGIN}/demo/settings?tab=notifications&service=ntfy`);
+    await page.getByRole('heading', { name: 'Where to send' }).waitFor();
+    await page.getByRole('tabpanel').getByRole('button', { name: 'Set up' }).click();
+    await page.getByLabel('Topic').waitFor();
+  } },
+  { name: 'settings / notifications / ntfy connected', run: async (page) => {
+    await page.goto(`${ORIGIN}/demo/settings?tab=notifications&service=ntfy`);
+    await page.getByRole('heading', { name: 'Where to send' }).waitFor();
+    await page.getByRole('tabpanel').getByRole('button', { name: 'Set up' }).click();
+    await page.getByRole('button', { name: 'Continue' }).click();
+    await page.getByRole('button', { name: /Send a test/ }).click();
+    await page.getByText('Sent. Look for it in ntfy.').waitFor();
+    await page.getByRole('button', { name: 'Yes, it arrived' }).click();
+    await page.getByRole('switch', { name: 'Send notifications here' }).waitFor();
+    await page.getByRole('switch', { name: 'Mentions — ntfy' }).waitFor();
+  } },
+  // Discord offers a choice of ways in the demo (a direct message from the bot, or a channel webhook).
+  { name: 'settings / notifications / discord choice', run: async (page) => {
+    await page.goto(`${ORIGIN}/demo/settings?tab=notifications&service=discord`);
+    await page.getByRole('heading', { name: 'Where to send' }).waitFor();
+    await page.getByRole('tabpanel').getByRole('button', { name: 'Set up' }).click();
+    await page.getByRole('radio', { name: /direct message/ }).waitFor();
+  } },
+  { name: 'settings / notifications / discord code', run: async (page) => {
+    await page.goto(`${ORIGIN}/demo/settings?tab=notifications&service=discord`);
+    await page.getByRole('heading', { name: 'Where to send' }).waitFor();
+    await page.getByRole('tabpanel').getByRole('button', { name: 'Set up' }).click();
+    await page.getByRole('button', { name: 'Continue' }).click();
+    await page.getByLabel('Your Discord user ID').fill('123456789012345678');
+    await page.getByRole('button', { name: 'Send me a code' }).click();
+    await page.getByLabel('Code from the bot').waitFor();
+  } },
+  { name: 'settings / notifications / telegram', run: async (page) => {
+    await page.goto(`${ORIGIN}/demo/settings?tab=notifications&service=telegram`);
+    await page.getByRole('heading', { name: 'Where to send' }).waitFor();
+    await page.getByRole('tabpanel').getByRole('button', { name: 'Set up' }).click();
+    await page.getByRole('button', { name: 'Get a link' }).waitFor();
+  } },
+  // Administration: the area tabs' other side, and the administrator's notification services as tiles.
+  { name: 'settings / administration', run: async (page) => {
+    await page.goto(`${ORIGIN}/demo/settings?tab=users`);
+    await page.getByText('Changes here apply to everyone on this server.').waitFor();
+  } },
+  { name: 'settings / server notifications', run: async (page) => {
+    await page.goto(`${ORIGIN}/demo/settings?tab=channels`);
+    await page.getByRole('tab', { name: /^ntfy/ }).waitFor();
+    await page.getByRole('tabpanel').getByText('Status').waitFor();
+  } },
+  { name: 'settings / server notifications / discord', run: async (page) => {
+    await page.goto(`${ORIGIN}/demo/settings?tab=channels&service=discord`);
+    await page.getByRole('tab', { name: /^Discord/ }).waitFor();
+    await page.getByRole('tabpanel').getByText('Direct messages', { exact: true }).waitFor();
   } },
   { name: 'settings / appearance', run: async (page) => {
     await page.goto(`${ORIGIN}/demo/settings?tab=appearance`);
@@ -329,10 +410,128 @@ async function checkToolbarKeyboard(page, failures, label) {
   if (pressed !== 'true') failures.push(`${label}: toggle does not report aria-pressed=true once on`);
 }
 
+
+// The area tabs, the service tiles and the tooltip, by keyboard and by hover. axe cannot see these.
+async function checkSettingsKeyboard(page, failures, label) {
+  // Service tiles: one Tab stop; arrows and Home/End move and choose; the panel follows the chosen tile.
+  await page.goto(`${ORIGIN}/demo/settings?tab=notifications`);
+  await page.getByRole('heading', { name: 'Where to send' }).waitFor();
+  const selected = () => page.locator('.service-tabs').getByRole('tab', { selected: true });
+  const stops = await page.locator('.service-tabs [role="tab"][tabindex="0"]').count();
+  if (stops !== 1) failures.push(`${label}: the tile row has ${stops} Tab stops, expected 1`);
+  await selected().focus();
+  const name = async () => (await page.evaluate(() => document.activeElement?.querySelector('.service-tab__name')?.textContent)) ?? '';
+  const first = await name();
+  await page.keyboard.press('ArrowRight');
+  const second = await name();
+  if (!second || second === first) failures.push(`${label}: ArrowRight did not move to the next tile`);
+  // The choice goes through the address, so give the page a moment to catch up before reading it.
+  const followed = await page.waitForFunction(
+    (n) => document.querySelector('.service-tabs [role="tab"][aria-selected="true"] .service-tab__name')?.textContent === n,
+    second, { timeout: 2000 },
+  ).then(() => true, () => false);
+  if (!followed) failures.push(`${label}: the chosen tile did not follow the arrow key`);
+  await page.keyboard.press('End');
+  const last = await name();
+  if (last !== 'Telegram') failures.push(`${label}: End went to "${last}", expected Telegram`);
+  if (!page.url().includes('service=telegram')) failures.push(`${label}: the chosen service is not in the address`);
+  await page.keyboard.press('Home');
+  if ((await name()) !== first) failures.push(`${label}: Home did not return to the first tile`);
+  const owned = await page.evaluate(() => {
+    const tab = document.querySelector('.service-tabs [role="tab"][aria-selected="true"]');
+    const panel = document.querySelector('.service-tabs__panel[role="tabpanel"]');
+    return !!tab && !!panel && panel.getAttribute('aria-labelledby') === tab.id && tab.getAttribute('aria-controls') === panel.id;
+  });
+  if (!owned) failures.push(`${label}: the tab and its panel do not point at each other`);
+
+  // Tile arrows, on a row too narrow for its tiles: only the end with more has one, it scrolls without choosing, and
+  // it is not a Tab stop. A mouse with no sideways wheel has to be able to reach every tile.
+  const viewport = page.viewportSize();
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.goto(`${ORIGIN}/demo/settings?tab=channels`);
+  const more = page.getByRole('button', { name: 'Show more services' });
+  const earlier = page.getByRole('button', { name: 'Show earlier services' });
+  try {
+    await more.waitFor({ timeout: 5000 });
+    if (await earlier.count()) failures.push(`${label}: the tile row shows a back arrow at its start`);
+    if ((await more.getAttribute('tabindex')) !== '-1') failures.push(`${label}: the tile arrow is a Tab stop`);
+    const chosen = () => page.locator('.service-tabs [role="tab"][aria-selected="true"] .service-tab__name').textContent();
+    const before = await chosen();
+    const scrolled = () => page.locator('.service-tabs__list').evaluate(el => el.scrollLeft);
+    const edge = async () => page.locator('.service-tabs__list').evaluate(el => el.scrollWidth - el.clientWidth);
+    await more.click();
+    await earlier.waitFor({ timeout: 2000 });
+    if (!(await scrolled() > 0)) failures.push(`${label}: the tile arrow did not scroll the row`);
+    if ((await chosen()) !== before) failures.push(`${label}: the tile arrow changed the chosen service`);
+    // Enough clicks reach the far end, where the forward arrow leaves.
+    for (let i = 0; i < 6 && (await more.count()); i++) { await more.click(); await page.waitForTimeout(400); }
+    if (await more.count()) failures.push(`${label}: the tile arrow never reached the end of the row (${await scrolled()} of ${await edge()})`);
+  } catch (e) {
+    failures.push(`${label}: the tile arrows did not behave: ${e.message.split('\n')[0]}`);
+  }
+  // The same for the settings pages' pill row on a narrow screen: scrolls, opens nothing, not a Tab stop.
+  await page.goto(`${ORIGIN}/demo/settings?tab=profile`);
+  const morePages = page.getByRole('button', { name: 'Show more settings pages' });
+  try {
+    await morePages.waitFor({ timeout: 5000 });
+    if ((await morePages.getAttribute('tabindex')) !== '-1') failures.push(`${label}: the page-row arrow is a Tab stop`);
+    await morePages.click();
+    await page.getByRole('button', { name: 'Show earlier settings pages' }).waitFor({ timeout: 2000 });
+    if (!page.url().includes('tab=profile')) failures.push(`${label}: the page-row arrow opened a page`);
+  } catch (e) {
+    failures.push(`${label}: the page-row arrows did not behave: ${e.message.split('\n')[0]}`);
+  }
+  if (viewport) await page.setViewportSize(viewport);
+
+  // Area tabs (administrator): reachable, arrow keys move and choose, Home/End jump, focus goes with the choice.
+  await page.goto(`${ORIGIN}/demo/settings?tab=about`);
+  await page.getByRole('tablist', { name: 'Settings area' }).waitFor();
+  // The choice goes through the address and the page opens a little after it: wait for that before the next key.
+  const areaChosen = (want) => page.locator('[role="tablist"][aria-label="Settings area"] [role="tab"][aria-selected="true"]', { hasText: want })
+    .waitFor({ timeout: 5000 }).then(() => true, () => false);
+  await page.getByRole('tab', { name: 'Personal' }).focus();
+  await page.keyboard.press('ArrowRight');
+  if (!(await areaChosen('Administration')) || !page.url().includes('tab=users')) failures.push(`${label}: ArrowRight on "Personal" did not open Administration`);
+  const kept = await page.evaluate(() => document.activeElement?.textContent?.trim());
+  if (kept !== 'Administration') failures.push(`${label}: focus did not follow the chosen area tab (it is on "${kept}")`);
+  await page.keyboard.press('Home');
+  if (!(await areaChosen('Personal')) || page.url().includes('tab=users')) failures.push(`${label}: Home did not return to Personal`);
+  await page.keyboard.press('End');
+  if (!(await areaChosen('Administration')) || !page.url().includes('tab=users')) failures.push(`${label}: End did not go to Administration`);
+  const linked = await page.evaluate(() => {
+    const tab = document.querySelector('[role="tablist"][aria-label="Settings area"] [role="tab"][aria-selected="true"]');
+    const panel = document.getElementById(tab?.getAttribute('aria-controls') ?? '');
+    return !!tab && !!panel && panel.getAttribute('aria-labelledby') === tab.id;
+  });
+  if (!linked) failures.push(`${label}: the area tab and its panel do not point at each other`);
+
+  // Tooltip: by pointer (after its wait) and by keyboard focus (at once); Escape closes it.
+  await page.goto(`${ORIGIN}/demo/settings?tab=about`);
+  const bell = page.locator('button[data-tooltip="Notifications"]').first();
+  await bell.hover();
+  try { await page.getByRole('tooltip').waitFor({ timeout: 2000 }); } catch { failures.push(`${label}: hovering a control with a tooltip showed none`); return; }
+  await page.keyboard.press('Escape');
+  if (await page.getByRole('tooltip').count()) failures.push(`${label}: Escape did not close the tooltip`);
+  await page.mouse.move(2, 400);
+  await bell.focus();
+  await page.keyboard.press('Shift+Tab');
+  await page.keyboard.press('Tab');
+  try { await page.getByRole('tooltip').waitFor({ timeout: 1000 }); } catch { failures.push(`${label}: keyboard focus on a control with a tooltip showed none`); }
+}
+
+// A failed flow, said briefly but with what it was waiting for (Playwright's call log names the locator), so a timeout
+// explains itself instead of reading "Timeout 30000ms exceeded".
+const why = (err) => {
+  const lines = String(err.message).split('\n').map((l) => l.trim());
+  const waiting = lines.find((l) => l.startsWith('- waiting for'));
+  return waiting ? `${lines[0]} (${waiting.slice(2)})` : lines[0];
+};
+
 // ── Run ───────────────────────────────────────────────────────────────────────
 const server = await startServer();
 const browser = await chromium.launch();
 const failures = [];
+const retried = [];
 let scans = 0;
 
 try {
@@ -340,14 +539,31 @@ try {
     for (const [vpName, viewport] of Object.entries(VIEWPORTS)) {
       for (const flow of FLOWS) {
         const label = `[${theme} · ${vpName}] ${flow.name}`;
-        const context = await browser.newContext({ viewport, colorScheme: theme, reducedMotion: 'reduce' });
-        await context.addInitScript(({ theme, toolbar }) => {
-          localStorage.setItem('papyra-theme', theme);
-          if (toolbar) localStorage.setItem('papyra-editor-toolbar', 'always');
-        }, { theme, toolbar: Boolean(flow.toolbar) });
-        const page = await context.newPage();
+        // Getting the page to the state worth scanning is tried twice, each time in a fresh context: about one flow in
+        // a hundred and sixty has timed out on a page that simply did not render (never reproducible on its own, and
+        // different each run). A flow that throws twice fails. Accessibility violations are never retried, and every
+        // retry is printed at the end so a rising rate cannot hide.
+        let context = null;
+        let page = null;
+        for (let attempt = 1; attempt <= 2; attempt++) {
+          context = await browser.newContext({ viewport, colorScheme: theme, reducedMotion: 'reduce' });
+          await context.addInitScript(({ theme, toolbar }) => {
+            localStorage.setItem('papyra-theme', theme);
+            if (toolbar) localStorage.setItem('papyra-editor-toolbar', 'always');
+          }, { theme, toolbar: Boolean(flow.toolbar) });
+          page = await context.newPage();
+          try {
+            await flow.run(page);
+            break;
+          } catch (err) {
+            await context.close();
+            context = null;
+            if (attempt === 1) retried.push(`${label}: ${why(err)}`);
+            else failures.push(`${label}: flow failed twice — ${why(err)}`);
+          }
+        }
+        if (!context) continue;
         try {
-          await flow.run(page);
           const { violations } = await new AxeBuilder({ page }).withTags(WCAG).analyze();
           scans++;
           for (const v of violations) {
@@ -366,7 +582,7 @@ try {
             await checkCaretAndSelection(page, failures, label);
           }
         } catch (err) {
-          failures.push(`${label}: flow failed — ${err.message.split('\n')[0]}`);
+          failures.push(`${label}: flow failed — ${why(err)}`);
         } finally {
           await context.close();
         }
@@ -381,9 +597,22 @@ try {
         await openNote(page, 'quarterly-review');
         await checkToolbarKeyboard(page, failures, label);
       } catch (err) {
-        failures.push(`${label}: flow failed — ${err.message.split('\n')[0]}`);
+        failures.push(`${label}: flow failed — ${why(err)}`);
       } finally {
         await context.close();
+      }
+
+      // Settings: area tabs, service tiles and tooltip.
+      const settingsLabel = `[${theme} · ${vpName}] keyboard: settings`;
+      const settingsContext = await browser.newContext({ viewport, colorScheme: theme, reducedMotion: 'reduce' });
+      await settingsContext.addInitScript((t) => localStorage.setItem('papyra-theme', t), theme);
+      const settingsPage = await settingsContext.newPage();
+      try {
+        await checkSettingsKeyboard(settingsPage, failures, settingsLabel);
+      } catch (err) {
+        failures.push(`${settingsLabel}: flow failed — ${why(err)}`);
+      } finally {
+        await settingsContext.close();
       }
     }
   }
@@ -392,6 +621,10 @@ try {
   server.kill();
 }
 
+if (retried.length > 0) {
+  console.warn(`check-a11y: ${retried.length} flow(s) needed a second try (the page was slow to get ready; nothing about accessibility):`);
+  for (const r of retried) console.warn(`  - ${r}`);
+}
 if (failures.length > 0) {
   console.error(`check-a11y: ${failures.length} problem(s) across ${scans} axe scans:\n`);
   for (const f of failures) console.error(`  ✗ ${f}`);

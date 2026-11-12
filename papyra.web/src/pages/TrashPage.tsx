@@ -7,8 +7,10 @@ import './NotesPage.css';
 import LoadingBar from '../components/LoadingBar';
 import JournalBin from '../components/journal/JournalBin';
 import { useJournalBin } from '../hooks/useJournal';
+import { useT } from '../i18n/store';
 
 export default function TrashPage() {
+  const t = useT();
   const { data: notes, isLoading, isError } = useNotes();
   const { data: settings } = useSettings();
   const journalDays = useJournalBin('trashed').data?.length ?? 0;
@@ -26,7 +28,7 @@ export default function TrashPage() {
       </header>
 
       {isLoading && <LoadingBar label="Loading trash" />}
-      {isError && <p className="notes-page__status">Couldn’t reach the server.</p>}
+      {isError && <p className="notes-page__status">{t('common.serverUnreachable')}</p>}
       {!isLoading && !isError && (
         <NoteGrid
           notes={notes ?? []}

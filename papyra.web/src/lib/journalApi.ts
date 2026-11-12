@@ -222,6 +222,13 @@ export async function flushJournalOutbox(): Promise<{ synced: number; conflicts:
       return { synced, conflicts };
     }
     if (!res.ok) {
+      // A journal switched off (maybe on another device) answers 404 to everything. That is not
+      // "this day doesn't exist": keep the whole queue; it goes up when the journal is back on.
+      if (res.status === 404 && (await res.clone().json().catch(() => null))?.code === 'journal_off') {
+        setSync({ syncing: false });
+        await refreshPending();
+        return { synced, conflicts };
+      }
       if (unreachable(res)) {
         setSync({ syncing: false, online: false });
         await refreshPending();

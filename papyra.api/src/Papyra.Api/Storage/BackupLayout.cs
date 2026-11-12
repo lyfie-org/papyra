@@ -254,7 +254,7 @@ public sealed class BackupLayout
           - `settings/` — your profile and preferences (never your password or PIN)
 
           To restore: on a new Papyra, choose **Restore from a backup → GitHub** during
-          setup, or in Settings → Backup.
+          setup, or in Settings → Git backup.
           """;
 
     /// <summary>

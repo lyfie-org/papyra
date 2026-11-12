@@ -39,18 +39,23 @@ describe('searchRegistry', () => {
     expect(noteResult(hit('a', ''), 'note', 0).title).toBe('Untitled');
   });
 
-  it('files Users under Settings now that it is a tab', () => {
+  it('files Users under Administration, and says so', () => {
     const [users] = settingsResults('manage users', true);
     expect(users.source).toBe('settings');
-    expect(users.breadcrumb[0]).toBe('Settings');
+    expect(users.breadcrumb[0]).toBe('Administration');
     expect(users.to).toBe('/settings?tab=users');
   });
 
-  it('breadcrumbs a settings section under its tab', () => {
+  it('breadcrumbs a settings section under its area and tab', () => {
     const smtp = settingsResults('outbound email', true)
-      .find(r => r.title === 'Outbound email (SMTP)');
-    expect(smtp?.breadcrumb).toEqual(['Settings', 'Email']);
+      .find(r => r.title === 'Mail server (SMTP)');
+    expect(smtp?.breadcrumb).toEqual(['Administration', 'Email']);
     expect(smtp?.to).toBe('/settings?tab=email&s=smtp');
+  });
+
+  it('names a personal setting’s area plainly, so only server pages say "Server"', () => {
+    const theme = settingsResults('dark mode', true).find(r => r.title === 'Theme');
+    expect(theme?.breadcrumb).toEqual(['Settings', 'Appearance']);
   });
 
   // The assistant ships later; until it does, nothing may point at a tab that
