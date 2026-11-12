@@ -46,6 +46,7 @@ async function intro(): Promise<string> {
     `- Website: ${SITE_URL}`,
     `- Live demo (runs entirely in the browser, no sign-up): ${SITE_URL}/demo/`,
     `- Source code: ${GITHUB_URL} (${LICENSE})`,
+    `- Roadmap (releases so far and what is planned): ${SITE_URL}/roadmap/`,
     `- Docker image: ${DOCKER_HUB_URL}${pulls !== null && pulls >= 1000 ? ` (${roundedCount(pulls)} pulls)` : ''}`,
     `- Made by Lyfie (${LYFIE_URL}), the open-source organisation founded by ${CREATOR_NAME}; its editor is luthor (${LUTHOR_URL})`,
     '- Price: free. No paid tier, no licence key, no account with Lyfie.',

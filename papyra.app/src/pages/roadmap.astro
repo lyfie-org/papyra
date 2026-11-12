@@ -1,0 +1,132 @@
+---
+import Base from '../layouts/Base.astro';
+import Icon from '../components/Icon.astro';
+import Timeline from '../components/Timeline.astro';
+import { PLANS, RELEASES } from '../data/roadmap';
+import { DISCORD_URL, GITHUB_URL } from '../data/site';
+
+// Furthest plan at the top, the next one just above the newest release.
+const plans = [...PLANS].reverse();
+---
+
+<Base
+  title="Roadmap"
+  description="Every Papyra release and the feature it is remembered for, and what is planned next: reminders, a web clipper, voice to text, an MCP server, mobile and desktop apps."
+>
+  <section class="section">
+    <div class="wrap wrap--narrow">
+      <p class="back">
+        <a href="/#journey" data-back>
+          <Icon name="arrow-left" size={14} />
+          Back to home
+        </a>
+      </p>
+
+      <p class="eyebrow">Roadmap</p>
+      <h1>What’s done and what’s next</h1>
+      <p class="lede road__lede">
+        Each release below is shown with the one feature it is remembered for. What comes after is what we plan to
+        build, nearest first.
+      </p>
+      <p class="road__note">
+        <Icon name="history" size={14} />
+        Plans, not promises. Dates are seasons, and an order can change when something turns out harder than expected.
+      </p>
+
+      <Timeline plans={plans} releases={RELEASES} detail />
+
+      <aside class="road__help" aria-labelledby="help-title">
+        <h2 id="help-title">Want to help build it?</h2>
+        <p>
+          Papyra is open source and everything above is up for grabs. Tell us which feature you would use, report
+          something that is in the way, or pick one up and send a pull request. The contributing guide covers setup and
+          the checks to run.
+        </p>
+        <p class="road__actions">
+          <a class="btn" href="/contribute/">
+            <Icon name="code" size={16} />
+            How to contribute
+          </a>
+          <a class="btn btn--ghost" href={`${GITHUB_URL}/issues/new`} rel="noopener noreferrer">
+            <Icon name="bulb" size={16} />
+            Suggest an idea
+          </a>
+          <a class="btn btn--ghost" href={DISCORD_URL} rel="noopener noreferrer">
+            <Icon name="discord" size={16} />
+            Chat on Discord
+          </a>
+        </p>
+      </aside>
+    </div>
+  </section>
+</Base>
+
+<script>
+  // Back to the home page goes back in history when that is where you came from,
+  // so the page is restored to the spot you left it. Opened any other way
+  // (a shared link, a search result), the link goes to the roadmap section.
+  document.querySelector<HTMLAnchorElement>('[data-back]')?.addEventListener('click', (e) => {
+    if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;
+    try {
+      const from = document.referrer ? new URL(document.referrer) : null;
+      if (from && from.origin === location.origin && from.pathname === '/' && history.length > 1) {
+        e.preventDefault();
+        history.back();
+      }
+    } catch {
+      /* fall through to the link */
+    }
+  });
+</script>
+
+<style>
+  .back {
+    margin: 0 0 var(--space-6);
+    font-size: var(--fs-sm);
+  }
+
+  .back a {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+  }
+
+  .road__lede {
+    margin-bottom: var(--space-3);
+  }
+
+  .road__note {
+    display: flex;
+    align-items: center;
+    gap: var(--space-2);
+    margin: 0 0 var(--space-8);
+    font-size: var(--fs-xs);
+    color: var(--text);
+  }
+
+  .road__help {
+    margin-top: var(--space-10);
+    padding: var(--space-6);
+    border: 1px solid var(--accent-border);
+    border-radius: var(--radius-lg, var(--radius-md));
+    background:
+      radial-gradient(28rem 10rem at 0% 0%, var(--accent-bg), transparent 70%),
+      var(--surface);
+  }
+
+  .road__help h2 {
+    margin-top: 0;
+    font-size: var(--fs-xl, 1.5rem);
+  }
+
+  .road__help p {
+    margin: 0 0 var(--space-4);
+  }
+
+  .road__actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-3);
+    margin-bottom: 0 !important;
+  }
+</style>

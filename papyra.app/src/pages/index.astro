@@ -9,7 +9,8 @@ import CodeBlock from '../components/CodeBlock.astro';
 import logo from '../assets/papyra_logo.png';
 import { GITHUB_URL, DESCRIPTION, LUTHOR_URL, LYFIE_URL, SITE_URL } from '../data/site';
 import { FAQ, homeGraph } from '../data/about';
-import { JOURNEY, NEXT } from '../data/journey';
+import Timeline from '../components/Timeline.astro';
+import { PLANS, RELEASES } from '../data/roadmap';
 import { readChangelog } from '../lib/changelog.mjs';
 import { dockerPulls, roundedCount, starCount } from '../lib/stats.mjs';
 import type { IconName } from '../lib/icons';
@@ -127,9 +128,10 @@ const helps: { icon: IconName; title: string; text: string; href: string }[] = [
   { icon: 'code', title: 'Send a pull request', text: 'Start with the guide.', href: '/contribute/' },
 ];
 
-const SHOWN = 6;
-const dayFmt = new Intl.DateTimeFormat('en-GB', { day: 'numeric', month: 'short', year: 'numeric', timeZone: 'UTC' });
-const when = (m: (typeof JOURNEY)[number]) => dayFmt.format(new Date(`${m.date}T00:00:00Z`));
+// The home page is the short version of /roadmap: from 1.0 onwards, and only the
+// next few plans. The furthest plan is drawn first (top), the nearest last.
+const homeReleases = RELEASES.filter((r) => !r.version.startsWith('0.'));
+const homePlans = PLANS.filter((p) => p.home).reverse();
 ---
 
 <Base
@@ -145,9 +147,9 @@ const when = (m: (typeof JOURNEY)[number]) => dayFmt.format(new Date(`${m.date}T
     <div class="wrap hero__grid">
     <div class="hero__copy">
       <h1 class="hero__title">
-        <span class="sr-only">Keep your notes on your own server.</span>
+        <span class="sr-only">Your notes on your own server.</span>
         <span aria-hidden="true">
-          Keep your <span class="hero__typed" data-typed data-words="notes,ideas,plans,recipes,journals">notes</span><br />on your own<br />server.
+          <span class="hero__line">Your <span class="hero__typed" data-typed data-words="notes,ideas,plans,recipes,journals">notes</span></span><br />on your own<br />server.
         </span>
       </h1>
       <p class="hero__lede">
@@ -372,66 +374,12 @@ const when = (m: (typeof JOURNEY)[number]) => dayFmt.format(new Date(`${m.date}T
         <h2>What’s done and what’s next</h2>
       </header>
 
-      <ol class="journey" data-journey>
-        {
-          [...NEXT].reverse().map((n) => (
-            <li class:list={['journey__item', 'journey__item--soon', { 'journey__item--next': n.next }]}>
-              <span class="journey__date">Coming soon</span>
-              <span class="journey__node" aria-hidden="true">
-                <Icon name={n.next ? 'sparkles' : 'history'} size={12} />
-              </span>
-              <div class="journey__card">
-                <h3>
-                  <Icon name={n.icon} size={17} />
-                  {n.title}
-                </h3>
-                <p>{n.text}</p>
-                {n.next && <span class="journey__tag journey__tag--next">Next up</span>}
-              </div>
-            </li>
-          ))
-        }
-        {
-          JOURNEY.map((m, i) => (
-            <li class:list={['journey__item', { 'journey__item--current': m.current }]} data-hidden={i >= SHOWN ? '' : undefined}>
-              <time class="journey__date" datetime={m.date}>
-                {when(m)}
-              </time>
-              <span class="journey__node" aria-hidden="true">
-                {m.current ? <Icon name="star" size={12} /> : <Icon name="check" size={12} />}
-              </span>
-              <div class="journey__card">
-                <h3>
-                  <Icon name={m.icon} size={17} />
-                  {m.title}
-                </h3>
-                <p>{m.text}</p>
-                {m.version && (
-                  <a
-                    class="journey__tag"
-                    href={`${GITHUB_URL}/releases/tag/v${m.version === '1.0' ? '1.0.0' : m.version}`}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    aria-label={`Release v${m.version} on GitHub`}
-                    title={`Release v${m.version} on GitHub`}
-                  >
-                    v{m.version}
-                  </a>
-                )}
-                {m.commit && (
-                  <a class="journey__tag" href={`${GITHUB_URL}/commit/${m.commit}`} rel="noopener noreferrer" aria-label="The first commit on GitHub" title="The first commit on GitHub">
-                    {m.commit.slice(0, 7)}
-                  </a>
-                )}
-              </div>
-            </li>
-          ))
-        }
-      </ol>
+      <Timeline plans={homePlans} releases={homeReleases} />
       <div class="journey__more">
-        <button type="button" class="btn btn--ghost" data-journey-toggle aria-expanded="false">
-          Show all {JOURNEY.length} milestones
-        </button>
+        <a class="btn btn--ghost" href="/roadmap/" data-roadmap-link>
+          View full roadmap
+          <Icon name="arrow-right" size={16} />
+        </a>
         <a href={`${GITHUB_URL}/releases`} target="_blank" rel="noopener noreferrer">All releases</a>
       </div>
     </div>
@@ -572,15 +520,31 @@ const when = (m: (typeof JOURNEY)[number]) => dayFmt.format(new Date(`${m.date}T
     })();
   }
 
-  const list = document.querySelector<HTMLElement>('[data-journey]');
-  const toggle = document.querySelector<HTMLButtonElement>('[data-journey-toggle]');
-  if (list && toggle) {
-    const label = toggle.textContent?.trim() ?? '';
-    toggle.addEventListener('click', () => {
-      const open = list.toggleAttribute('data-open');
-      toggle.setAttribute('aria-expanded', String(open));
-      toggle.textContent = open ? 'Show fewer' : label;
-    });
+  // Coming back from /roadmap lands where you left off. The browser restores the
+  // scroll position on Back by itself; this covers the cases where it cannot
+  // (the page was reloaded from cache, or the layout was still settling), and
+  // remembers the spot when the link is followed, too.
+  const SPOT = 'papyra-home-scroll';
+  const remember = () => {
+    try {
+      sessionStorage.setItem(SPOT, String(Math.round(window.scrollY)));
+    } catch {
+      /* private mode: the browser's own restoration still applies */
+    }
+  };
+  document.querySelector('[data-roadmap-link]')?.addEventListener('click', remember);
+  window.addEventListener('pagehide', remember);
+
+  const nav = performance.getEntriesByType('navigation')[0] as PerformanceNavigationTiming | undefined;
+  if (nav?.type === 'back_forward' && !location.hash) {
+    try {
+      const y = Number(sessionStorage.getItem(SPOT));
+      if (y > 0 && Math.abs(window.scrollY - y) > 4) {
+        window.scrollTo({ top: y, behavior: 'instant' });
+      }
+    } catch {
+      /* nothing saved */
+    }
   }
 </script>
 
@@ -634,8 +598,13 @@ const when = (m: (typeof JOURNEY)[number]) => dayFmt.format(new Date(`${m.date}T
     font-size: clamp(40px, 3vw + 16px, 66px);
     line-height: 1.02;
     letter-spacing: -0.035em;
-    max-width: 11ch;
     margin-bottom: var(--space-5);
+  }
+
+  /* The line with the typed word never wraps, so a longer word cannot push the
+     rest of the headline down. */
+  .hero__line {
+    white-space: nowrap;
   }
 
   /* The word that changes: typed, held, backspaced, retyped (script below),
@@ -733,10 +702,6 @@ const when = (m: (typeof JOURNEY)[number]) => dayFmt.format(new Date(`${m.date}T
     .hero__copy {
       align-items: center;
       text-align: center;
-    }
-
-    .hero__title {
-      max-width: 13ch;
     }
 
     .hero__lede {
@@ -1175,152 +1140,7 @@ const when = (m: (typeof JOURNEY)[number]) => dayFmt.format(new Date(`${m.date}T
   }
 
   /* ---------------------------------------------------------- journey */
-  .journey {
-    --date-w: 7.5rem;
-    list-style: none;
-    margin: 0;
-    padding: 0;
-    position: relative;
-  }
-
-  /* The line through every node. */
-  .journey::before {
-    content: '';
-    position: absolute;
-    top: 8px;
-    bottom: 8px;
-    left: calc(var(--date-w) + var(--space-5) + 11px);
-    width: 2px;
-    background: linear-gradient(var(--accent), var(--border) 30%);
-  }
-
-  .journey__item {
-    position: relative;
-    display: grid;
-    grid-template-columns: var(--date-w) 24px minmax(0, 1fr);
-    gap: var(--space-5);
-    align-items: start;
-    padding-bottom: var(--space-4);
-  }
-
-  .journey:not([data-open]) .journey__item[data-hidden] {
-    display: none;
-  }
-
-  .journey__date {
-    padding-top: 12px;
-    text-align: right;
-    font: 400 var(--fs-xs) / 1.4 var(--mono);
-    color: var(--text);
-    white-space: nowrap;
-  }
-
-  .journey__node {
-    position: relative;
-    z-index: 1;
-    display: grid;
-    place-items: center;
-    width: 24px;
-    height: 24px;
-    margin-top: 9px;
-    border-radius: 50%;
-    border: 2px solid var(--accent);
-    background: var(--bg);
-    color: var(--accent-text);
-  }
-
-  .journey__item--current .journey__node {
-    background: var(--accent);
-    color: var(--accent-fg);
-    box-shadow: 0 0 0 6px var(--accent-bg);
-  }
-
-  .journey__card {
-    position: relative;
-    padding: var(--space-3) var(--space-4);
-    padding-right: 4.5rem;
-    border: 1px solid var(--border);
-    border-radius: var(--radius-md);
-    background: var(--surface);
-  }
-
-  .journey__item--current .journey__card {
-    border-color: var(--accent-border);
-    box-shadow: var(--shadow-card);
-  }
-
-  .journey__card h3 {
-    display: flex;
-    align-items: center;
-    gap: var(--space-2);
-    font: 500 var(--fs-sm) / 1.35 var(--sans);
-    letter-spacing: 0;
-    margin: 0 0 2px;
-  }
-
-  .journey__card h3 :global(svg) {
-    flex: none;
-    color: var(--accent);
-  }
-
-  .journey__card p {
-    margin: 0;
-    font-size: var(--fs-xs);
-    line-height: 1.5;
-    color: var(--text);
-  }
-
-  .journey__tag {
-    position: absolute;
-    top: var(--space-3);
-    right: var(--space-3);
-    padding: 2px 8px;
-    border: 1px solid var(--accent-border);
-    border-radius: var(--radius-pill);
-    background: var(--accent-bg);
-    font: 500 var(--fs-2xs) / 1.5 var(--mono);
-    color: var(--accent-text);
-    text-decoration: none;
-  }
-
-  .journey__tag:hover {
-    color: var(--text-h);
-  }
-
-  /* Plans: dashed, quieter — not yet on the line of things that shipped. */
-  .journey__item--soon .journey__date {
-    color: var(--accent-text);
-  }
-
-  .journey__item--soon .journey__node {
-    border-style: dashed;
-    color: var(--text);
-  }
-
-  .journey__item--soon .journey__card {
-    border-style: dashed;
-    background: color-mix(in srgb, var(--surface) 55%, transparent);
-  }
-
-  .journey__item--next .journey__node {
-    border-style: solid;
-    color: var(--accent-text);
-    box-shadow: 0 0 0 5px var(--accent-bg);
-  }
-
-  .journey__item--next .journey__card {
-    border-style: solid;
-    border-color: var(--accent-border);
-    background:
-      radial-gradient(24rem 8rem at 0% 0%, var(--accent-bg), transparent 70%),
-      var(--surface);
-  }
-
-  .journey__tag--next {
-    font-family: var(--sans);
-    font-weight: 600;
-  }
-
+  /* The line itself is components/Timeline.astro; the buttons under it live here. */
   .journey__more {
     display: flex;
     flex-wrap: wrap;
@@ -1589,35 +1409,6 @@ const when = (m: (typeof JOURNEY)[number]) => dayFmt.format(new Date(`${m.date}T
 
     .tile p {
       font-size: var(--fs-xs);
-    }
-
-    .journey {
-      --date-w: 0px;
-    }
-
-    .journey__item {
-      grid-template-columns: 24px minmax(0, 1fr);
-      gap: var(--space-4);
-    }
-
-    .journey::before {
-      left: 11px;
-    }
-
-    .journey__date {
-      grid-column: 2;
-      grid-row: 1;
-      text-align: left;
-      padding-top: 0;
-    }
-
-    .journey__node {
-      grid-row: 1 / span 2;
-      grid-column: 1;
-    }
-
-    .journey__card {
-      grid-column: 2;
     }
 
     .facts__list {

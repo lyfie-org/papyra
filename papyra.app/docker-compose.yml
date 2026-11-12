@@ -1,0 +1,15 @@
+# The Papyra website, built from this checkout, for checking changes before they
+# are pushed:  docker compose -f papyra.app/docker-compose.yml up --build -d
+# Then open http://localhost:4321
+
+services:
+  site:
+    build:
+      context: ..
+      dockerfile: papyra.app/Dockerfile
+      args:
+        PUBLIC_SITE_CHANNEL: ""
+    image: papyra-site:local
+    restart: unless-stopped
+    ports:
+      - "4321:80"
