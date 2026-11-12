@@ -1,54 +1,65 @@
-import { useEffect, useRef, useSyncExternalStore } from 'react';
-import { useIsFetching, useIsMutating } from '@tanstack/react-query';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
+import { useIsFetching } from '@tanstack/react-query';
 import { getActivity, subscribeActivity } from '../lib/progress';
 import './TopProgressBar.css';
 
-// Shortest a run may look. Work that finishes in microseconds still gets a
-// deliberate, confident sweep to 100% — a flicker reads as a glitch, a sweep
-// reads as "done".
-const MIN_VISIBLE_MS = 500;
+// A first load has to run this long, with nothing else showing it, before the
+// line appears. Most loads are done well before; they never see it.
+export const SHOW_AFTER_MS = 600;
+const FINISH_MS = 180;
 const FADE_MS = 240;
-// Where the trickle levels off while nothing reports real progress.
+// Where the trickle levels off: it never claims to be done.
 const TRICKLE_CEILING = 0.9;
 
 /**
- * The thin accent line along the top of the window. Lit by anything the app is
- * doing that the person could feel: a first load of any query (never background
- * refetches or polls), any mutation, and every task in lib/progress (uploads,
- * imports). Real progress drives it when known; otherwise it trickles.
+ * The thin accent line along the top of the window — a fallback, not a status
+ * light. It shows only while a first load (a query with no data yet; never a
+ * refetch, a poll or a save) has run for SHOW_AFTER_MS and nothing else on
+ * screen says so: no in-page LoadingBar, no busy BusyButton, no ActivityDock
+ * card. Changes to notes (pin, tag, reorder, trash, share) never light it; they
+ * show on their own button or in place.
  *
  * Animated in a rAF loop that writes straight to the element's style — no React
  * render per frame.
  */
 export default function TopProgressBar() {
   const loads = useIsFetching({ predicate: (q) => q.state.data === undefined });
-  const mutations = useIsMutating();
   const activity = useSyncExternalStore(subscribeActivity, getActivity);
-  const busy = loads + mutations + activity.active > 0;
+  const unshown = loads > 0 && activity.indicators === 0 && activity.labelled.length === 0;
+
+  // Only once it has stayed unshown for a while.
+  const [armed, setArmed] = useState(false);
+  useEffect(() => {
+    if (!unshown) return;
+    const timer = setTimeout(() => setArmed(true), SHOW_AFTER_MS);
+    return () => {
+      clearTimeout(timer);
+      setArmed(false);
+    };
+  }, [unshown]);
+  const busy = unshown && armed;
 
   const barRef = useRef<HTMLDivElement | null>(null);
   const busyRef = useRef(busy);
-  const realRef = useRef<number | null>(activity.progress);
-  const loop = useRef<{ raf: number; value: number; startedAt: number; finishFrom: number | null } | null>(null);
+  const loop = useRef<{ raf: number } | null>(null);
 
-  useEffect(() => {
-    busyRef.current = busy;
-    realRef.current = activity.progress;
-  }, [busy, activity.progress]);
+  useEffect(() => { busyRef.current = busy; }, [busy]);
 
   useEffect(() => {
     const el = barRef.current;
     if (!el || !busy || loop.current) return;
 
     const reduced = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-    const state = { raf: 0, value: 0.06, startedAt: performance.now(), finishFrom: null as number | null };
+    const state = { raf: 0 };
     loop.current = state;
-    let last = state.startedAt;
+    let value = 0.06;
+    let last = performance.now();
+    let finishFrom: number | null = null;
     let finishStart = 0;
-    let finishDur = 0;
+    const finishDur = reduced ? 0 : FINISH_MS;
 
-    const paint = (value: number, opacity: number) => {
-      el.style.transform = `scaleX(${value})`;
+    const paint = (v: number, opacity: number) => {
+      el.style.transform = `scaleX(${v})`;
       el.style.opacity = String(opacity);
     };
 
@@ -57,26 +68,20 @@ export default function TopProgressBar() {
       last = now;
 
       if (busyRef.current) {
-        state.finishFrom = null;
-        const real = realRef.current;
-        // Chase real progress quickly; otherwise creep toward the ceiling, slower
-        // the closer it gets — the bar never stalls, and never lies about being done.
-        const target = real !== null ? Math.max(real, state.value) : TRICKLE_CEILING;
-        const rate = real !== null ? 0.012 : 0.0022;
-        state.value += (target - state.value) * (1 - Math.exp(-rate * dt));
-        paint(state.value, 1);
+        finishFrom = null;
+        // Creep toward the ceiling, slower the closer it gets.
+        value += (TRICKLE_CEILING - value) * (1 - Math.exp(-0.0022 * dt));
+        paint(value, 1);
       } else {
-        if (state.finishFrom === null) {
-          state.finishFrom = state.value;
+        if (finishFrom === null) {
+          finishFrom = value;
           finishStart = now;
-          // Stretch the final sweep so the whole run spans at least MIN_VISIBLE_MS.
-          finishDur = reduced ? 0 : Math.max(180, MIN_VISIBLE_MS - (now - state.startedAt));
         }
         const t = finishDur === 0 ? 1 : Math.min(1, (now - finishStart) / finishDur);
         const eased = 1 - (1 - t) ** 3;
-        state.value = state.finishFrom + (1 - state.finishFrom) * eased;
-        const fade = Math.min(1, Math.max(0, (now - finishStart - finishDur) / FADE_MS));
-        paint(state.value, 1 - fade);
+        value = finishFrom + (1 - finishFrom) * eased;
+        const fade = reduced ? 1 : Math.min(1, Math.max(0, (now - finishStart - finishDur) / FADE_MS));
+        paint(value, 1 - fade);
         if (fade >= 1) {
           paint(0, 0);
           loop.current = null;
@@ -86,7 +91,7 @@ export default function TopProgressBar() {
       state.raf = requestAnimationFrame(frame);
     };
 
-    paint(state.value, 1);
+    paint(value, 1);
     state.raf = requestAnimationFrame(frame);
   }, [busy]);
 

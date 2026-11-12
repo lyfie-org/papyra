@@ -7,7 +7,7 @@ import './ActivityDock.css';
 /**
  * Named work in progress — a backup, a restore, a job, a download — as a card
  * in the corner with a real progress bar, so it is seen wherever the person is
- * on the page. The top line still marks every bit of activity; this is for the
+ * on the page. The top line stays away while a card is showing; this is for the
  * things worth naming (see `track(work, label)`, `useBusy(label)`,
  * `useActivityTask`).
  */

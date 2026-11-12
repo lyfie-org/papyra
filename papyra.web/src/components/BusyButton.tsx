@@ -1,6 +1,6 @@
 import { useEffect, useState, type ButtonHTMLAttributes, type CSSProperties, type MouseEvent, type ReactNode, type Ref } from 'react';
 import { Loader2 } from 'lucide-react';
-import { useBusy } from '../hooks/useBusy';
+import { useBusy, useIndicator } from '../hooks/useBusy';
 import './BusyButton.css';
 
 /** A run shorter than this never shows the spinner — a flash reads as a glitch. */
@@ -49,6 +49,7 @@ export default function BusyButton({
   const [own, run] = useBusy();
   const busy = busyProp || own;
   const shown = useShownBusy(busy);
+  useIndicator(busy);
 
   return (
     <button

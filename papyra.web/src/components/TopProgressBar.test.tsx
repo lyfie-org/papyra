@@ -1,26 +1,44 @@
 // @vitest-environment jsdom
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, cleanup, act } from '@testing-library/react';
-import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import TopProgressBar from './TopProgressBar';
-import { beginTask, getActivity } from '../lib/progress';
+import { QueryClient, QueryClientProvider, useMutation, useQuery } from '@tanstack/react-query';
+import { useEffect } from 'react';
+import TopProgressBar, { SHOW_AFTER_MS } from './TopProgressBar';
+import LoadingBar from './LoadingBar';
+import { beginTask } from '../lib/progress';
 import { ease } from '../hooks/useFlipPosition';
 
-// The bar is judged by what it looks like over time: it has to appear at once,
-// never finish in a flicker (a microsecond task still gets a ~500ms sweep), and
-// get out of the way afterwards.
+// The top line is a fallback: it shows only for a slow first load that nothing
+// else on screen is showing. Saves, tasks and quick loads never light it.
 
-function mount() {
+function never<T>(): Promise<T> {
+  return new Promise<T>(() => {});
+}
+
+function ColdLoad({ withLoader = false }: { withLoader?: boolean }) {
+  const q = useQuery({ queryKey: ['cold'], queryFn: never, retry: false });
+  return withLoader && q.isLoading ? <LoadingBar label="Loading" /> : null;
+}
+
+function Mutating() {
+  const m = useMutation({ mutationFn: never });
+  useEffect(() => { m.mutate(undefined); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+  return null;
+}
+
+function mount(children: React.ReactNode) {
   const client = new QueryClient();
   const view = render(
     <QueryClientProvider client={client}>
       <TopProgressBar />
+      {children}
     </QueryClientProvider>,
   );
   return view.container.querySelector('.top-progress__bar') as HTMLDivElement;
 }
 
 const scale = (el: HTMLElement) => Number(/scaleX\(([\d.]+)\)/.exec(el.style.transform)?.[1] ?? 0);
+const lit = (el: HTMLElement) => el.style.opacity === '1';
 
 describe('TopProgressBar', () => {
   beforeEach(() => {
@@ -31,45 +49,47 @@ describe('TopProgressBar', () => {
     vi.useRealTimers();
   });
 
-  it('stretches an instant task to a deliberate sweep, then fades out', async () => {
-    const bar = mount();
-    let task!: ReturnType<typeof beginTask>;
-    act(() => { task = beginTask(); });
-    await act(async () => { vi.advanceTimersByTime(32); });
-    expect(bar.style.opacity).toBe('1');
-
-    act(() => task.end()); // done after ~30ms
-    await act(async () => { vi.advanceTimersByTime(250); });
-    // Still sweeping: well short of the 500ms floor.
-    expect(bar.style.opacity).toBe('1');
-    expect(scale(bar)).toBeLessThan(1);
-
-    await act(async () => { vi.advanceTimersByTime(900); });
-    expect(bar.style.opacity).toBe('0');
-    expect(getActivity().active).toBe(0);
-  });
-
-  it('follows real progress when a task reports it', async () => {
-    const bar = mount();
-    let task!: ReturnType<typeof beginTask>;
-    act(() => { task = beginTask(); });
-    act(() => task.update(0.75));
-    await act(async () => { vi.advanceTimersByTime(600); });
-    expect(scale(bar)).toBeGreaterThan(0.7);
-    expect(scale(bar)).toBeLessThan(1);
-    act(() => task.end());
-    await act(async () => { vi.advanceTimersByTime(1000); });
-  });
-
-  it('trickles without ever claiming to be done', async () => {
-    const bar = mount();
-    let task!: ReturnType<typeof beginTask>;
-    act(() => { task = beginTask(); });
+  it('shows for a slow first load nothing else is showing, and trickles without claiming done', async () => {
+    const bar = mount(<ColdLoad />);
+    await act(async () => { vi.advanceTimersByTime(0); }); // the query starts fetching
+    await act(async () => { vi.advanceTimersByTime(SHOW_AFTER_MS - 100); });
+    expect(lit(bar)).toBe(false);
+    await act(async () => { vi.advanceTimersByTime(200); });
+    expect(lit(bar)).toBe(true);
     await act(async () => { vi.advanceTimersByTime(20_000); });
     expect(scale(bar)).toBeGreaterThan(0.5);
     expect(scale(bar)).toBeLessThanOrEqual(0.9);
-    act(() => task.end());
-    await act(async () => { vi.advanceTimersByTime(1000); });
+  });
+
+  it('stays out of the way when the page shows its own loader', async () => {
+    const bar = mount(<ColdLoad withLoader />);
+    await act(async () => { vi.advanceTimersByTime(SHOW_AFTER_MS * 3); });
+    expect(lit(bar)).toBe(false);
+  });
+
+  it('never lights for a mutation', async () => {
+    const bar = mount(<Mutating />);
+    await act(async () => { vi.advanceTimersByTime(SHOW_AFTER_MS * 3); });
+    expect(lit(bar)).toBe(false);
+  });
+
+  it('never lights for a task, named or not', async () => {
+    const bar = mount(null);
+    let plain!: ReturnType<typeof beginTask>;
+    let named!: ReturnType<typeof beginTask>;
+    act(() => { plain = beginTask(); named = beginTask({ label: 'Backing up' }); });
+    await act(async () => { vi.advanceTimersByTime(SHOW_AFTER_MS * 3); });
+    expect(lit(bar)).toBe(false);
+    act(() => { plain.end(); named.end(); });
+  });
+
+  it('a dock card hides it too', async () => {
+    const bar = mount(<ColdLoad />);
+    let named!: ReturnType<typeof beginTask>;
+    act(() => { named = beginTask({ label: 'Restoring' }); });
+    await act(async () => { vi.advanceTimersByTime(SHOW_AFTER_MS * 3); });
+    expect(lit(bar)).toBe(false);
+    act(() => named.end());
   });
 });
 
