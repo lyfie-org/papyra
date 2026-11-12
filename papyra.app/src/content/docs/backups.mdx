@@ -80,7 +80,7 @@ Push manually any time with **Sync now**.
 
 ## Server backup
 
-**Server settings → Server backup**, for administrators. The other backups are about
+**Administration → Server backup**, for administrators. The other backups are about
 one person's notes. This one is about the server: every account, passkey and
 authenticator, sharing, API keys, webhooks, comments, and the email and SSO
 settings. It is the part of `papyra.db` that nothing else can rebuild.
@@ -108,7 +108,7 @@ server. Then choose where copies go:
 - **Download.** The same file on demand, to keep wherever you like.
 
 **Back up now** runs the daily pass straight away. The pass also shows under
-**Server settings → Jobs**, and a failure is reported there and by email like any other
+**Administration → Jobs**, and a failure is reported there and by email like any other
 job.
 
 ### Restoring one
@@ -119,7 +119,7 @@ the restored accounts and settings, and the people in the backup sign in as they
 always did. Their notes come back from the files in `/data/users`, or from each
 person's own backup once they are signed in.
 
-On a **running server**, use **Server settings → Server backup → Restore**. It asks
+On a **running server**, use **Administration → Server backup → Restore**. It asks
 for the passphrase and your own password, opens the backup and tells you how many
 accounts it holds, and only then replaces anything. Papyra stops and starts again
 on the backup, which needs a restart policy such as the

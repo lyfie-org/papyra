@@ -149,7 +149,7 @@ export function settingsResults(query: string, isAdmin: boolean, journalOn = tru
     // inside Settings, which is the exact confusion this split set out to fix.
     source: entry.href ? 'page' as const : 'settings' as const,
     title: entry.sectionLabel ?? entry.tabLabel,
-    // The first crumb names the area, so "Email delivery" is never mistaken for a personal setting.
+    // The first crumb names the area, so "Email" is never mistaken for a personal setting.
     breadcrumb: entry.href ? ['Page'] : entry.section ? [areaName(entry.area), entry.tabLabel] : [areaName(entry.area)],
     to: settingsHref(entry),
     rank: entry.rank,

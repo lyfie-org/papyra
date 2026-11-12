@@ -13,7 +13,7 @@ import RestartWatch from './RestartWatch';
 import SettingRow, { SettingGroup } from './SettingRow';
 import { useT } from '../i18n/store';
 
-// Server settings → Server backup (administrators). Everything in papyra.db that no
+// Administration → Server backup (administrators). Everything in papyra.db that no
 // per-account backup carries (accounts, passkeys, sharing, API keys, the mail and
 // SSO settings) plus the key ring that seals part of it, encrypted under a
 // passphrase. Notes are not in it: those are the files, or each account's backup.

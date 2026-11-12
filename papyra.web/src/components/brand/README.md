@@ -5,7 +5,5 @@
 (ntfy, Discord Inc., Telegram FZ-LLC); Papyra uses them only to say which service a row is about, and implies no
 endorsement.
 
-Official brand colours (Simple Icons data): ntfy `#317F6F`, Discord `#5865F2`, Telegram `#26A5E4`.
-The colour is shown only while a service is *Connected*; otherwise the mark is drawn in the neutral heading ink.
-R2c.3 turns these files into small React components and adds the three `--brand-*` tokens (see
-`.claude/R2C0_AUDIT.md`, section 4).
+The marks are drawn in Papyra's own colours, not the brands': the heading ink at rest, and the green ink
+(`--accent-text`) while a service is *Connected*, so they read in light and dark and say which rows are live.

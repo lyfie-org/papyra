@@ -1,12 +1,14 @@
-/* Service tiles: one per service, in a row that scrolls sideways on a phone. Colour carries state: a mark is
-   drawn in the heading ink and takes its service's colour only while that service is on (see ServiceMark).
+/* Service tiles: one per service, in a row that scrolls sideways when they don't fit. Colour carries state: a mark is
+   drawn in the heading ink and takes `--accent-text` only while that service is on (see ServiceMark).
    Selected is the only green here, as everywhere. */
 .service-tabs__list {
+  position: relative;              /* the tiles' offsets count from the row */
   display: flex;
   gap: var(--space-2);
   padding: 2px;                    /* room for the focus ring */
   overflow-x: auto;
   scroll-snap-type: x proximity;
+  scroll-padding-inline: 2.5rem;   /* a tile snaps clear of the arrow */
   scrollbar-width: none;
 }
 .service-tabs__list::-webkit-scrollbar { display: none; }
@@ -27,7 +29,7 @@
   font-family: var(--sans);
   text-align: left;
   cursor: pointer;
-  scroll-snap-align: center;
+  scroll-snap-align: start;
   transition: border-color var(--dur-fast) var(--ease), background-color var(--dur-fast) var(--ease);
 }
 .service-tab:hover:not(.is-selected) { border-color: var(--border-hover); }

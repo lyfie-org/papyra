@@ -96,7 +96,7 @@ describe('SearchBar', () => {
     type('smtp');
     const option = screen.getAllByRole('option')[0];
     expect(option.querySelector('.search__hit-title')?.textContent).toBe('Mail server (SMTP)');
-    expect(within(option).getByText('Server settings › Email delivery')).toBeTruthy();
+    expect(within(option).getByText('Administration › Email')).toBeTruthy();
   });
 
   it('highlights the query inside each hit, whatever its case', () => {

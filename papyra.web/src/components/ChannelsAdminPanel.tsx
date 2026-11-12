@@ -13,7 +13,7 @@ import { useServiceParam } from '../hooks/useServiceParam';
 import ServiceMark from './ServiceMark';
 import ServiceTabs, { type ServiceTabItem, type ServiceTone } from './ServiceTabs';
 
-// Server settings → Chat services (administrators). Each chat service is switched on here once, like the
+// Administration → Notifications (administrators). Each notification service is switched on here once, like the
 // mail server; people then connect their own place to send to under Settings → Notifications. Tokens and
 // webhook addresses go up and are sealed on the server — nothing here shows one again.
 

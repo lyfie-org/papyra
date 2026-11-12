@@ -1,10 +1,10 @@
 /**
  * Settings has two areas, shown one at a time.
  *
- * - **Your settings**: what changes things for you. Everyone has it.
- * - **Server settings**: what changes things for everyone on this server. Administrators only.
+ * - **Personal**: what changes things for you. Everyone has it.
+ * - **Administration**: what changes things for everyone on this server. Administrators only.
  *
- * The area is *derived from the tab*, so `?tab=users` has always meant "server settings" and every link already
+ * The area is *derived from the tab*, so `?tab=users` has always meant "administration" and every link already
  * in the app, in emails and in the docs keeps working: nothing in the address says which area, and nothing needs a
  * redirect. Which tabs belong where is decided here and nowhere else.
  */

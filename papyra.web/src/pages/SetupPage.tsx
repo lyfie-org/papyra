@@ -679,7 +679,7 @@ function InstanceRestoreStep({ onBack }: { onBack: () => void }) {
         </>
       )}
       <label className="auth__field">Backup passphrase
-        <input {...MASKED_SECRET} value={passphrase} onChange={e => setPassphrase(e.target.value)} placeholder="The one set in Server settings → Server backup" />
+        <input {...MASKED_SECRET} value={passphrase} onChange={e => setPassphrase(e.target.value)} placeholder="The one set in Administration → Server backup" />
       </label>
       {error && <p className="setup__field-error" role="alert"><TriangleAlert size={14} aria-hidden="true" /> {error}</p>}
       <Nav onBack={onBack} nextDisabled={!ready} busy={busy} busyLabel="Restoring…" nextLabel="Restore" />

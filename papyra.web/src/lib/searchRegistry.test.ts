@@ -39,17 +39,17 @@ describe('searchRegistry', () => {
     expect(noteResult(hit('a', ''), 'note', 0).title).toBe('Untitled');
   });
 
-  it('files Users under Server settings, and says so', () => {
+  it('files Users under Administration, and says so', () => {
     const [users] = settingsResults('manage users', true);
     expect(users.source).toBe('settings');
-    expect(users.breadcrumb[0]).toBe('Server settings');
+    expect(users.breadcrumb[0]).toBe('Administration');
     expect(users.to).toBe('/settings?tab=users');
   });
 
   it('breadcrumbs a settings section under its area and tab', () => {
     const smtp = settingsResults('outbound email', true)
       .find(r => r.title === 'Mail server (SMTP)');
-    expect(smtp?.breadcrumb).toEqual(['Server settings', 'Email delivery']);
+    expect(smtp?.breadcrumb).toEqual(['Administration', 'Email']);
     expect(smtp?.to).toBe('/settings?tab=email&s=smtp');
   });
 

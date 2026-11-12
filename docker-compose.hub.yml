@@ -15,7 +15,7 @@ services:
       PUID: "1000"
       PGID: "1000"
       PAPYRA_ALLOW_INSECURE_COOKIES: "false"
-      # Optional: set chat notifications up here instead of in Settings. Read once, on first start.
+      # Optional: set ntfy, Discord and Telegram up here instead of in Settings. Read once, on first start.
       # https://papyra.app/docs/notifications/
       # PAPYRA_NTFY_URL: "https://ntfy.example.com"
       # PAPYRA_NTFY_TOKEN: ""

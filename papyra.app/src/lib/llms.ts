@@ -49,7 +49,7 @@ async function intro(): Promise<string> {
     `- Docker image: ${DOCKER_HUB_URL}${pulls !== null && pulls >= 1000 ? ` (${roundedCount(pulls)} pulls)` : ''}`,
     `- Made by Lyfie (${LYFIE_URL}), the open-source organisation founded by ${CREATOR_NAME}; its editor is luthor (${LUTHOR_URL})`,
     '- Price: free. No paid tier, no licence key, no account with Lyfie.',
-    `- Privacy: no tracking, analytics or crash reports. The server makes no call to any server of the maker and nobody counts installs. The only call it makes without being set up is a daily look at GitHub for a newer version, which sends nothing about the install. Email and the optional chat notifications (ntfy, Discord, Telegram) send only what an administrator turned on, to the place they chose; by default a chat message is one short line with no names or note text. It is optional: PAPYRA_UPDATE_CHECK_ENABLED=false turns it off. Details: ${SITE_URL}/docs/update-check/`,
+    `- Privacy: no tracking, analytics or crash reports. The server makes no call to any server of the maker and nobody counts installs. The only call it makes without being set up is a daily look at GitHub for a newer version, which sends nothing about the install. Email and the optional notification services (ntfy, Discord, Telegram) send only what an administrator turned on, to the place they chose; by default a chat message is one short line with no names or note text. It is optional: PAPYRA_UPDATE_CHECK_ENABLED=false turns it off. Details: ${SITE_URL}/docs/update-check/`,
     '',
   ].join('\n');
 }

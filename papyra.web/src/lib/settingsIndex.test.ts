@@ -129,7 +129,7 @@ describe('settings areas', () => {
     expect(inRail.sort()).toEqual([...YOUR_TABS, ...SERVER_TABS].sort());
   });
 
-  it('marks an index entry admin-only exactly when its tab is in Server settings', () => {
+  it('marks an index entry admin-only exactly when its tab is in Administration', () => {
     for (const entry of SETTINGS_INDEX) {
       if (entry.href) continue;
       expect(!!entry.adminOnly, `${entry.tab}/${entry.section ?? ''}`).toBe(areaOf(entry.tab) === 'server');
@@ -139,7 +139,7 @@ describe('settings areas', () => {
   it('tells a result which area it is in, so the breadcrumb can say so', () => {
     const smtp = searchSettings('smtp', true).find(e => e.section === 'smtp')!;
     expect(smtp.area).toBe('server');
-    expect(smtp.tabLabel).toBe('Email delivery');
+    expect(smtp.tabLabel).toBe('Email');
     expect(smtp.sectionLabel).toBe('Mail server (SMTP)');
     const theme = searchSettings('dark mode', true)[0];
     expect(theme.area).toBe('you');
@@ -149,6 +149,7 @@ describe('settings areas', () => {
     const find = (q: string, tab: string) => searchSettings(q, true).some(e => e.tab === tab);
     expect(find('instance backup', 'instance')).toBe(true);
     expect(find('chat notifications', 'channels')).toBe(true);
+    expect(find('notification services', 'channels')).toBe(true);
     expect(find('data & storage', 'data')).toBe(true);
     expect(find('outbound email', 'email')).toBe(true);
     expect(find('encrypted backup', 'data')).toBe(true);
@@ -163,7 +164,8 @@ describe('settings areas', () => {
     expect(label('your data', 'data')).toBe('Your data');
     expect(label('git backup', 'sync')).toBe('Git backup');
     expect(label('server backup', 'instance')).toBe('Server backup');
-    expect(label('chat services', 'channels')).toBe('Chat services');
+    expect(label('chat services', 'channels')).toBe('Notifications');
+    expect(label('email delivery', 'email')).toBe('Email');
     expect(label('backup file', 'data', 'encrypted-backup')).toBe('Backup file');
   });
 });

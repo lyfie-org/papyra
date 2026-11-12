@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { channelRoutes, demoChatFor, setDemoChatSwitch } from './channels';
 import type { Destination } from '../hooks/useChannels';
 
-// The demo's chat notifications: connect, test, confirm in memory; nothing leaves the browser.
+// The demo's notification services: connect, test, confirm in memory; nothing leaves the browser.
 const routes = channelRoutes();
 
 interface Listed { available: string[]; discord?: { webhook: boolean; dm: boolean }; destinations: Destination[] }
@@ -18,7 +18,7 @@ async function call<T = Record<string, unknown>>(method: string, path: string, b
   return { status: res.status, data: (res.status === 204 ? null : await res.json()) as T };
 }
 
-describe('demo chat notifications', () => {
+describe('demo notification services', () => {
   it('offers ntfy, Discord and Telegram, none connected to begin with', async () => {
     const { data } = await call<Listed>('GET', '/api/notifications/destinations');
     expect(data.available).toEqual(['discord', 'telegram', 'ntfy']);

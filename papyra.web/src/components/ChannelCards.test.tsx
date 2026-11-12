@@ -71,7 +71,7 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
 describe('ChannelCards', () => {
-  it('stays out of the way until an administrator has switched a chat service on', async () => {
+  it('stays out of the way until an administrator has switched a notification service on', async () => {
     available = [];
     mount();
     await waitFor(() => expect(calls.some(c => c.url === '/api/notifications/destinations')).toBe(true));
@@ -453,13 +453,13 @@ describe('ChannelCards', () => {
       expect(tile('Email').getAttribute('aria-selected')).toBe('true');
     });
 
-    it('colour a mark only while the service is connected', async () => {
+    it('turn a mark green only while the service is connected', async () => {
       destinations = [dest({ id: 5, channel: 'ntfy' })];
       mount();
       await screen.findByRole('heading', { name: 'Where to send' });
       await waitFor(() => expect(tile('ntfy').textContent).toContain('Connected'));
       const colour = (name: string) => (tile(name).querySelector('.service-mark') as SVGElement).style.color;
-      expect(colour('ntfy')).toBe('var(--brand-ntfy)');
+      expect(colour('ntfy')).toBe('var(--accent-text)');
       expect(colour('Discord')).toBe('');                                     // at rest: the heading ink
       expect(colour('Telegram')).toBe('');
     });

@@ -39,79 +39,128 @@ const where = () => screen.getByTestId('where').textContent;
 beforeEach(() => { auth.role = 'Admin'; });
 afterEach(() => { cleanup(); vi.unstubAllGlobals(); });
 
+describe('Settings page arrows', () => {
+  afterEach(() => { vi.restoreAllMocks(); });
+
+  it('shows arrows on a row too narrow for its pages; they scroll without opening a page', () => {
+    // jsdom has no layout, so the row's widths are set by hand.
+    vi.spyOn(HTMLElement.prototype, 'clientWidth', 'get').mockReturnValue(300);
+    vi.spyOn(HTMLElement.prototype, 'scrollWidth', 'get').mockReturnValue(900);
+    const scrollTo = vi.fn();
+    HTMLElement.prototype.scrollTo = scrollTo as unknown as typeof HTMLElement.prototype.scrollTo;
+    open('/settings?tab=profile');
+    expect(screen.queryByRole('button', { name: 'Show earlier settings pages' })).toBeNull();
+    fireEvent.click(screen.getByRole('button', { name: 'Show more settings pages' }));
+    expect(scrollTo).toHaveBeenLastCalledWith(expect.objectContaining({ left: 225 }));
+    expect(where()).toBe('/settings?tab=profile');
+  });
+
+  it('shows none when the pages fit', () => {
+    open('/settings?tab=profile');
+    expect(screen.queryByRole('button', { name: 'Show more settings pages' })).toBeNull();
+  });
+});
+
 describe('Settings areas', () => {
-  it('opens an administrator on Your settings, with a switch and no sign of the server area’s note', () => {
+  const tabs = () => screen.getByRole('tablist', { name: 'Settings area' });
+  const tab = (name: string) => within(tabs()).getByRole('tab', { name });
+
+  it('opens an administrator on Personal, with two tabs and no sign of the administration note', () => {
     open('/settings?tab=about');
     expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Settings');
-    const group = screen.getByRole('group', { name: 'Settings area' });
-    expect(within(group).getByRole('button', { name: 'Your settings' }).getAttribute('aria-pressed')).toBe('true');
-    expect(within(group).getByRole('button', { name: 'Server settings' }).getAttribute('aria-pressed')).toBe('false');
+    expect(tab('Personal').getAttribute('aria-selected')).toBe('true');
+    expect(tab('Administration').getAttribute('aria-selected')).toBe('false');
     expect(screen.queryByText('Changes here apply to everyone on this server.')).toBeNull();
   });
 
-  it('shows only your own pages while in Your settings, under their new names', () => {
+  it('holds the pages of the chosen area in the tab’s own panel', () => {
     open('/settings?tab=about');
-    expect(railNames('Your settings')).toEqual([
+    const panel = screen.getByRole('tabpanel');
+    expect(panel.getAttribute('aria-labelledby')).toBe(tab('Personal').id);
+    expect(tab('Personal').getAttribute('aria-controls')).toBe(panel.id);
+    expect(within(panel).getByRole('navigation', { name: 'Personal' })).toBeTruthy();
+  });
+
+  it('shows only your own pages while in Personal, under their new names', () => {
+    open('/settings?tab=about');
+    expect(railNames('Personal')).toEqual([
       'Profile', 'Appearance', 'Journal', 'Notifications', 'Security', 'Your data', 'API Keys', 'Git backup', 'About',
     ]);
   });
 
-  it('switches to Server settings: its own title, the line that says who it affects, and only server pages', () => {
+  it('switches to Administration: the line that says who it affects, and only server pages', () => {
     open('/settings?tab=about');
-    fireEvent.click(screen.getByRole('button', { name: 'Server settings' }));
-    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Server settings');
+    fireEvent.click(tab('Administration'));
+    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Settings');
+    expect(tab('Administration').getAttribute('aria-selected')).toBe('true');
     expect(screen.getByText('Changes here apply to everyone on this server.')).toBeTruthy();
-    expect(railNames('Server settings')).toEqual([
-      'Users', 'Single sign-on', 'Email delivery', 'Chat services', 'Server backup', 'Jobs', 'Logs',
+    expect(railNames('Administration')).toEqual([
+      'Users', 'Single sign-on', 'Email', 'Notifications', 'Server backup', 'Jobs', 'Logs',
     ]);
     expect(screen.getByText('panel:users')).toBeTruthy();                 // landed on its first page
     expect(where()).toBe('/settings?tab=users');
     expect(document.querySelector('.settings--server')).not.toBeNull();
   });
 
+  it('moves between the tabs with the arrow keys, Home and End, and focus goes with the choice', () => {
+    open('/settings?tab=about');
+    tab('Personal').focus();
+    fireEvent.keyDown(tabs(), { key: 'ArrowRight' });
+    expect(where()).toBe('/settings?tab=users');
+    expect(document.activeElement).toBe(tab('Administration'));
+    expect(tab('Administration').tabIndex).toBe(0);
+    expect(tab('Personal').tabIndex).toBe(-1);
+    fireEvent.keyDown(tabs(), { key: 'Home' });
+    expect(where()).toBe('/settings?tab=about');
+    expect(document.activeElement).toBe(tab('Personal'));
+    fireEvent.keyDown(tabs(), { key: 'End' });
+    expect(tab('Administration').getAttribute('aria-selected')).toBe('true');
+    fireEvent.keyDown(tabs(), { key: 'ArrowRight' });                    // wraps round to the first
+    expect(tab('Personal').getAttribute('aria-selected')).toBe('true');
+  });
+
   it('goes back to the page you had open when you return to an area', () => {
     open('/settings?tab=about');
-    fireEvent.click(screen.getByRole('button', { name: 'Server settings' }));
-    fireEvent.click(within(rail('Server settings')).getByRole('button', { name: 'Chat services' }));
+    fireEvent.click(tab('Administration'));
+    fireEvent.click(within(rail('Administration')).getByRole('button', { name: 'Notifications' }));
     expect(screen.getByText('panel:channels')).toBeTruthy();
-    fireEvent.click(screen.getByRole('button', { name: 'Your settings' }));
+    fireEvent.click(tab('Personal'));
     expect(screen.getByText('panel:about')).toBeTruthy();
     expect(where()).toBe('/settings?tab=about');
-    fireEvent.click(screen.getByRole('button', { name: 'Server settings' }));
+    fireEvent.click(tab('Administration'));
     expect(screen.getByText('panel:channels')).toBeTruthy();
   });
 
-  it('opens straight into Server settings from an old link, as ?tab= always did', () => {
+  it('opens straight into Administration from an old link, as ?tab= always did', () => {
     open('/settings?tab=instance');
-    expect(screen.getByRole('heading', { level: 1 }).textContent).toBe('Server settings');
-    expect(within(screen.getByRole('group', { name: 'Settings area' })).getByRole('button', { name: 'Server settings' }).getAttribute('aria-pressed')).toBe('true');
+    expect(tab('Administration').getAttribute('aria-selected')).toBe('true');
     expect(screen.getByText('panel:instance')).toBeTruthy();
-    expect(within(rail('Server settings')).getByRole('button', { name: 'Server backup' }).getAttribute('aria-current')).toBe('true');
+    expect(within(rail('Administration')).getByRole('button', { name: 'Server backup' }).getAttribute('aria-current')).toBe('true');
   });
 
-  it('does not change the pressed state when the current area is chosen again', () => {
+  it('does not change the address when the current area is chosen again', () => {
     open('/settings?tab=logs');
-    fireEvent.click(screen.getByRole('button', { name: 'Server settings' }));
+    fireEvent.click(tab('Administration'));
     expect(where()).toBe('/settings?tab=logs');
   });
 
-  it('shows everyone else nothing new: no switch, no note, no server pages, even by address', () => {
+  it('shows everyone else nothing new: no tabs, no note, no server pages, even by address', () => {
     auth.role = 'User';
     open('/settings?tab=users');                                        // an admin-only tab, typed in
-    expect(screen.queryByRole('group', { name: 'Settings area' })).toBeNull();
+    expect(screen.queryByRole('tablist', { name: 'Settings area' })).toBeNull();
     expect(screen.queryByText(/everyone on this server/)).toBeNull();
-    expect(screen.queryByText(/Server settings/)).toBeNull();
+    expect(screen.queryByText(/Administration/)).toBeNull();
     expect(screen.queryByText('panel:users')).toBeNull();
     expect(document.querySelector('.settings__title')!.textContent).toBe('Settings');   // (the Profile page has its own h1)
-    expect(railNames('Your settings')).not.toContain('Users');
-    expect(railNames('Your settings')).toContain('Git backup');
+    expect(railNames('Personal')).not.toContain('Users');
+    expect(railNames('Personal')).toContain('Git backup');
   });
 
   it('keeps an ordinary person on their own pages when they ask for one directly', () => {
     auth.role = 'User';
     open('/settings?tab=about');
     expect(screen.getByText('panel:about')).toBeTruthy();
-    expect(screen.queryByRole('group', { name: 'Settings area' })).toBeNull();
+    expect(screen.queryByRole('tablist', { name: 'Settings area' })).toBeNull();
   });
 });
 

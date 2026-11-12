@@ -5,8 +5,9 @@ import { Globe, Mail, type LucideIcon } from 'lucide-react';
  * CC0; the marks belong to their owners and only say which service a row is about). Email and network access use
  * the app's own icon set.
  *
- * Colour carries state: at rest a mark is drawn in the heading ink, and in the service's own colour
- * (`--brand-*`, in tokens.css) only while the service is on or connected, so an unset row stays calm.
+ * Marks wear Papyra's own colours, never the services' brand colours, so they sit in the page in light and dark:
+ * the heading ink at rest, and the green ink (`--accent-text`) while the service is on or connected, so colour
+ * still says which rows are live and an unset row stays calm.
  */
 export type ServiceId = 'email' | 'ntfy' | 'discord' | 'telegram' | 'network';
 
@@ -19,7 +20,7 @@ const PATHS: Record<'ntfy' | 'discord' | 'telegram', string> = {
 const ICONS: Record<'email' | 'network', LucideIcon> = { email: Mail, network: Globe };
 
 export default function ServiceMark({ service, lit = false, size = 22 }: { service: ServiceId; lit?: boolean; size?: number }) {
-  const style = lit && service !== 'email' && service !== 'network' ? { color: `var(--brand-${service})` } : undefined;
+  const style = lit && service !== 'email' && service !== 'network' ? { color: 'var(--accent-text)' } : undefined;
   if (service === 'email' || service === 'network') {
     const Icon = ICONS[service];
     return <Icon className="service-mark" size={size} aria-hidden="true" />;

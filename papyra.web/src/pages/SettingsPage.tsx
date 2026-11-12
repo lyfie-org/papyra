@@ -53,7 +53,9 @@ import { useImportStatus, importSummary, IMPORT_STATUS_KEY, type ImportStatus } 
 import './SettingsPage.css';
 import { useT } from '../i18n/store';
 import type { MessageKey } from '../i18n/store';
-import SettingsAreaSwitch from '../components/SettingsAreaSwitch';
+import RowArrows from '../components/RowArrows';
+import { rowScrollClass, useRowOverflow } from '../hooks/useRowOverflow';
+import SettingsAreaTabs from '../components/SettingsAreaTabs';
 import { areaOf, DEFAULT_TAB, isTab, type Area, type Tab } from '../lib/settingsAreas';
 import LoadingBar from '../components/LoadingBar';
 import BusyButton from '../components/BusyButton';
@@ -179,19 +181,29 @@ export default function SettingsPage() {
     rail.scrollTo({ left: active.offsetLeft - (rail.clientWidth - active.offsetWidth) / 2, behavior: calm ? 'auto' : 'smooth' });
   }, [tab]);
 
+  const railRow = useRowOverflow(railRef, area);
+
+  const areaPages = (
+    <>
+      {area === 'server' && <p className="settings__server-note">{t('settings.serverNote')}</p>}
+      <div className={`settings__rail-row ${rowScrollClass(railRow)}`}>
+        <nav className="settings__rail row-scroll__scroller" aria-label={t(area === 'server' ? 'settings.area.server' : 'settings.area.you')} ref={railRef}>
+          {railItems.map(item => (
+            <RailItem key={item.id} item={item} active={tab === item.id} onSelect={setTab} />
+          ))}
+        </nav>
+        <RowArrows row={railRow} earlierLabel={t('settings.pages.earlier')} moreLabel={t('settings.pages.more')} />
+      </div>
+    </>
+  );
+
   return (
-    <section className={`settings${area === 'server' ? ' settings--server' : ''}`}>
+    <section className={`settings${area === 'server' ? ' settings--server' : ''}${isAdmin ? ' settings--tabbed' : ''}`}>
       <div className="settings__shell">
         <div className="settings__side">
-          <h1 className="page-title settings__title">{t(area === 'server' ? 'settings.titleServer' : 'settings.title')}</h1>
-          {/* Only an administrator has a second area. Nobody else sees a switch, or any hint that there is one. */}
-          {isAdmin && <SettingsAreaSwitch area={area} onChange={switchArea} />}
-          {area === 'server' && <p className="settings__server-note">{t('settings.serverNote')}</p>}
-          <nav className="settings__rail" aria-label={t(area === 'server' ? 'settings.area.server' : 'settings.area.you')} ref={railRef}>
-            {railItems.map(item => (
-              <RailItem key={item.id} item={item} active={tab === item.id} onSelect={setTab} />
-            ))}
-          </nav>
+          <h1 className="page-title settings__title">{t('settings.title')}</h1>
+          {/* Only an administrator has a second area. Nobody else sees tabs, or any hint that there is one. */}
+          {isAdmin ? <SettingsAreaTabs area={area} onChange={switchArea}>{areaPages}</SettingsAreaTabs> : areaPages}
         </div>
 
         <div className="settings__content">

@@ -11,13 +11,13 @@ other things. **Email** is built in. An administrator can also switch on **ntfy*
 and nothing is sent to a place until the person it belongs to has confirmed it is theirs.
 
 Some notices **always go by email**, whatever else you choose: a new sign-in, a changed password or address,
-a pending account deletion, and the notice that a chat service stopped working. They keep your account safe,
-so they are never sent only to a chat app. Password resets, invitations and one-time codes are email too.
+a pending account deletion, and the notice that a notification service stopped working. They keep your account safe,
+so they are never sent only to ntfy, Discord or Telegram. Password resets, invitations and one-time codes are email too.
 
 ## Connecting a place to send to
 
-Go to *Settings → Notifications*. At the top, **Where to send** shows a tile for email and one for every chat
-service the administrator switched on. Each tile says where that service stands: *Connected*, *Not set up*,
+Go to *Settings → Notifications*. At the top, **Where to send** shows a tile for email and one for every
+notification service the administrator switched on. Each tile says where that service stands: *Connected*, *Not set up*,
 *Needs attention* or *Off on this server*. Choose a tile to set that service up, or to manage it once it is
 connected. The service you chose stays in the address, so a link or a reload opens the same one.
 
@@ -62,7 +62,7 @@ address is stored sealed and is never shown again.
    the wrong person is noticed. Send `/stop` to the bot at any time to disconnect.
 
 The link works once and for 10 minutes. No address is typed anywhere: the one-time code in the link is what
-proves the chat is yours.
+proves the Telegram chat is yours.
 
 ## What gets sent
 
@@ -81,7 +81,7 @@ Papyra.
 
 Once a place is confirmed, it gets its own column beside email in *What Papyra tells you about*. Each
 notification has a switch per place, so a mention can go to ntfy while backup news stays in your inbox.
-Always-on notices have no chat switch.
+Always-on notices have no switch for the other places.
 
 ## When a place stops working
 
@@ -92,7 +92,7 @@ and the line in Settings explains why. Fix it, then choose **Turn back on**.
 
 ## For administrators
 
-Open *Server settings → Chat services* (administrators see a **Server settings** switch at the top of Settings).
+Open *Administration → Notifications* (administrators see **Personal** and **Administration** tabs at the top of Settings).
 There is a tile for each service and one for **Network access**. Each service is switched on once here; people
 connect their own.
 
@@ -136,17 +136,17 @@ didn't choose. What the update check asks is on [its own page](/docs/update-chec
 | What | Goes to | Sent | Set up by |
 | --- | --- | --- | --- |
 | Update check | `api.github.com` | A plain request for the latest release, once a day. Nothing about your install. **On by default; one setting turns it off.** | Nobody: it is the default |
-| Email | The mail server in *Server settings → Email delivery* | The notice or message | An administrator |
-| ntfy | The ntfy server in *Server settings → Chat services* | One short line, an optional link, the access token if set | An administrator, then each person |
+| Email | The mail server in *Administration → Email* | The notice or message | An administrator |
+| ntfy | The ntfy server in *Administration → Notifications* | One short line, an optional link, the access token if set | An administrator, then each person |
 | Discord webhook | `discord.com` (the address the person pasted) | One short line as a small card, an optional link | The person |
 | Discord direct message | `discord.com/api` | The same card, and the confirmation code | An administrator, then each person |
 | Telegram | `api.telegram.org` | The same line as text; also asks Telegram for the messages sent to the bot | An administrator, then each person |
 | Git backup | The repository in *Settings → Git backup* | Your notes, plain or encrypted as you chose | Each person |
 | Webhooks | The addresses a person registered | The event's details | Each person |
 | Link cards and saved articles | The sites a note links to | A page request from your server; only public addresses | Happens when a note holds a link |
-| Single sign-on | The identity provider in *Server settings → Single sign-on* | The sign-in exchange | An administrator |
+| Single sign-on | The identity provider in *Administration → Single sign-on* | The sign-in exchange | An administrator |
 
-Chat messages travel through the service you chose (ntfy, Discord, Telegram), which sees them. That is why
+What you send to ntfy, Discord or Telegram travels through the service you chose, which sees it. That is why
 the default is a line with no names and no titles. If you don't want a service to see even that, don't connect
 it.
 

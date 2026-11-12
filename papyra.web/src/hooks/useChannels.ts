@@ -1,6 +1,6 @@
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 
-// Chat notifications (ntfy, Discord, Telegram), from both ends. A person connects their own place to
+// Notifications beyond email (ntfy, Discord, Telegram), from both ends. A person connects their own place to
 // send to; an administrator turns each service on once. Secrets (a webhook address, a bot token) only
 // ever go up, never come back down.
 

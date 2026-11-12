@@ -94,7 +94,7 @@ export default function UsersPanel() {
       title: promote ? `Make ${target.username} an admin?` : `Make ${target.username} a regular user?`,
       body: promote
         ? 'They’ll be able to add, disable and remove accounts, and change this server’s settings (email, sign-on, jobs). Admins still can’t read anyone else’s notes.'
-        : 'They keep all their notes, and lose access to the Server settings on their next click.',
+        : 'They keep all their notes, and lose access to Administration on their next click.',
       confirmLabel: promote ? 'Make admin' : 'Make regular user',
     }))) return;
     const res = await fetch(`/api/auth/users/${target.id}/role`, {

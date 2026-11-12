@@ -1,0 +1,48 @@
+/* A row that scrolls sideways: the end that has more fades out under its arrow. A mask, so it works on whatever the
+   row sits on. */
+.row-scroll {
+  --fade-back: 0px;
+  --fade-forward: 0px;
+  position: relative;
+  min-width: 0;
+}
+.row-scroll.has-more-back { --fade-back: 3rem; }
+.row-scroll.has-more-forward { --fade-forward: 3rem; }
+
+.row-scroll__scroller {
+  mask-image: linear-gradient(
+    to right,
+    transparent,
+    #000 var(--fade-back),
+    #000 calc(100% - var(--fade-forward)),
+    transparent
+  );
+}
+
+.row-arrow {
+  position: absolute;
+  top: 50%;
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  border: 1px solid var(--border);
+  border-radius: 50%;
+  background: var(--surface);
+  color: var(--text-h);
+  box-shadow: var(--shadow-card);
+  cursor: pointer;
+  touch-action: manipulation;
+  transform: translateY(-50%);
+  transition: border-color var(--dur-fast) var(--ease);
+}
+.row-arrow--back { left: 0; }
+.row-arrow--forward { right: 0; }
+.row-arrow:hover { border-color: var(--border-hover); }
+.row-arrow:focus-visible { outline: 2px solid var(--border-focus); outline-offset: 1px; }
+/* A finger gets a bigger target than the mark it can see. */
+@media (pointer: coarse) {
+  .row-arrow::after { content: ''; position: absolute; inset: -8px; }
+}
+@media (prefers-reduced-motion: reduce) { .row-arrow { transition: none; } }

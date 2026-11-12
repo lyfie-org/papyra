@@ -88,7 +88,7 @@ export interface NotificationPrefs {
   share: boolean;
   emailConfigured: boolean;
   hasAddress: boolean;
-  /** Delivery channels the server knows (email, then the chat services). */
+  /** Delivery channels the server knows (email, then the notification services). */
   channels: string[];
   /** The chat channels an administrator has switched on. */
   available?: string[];

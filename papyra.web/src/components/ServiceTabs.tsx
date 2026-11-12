@@ -1,5 +1,11 @@
 import { useEffect, useId, useRef, type KeyboardEvent, type ReactNode } from 'react';
+import { useT } from '../i18n/store';
+import { rowScrollClass, useRowOverflow } from '../hooks/useRowOverflow';
+import RowArrows from './RowArrows';
 import './ServiceTabs.css';
+
+/** Room kept beside a tile brought into view, so an arrow never sits on top of the chosen one. */
+const ARROW_ROOM = 40;
 
 export type ServiceTone = 'on' | 'idle' | 'attention' | 'off';
 
@@ -20,6 +26,10 @@ export interface ServiceTabItem {
  * `tablist` / `tab` / `tabpanel`; Left and Right move (and choose), Home and End jump to the ends, and only the
  * chosen tab is in the Tab order, so the row is one stop. The choice belongs to the caller (it lives in the
  * address, so a link or a reload lands on the same service).
+ *
+ * When the tiles don't fit, the row scrolls sideways, its hidden end fades, and a small arrow on that end moves it:
+ * not everyone has a trackpad or a sideways wheel. An arrow only scrolls, it never chooses, and it stays out of the
+ * Tab order because the arrow keys already bring every tile into view.
  */
 export default function ServiceTabs({ label, items, value, onChange, children }: {
   label: string;
@@ -28,27 +38,27 @@ export default function ServiceTabs({ label, items, value, onChange, children }:
   onChange: (id: string) => void;
   children: ReactNode;
 }) {
+  const t = useT();
   const uid = useId();
   const tabs = useRef(new Map<string, HTMLButtonElement>());
   const listRef = useRef<HTMLDivElement | null>(null);
   const current = items.find(i => i.id === value) ?? items[0];
+  const row = useRowOverflow(listRef, items.length);
+  const scrollRow = row.scrollTo;
 
-  // On a phone the row scrolls sideways. Bring the chosen tile into view only if part of it is hidden (the row
-  // only; the page does not move), so a row that fits is never shifted.
+  // Bring the chosen tile into view only if part of it is hidden (the row only; the page does not move), so a row
+  // that fits is never shifted.
   useEffect(() => {
     const list = listRef.current;
     const active = list?.querySelector<HTMLElement>('[aria-selected="true"]');
     if (!list || !active || list.scrollWidth <= list.clientWidth) return;
-    const edge = 8;
     const left = active.offsetLeft;
     const right = left + active.offsetWidth;
     let to: number | null = null;
-    if (left < list.scrollLeft) to = left - edge;
-    else if (right > list.scrollLeft + list.clientWidth) to = right - list.clientWidth + edge;
-    if (to === null) return;
-    const calm = window.matchMedia?.('(prefers-reduced-motion: reduce)').matches;
-    list.scrollTo({ left: Math.max(0, to), behavior: calm ? 'auto' : 'smooth' });
-  }, [current?.id]);
+    if (left < list.scrollLeft + ARROW_ROOM) to = left - ARROW_ROOM;
+    else if (right > list.scrollLeft + list.clientWidth - ARROW_ROOM) to = right - list.clientWidth + ARROW_ROOM;
+    if (to !== null) scrollRow(Math.max(0, to));
+  }, [current?.id, scrollRow]);
 
   function onKeyDown(e: KeyboardEvent<HTMLDivElement>) {
     const at = items.findIndex(i => i.id === current?.id);
@@ -67,7 +77,8 @@ export default function ServiceTabs({ label, items, value, onChange, children }:
   if (!current) return null;
   return (
     <div className="service-tabs">
-      <div ref={listRef} className="service-tabs__list" role="tablist" aria-label={label} onKeyDown={onKeyDown}>
+      <div className={rowScrollClass(row)}>
+      <div ref={listRef} className="service-tabs__list row-scroll__scroller" role="tablist" aria-label={label} onKeyDown={onKeyDown}>
         {items.map(item => {
           const selected = item.id === current.id;
           return (
@@ -90,6 +101,8 @@ export default function ServiceTabs({ label, items, value, onChange, children }:
             </button>
           );
         })}
+      </div>
+      <RowArrows row={row} earlierLabel={t('settings.services.earlier')} moreLabel={t('settings.services.more')} />
       </div>
       <div
         className="service-tabs__panel"

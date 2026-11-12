@@ -12,7 +12,7 @@ import { useT } from '../i18n/store';
  * whole truth about what reaches your inbox, rather than leaving someone
  * wondering why a "password changed" email arrived after they turned email off.
  *
- * Each chat service you have connected and confirmed (see ChannelCards, which sits above
+ * Each notification service you have connected and confirmed (see ChannelCards, which sits above
  * the list) gets a column of its own beside email, so each notification can go to different
  * places. Always-on security notices stay email only.
  */
@@ -26,7 +26,7 @@ export default function NotificationSettings() {
   if (isError || !data) return <p className="settings__error">Couldn’t load your notification settings.</p>;
 
   const available = data.available ?? destinations.data?.available ?? [];
-  // A chat service gets a column once a place for it is confirmed and the administrator still has it on.
+  // A notification service gets a column once a place for it is confirmed and the administrator still has it on.
   const chat = CHAT_CHANNELS.filter(c =>
     available.includes(c) && destinations.data?.destinations.some(d => d.channel === c && d.verified));
   const columns = ['email', ...chat];
@@ -47,7 +47,7 @@ export default function NotificationSettings() {
             <strong>{t('notifications.email.notSetUp')}</strong>
             <p>
               Your choices are saved, but nothing is sent until an administrator connects a mail
-              server under Server settings → Email delivery.
+              server under Administration → Email.
             </p>
           </div>
         </div>

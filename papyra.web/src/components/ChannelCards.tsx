@@ -15,7 +15,7 @@ import {
 import BusyButton from './BusyButton';
 import './ChannelCards.css';
 
-/** The order the tiles are shown in. Email is yours already; the chat services follow. */
+/** The order the tiles are shown in. Email is yours already; the notification services follow. */
 const TILE_ORDER: ChatChannel[] = ['ntfy', 'discord', 'telegram'];
 
 type Chip = { tone: ServiceTone; text: MessageKey };

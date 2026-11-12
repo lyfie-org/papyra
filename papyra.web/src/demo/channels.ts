@@ -1,11 +1,11 @@
-// Chat notifications in the browser demo. Nothing is ever sent: ntfy and Discord can be "connected",
+// Notification services in the browser demo. Nothing is ever sent: ntfy and Discord can be "connected",
 // tested and confirmed so the screens can be tried out; Telegram needs a real server (it has to talk to
 // Telegram). Kept in memory like the demo's other notification switches.
 
 import type { Destination, PrivacyTier } from '../hooks/useChannels';
 import type { Route } from './backend';
 
-/** The chat services the demo offers. */
+/** The notification services the demo offers. */
 export const DEMO_AVAILABLE_CHANNELS = ['discord', 'telegram', 'ntfy'];
 
 let nextId = 1;

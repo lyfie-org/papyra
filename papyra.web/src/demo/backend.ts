@@ -279,7 +279,7 @@ const routes: Route[] = [
   ['PUT', /^\/api\/instance-backup$/, () => serverOnly('Server backups')],
   ['POST', /^\/api\/instance-backup\//, () => serverOnly('Server backups')],
   ['GET', /^\/api\/instance-backup\//, () => serverOnly('Server backups')],
-  // The chat services an administrator switches on. The demo shows them as they would look, switched on; changing
+  // The notification services an administrator switches on. The demo shows them as they would look, switched on; changing
   // them needs a real server (it has to talk to ntfy, Discord and Telegram).
   ['GET', /^\/api\/admin\/notifications$/, () => json({
     ntfy: { enabled: true, serverUrl: '', defaultServerUrl: 'https://ntfy.sh', hasToken: false },
@@ -287,8 +287,8 @@ const routes: Route[] = [
     telegram: { enabled: true, hasToken: true, botUsername: 'PapyraDemoBot', pollError: null },
     allowedHosts: [],
   })],
-  ['PUT', /^\/api\/admin\/notifications\//, () => serverOnly('Changing chat services')],
-  ['POST', /^\/api\/admin\/notifications\//, () => serverOnly('Testing chat services')],
+  ['PUT', /^\/api\/admin\/notifications\//, () => serverOnly('Changing notification services')],
+  ['POST', /^\/api\/admin\/notifications\//, () => serverOnly('Testing notification services')],
   ['GET', /^\/api\/users\/search$/, () => json([{ username: 'dana', name: 'Dana' }])],
 
   // ------------------------------------------------------------------- notes

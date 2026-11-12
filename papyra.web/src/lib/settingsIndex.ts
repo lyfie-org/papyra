@@ -103,10 +103,10 @@ export const SETTINGS_INDEX: SettingsSource[] = [
   { tab: 'sso', adminOnly: true, keywords: ['sso', 'login'] },
   { tab: 'sso', section: 'oidc', sectionLabel: 'Single sign-on (OIDC)', adminOnly: true, keywords: ['oidc', 'oauth', 'identity provider', 'client id'] },
 
-  { tab: 'email', adminOnly: true, keywords: ['email', 'mail', 'smtp'] },
+  { tab: 'email', adminOnly: true, keywords: ['email', 'email delivery', 'mail', 'smtp'] },
   { tab: 'email', section: 'smtp', sectionKey: 'settings.mail.titleSmtp', adminOnly: true, keywords: ['outbound email', 'smtp', 'mail server', 'sending mail'] },
   { tab: 'email', section: 'send-a-test', sectionLabel: 'Send a test', adminOnly: true, keywords: ['test email'] },
-  { tab: 'channels', adminOnly: true, keywords: ['chat notifications', 'discord', 'telegram', 'ntfy', 'chat', 'bot', 'push'] },
+  { tab: 'channels', adminOnly: true, keywords: ['notification services', 'chat services', 'chat notifications', 'discord', 'telegram', 'ntfy', 'chat', 'bot', 'push'] },
   { tab: 'channels', section: 'channels-ntfy', sectionLabel: 'ntfy', adminOnly: true, keywords: ['push', 'topic', 'notification server', 'self-hosted'] },
   { tab: 'channels', section: 'channels-discord', sectionLabel: 'Discord', adminOnly: true, keywords: ['webhook', 'channel', 'discord server'] },
   { tab: 'channels', section: 'channels-telegram', sectionLabel: 'Telegram', adminOnly: true, keywords: ['bot', 'botfather', 'token'] },
