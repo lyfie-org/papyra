@@ -6,6 +6,7 @@ import { setSync } from '../lib/syncStatus';
 import { IMPORT_STATUS_KEY, type ImportStatus } from './useImportStatus';
 import { ORDER_KEY } from './useNoteOrder';
 import { RESUME_EVENT } from '../lib/resume';
+import { withBase } from '../lib/basePath';
 
 export type ServerStatus = 'online' | 'offline';
 
@@ -36,7 +37,7 @@ export function useSignalR(): ServerStatus {
     }
 
     const connection: HubConnection = new HubConnectionBuilder()
-      .withUrl('/hubs/notes')
+      .withUrl(withBase('/hubs/notes'))
       // The stock policy gives up after ~60s. A self-hosted server can easily be
       // down longer than that (an image upgrade, a laptop asleep) and the app
       // would then sit there claiming "offline" until a manual reload. Back off

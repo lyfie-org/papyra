@@ -38,10 +38,11 @@
           var l = +s[1] * 60 + +s[2], d = +s[3] * 60 + +s[4];
           saved = (l < d ? t >= l && t < d : t >= l || t < d) ? 'light' : 'dark';
         }
+        var pb = (document.querySelector('meta[name="papyra-base"]') || {}).content || '';
         var theme =
           saved === 'light' || saved === 'dark'
             ? saved
-            : saved !== 'system' && location.pathname.indexOf('/shared/') === 0
+            : saved !== 'system' && location.pathname.indexOf(pb + '/shared/') === 0
             ? 'light' // a share-link visitor starts on paper (see ThemeProvider)
             : window.matchMedia('(prefers-color-scheme: dark)').matches
             ? 'dark'

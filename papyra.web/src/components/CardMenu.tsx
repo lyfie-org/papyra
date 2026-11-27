@@ -15,6 +15,7 @@ import { useAuth } from '../hooks/useAuth';
 import { noteLink } from '../hooks/useShares';
 import './CardMenu.css';
 import { useT } from '../i18n/store';
+import { publicOrigin } from '../lib/basePath';
 
 /**
  * The "…" menu on a desk card (notes and to-do lists).
@@ -97,7 +98,7 @@ export default function CardMenu({ note, onShare, onArchive, onDelete, triggerCl
 
   async function copyLink() {
     // `/n/<you>/<id>`: opens the note for you, and for anyone you share it with.
-    const url = auth.user ? noteLink(auth.user.username, note.id) : `${window.location.origin}/note/${encodeURIComponent(note.id)}`;
+    const url = auth.user ? noteLink(auth.user.username, note.id) : `${publicOrigin()}/note/${encodeURIComponent(note.id)}`;
     try {
       await navigator.clipboard.writeText(url);
       toast('Link copied — it opens for anyone signed in who can see this note.');

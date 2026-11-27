@@ -20,6 +20,13 @@ PAPYRA_ALLOW_INSECURE_COOKIES: "true"
 Otherwise set up [HTTPS](/docs/https/). There is nothing wrong with your
 password.
 
+## A blank page behind a reverse proxy
+
+You mapped Papyra to a path (`example.com/papyra/`) and the page is white, with
+errors in the browser console for files that start at the root of the host. Set
+`PAPYRA_BASE_PATH: "/papyra"` and restart, or give Papyra a host of its own. See
+[Under a path instead of its own host](/docs/https/#under-a-path-instead-of-its-own-host).
+
 ## The sidebar says "Server Offline" but the app works
 
 The realtime connection cannot open, usually because a reverse proxy is not

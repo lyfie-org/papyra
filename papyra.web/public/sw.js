@@ -15,6 +15,15 @@ const SHELL_CACHE = `${VERSION}-shell`;
 const DATA_CACHE = `${VERSION}-data`;
 const FONT_CACHE = `${VERSION}-fonts`;
 
+const BASE = new URL(self.registration.scope).pathname.replace(/\/+$/, '');
+
+function localPath(url) {
+  const path = url.pathname;
+  if (BASE === '') return path;
+  if (path === BASE) return '/';
+  return path.startsWith(`${BASE}/`) ? path.slice(BASE.length) : path;
+}
+
 // Read-only endpoints worth keeping a copy of. `/api/auth/me` is the important
 // one: without it the auth guard would bounce an offline user to /login.
 const CACHEABLE_API = [
@@ -28,7 +37,7 @@ const CACHEABLE_API = [
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(SHELL_CACHE).then((cache) => cache.addAll(['/'])).then(() => self.skipWaiting()),
+    caches.open(SHELL_CACHE).then((cache) => cache.addAll([`${BASE}/`])).then(() => self.skipWaiting()),
   );
 });
 
@@ -56,17 +65,17 @@ const JOURNAL_DAY = /^\/api\/journal\/(today|\d{4}-\d{2}-\d{2})$/;
 
 function isCacheableApi(url) {
   return url.origin === self.location.origin
-    && (CACHEABLE_API.includes(url.pathname) || JOURNAL_DAY.test(url.pathname));
+    && (CACHEABLE_API.includes(localPath(url)) || JOURNAL_DAY.test(localPath(url)));
 }
 
 // Self-hosted typefaces (public/fonts) — they never change, so cache-first.
 function isFont(url) {
-  return url.origin === self.location.origin && url.pathname.startsWith('/fonts/');
+  return url.origin === self.location.origin && localPath(url).startsWith('/fonts/');
 }
 
 // Hashed build output — immutable, so cache-first is safe and instant.
 function isImmutableAsset(url) {
-  return url.origin === self.location.origin && /^\/assets\//.test(url.pathname);
+  return url.origin === self.location.origin && /^\/assets\//.test(localPath(url));
 }
 
 async function networkFirst(request, cacheName) {
@@ -117,7 +126,7 @@ self.addEventListener('fetch', (event) => {
   if (request.mode === 'navigate') {
     // Opening an attachment, an export or any other API URL in a tab is not
     // the app: leave it to the browser, and never let it near the shell cache.
-    if (url.pathname.startsWith('/api/')) return;
+    if (localPath(url).startsWith('/api/')) return;
     event.respondWith(
       // `no-store` so the shell is always revalidated against the server: a
       // deploy has to reach an open tab, and an HTTP-cached index.html would
@@ -126,11 +135,11 @@ self.addEventListener('fetch', (event) => {
         .then((response) => {
           if (isShellResponse(response)) {
             const copy = response.clone();
-            caches.open(SHELL_CACHE).then((cache) => cache.put('/', copy));
+            caches.open(SHELL_CACHE).then((cache) => cache.put(`${BASE}/`, copy));
           }
           return response;
         })
-        .catch(() => caches.open(SHELL_CACHE).then((cache) => cache.match('/'))),
+        .catch(() => caches.open(SHELL_CACHE).then((cache) => cache.match(`${BASE}/`))),
     );
     return;
   }

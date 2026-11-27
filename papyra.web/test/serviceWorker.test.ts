@@ -12,7 +12,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 type Listener = (event: unknown) => void;
 
-function loadWorker(networkResponse: Response) {
+function loadWorker(networkResponse: Response, scope = 'https://papyra.test/') {
   const listeners: Record<string, Listener> = {};
   const put = vi.fn(async () => {});
   const cache = { put, match: vi.fn(async () => undefined), addAll: vi.fn(async () => {}) };
@@ -20,6 +20,7 @@ function loadWorker(networkResponse: Response) {
     self: {
       addEventListener: (type: string, fn: Listener) => { listeners[type] = fn; },
       location: { origin: 'https://papyra.test' },
+      registration: { scope },
       clients: { claim: async () => {} },
       skipWaiting: async () => {},
     },
@@ -118,5 +119,36 @@ describe('service worker and the journal', () => {
     const { handled } = await sw.read('/api/journal/2026-10-25', { 'X-Unlock-Token': 'abc' });
     expect(handled).toBe(false);
     expect(sw.put).not.toHaveBeenCalled();
+  });
+});
+
+describe('service worker under a base path', () => {
+  const scope = 'https://papyra.test/papyra/';
+  const json = () => new Response('{"ok":true}', { status: 200, headers: { 'content-type': 'application/json' } });
+
+  it('keeps the app page as the shell, under the base', async () => {
+    const sw = loadWorker(html(), scope);
+    await sw.navigate('/papyra/notes/abc');
+    expect(sw.put).toHaveBeenCalledTimes(1);
+    expect(sw.put).toHaveBeenCalledWith('/papyra/', expect.anything());
+  });
+
+  it('leaves API navigations under the base to the browser', async () => {
+    const sw = loadWorker(new Response('png', { headers: { 'content-type': 'image/png' } }), scope);
+    expect((await sw.navigate('/papyra/api/media/photo-1a2b3c.png')).handled).toBe(false);
+  });
+
+  it('caches the same API reads, found under the base', async () => {
+    const sw = loadWorker(json(), scope);
+    expect((await sw.read('/papyra/api/auth/me')).handled).toBe(true);
+    expect(sw.put).toHaveBeenCalledTimes(1);
+    expect((await loadWorker(json(), scope).read('/papyra/api/journal/stats')).handled).toBe(false);
+  });
+
+  it('serves hashed assets and fonts cache-first from under the base', async () => {
+    for (const path of ['/papyra/assets/index-abc.js', '/papyra/fonts/sora-400-latin.woff2']) {
+      const sw = loadWorker(new Response('x', { status: 200 }), scope);
+      expect((await sw.read(path)).handled).toBe(true);
+    }
   });
 });

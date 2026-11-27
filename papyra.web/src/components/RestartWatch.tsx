@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { Loader2, TriangleAlert } from 'lucide-react';
 import { waitForRestart } from '../hooks/useInstanceBackup';
 import './RestartWatch.css';
+import { withBase } from '../lib/basePath';
 
 /**
  * Shown after a restore has been handed to the server: Papyra stops, starts on
@@ -14,7 +15,7 @@ export default function RestartWatch() {
     const abort = new AbortController();
     void waitForRestart(abort.signal).then(result => {
       if (abort.signal.aborted) return;
-      if (result === 'back') window.location.assign('/');
+      if (result === 'back') window.location.assign(withBase('/'));
       else setStopped(true);
     });
     return () => abort.abort();

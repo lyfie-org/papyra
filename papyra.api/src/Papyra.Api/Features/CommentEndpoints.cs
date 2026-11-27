@@ -2,6 +2,7 @@ using System.Security.Claims;
 using System.Text.RegularExpressions;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
+using Papyra.Api.Security;
 using Papyra.Api.Collab;
 using Papyra.Api.Data;
 using Papyra.Api.Hubs;
@@ -263,7 +264,7 @@ public static partial class CommentEndpoints
 
         var author = await db.Users.Where(u => u.Id == comment.AuthorId).Select(u => u.Username).FirstAsync(ct);
         var recipients = await db.Users.Where(u => told.Keys.Contains(u.Id)).ToListAsync(ct);
-        var url = email.PublicUrl($"{http.Request.Scheme}://{http.Request.Host}");
+        var url = email.PublicUrl(http.PublicOrigin());
         foreach (var r in recipients)
         {
             await hub.Clients.User(r.Id.ToString()).SendAsync("NotificationsChanged", ct);

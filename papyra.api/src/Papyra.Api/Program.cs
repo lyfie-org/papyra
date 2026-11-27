@@ -35,6 +35,10 @@ var builder = WebApplication.CreateBuilder(args);
 // using the .NET names is unaffected. See EnvAliases for why this exists.
 builder.Configuration.AddInMemoryCollection(EnvAliases.Resolve(EnvAliases.FromProcess()));
 
+var appBase = AppBase.From(builder.Configuration["Papyra:BasePath"]);
+builder.Services.AddSingleton(appBase);
+builder.Services.AddSingleton(sp => new AppShell(sp.GetRequiredService<IWebHostEnvironment>().WebRootFileProvider, sp.GetRequiredService<AppBase>()));
+
 // OpenAPI document for the /docs developer portal. A document transformer registers
 // the personal-access-token scheme (X-API-Key) so the portal offers a token field
 // and marks the endpoints as secured.
@@ -445,7 +449,7 @@ builder.Services.AddSingleton(new SsoHooks(new OpenIdConnectEvents
             .CreateLogger("Papyra.Sso")
             .LogWarning(ctx.Failure, "SSO sign-in via {Scheme} failed ({ErrorId}): {Reason}", ctx.Scheme.Name, errorId, ctx.Failure?.Message);
         ctx.HandleResponse();
-        ctx.Response.Redirect($"/login?sso=failed&ref={errorId}");
+        ctx.Response.Redirect($"{ctx.HttpContext.BasePath()}/login?sso=failed&ref={errorId}");
         return Task.CompletedTask;
     },
     // Existing accounts only — SSO never creates one. Within a provider the
@@ -489,7 +493,7 @@ builder.Services.AddSingleton(new SsoHooks(new OpenIdConnectEvents
                     "SSO sign-in via {Provider} refused: no single unlinked Papyra account with email {Email} (sub {Sub}, matches {Count})",
                     provider, email, sub, matches.Count);
                 ctx.HandleResponse();
-                ctx.Response.Redirect("/login?sso=no_account");
+                ctx.Response.Redirect($"{ctx.HttpContext.BasePath()}/login?sso=no_account");
                 return;
             }
             user = target;
@@ -502,7 +506,7 @@ builder.Services.AddSingleton(new SsoHooks(new OpenIdConnectEvents
         {
             // Back to the sign-in page with the reason, not an error page.
             ctx.HandleResponse();
-            ctx.Response.Redirect("/login?disabled=1");
+            ctx.Response.Redirect($"{ctx.HttpContext.BasePath()}/login?disabled=1");
             return;
         }
         await SignInNotices.RecordAsync(ctx.HttpContext, db, sp.GetRequiredService<EmailSender>(), user, "Single sign-on", ct);
@@ -818,6 +822,11 @@ app.Lifetime.ApplicationStarted.Register(() => _ = Task.Run(async () =>
 // First in the pipeline so everything downstream — the rate limiter's partition
 // key, the access log, the HTTPS check below — sees the real client rather than
 // the proxy. See ForwardedNetworks for whom that trusts.
+if (!appBase.IsRoot)
+{
+    app.UsePathBase(appBase.Path);
+    app.UseRouting();
+}
 if (forwardedNetworks.Count > 0) app.UseForwardedHeaders();
 
 // ── Unhandled errors ──────────────────────────────────────────────────────────
@@ -909,6 +918,12 @@ app.Use(async (context, next) =>
     }
 
     await next();
+});
+
+var appShell = app.Services.GetRequiredService<AppShell>();
+app.Use(async (context, next) =>
+{
+    if (!await appShell.TryServeAsync(context)) await next();
 });
 
 app.UseDefaultFiles();
@@ -1253,7 +1268,7 @@ app.Use(async (context, next) =>
         // not a page of JSON.
         if (context.Request.Headers.Accept.ToString().Contains("text/html", StringComparison.OrdinalIgnoreCase))
         {
-            context.Response.Redirect($"/login?sso=unreachable&ref={errorId}");
+            context.Response.Redirect($"{context.BasePath()}/login?sso=unreachable&ref={errorId}");
             return;
         }
         context.Response.StatusCode = StatusCodes.Status502BadGateway;
@@ -1802,12 +1817,12 @@ auth.MapGet("/providers", async (InstanceConfigStore config, CancellationToken c
 
 // Kick off sign-in with one provider. Bare /login/sso (older links, bookmarks)
 // uses the first ready one.
-auth.MapGet("/login/sso/{id?}", async (string? id, InstanceConfigStore config, CancellationToken ct) =>
+auth.MapGet("/login/sso/{id?}", async (string? id, HttpContext http, InstanceConfigStore config, CancellationToken ct) =>
 {
     await config.EnsureLoadedAsync(ct);
     var provider = SsoProviders.Read(config).Where(p => p.Ready).FirstOrDefault(p => id is null || p.Id == id);
     if (provider is null) return Results.NotFound(new { error = "SSO is not configured." });
-    return Results.Challenge(new AuthenticationProperties { RedirectUri = "/" }, [SsoProviders.Scheme(provider.Id)]);
+    return Results.Challenge(new AuthenticationProperties { RedirectUri = $"{http.BasePath()}/" }, [SsoProviders.Scheme(provider.Id)]);
 });
 
 
@@ -1848,7 +1863,7 @@ auth.MapPost("/forgot-password", async (
     });
     await db.SaveChangesAsync(ct);
 
-    var link = $"{email.PublicUrl($"{http.Request.Scheme}://{http.Request.Host}")}/reset-password?token={token}";
+    var link = $"{email.PublicUrl(http.PublicOrigin())}/reset-password?token={token}";
     email.NotifyInBackground(
         user, NotificationCatalog.PasswordReset,
         "Reset your Papyra password",
@@ -2921,7 +2936,7 @@ admin.MapPost("/", async (
     var emailed = false;
     if (body.SendEmail == true)
     {
-        var url = email.PublicUrl($"{http.Request.Scheme}://{http.Request.Host}");
+        var url = email.PublicUrl(http.PublicOrigin());
         var sent = await email.SendAsync(
             address,
             "Your Papyra account is ready",
@@ -3023,7 +3038,7 @@ admin.MapPost("/{id:int}/recovery-link", async (
     });
     await db.SaveChangesAsync(ct);
 
-    var link = $"{email.PublicUrl($"{http.Request.Scheme}://{http.Request.Host}")}/reset-password?token={token}";
+    var link = $"{email.PublicUrl(http.PublicOrigin())}/reset-password?token={token}";
 
     var emailed = false;
     if (body.SendEmail == true)
@@ -3353,7 +3368,7 @@ var oidcAdmin = auth.MapGroup("/oidc").RequireAuthorization(p => p.RequireRole("
 // The public origin the provider must redirect back to (Settings → Email's
 // public URL when set, else the address this page was loaded from).
 static string SsoOrigin(EmailSender email, HttpContext http) =>
-    email.PublicUrl($"{http.Request.Scheme}://{http.Request.Host}").TrimEnd('/');
+    email.PublicUrl(http.PublicOrigin()).TrimEnd('/');
 
 oidcAdmin.MapGet("/", async (InstanceConfigStore config, EmailSender email, HttpContext http, CancellationToken ct) =>
 {
@@ -3577,7 +3592,7 @@ smtpAdmin.MapPost("/invite", async (
     });
     await db.SaveChangesAsync(ct);
 
-    var link = $"{email.PublicUrl($"{http.Request.Scheme}://{http.Request.Host}")}/accept-invite?token={token}";
+    var link = $"{email.PublicUrl(http.PublicOrigin())}/accept-invite?token={token}";
     var result = await email.SendAsync(
         address,
         "You've been invited to Papyra",
@@ -6098,7 +6113,7 @@ accessRequests.MapPost("/", async (
     if (owner is not null)
     {
         var who = await db.Users.Where(u => u.Id == uid).Select(u => u.Username).FirstOrDefaultAsync(ct);
-        var url = email.PublicUrl($"{http.Request.Scheme}://{http.Request.Host}");
+        var url = email.PublicUrl(http.PublicOrigin());
         var verb = access == "edit" ? "edit" : "view";
         var name = string.IsNullOrWhiteSpace(note.Title) ? "Untitled" : note.Title;
         email.NotifyInBackground(owner, NotificationCatalog.AccessRequested,
@@ -6279,7 +6294,7 @@ app.MapGet("/api/shared/{token}", async (
             HttpOnly = true,
             Secure = http.Request.IsHttps,
             SameSite = SameSiteMode.Strict,
-            Path = $"/api/shared/{token}",
+            Path = $"{http.BasePath()}/api/shared/{token}",
             MaxAge = lifetime,
         });
     }
@@ -7074,7 +7089,7 @@ accountDelete.MapPost("/cancel", async (
 // request arrived on) — the "domain" half of a user@domain handle.
 static string InstanceDomain(EmailSender email, HttpContext http)
 {
-    var origin = email.PublicUrl($"{http.Request.Scheme}://{http.Request.Host}");
+    var origin = email.PublicUrl(http.PublicOrigin());
     return Uri.TryCreate(origin, UriKind.Absolute, out var uri) ? uri.Host : http.Request.Host.Host;
 }
 
@@ -7304,7 +7319,7 @@ app.MapGet("/api/export", async (
             new("Vault (locked) notes", vaultCount.ToString()),
             new("Attachments", mediaCount.ToString()),
             new("Size", size >= 1_048_576 ? $"about {size / 1_048_576.0:0.0} MB" : $"about {Math.Max(1, size / 1024)} KB"),
-            new("Server", email.PublicUrl($"{http.Request.Scheme}://{http.Request.Host}")),
+            new("Server", email.PublicUrl(http.PublicOrigin())),
         };
         email.NotifyInBackground(me, NotificationCatalog.ExportReady, "Your notes were exported",
             "A full export of your Papyra notes — including your vault — was just downloaded.\n\n"
@@ -7536,7 +7551,10 @@ app.MapJournal();
 app.MapJournalExport();
 app.MapUpdates();
 app.MapChecklist();
-app.MapFallbackToFile("index.html");
+app.MapFallback("{*path:nonfile}", async (HttpContext context) =>
+{
+    if (!await appShell.TryServeIndexAsync(context)) context.Response.StatusCode = StatusCodes.Status404NotFound;
+});
 
 app.Run();
 
@@ -7577,7 +7595,7 @@ static async Task AnnounceShare(
     var eventId = kind == "access_approved" ? NotificationCatalog.AccessAnswered : NotificationCatalog.Shared;
     var who = sharer.FindFirstValue(ClaimTypes.Name) ?? "Someone";
     var name = string.IsNullOrWhiteSpace(title) ? "Untitled" : title;
-    var url = email.PublicUrl($"{http.Request.Scheme}://{http.Request.Host}");
+    var url = email.PublicUrl(http.PublicOrigin());
     var role = access == "edit" ? "can edit" : "can view";
     var (subject, lead) = kind switch
     {
@@ -7652,7 +7670,7 @@ static async Task<string> PublicRedirectUri(HttpContext http, string scheme)
     await http.RequestServices.GetRequiredService<InstanceConfigStore>().EnsureLoadedAsync(http.RequestAborted);
     var email = http.RequestServices.GetRequiredService<EmailSender>();
     var id = SsoProviders.IdFromScheme(scheme) ?? SsoProviders.LegacyId;
-    return $"{email.PublicUrl($"{http.Request.Scheme}://{http.Request.Host}")}{SsoProviders.CallbackPath(id)}";
+    return $"{email.PublicUrl(http.PublicOrigin())}{SsoProviders.CallbackPath(id)}";
 }
 
 // The authenticated tenant id, lifted from the NameIdentifier claim minted at

@@ -1,5 +1,6 @@
 import { useQuery, useMutation, useQueryClient } from '@tanstack/react-query';
 import type { ShareSummary } from '../components/ShareBadge';
+import { publicOrigin } from '../lib/basePath';
 
 export interface Share {
   id: number;
@@ -313,5 +314,5 @@ export async function resolveSharedLink(shareId: number, target: string): Promis
 
 /** One link to a note, for anyone who holds it: `/n/<owner>/<id>`. */
 export function noteLink(owner: string, noteId: string): string {
-  return `${window.location.origin}/n/${encodeURIComponent(owner)}/${encodeURIComponent(noteId)}`;
+  return `${publicOrigin()}/n/${encodeURIComponent(owner)}/${encodeURIComponent(noteId)}`;
 }

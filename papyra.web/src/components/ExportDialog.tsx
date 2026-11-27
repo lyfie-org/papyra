@@ -13,6 +13,7 @@ import { mediumDate } from '../lib/journalDay';
 import './ExportDialog.css';
 
 import BusyButton from './BusyButton';
+import { withBase } from '../lib/basePath';
 /** What is being exported: everything, or the journal on its own as Markdown files or a PDF book. */
 export type ExportScope = { kind: 'all' } | { kind: 'journal'; format: 'md' | 'pdf' };
 
@@ -65,7 +66,7 @@ export default function ExportDialog({ onClose, scope = { kind: 'all' } }: { onC
       setCode('');
       setStarted(true);
       const ticket = encodeURIComponent(data.ticket);
-      window.location.href = journal ? `/api/export/journal?format=${journal.format}&ticket=${ticket}` : `/api/export?ticket=${ticket}`;
+      window.location.href = withBase(journal ? `/api/export/journal?format=${journal.format}&ticket=${ticket}` : `/api/export?ticket=${ticket}`);
     } catch {
       setError('Couldn’t reach the server.');
     } finally {

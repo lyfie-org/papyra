@@ -4,6 +4,7 @@ import { ThemeContext, type Theme, type ThemePreference } from './useTheme';
 import {
   DEFAULT_SCHEDULE, msUntilNextChange, parseSchedule, serializeSchedule, themeAt, type ThemeSchedule,
 } from '../lib/themeSchedule';
+import { BASE, stripBase } from '../lib/basePath';
 
 const LS_KEY = 'papyra-theme';
 // The schedule's times, kept while another preference is on so picking
@@ -33,7 +34,7 @@ function getInitialWire(): string {
   if (saved) return saved;
   // Someone opening a public share link has never been here: show the note on
   // paper, as it was written. The page has a toggle, and their pick sticks.
-  if (window.location.pathname.startsWith('/shared/')) return 'light';
+  if (stripBase(window.location.pathname, BASE).startsWith('/shared/')) return 'light';
   return 'system';
 }
 

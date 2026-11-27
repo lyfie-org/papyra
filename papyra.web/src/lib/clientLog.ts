@@ -1,4 +1,5 @@
 import { clientErrorInfo } from './errorReport';
+import { BASE, stripBase } from './basePath';
 
 /**
  * Browser crashes, sent to the instance's log (Settings → Logs, as "Browser").
@@ -42,7 +43,7 @@ export function reportClientError(error: unknown, componentStack?: string | null
       type: err.name,
       stack: info.stack,
       componentStack: info.componentStack,
-      route: routePattern(window.location.pathname),
+      route: routePattern(stripBase(window.location.pathname, BASE)),
     }),
     keepalive: true,
   }).catch(() => { /* the log is a convenience; never a second error */ });

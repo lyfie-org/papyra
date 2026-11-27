@@ -14,13 +14,15 @@ public static class UnlockCookie
     public const string Name = "papyra_unlock";
     private const string Path = "/api/media";
 
+    private static string ScopeFor(HttpContext http) => http.BasePath() + Path;
+
     public static void Set(HttpContext http, string token) =>
         http.Response.Cookies.Append(Name, token, new CookieOptions
         {
             HttpOnly = true,
             Secure = http.Request.IsHttps,
             SameSite = SameSiteMode.Strict,
-            Path = Path,
+            Path = ScopeFor(http),
             IsEssential = true,
         });
 
@@ -29,6 +31,6 @@ public static class UnlockCookie
         {
             Secure = http.Request.IsHttps,
             SameSite = SameSiteMode.Strict,
-            Path = Path,
+            Path = ScopeFor(http),
         });
 }

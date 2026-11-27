@@ -26,6 +26,7 @@ public static class EnvAliases
     private static readonly (string Env, string Key)[] Scalars =
     [
         ("PAPYRA_DATA_DIR", "Papyra:DataDir"),
+        ("PAPYRA_BASE_PATH", "Papyra:BasePath"),
         ("PAPYRA_ALLOW_INSECURE_COOKIES", "Papyra:AllowInsecureCookies"),
         ("PAPYRA_ERROR_DETAILS", "Papyra:ErrorDetails"),
         ("PAPYRA_AI_ENABLED", "Features:Ai"),

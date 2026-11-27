@@ -128,7 +128,7 @@ public static partial class ErrorPages
     }
 
     /// <summary>A standalone page: no SPA, no external script — it must render when the app can't.</summary>
-    public static string Html(Report r, string nonce)
+    public static string Html(Report r, string nonce, string basePath = "")
     {
         static string E(string? s) => WebUtility.HtmlEncode(s ?? string.Empty);
         var report = ReportText(r);
@@ -146,8 +146,8 @@ public static partial class ErrorPages
             <meta name="viewport" content="width=device-width, initial-scale=1">
             <meta name="robots" content="noindex">
             <title>Something went wrong · Papyra</title>
-            <link rel="icon" href="/favicon.ico">
-            <link rel="stylesheet" href="/fonts/fonts.css">
+            <link rel="icon" href="{{basePath}}/favicon.ico">
+            <link rel="stylesheet" href="{{basePath}}/fonts/fonts.css">
             <style nonce="{{nonce}}">
               :root { --bg:#f2ebe0; --surface:#fdf8f2; --text:#7a5c4e; --text-h:#3d2c1e; --border:#e2d6c6; --accent:#7aaa8a; --accent-fg:#0f2118; --code-bg:#f6efe5; --danger:#a4452f; }
               @media (prefers-color-scheme: dark) { :root { --bg:#1c1917; --surface:#28231e; --text:#a89070; --text-h:#f0e6d3; --border:#3a322a; --code-bg:#211d19; --danger:#e08a73; } }
@@ -171,7 +171,7 @@ public static partial class ErrorPages
             </head>
             <body>
             <main>
-              <a class="brand" href="/"><img src="/android-chrome-192x192.png" alt="">Papyra</a>
+              <a class="brand" href="{{basePath}}/"><img src="{{basePath}}/android-chrome-192x192.png" alt="">Papyra</a>
               <p class="code">Error {{r.Status}}</p>
               <h1>{{E(r.Title)}}</h1>
               <p>{{E(r.Message)}} If it keeps happening, send the details below to whoever runs this Papyra.</p>
@@ -179,7 +179,7 @@ public static partial class ErrorPages
               {{details}}
               <div class="actions">
                 <button type="button" class="btn btn--primary" id="copy">Copy error details</button>
-                <a class="btn" href="/">Back to Papyra</a>
+                <a class="btn" href="{{basePath}}/">Back to Papyra</a>
               </div>
               <textarea id="report" hidden>{{E(report)}}</textarea>
             </main>
@@ -217,6 +217,6 @@ public static partial class ErrorPages
         var nonce = Convert.ToBase64String(RandomNumberGenerator.GetBytes(16));
         response.Headers.ContentSecurityPolicy = HtmlCsp(nonce);
         response.ContentType = "text/html; charset=utf-8";
-        await response.WriteAsync(Html(report, nonce));
+        await response.WriteAsync(Html(report, nonce, http.BasePath()));
     }
 }

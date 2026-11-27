@@ -14,6 +14,7 @@ import UserPicker from './UserPicker';
 import Avatar from './Avatar';
 
 import BusyButton from './BusyButton';
+import { publicOrigin } from '../lib/basePath';
 // Link limits as a short list of sensible choices rather than a calendar and a
 // number spinner: nobody needs "expires 14 March" precision for a share link,
 // and the spinner's tiny arrows were fiddly.
@@ -34,7 +35,7 @@ const VIEW_OPTIONS = [
 ];
 
 function shareUrl(token: string) {
-  return `${window.location.origin}/shared/${token}`;
+  return `${publicOrigin()}/shared/${token}`;
 }
 
 export default function ShareDialog({ note, onClose }: { note: Note; onClose: () => void }) {

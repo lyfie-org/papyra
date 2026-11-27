@@ -79,6 +79,53 @@ shared network, not your router's LAN address:
 docker inspect papyra -f '{{range .NetworkSettings.Networks}}{{.Gateway}}{{end}}'
 ```
 
+## Under a path instead of its own host
+
+The simplest setup gives Papyra a host of its own, `notes.example.com`. If you
+would rather share one host and put Papyra at `example.com/papyra/`, tell it the
+path:
+
+```yaml
+PAPYRA_BASE_PATH: "/papyra"
+```
+
+Write it with a leading slash and no trailing one. Restart Papyra afterwards.
+Papyra accepts the path whether or not your proxy strips it, so either of these
+works:
+
+```nginx
+location /papyra/ {
+    proxy_pass http://papyra:8080/;
+    proxy_set_header Host              $host;
+    proxy_set_header X-Real-IP         $remote_addr;
+    proxy_set_header X-Forwarded-For   $proxy_add_x_forwarded_for;
+    proxy_set_header X-Forwarded-Proto $scheme;
+    proxy_http_version 1.1;
+    proxy_set_header Upgrade    $http_upgrade;
+    proxy_set_header Connection "upgrade";
+    proxy_read_timeout 3600s;
+}
+```
+
+```caddyfile
+example.com {
+    handle_path /papyra/* {
+        reverse_proxy papyra:8080
+    }
+}
+```
+
+With `handle` in place of `handle_path`, or `proxy_pass http://papyra:8080;` with
+no trailing slash, the path is passed through and Papyra still copes.
+
+Open `https://example.com/papyra/` with the trailing slash. Links in emails, share
+links and the single sign-on address carry the path too. The address you register
+with an SSO provider is the one shown under Administration → Single sign-on.
+
+Passkeys are tied to the hostname, not the path, so the settings in the next
+section are the same. Without `PAPYRA_BASE_PATH` a path-mapped Papyra shows a
+blank page, because it asks for its scripts from the root of the host.
+
 ## Passkeys behind a domain
 
 ```yaml

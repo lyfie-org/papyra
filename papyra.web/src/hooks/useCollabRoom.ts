@@ -5,6 +5,7 @@ import type { Provider } from '@lexical/yjs';
 import type { CollaborationExtension } from '@lyfie/luthor-headless/collab';
 import { collabColor } from '../lib/collabColors';
 import { findCollabRoomCache, forgetCollabRoomCache, rememberCollabRoomCache } from '../lib/collabCache';
+import { withBase } from '../lib/basePath';
 
 /**
  * Live editing of a shared note: one Yjs room per note, served by the
@@ -219,7 +220,7 @@ class RoomStore {
 }
 
 function wsUrl(path: string): string {
-  const url = new URL(path, window.location.href);
+  const url = new URL(withBase(path), window.location.href);
   url.protocol = url.protocol === 'https:' ? 'wss:' : 'ws:';
   return url.toString();
 }

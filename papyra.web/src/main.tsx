@@ -6,6 +6,7 @@
 // React ever mounted (white screen — dev was unaffected). Importing the core
 // here forces it to run, and publish `globalThis.Prism`, ahead of them.
 import 'prismjs';
+import { BASE, withBase } from './lib/basePath.ts';
 
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
@@ -66,7 +67,7 @@ if (!import.meta.env.VITE_DEMO) installResumeRefresh(queryClient);
 // answers back to a backend that only exists in memory.
 if (import.meta.env.PROD && !import.meta.env.VITE_DEMO && 'serviceWorker' in navigator) {
   window.addEventListener('load', () => {
-    void navigator.serviceWorker.register('/sw.js').catch(() => {
+    void navigator.serviceWorker.register(withBase('/sw.js'), { scope: `${BASE}/` }).catch(() => {
       /* offline support is an enhancement — a failed registration is not fatal */
     });
   });
@@ -106,7 +107,7 @@ createRoot(document.getElementById('root')!).render(
           <ServerErrorNotices />
           <ConfirmProvider>
             <ShareOfferProvider>
-              <BrowserRouter basename={import.meta.env.BASE_URL}>
+              <BrowserRouter basename={import.meta.env.VITE_DEMO ? import.meta.env.BASE_URL : BASE || '/'}>
                 <App />
               </BrowserRouter>
             </ShareOfferProvider>

@@ -1,6 +1,7 @@
 using System.IO.Compression;
 using System.Security.Claims;
 using System.Text.RegularExpressions;
+using Papyra.Api.Security;
 using Papyra.Api.Data;
 using Papyra.Api.Models;
 using Papyra.Api.Storage;
@@ -107,7 +108,7 @@ public static partial class JournalExportEndpoints
                 new("Journal days", days.Count.ToString()),
                 new("Locked days", days.Count(d => d.Locked).ToString()),
                 new("Words", words.ToString("N0")),
-                new("Server", email.PublicUrl($"{http.Request.Scheme}://{http.Request.Host}")),
+                new("Server", email.PublicUrl(http.PublicOrigin())),
             };
             email.NotifyInBackground(me, NotificationCatalog.ExportReady, "Your journal was exported",
                 "Your Papyra journal — locked days included — was just downloaded.\n\n"

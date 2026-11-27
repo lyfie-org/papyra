@@ -88,7 +88,7 @@ export default defineConfig(({ mode }) => {
   return {
     plugins: isDemo ? [react(), demoBuild()] : [react(), versionFile()],
     // The demo is served from papyra.app/demo/, so every asset URL needs the prefix.
-    base: isDemo ? '/demo/' : '/',
+    base: isDemo ? '/demo/' : './',
     // prismjs (pulled in by @lexical/code via @lyfie/luthor) publishes its core as
     // `global.Prism` and every language component then reads the bare `Prism`
     // global. Vite's dev pre-bundle shims `global`, a Rollup prod build does not —

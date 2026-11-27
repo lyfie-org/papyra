@@ -25,6 +25,7 @@ import './SetupPage.css';
 
 import BusyButton from '../components/BusyButton';
 import { useT } from '../i18n/store';
+import { publicOrigin } from '../lib/basePath';
 // The first-run wizard for a brand-new Papyra. Before the account exists:
 //   welcome (fresh, or restore a backup first) → username → authenticator →
 //   email → code → password → vault PIN → time zone → create.
@@ -708,7 +709,7 @@ function EmailStep({ email, setEmail, emailConfigured, busy, onConfigured, onSen
     try {
       const { res, data } = await postJson('/api/auth/setup/smtp', {
         host: host.trim(), port: Number(port) || 587, useSsl, username: smtpUser.trim(), password: smtpPass,
-        fromAddress: (from.trim() || smtpUser.trim()), fromName: 'Papyra', publicUrl: window.location.origin,
+        fromAddress: (from.trim() || smtpUser.trim()), fromName: 'Papyra', publicUrl: publicOrigin(),
       }, 'PUT');
       if (!res.ok) { onError((data?.error as string) ?? 'Those mail settings didn’t save.'); return; }
       onConfigured();
