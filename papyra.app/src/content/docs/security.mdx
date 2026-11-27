@@ -92,6 +92,17 @@ and you can turn it off. See
 [The update check](/docs/update-check/). Everything else it can send out, and to whom, is in
 [Notifications](/docs/notifications/#what-leaves-your-server).
 
+## Image scans
+
+Each release image is scanned with Trivy before it is published, and the build stops on any
+Critical or High finding that already has a fix. Grype scans the same image as a second
+opinion. Because it uses different data and takes severities from NVD, it lists more findings
+and rates some higher, including ones with no fix yet. The reports from both and a software
+bill of materials (CycloneDX) are attached to the
+[GitHub release](https://github.com/lyfie-org/papyra/releases). The published image is
+scanned again every week, so a vulnerability found after a release shows up without waiting
+for the next one.
+
 ## Reporting a problem
 
 Report security issues privately through

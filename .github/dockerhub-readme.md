@@ -42,6 +42,10 @@ docker compose -f docker-compose.hub.yml up -d
 - `vX.Y.Z`: a specific release.
 - `dev`: the development branch, may break.
 
+## Security scans
+
+Every release image is scanned with [Trivy](https://trivy.dev) and [Grype](https://github.com/anchore/grype) before it is published. Both reports and an SBOM are attached to each [GitHub release](https://github.com/lyfie-org/papyra/releases).
+
 ## Privacy
 
 No analytics, no crash reports, no third-party requests. The only call the server makes on its own is a daily look at GitHub for a newer version; it sends nothing about you, and nothing goes to any server of mine. Set `PAPYRA_UPDATE_CHECK_ENABLED=false` to turn it off. What it asks: https://papyra.app/docs/update-check

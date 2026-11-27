@@ -39,6 +39,24 @@ Whether an issue is claimed is shown by its **assignee**, not a label.
 See `RELEASE_LINES.md` and `RELEASE_TEMPLATE.md`. Release notes are written by hand
 per version in `release-notes/`.
 
+## Vulnerability scans
+
+Trivy scans the image on every dev build and release, and the published image every Monday.
+It runs from a pinned container through `actions/trivy-scan`; the pin lives in that action's
+`action.yml` (version and digest), so bump both together. Grype (`actions/grype-scan`, pinned the
+same way) scans the same image as a second opinion. It reads different vulnerability data and
+takes severities from NVD, so it lists more and rates some higher than Trivy. It never gates.
+
+- **Dev Release** (by hand): the run summary shows the image and lockfile findings and whether a
+  release would be blocked right now. It never fails. The full report and an SBOM download from the run.
+- **Prod Release**: fails before anything is tagged or pushed if the image has a Critical or High
+  finding that already has a fix. The Trivy and Grype reports and the SBOM are attached to the GitHub Release.
+- **Security Scan** (Mondays, or by hand): scans `lyfie/papyra:latest` (Trivy and Grype) and the lockfiles (Trivy). Report only.
+
+A finding with no fix never blocks. For a finding that is not reachable in Papyra, add its id to a
+`.trivyignore` file at the repo root, one per line, and say why in the commit message. A base-image
+finding clears itself on the next build once Alpine or .NET ships the fix.
+
 ## Discord feed
 
 `workflows/discord.yml` posts to the lyfie.org Discord through one webhook per channel,

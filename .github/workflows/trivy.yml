@@ -1,0 +1,59 @@
+name: Security Scan
+
+on:
+  schedule:
+    - cron: '23 4 * * 1'
+  workflow_dispatch:
+    inputs:
+      image:
+        description: 'Image to scan'
+        required: true
+        default: 'lyfie/papyra:latest'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: trivy
+  cancel-in-progress: true
+
+jobs:
+  published-image:
+    name: Published image
+    runs-on: ubuntu-latest
+    env:
+      IMAGE: ${{ github.event.inputs.image || 'lyfie/papyra:latest' }}
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Pull the image
+        run: docker pull "$IMAGE"
+
+      - name: Vulnerability scan (image)
+        uses: ./.github/actions/trivy-scan
+        with:
+          target: ${{ env.IMAGE }}
+          label: published-image
+          gate: 'false'
+
+      - name: Vulnerability scan (image, second opinion)
+        uses: ./.github/actions/grype-scan
+        with:
+          target: ${{ env.IMAGE }}
+          label: published-image
+
+  lockfiles:
+    name: Lockfiles
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+
+      - name: Vulnerability scan (lockfiles)
+        uses: ./.github/actions/trivy-scan
+        with:
+          target: .
+          kind: fs
+          label: lockfiles
+          gate: 'false'

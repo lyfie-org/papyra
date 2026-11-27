@@ -1,0 +1,50 @@
+name: Grype scan
+description: >-
+  Scans a local container image for known vulnerabilities with a pinned Grype
+  container, as a second opinion beside Trivy. Writes a summary to the run and
+  keeps the full report as a download. Never fails the job on findings.
+
+inputs:
+  target:
+    description: Image reference present in the local Docker daemon.
+    required: true
+  label:
+    description: Short name used for the summary heading, the folder and the artifact.
+    required: true
+  retention-days:
+    description: How long the downloadable report is kept.
+    required: false
+    default: '30'
+
+outputs:
+  dir:
+    description: Folder holding report.json, report.txt and summary.md.
+    value: ${{ steps.scan.outputs.dir }}
+
+runs:
+  using: composite
+  steps:
+    - name: Scan
+      id: scan
+      shell: bash
+      env:
+        TARGET: ${{ inputs.target }}
+        LABEL: ${{ inputs.label }}
+        GRYPE_IMAGE: anchore/grype:v0.122.1@sha256:661583704a253c0448ed63998b5ea2cd9d5a76ee71eedc4aed439b8ce3e93a1c
+      run: bash "${{ github.action_path }}/scan.sh"
+
+    - name: Summarise
+      shell: bash
+      env:
+        OUT_DIR: ${{ steps.scan.outputs.dir }}
+        LABEL: ${{ inputs.label }}
+        TARGET: ${{ inputs.target }}
+      run: python3 "${{ github.action_path }}/summarize.py" "$OUT_DIR" "$LABEL" "$TARGET" "0.122.1"
+
+    - name: Keep the report
+      if: always() && steps.scan.outputs.dir != ''
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      with:
+        name: grype-${{ inputs.label }}
+        path: ${{ steps.scan.outputs.dir }}
+        retention-days: ${{ inputs.retention-days }}

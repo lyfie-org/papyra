@@ -96,6 +96,27 @@ jobs:
           pnpm run e2e || { docker logs smoke; exit 1; }
           docker rm -f smoke
 
+      - name: Vulnerability scan (image)
+        uses: ./.github/actions/trivy-scan
+        with:
+          target: papyra:smoketest
+          label: dev-image
+          gate: 'false'
+
+      - name: Vulnerability scan (image, second opinion)
+        uses: ./.github/actions/grype-scan
+        with:
+          target: papyra:smoketest
+          label: dev-image
+
+      - name: Vulnerability scan (lockfiles)
+        uses: ./.github/actions/trivy-scan
+        with:
+          target: .
+          kind: fs
+          label: dev-lockfiles
+          gate: 'false'
+
       - name: Log in to Docker Hub
         uses: docker/login-action@8aa5831fb8d48d8f76594c7ddde61ae58019f550 # v4.8.0
         with:

@@ -109,6 +109,23 @@ jobs:
           pnpm run e2e || { docker logs smoke; exit 1; }
           docker rm -f smoke
 
+      - name: Vulnerability scan
+        id: scan
+        uses: ./.github/actions/trivy-scan
+        with:
+          target: papyra:smoketest
+          label: release-image
+          gate: 'true'
+          retention-days: '90'
+
+      - name: Vulnerability scan (second opinion)
+        id: grype
+        uses: ./.github/actions/grype-scan
+        with:
+          target: papyra:smoketest
+          label: release-image
+          retention-days: '90'
+
       # ── 2. Bump VERSION + changelog from commits since the last tag ─────────────
       - name: Update VERSION and CHANGELOG
         id: notes
@@ -210,11 +227,22 @@ jobs:
       - name: Publish GitHub Release
         env:
           GH_TOKEN: ${{ github.token }}
+          SCAN_DIR: ${{ steps.scan.outputs.dir }}
+          GRYPE_DIR: ${{ steps.grype.outputs.dir }}
+          TAG: ${{ steps.ver.outputs.tag }}
         run: |
-          gh release create "${{ steps.ver.outputs.tag }}" \
-            --title "${{ steps.ver.outputs.tag }}" \
+          ASSETS="$RUNNER_TEMP/release-assets"
+          mkdir -p "$ASSETS"
+          cp "$SCAN_DIR/report.txt" "$ASSETS/papyra-$TAG-trivy-report.txt"
+          cp "$SCAN_DIR/report.json" "$ASSETS/papyra-$TAG-trivy-report.json"
+          cp "$SCAN_DIR/sbom.cdx.json" "$ASSETS/papyra-$TAG-sbom.cdx.json"
+          cp "$GRYPE_DIR/report.txt" "$ASSETS/papyra-$TAG-grype-report.txt"
+          cp "$GRYPE_DIR/report.json" "$ASSETS/papyra-$TAG-grype-report.json"
+          gh release create "$TAG" \
+            --title "$TAG" \
             --notes-file RELEASE_NOTES.md \
-            --target main
+            --target main \
+            "$ASSETS"/*
 
       # ── 5. Keep development in lockstep with the freshly released main ──────────
       - name: Sync development to main

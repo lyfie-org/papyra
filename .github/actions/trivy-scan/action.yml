@@ -1,0 +1,70 @@
+name: Trivy scan
+description: >-
+  Scans a container image, or the repository's lockfiles, for known
+  vulnerabilities with a pinned Trivy container. Writes a summary to the run,
+  keeps the full report and an SBOM as a download, and can fail the job on
+  findings that already have a fix.
+
+inputs:
+  target:
+    description: Image reference (kind image) or ignored (kind fs, scans the checkout).
+    required: true
+  kind:
+    description: image or fs.
+    required: false
+    default: image
+  label:
+    description: Short name used for the summary heading, the folder and the artifact.
+    required: true
+  gate:
+    description: Fail the job when a gating finding has a fix available.
+    required: false
+    default: 'false'
+  gate-severities:
+    description: Comma-separated severities that gate.
+    required: false
+    default: CRITICAL,HIGH
+  retention-days:
+    description: How long the downloadable report is kept.
+    required: false
+    default: '30'
+
+outputs:
+  dir:
+    description: Folder holding report.json, report.txt, sbom.cdx.json and summary.md.
+    value: ${{ steps.scan.outputs.dir }}
+  blocking:
+    description: Number of gating findings that have a fix available.
+    value: ${{ steps.summary.outputs.blocking }}
+
+runs:
+  using: composite
+  steps:
+    - name: Scan
+      id: scan
+      shell: bash
+      env:
+        TARGET: ${{ inputs.target }}
+        KIND: ${{ inputs.kind }}
+        LABEL: ${{ inputs.label }}
+        TRIVY_IMAGE: aquasec/trivy:0.76.2@sha256:8f6bb947dbc528902e11f2f5be52f7b519f6a39d5d148f41166f2040499768fb
+      run: bash "${{ github.action_path }}/scan.sh"
+
+    - name: Summarise
+      id: summary
+      shell: bash
+      env:
+        OUT_DIR: ${{ steps.scan.outputs.dir }}
+        LABEL: ${{ inputs.label }}
+        TARGET: ${{ inputs.kind == 'fs' && 'repository lockfiles' || inputs.target }}
+        GATE_SEVERITIES: ${{ inputs.gate-severities }}
+        GATE: ${{ inputs.gate }}
+      run: python3 "${{ github.action_path }}/summarize.py" "$OUT_DIR" "$LABEL" "$TARGET" "$GATE_SEVERITIES" "$GATE" "0.76.2"
+
+    - name: Keep the report
+      if: always() && steps.scan.outputs.dir != ''
+      uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+      with:
+        name: trivy-${{ inputs.label }}
+        path: ${{ steps.scan.outputs.dir }}
+        retention-days: ${{ inputs.retention-days }}
