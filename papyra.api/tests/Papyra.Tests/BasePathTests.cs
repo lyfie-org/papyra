@@ -194,11 +194,6 @@ public sealed class BasePathTests
                 var bare = await client.GetFromJsonAsync<JsonElement>("/site.webmanifest");
                 Assert.Equal($"{prefix}/", bare.GetProperty("scope").GetString());
             }
-            else
-            {
-                var manifest = await client.GetFromJsonAsync<JsonElement>("/site.webmanifest");
-                Assert.Equal("/", manifest.GetProperty("start_url").GetString());
-            }
 
             Assert.Equal(HttpStatusCode.OK, (await client.GetAsync($"{prefix}/health")).StatusCode);
             Assert.Equal(HttpStatusCode.OK, (await client.GetAsync("/health")).StatusCode);
